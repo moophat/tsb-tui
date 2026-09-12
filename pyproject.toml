@@ -1,0 +1,5 @@
+[project]
+name = "tsb-tui"
+version = "0.0.0"
+requires-python = ">=3.12"
+description = "TSB tui — own manifest so this directory can leave by subtree split"
