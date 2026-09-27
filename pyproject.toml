@@ -3,3 +3,29 @@ name = "tsb-tui"
 version = "0.0.0"
 requires-python = ">=3.12"
 description = "TSB tui — own manifest so this directory can leave by subtree split"
+# tsb-contract (tsb_contract_client, tsbc) is a real runtime dependency but is not listed here:
+# PEP 508 cannot express a path relative to this file, and contract/ is not published to an
+# index. It ships alongside tui/ in this repo and CI installs both (-e ./contract -e ./tui[test],
+# .github/workflows/test.yml); `pipx install ./tui` needs a second command, `pipx inject tsb-tui
+# ./contract`, to put it in the same venv — see tui/README.md "Install".
+dependencies = [
+    "textual==8.2.8",
+    "pyte==0.8.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+tsb-tui = "tsb_tui.__main__:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["tsb_tui", "tsb_tui.screens"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-rsx"
