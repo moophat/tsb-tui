@@ -52,18 +52,21 @@ that way; re-attach from there.
 
 `tui/pyproject.toml` declares `[project.scripts] tsb-tui`, so `pipx install ./tui` gives a working
 `tsb-tui` script — except the contract client, which PEP 508 cannot name by a relative path (see
-the comment in `pyproject.toml`). Put it in the same venv with:
+the comment in `pyproject.toml`). Inject it from tui's own pin (`tui/CONTRACT_VERSION`), never the
+working tree — materialize that tag (`deploy/manage.sh`'s `materialize_contract_pin`) and:
 
-    pipx inject tsb-tui ./contract
+    pipx inject tsb-tui path/to/materialized/contract
 
 `deploy/manage.sh up`'s post-deploy hook does exactly this, for the operator who ran `sudo`: it
-installs `tsb-tui`, injects the contract client, then runs `harness/rigs/smoke.sh` and
-`tsb-tui --smoke` against the instance it just brought up.
+installs `tsb-tui`, injects a throwaway copy of tui's pinned contract tree (so pip's own `build/`
+and `*.egg-info` never land in the shared `.contract-pins/` cache), then runs
+`harness/rigs/smoke.sh` and `tsb-tui --smoke` against the instance it just brought up.
 
 ## Tests
 
-    pip install -e ../contract -e ".[test]"   # from tui/, or from the repo root with the paths
-                                                # .github/workflows/test.yml uses
+    pip install -e ".[test]"   # from tui/; tests/conftest.py materializes tui's own pinned tag
+                                 # (tui/CONTRACT_VERSION) under .contract-pins/ and imports the
+                                 # contract client from there — no separate contract install needed
     pytest tests/
 
 The pilot test (`tests/test_flow_pilot.py`) runs the whole E0 journey against a slow, chunked
