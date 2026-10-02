@@ -7,7 +7,7 @@ Ownership, seams and exit evidence: `../tsb-program/spine/plan.md` §2 (U7). A s
 ## Layout
 
     tsb_tui/app.py              the Textual App: one client, a stack of screens
-    tsb_tui/_transport.py       the handful of tsbc-private transport exceptions this client needs
+    tsb_tui/_transport.py       the transport exceptions the published client re-exports (v0.2)
     tsb_tui/screens/login.py    TSB's own login (decision 5.34): username + password
     tsb_tui/screens/new_session.py   target id, connection choice
     tsb_tui/screens/attach_confirm.py  recording ack, host-key ack — every attach passes through it

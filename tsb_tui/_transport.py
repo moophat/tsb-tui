@@ -1,18 +1,20 @@
-"""The transport exceptions `tsb_contract_client` does not yet publicly re-export:
+"""The transport exceptions, re-exported by the published contract client since contract-v0.2:
 `ConnectionClosed` (a send or resize racing the peer closing the socket),
 `HandshakeError`/`ProtocolError` (the WebSocket upgrade, or its framing, failing outright), and
 `HttpError` (a refused connection, a timeout, or a TLS failure on the REST calls underneath —
 `Client.login`/`create_session`/`sessions`/`session`/`close`/`ws_ticket` all raise it for a
-transport failure, distinct from `ApiError`'s non-2xx status). `tsb_contract_client.attachment`
-itself already reaches into these same private `tsbc` submodules for the same transport, so
-importing them here follows the existing pattern rather than widening to a bare `except Exception`.
-Isolated in this one module so nothing else in `tui/` names a private `tsbc` submodule directly.
+transport failure, distinct from `ApiError`'s non-2xx status). Imported from `tsb_contract_client`,
+the same class objects its transports raise, rather than reaching into private `tsbc` submodules.
+Isolated in this one module so nothing else in `tui/` names these transport errors directly.
 """
 
 from __future__ import annotations
 
-from tsbc._aws import ConnectionClosed
-from tsbc._http import HttpError
-from tsbc._wsframe import HandshakeError, ProtocolError
+from tsb_contract_client import (
+    ConnectionClosed,
+    HandshakeError,
+    HttpError,
+    ProtocolError,
+)
 
 __all__ = ["ConnectionClosed", "HandshakeError", "HttpError", "ProtocolError"]
