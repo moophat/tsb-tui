@@ -46,6 +46,20 @@ def _notification_messages(app: TsbTuiApp) -> list[str]:
     return [n.message for n in app._notifications._notifications.values()]
 
 
+async def _wait_for_notification(
+    app: TsbTuiApp, pilot, *texts: str, timeout_s: float = 5.0
+) -> list[str]:
+    """Poll until a notification contains one of `texts`, or the timeout elapses; either way the
+    latest messages are returned so the caller can assert the same way it would on a single read."""
+    messages = _notification_messages(app)
+    for _ in range(int(timeout_s / 0.05)):
+        if any(t in m for t in texts for m in messages):
+            return messages
+        await pilot.pause(0.05)
+        messages = _notification_messages(app)
+    return messages
+
+
 async def _push_terminal_and_wait_for(app: TsbTuiApp, pilot, screen_type: type) -> None:
     session_id = _create_session(app)
     app.push_screen(TerminalScreen(session_id))
@@ -131,7 +145,8 @@ def test_a_protocol_error_after_attach_returns_to_sessions_instead_of_crashing()
     attach step) or on its own afterward (raising from the receive loop) is TCP scheduling, not
     application behavior — `_push_terminal_and_wait_for`'s own `return_code is None` assertion is
     what actually pins the invariant this test is for; the message is one of the app's two known,
-    non-crashing failure banners, never left blank."""
+    non-crashing failure banners, never left blank. The notification is awaited because it is posted
+    after the screen switch, so a single read can beat it."""
 
     async def _check() -> None:
         stub = SlowChunkedApp(invalid_frame_after_attach=True)
@@ -139,7 +154,8 @@ def test_a_protocol_error_after_attach_returns_to_sessions_instead_of_crashing()
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
                 await _push_terminal_and_wait_for(app, pilot, SessionsScreen)
-                messages = _notification_messages(app)
+                messages = await _wait_for_notification(
+                    app, pilot, "connection to the broker lost", "could not attach")
                 assert any("connection to the broker lost" in m or "could not attach" in m
                           for m in messages), messages
 
