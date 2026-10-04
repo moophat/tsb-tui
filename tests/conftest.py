@@ -27,7 +27,7 @@ PIN_FILE = TUI_DIR / "CONTRACT_VERSION"
 # Every pin file's own format, checked before anything else touches disk: an unvalidated pin
 # could put ".." in a path this joins with a directory, or reach `git` with an argument that is
 # not a ref at all.
-_TAG_RE = re.compile(r"^contract-v[0-9]+\.[0-9]+$")
+_TAG_RE = re.compile(r"^contract-v[0-9]+\.[0-9]+(\.[0-9]+)?$")
 # What `git rev-parse <tag>:contract` must print on success: a full hex object id, read from
 # stdout only (stderr is kept apart, for the error message) and checked before any of it is
 # trusted or truncated.
@@ -97,7 +97,7 @@ def _materialize_pin() -> Path:
     entry's contract/ directory itself."""
     tag = PIN_FILE.read_text().strip()
     if not _TAG_RE.match(tag):
-        raise RuntimeError(f"{PIN_FILE} is {tag!r}: want a contract-vX.Y tag")
+        raise RuntimeError(f"{PIN_FILE} is {tag!r}: want a contract-vX.Y or contract-vX.Y.Z tag")
     tree = _resolve_tree(REPO_ROOT, PIN_FILE, tag)
     entry = f"{tag}@{tree[:_TREE_ID_LEN]}"
     pins_dir = REPO_ROOT / ".contract-pins"
