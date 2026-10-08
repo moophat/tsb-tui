@@ -4,6 +4,8 @@ A first-party shipped surface and the core's verification instrument — one art
 
 Ownership, seams and exit evidence: `../tsb-program/spine/plan.md` §2 (U7). A sub building this unit writes only inside `tui/`.
 
+The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO](../docs/tsb-protocols/edges/SF-CO.md) ([`../docs/tsb-protocols/`](../docs/tsb-protocols/README.md)): what a surface must and may do is in each protocol's consumer lines.
+
 ## Layout
 
     tsb_tui/app.py              the Textual App: one client, a stack of screens
