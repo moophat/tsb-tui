@@ -1,6 +1,6 @@
-"""A consumer that regressed to importing the contract from the working tree instead of its
-pinned tag — the exact defect conftest.py's materializer exists to prevent — must fail a test, not
-pass silently."""
+"""A consumer that regressed to importing the contract from anywhere but `program/contract/` —
+site-packages, the sibling `../tsb-program`, or a stale copy of an older tag — must fail a
+test, not pass silently."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ import tsbc
 from conftest import CONTRACT_DIR
 
 
-def test_tsbc_and_client_resolve_under_the_pinned_cache_not_the_working_tree():
+def test_tsbc_and_client_resolve_under_program_contract_not_elsewhere():
     for mod in (tsbc, tsb_contract_client):
         resolved = Path(mod.__file__).resolve()
-        assert ".contract-pins" in resolved.parts, f"{mod.__name__} imported from {resolved}, not the pinned cache"
+        assert "program" in resolved.parts, f"{mod.__name__} imported from {resolved}, not program/contract"
         assert resolved.is_relative_to(CONTRACT_DIR), f"{mod.__name__} imported from {resolved}, not {CONTRACT_DIR}"

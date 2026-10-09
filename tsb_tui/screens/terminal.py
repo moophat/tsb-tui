@@ -130,7 +130,10 @@ class TerminalScreen(Screen):
 
     async def _send_resize(self, cols: int, rows: int) -> None:
         try:
-            await self.att.resize(cols, rows)
+            # timeout=0: send the frame and return at once, as at contract-v0.2.1. v0.3.1's resize
+            # returns the next `size` answer (or waits the socket bound); this screen has never
+            # blocked on one, so keep the fire-and-forget behaviour.
+            await self.att.resize(cols, rows, timeout=0)
         except ConnectionClosed:
             pass  # the recv loop in _attach_and_pump will notice and show the close banner
 
@@ -158,7 +161,9 @@ class TerminalScreen(Screen):
             return
         self.att = att
         try:
-            await att.resize(self._cols, self._rows)
+            # timeout=0, as _send_resize: the initial size goes out without waiting for a `size`
+            # answer, which is what this screen did at contract-v0.2.1.
+            await att.resize(self._cols, self._rows, timeout=0)
             while True:
                 chunk = await att.recv()
                 if chunk is None:

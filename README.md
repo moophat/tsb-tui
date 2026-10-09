@@ -4,7 +4,7 @@ A first-party shipped surface and the core's verification instrument — one art
 
 Ownership, seams and exit evidence: `../tsb-program/spine/plan.md` §2 (U7). A sub building this unit writes only inside `tui/`.
 
-The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO](../docs/tsb-protocols/edges/SF-CO.md) ([`../docs/tsb-protocols/`](../docs/tsb-protocols/README.md)): what a surface must and may do is in each protocol's consumer lines.
+The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO](../program/contract/protocols/edges/SF-CO.md) ([`../program/contract/protocols/`](../program/contract/protocols/README.md)): what a surface must and may do is in each protocol's consumer lines.
 
 ## Layout
 
@@ -54,22 +54,29 @@ that way; re-attach from there.
 
 `tui/pyproject.toml` declares `[project.scripts] tsb-tui`, so `pipx install ./tui` gives a working
 `tsb-tui` script — except the contract client, which PEP 508 cannot name by a relative path (see
-the comment in `pyproject.toml`). Inject it from tui's own pin (`tui/CONTRACT_VERSION`), never the
-working tree — materialize that tag (`deploy/manage.sh`'s `materialize_contract_pin`) and:
+the comment in `pyproject.toml`). `program/` is a submodule with `update = none`, so this copy
+needs `program/` populated by `make contract-init` from the repo root first. Inject it from a
+throwaway copy of `program/contract/`, never in place — building writes `build/` and
+`*.egg-info` into its source — and:
 
-    pipx inject tsb-tui path/to/materialized/contract
+    make contract-init   # from the repo root: populates program/ at the pinned release
+    cp -r program/contract /tmp/contract-$$   # throwaway; pip then builds inside the copy
+    pipx inject tsb-tui /tmp/contract-$$
 
 `deploy/manage.sh up`'s post-deploy hook does exactly this, for the operator who ran `sudo`: it
-installs `tsb-tui`, injects a throwaway copy of tui's pinned contract tree (so pip's own `build/`
-and `*.egg-info` never land in the shared `.contract-pins/` cache), then runs
+installs `tsb-tui`, injects a throwaway copy of `program/contract/` (so pip's own `build/`
+and `*.egg-info` never land in the program submodule), then runs
 `harness/rigs/smoke.sh` and `tsb-tui --smoke` against the instance it just brought up.
 
 ## Tests
 
-    pip install -e ".[test]"   # from tui/; tests/conftest.py materializes tui's own pinned tag
-                                 # (tui/CONTRACT_VERSION) under .contract-pins/ and imports the
+    pip install -e ".[test]"   # from tui/; tests/conftest.py puts program/contract/ and
+                                 # program/contract/client/ first on sys.path and imports the
                                  # contract client from there — no separate contract install needed
     pytest tests/
+
+`tests/conftest.py` needs `program/contract/` populated (`make contract-init`) and fails loudly
+otherwise, rather than skipping silently.
 
 The pilot test (`tests/test_flow_pilot.py`) runs the whole E0 journey against a slow, chunked
 stub and asserts the app stays responsive (a keystroke is handled while output is still arriving)
