@@ -17,6 +17,8 @@ import asyncio
 from collections.abc import Callable
 
 from stub_server import SlowChunkedApp, StubServer
+from textual.css.query import NoMatches
+from textual.widgets import DataTable
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.login import LoginScreen
 from tsb_tui.screens.sessions import SessionsScreen
@@ -60,11 +62,27 @@ async def _wait_for_notification(
     return messages
 
 
+def _returned_screen_is_ready(screen) -> bool:
+    """True once the screen the terminal switched back to is fully up. `app.screen` becomes that
+    screen the instant it is switched in, before Textual has mounted its widgets, and
+    `SessionsScreen.on_mount` then fetches `GET /sessions`; until that first reply lands and its
+    rows are shown, a callback is still in flight and can run against an unmounted screen."""
+    if not screen.is_mounted:
+        return False
+    if not isinstance(screen, SessionsScreen):
+        return True
+    try:
+        return screen.query_one("#sessions-table", DataTable).row_count > 0
+    except NoMatches:
+        return False
+
+
 async def _push_terminal_and_wait_for(app: TsbTuiApp, pilot, screen_type: type) -> None:
     session_id = _create_session(app)
     app.push_screen(TerminalScreen(session_id))
     await pilot.pause()
     await _wait_until(pilot, lambda: isinstance(app.screen, screen_type))
+    await _wait_until(pilot, lambda: _returned_screen_is_ready(app.screen))
     # The app is still running: a crashed worker (`WorkerFailed`, the bug this fixes) would have
     # set a non-zero return code and stopped the app instead of navigating.
     assert app.return_code is None

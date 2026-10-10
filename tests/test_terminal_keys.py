@@ -11,6 +11,7 @@ them; only removing the interception itself can.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
 import pytest
 from stub_server import SlowChunkedApp, StubServer
@@ -66,6 +67,16 @@ def test_encode_key_table(key: str, character: str | None, application_cursor_ke
 
 # -- Pilot: keys Textual would otherwise intercept before they reach on_key at all. --
 
+async def _wait_until(pilot, predicate: Callable[[], bool], attempts: int = 300) -> None:
+    """Poll a condition on the event loop, bounded; a frame proving a key was forwarded crosses
+    into the stub's own reader thread, so it may not be visible at the instant of one pause."""
+    for _ in range(attempts):
+        if predicate():
+            return
+        await pilot.pause(0.01)
+    raise AssertionError(f"condition never became true: {predicate!r}")
+
+
 async def _login_and_attach(app: TsbTuiApp) -> str:
     app.client.login("fixture-user", "fixture-password")
     created = app.client.create_session(TARGET_ID, "new", "xterm-256color", 80, 24)
@@ -88,15 +99,14 @@ def test_ctrl_p_and_ctrl_q_reach_the_target_instead_of_the_palette_or_quitting()
                 await pilot.pause()
                 assert isinstance(app.screen, TerminalScreen), "ctrl+p opened the command palette"
                 assert app.return_code is None
+                await _wait_until(pilot, lambda: b"\x10" in stub.client_frames)  # ctrl+p
 
                 await pilot.press("ctrl+q")
                 await pilot.pause()
                 assert isinstance(app.screen, TerminalScreen), "ctrl+q quit instead of forwarding"
                 assert app.return_code is None
                 assert app._exit is False
-
-                assert b"\x10" in stub.client_frames  # ctrl+p
-                assert b"\x11" in stub.client_frames  # ctrl+q
+                await _wait_until(pilot, lambda: b"\x11" in stub.client_frames)  # ctrl+q
 
     asyncio.run(_check())
 
@@ -126,8 +136,7 @@ def test_ctrl_c_forwards_to_the_target() -> None:
                 await _login_and_attach(app)
                 await pilot.pause()
                 await pilot.press("ctrl+c")
-                await pilot.pause()
-                assert b"\x03" in stub.client_frames
+                await _wait_until(pilot, lambda: b"\x03" in stub.client_frames)
                 assert isinstance(app.screen, TerminalScreen)
 
     asyncio.run(_check())
@@ -145,13 +154,11 @@ def test_paste_is_bracketed_only_when_the_target_asked_for_it() -> None:
                 assert isinstance(screen, TerminalScreen)
 
                 screen.post_message(events.Paste("hello"))
-                await pilot.pause()
-                assert b"hello" in stub.client_frames
+                await _wait_until(pilot, lambda: b"hello" in stub.client_frames)
                 assert b"\x1b[200~hello\x1b[201~" not in stub.client_frames
 
                 screen.view.emulator.feed(b"\x1b[?2004h")  # DECSET 2004
                 screen.post_message(events.Paste("world"))
-                await pilot.pause()
-                assert b"\x1b[200~world\x1b[201~" in stub.client_frames
+                await _wait_until(pilot, lambda: b"\x1b[200~world\x1b[201~" in stub.client_frames)
 
     asyncio.run(_check())
