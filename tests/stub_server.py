@@ -125,7 +125,8 @@ class SlowChunkedApp:
                  invalid_frame_after_attach: bool = False,
                  connection_choice_candidates: list[str] | None = None,
                  connection_choice_target: str = "stub-target",
-                 sessions_call_delays: tuple[float, ...] = ()) -> None:
+                 sessions_call_delays: tuple[float, ...] = (),
+                 sessions_first_call_gate: threading.Event | None = None) -> None:
         self.delay_s = delay_s
         self.max_chunks = max_chunks
         self.tail_chunks = tail_chunks
@@ -148,6 +149,13 @@ class SlowChunkedApp:
         # candidate so a client's own "fetch and offer" recovery has something real to fetch.
         self.connection_choice_candidates = connection_choice_candidates
         self.sessions_call_delays = sessions_call_delays
+        # When set, the first `GET /sessions` is held on this event instead of the delay above,
+        # and `sessions_first_call_started` is set once its request is the one being held: a test
+        # releases the gate to land an older reply strictly after a newer one, with no wall clock.
+        # If the release never comes the held request fails rather than answering with its stale
+        # snapshot, so a broken test cannot pass by letting the older reply through early.
+        self.sessions_first_call_gate = sessions_first_call_gate
+        self.sessions_first_call_started = threading.Event()
         self._sessions_calls = 0
 
         self.sessions: dict[str, dict] = {}
@@ -221,7 +229,14 @@ class SlowChunkedApp:
             snapshot = list(self.sessions.values())
             call_index = self._sessions_calls
             self._sessions_calls += 1
-            if call_index < len(self.sessions_call_delays):
+            if self.sessions_first_call_gate is not None and call_index == 0:
+                self.sessions_first_call_started.set()
+                if not self.sessions_first_call_gate.wait(timeout=10):
+                    # The test releases the gate only after the newer reply is applied; a timeout
+                    # is a broken test, never a reason to answer with the stale snapshot below.
+                    return 503, [], {"error": {"code": "gate_timeout",
+                                               "message": "sessions gate was never released"}}
+            elif call_index < len(self.sessions_call_delays):
                 time.sleep(self.sessions_call_delays[call_index])
             return 200, [], {"sessions": snapshot}
         if method == "GET" and path.startswith("/sessions/"):

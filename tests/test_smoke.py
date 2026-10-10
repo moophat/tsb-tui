@@ -117,13 +117,17 @@ def test_smoke_fails_on_a_protocol_error_after_attach(monkeypatch, tmp_path, cap
 
 def test_smoke_fails_on_a_refused_websocket_upgrade(monkeypatch, tmp_path, capsys) -> None:
     """The attach step must handle a `HandshakeError` (the WebSocket upgrade itself refused) the
-    same way it handles every other attach failure: its own `FAILED` line, cleanup still
-    attempted, exit 1 — never an unhandled traceback."""
+    same way it handles every other attach failure: its own `FAILED` line, the session it opened
+    closed anyway, exit 1 — never an unhandled traceback and never a leaked session."""
     _set_creds(monkeypatch, tmp_path)
     stub = SlowChunkedApp(refuse_upgrade=True)
     with StubServer(stub) as url:
         assert smoke.run(url, TARGET_ID, None) == 1
         assert "FAIL attach" in capsys.readouterr().err
+        # The failure path still closes the session it opened: the stub's own store shows the
+        # one session `smoke.run` created now `killed` by the DELETE. A run that reported the
+        # attach failure and skipped cleanup leaves it `detached`, and fails here.
+        assert [session["state"] for session in stub.sessions.values()] == ["killed"]
 
 
 def test_smoke_fails_loud_on_a_transport_failure(monkeypatch, tmp_path, capsys) -> None:
