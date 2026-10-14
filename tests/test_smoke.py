@@ -17,6 +17,7 @@ import sys
 import pytest
 from stub_server import SlowChunkedApp, StubServer
 from tsb_tui import smoke
+from tsb_tui.__main__ import main
 
 TARGET_ID = "stub-target"
 
@@ -142,3 +143,86 @@ def test_smoke_fails_loud_on_a_transport_failure(monkeypatch, tmp_path, capsys) 
     # The socket above is closed (the `with` block exited) so nothing listens on this port now.
     assert smoke.run(f"http://127.0.0.1:{closed_port}", TARGET_ID, None) == 1
     assert "FAIL login" in capsys.readouterr().err
+
+
+# -- the engine step (DT2, DT11) --
+
+def test_smoke_loads_the_engine_first_and_prints_its_build_info(monkeypatch, tmp_path, capsys) -> None:
+    """DT11: from phase 3 the deploy hook's `--smoke` proves the node has a working terminal engine,
+    and the rest of the run is exactly what it was. The engine line comes first: a node without its
+    engine must fail before anything is created on the broker."""
+    _set_creds(monkeypatch, tmp_path)
+    stub = SlowChunkedApp(max_chunks=0, echo_client_frames=True)
+    with StubServer(stub) as url:
+        assert smoke.run(url, TARGET_ID, None) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("engine: ok libghostty-vt ")
+    assert lines[1:] == [
+        "login: ok", "create session: ok", "recording warning: acknowledged (smoke mode)",
+        "attach: ok", "output: ok", "close: ok"]
+
+
+@pytest.mark.parametrize("kind", ["missing", "not-a-library"])
+def test_smoke_fails_naming_the_knob_and_the_path_when_the_engine_cannot_load(
+        kind, monkeypatch, tmp_path, capsys) -> None:
+    """DT2: a node whose engine is absent or unloadable fails the deploy check with a line that says
+    which knob to set and which path was tried. Nothing is attempted against the broker (the URL
+    below is a closed port: a login attempt would say `FAIL login`)."""
+    _set_creds(monkeypatch, tmp_path)
+    path = tmp_path / "libghostty-vt.so"
+    if kind == "not-a-library":
+        path.write_text("this is not a shared object")
+    monkeypatch.setenv("TSB_TUI_TERM_LIBRARY", str(path))
+    assert smoke.run("http://127.0.0.1:1", TARGET_ID, None) == 1
+    captured = capsys.readouterr()
+    assert "term.library" in captured.err and str(path) in captured.err
+    assert "FAIL login" not in captured.err and "login: ok" not in captured.out
+
+
+# -- the command line --
+
+def test_main_smoke_runs_with_the_default_profiles_auto_size(monkeypatch, tmp_path) -> None:
+    """The deploy hook runs `tsb-tui --smoke` with the same flags as before. It sends no size request,
+    so the default profile's `size.auto_request = true` (OPEN-1 was ruled on 2026-10-12) is harmless
+    to it."""
+    _set_creds(monkeypatch, tmp_path)
+    monkeypatch.delenv("TSB_TUI_SIZE_AUTO_REQUEST")
+    stub = SlowChunkedApp(max_chunks=0, echo_client_frames=True)
+    with StubServer(stub) as url:
+        assert main(["--smoke", "--broker", url, "--target", TARGET_ID]) == 0
+
+
+def test_main_interactive_config_loads_with_the_default_auto_size(monkeypatch) -> None:
+    """OPEN-1 was ruled on 2026-10-12: auto size is on by default. An interactive start resolves its
+    configuration with no override, no profile, no file and no environment value — the refusal that
+    demanded one is gone, so the deploy hook and an operator's first run both get past it."""
+    from tsb_tui.__main__ import _load_config, _parse_args
+
+    monkeypatch.delenv("TSB_TUI_SIZE_AUTO_REQUEST", raising=False)
+    cfg = _load_config(_parse_args(["--broker", "https://host"]), for_smoke=False)
+    assert cfg["size.auto_request"] is True
+    assert cfg["input.guard"] is True
+
+
+def test_main_interactive_start_fails_naming_the_knob_when_the_engine_cannot_load(
+        tmp_path, capsys) -> None:
+    missing = tmp_path / "absent.so"
+    assert main(["--broker", "http://127.0.0.1:1", "--set", f"term.library={missing}"]) == 1
+    err = capsys.readouterr().err
+    assert "term.library" in err and str(missing) in err
+
+
+def test_main_takes_a_profile_a_config_file_and_set_in_that_order_of_precedence(tmp_path) -> None:
+    """Design D30: defaults < profile < file < environment < `--set`. The command line is the last
+    word, so `--set` beats the file, and a profile is what `--profile` names."""
+    from tsb_tui.__main__ import _load_config, _parse_args
+
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("[view]\nfollow_cursor = 'off'\n[render]\nmax_fps = 12\n", encoding="utf-8")
+    args = _parse_args(["--broker", "x", "--profile", "phone", "--config", str(config_file),
+                        "--set", "render.max_fps=20", "--set", "size.auto_request=true"])
+    cfg = _load_config(args, for_smoke=False)
+    assert cfg["view.chrome"] == "compact"        # from the phone profile
+    assert cfg["view.follow_cursor"] == "off"     # the file beats the profile's "on"
+    assert cfg["render.max_fps"] == 20            # --set beats the file
+    assert cfg["size.auto_request"] is True       # --set beats the phone profile's false

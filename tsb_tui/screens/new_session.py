@@ -6,7 +6,10 @@ creation time only would miss that case."""
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Input, RadioButton, RadioSet, Select, Static
@@ -21,7 +24,18 @@ TERM = "xterm-256color"
 CONNECTION_CHOICE_REQUIRED = "connection_choice_required"
 
 
+# What the dialog says when the create size has no rule: with auto size off nothing in the design says what
+# size a new session is created with, and guessing one would be a size request the operator never made
+# (terminal-size §4). Loud, and nothing reaches the broker. OPEN-1 was ruled on 2026-10-12, so the default
+# profile has auto size on and this is what an operator who turned it off sees.
+CREATE_SIZE_OFF = ("auto size is off, so there is no size to create this session with — the size a new "
+                   "session carries is this window's, and asking for one is what auto size is "
+                   "(terminal-size §4); turn auto size on (--set size.auto_request=true, or ^\\ R) to create")
+
+
 class NewSessionScreen(Screen):
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
+
     def __init__(self, target: str | None = None) -> None:
         super().__init__()
         self._initial_target = target or ""
@@ -46,6 +60,7 @@ class NewSessionScreen(Screen):
                              prompt="choose a connection to reuse", disabled=True)
             yield Static("", id="new-session-error", markup=False)
             yield Button("Create session", id="create-button", variant="primary")
+            yield Button("Cancel", id="cancel-button")
 
     def on_mount(self) -> None:
         self.query_one("#target-id", Input).focus()
@@ -58,6 +73,12 @@ class NewSessionScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "create-button":
             self._attempt_create()
+        elif event.button.id == "cancel-button":
+            self.action_cancel()
+
+    def action_cancel(self) -> None:
+        """Back to the workspace: every session open there is as it was."""
+        self.app.pop_screen()
 
     def _attempt_create(self) -> None:
         error = self.query_one("#new-session-error", Static)
@@ -74,18 +95,32 @@ class NewSessionScreen(Screen):
         self.query_one("#create-button", Button).disabled = True
         self._create(target_id, connection, connection_id)
 
+    def _create_size(self) -> tuple[int, int] | None:
+        """The creator's size (terminal-size §4: session open carries it; size-control step 15), which is the
+        canvas the window gives: the window minus the rail and the status row, as an explicit request asks for.
+        None when `size.auto_request` is off, because nothing then says what size to carry."""
+        if not self.app.cfg["size.auto_request"]:
+            return None
+        return self.app.workspace().fit_size()
+
     def _create(self, target_id: str, connection: str, connection_id: str | None) -> None:
-        cols = max(self.app.size.width, 1)
-        rows = max(self.app.size.height - 2, 1)
+        size = self._create_size()
+        if size is None:
+            self.query_one("#new-session-error", Static).update(CREATE_SIZE_OFF)
+            self.query_one("#create-button", Button).disabled = False
+            return
+        cols, rows = size
         self.app.call_api(
             self.app.client.create_session, target_id, connection, TERM, cols, rows, connection_id,
             on_done=self._on_create_done, on_error=self._on_create_error,
         )
 
     def _on_create_done(self, created: dict) -> None:
-        from .attach_confirm import AttachConfirmScreen
+        from .attach_confirm import open_attach
 
-        self.app.switch_screen(AttachConfirmScreen(created["session"], created.get("hostkey")))
+        # The dialog goes first, then the new session opens in the workspace under it, beside the others.
+        self.app.pop_screen()
+        open_attach(self.app, created["session"], created.get("hostkey"))
 
     def _on_create_error(self, exc: ApiError | HttpError | OSError) -> None:
         # Local widget updates first: `notify_api_error` may switch this screen away (a 401

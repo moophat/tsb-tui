@@ -1,8 +1,16 @@
 """`tsb-tui` — `python -m tsb_tui` or the installed script (`[project.scripts]`, pyproject.toml).
 
-Interactive: `tsb-tui --broker URL [--ca-file PEM] [--target ID]`.
+Interactive: `tsb-tui --broker URL [--ca-file PEM] [--target ID] [--profile NAME] [--config FILE]
+[--set KEY=VALUE ...]`.
 Non-interactive smoke path, exit 0/1 (the same binary the deploy hook runs after a deploy):
 `tsb-tui --smoke --broker URL --target ID [--ca-file PEM]`.
+
+Agents and the harness: `tsb-tui drive --broker URL --user U --password-file PATH` runs the same app headless and
+speaks JSON lines (`tsb-tui drive --guide` prints what an agent is told; `tsb-tui drive --help` the flags).
+
+Knobs come from the packaged defaults, a profile, `~/.config/tsb-tui/config.toml`, `TSB_TUI_*` and
+`--set`, in that order of precedence (design D30). A start-up that cannot proceed — an unknown key,
+a bad type, an engine that cannot load — exits 1 naming the key or the path.
 """
 
 from __future__ import annotations
@@ -15,34 +23,66 @@ import sys
 # call (argparse's own `--help` handling returns before either lazy import below ever runs).
 import tsb_contract_client  # noqa: F401
 
+from . import config
+
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="tsb-tui")
+    parser = argparse.ArgumentParser(
+        prog="tsb-tui", epilog="`tsb-tui drive --help` is the agent surface: the same app, headless, as JSON lines.")
     parser.add_argument("--broker", required=True, help="the core's base URL, e.g. https://host")
     parser.add_argument("--ca-file", default=None, help="a PEM bundle to verify the core's certificate against")
     parser.add_argument("--target", default=None, help="a target id (no target list at this tag)")
     parser.add_argument("--smoke", action="store_true",
-                        help="non-interactive: login, create, attach, one round trip, close, exit 0/1")
+                        help="non-interactive: load the engine, login, create, attach, one round trip, "
+                             "close, exit 0/1")
+    parser.add_argument("--profile", default=None, choices=config.PROFILES,
+                        help="a configuration profile (default, phone, drive, harness)")
+    parser.add_argument("--config", default=None, metavar="FILE",
+                        help="a TOML configuration file instead of ~/.config/tsb-tui/config.toml")
+    parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE",
+                        help="set one knob, e.g. --set size.auto_request=true (repeatable; wins over everything)")
     return parser.parse_args(argv)
 
 
+def _load_config(args: argparse.Namespace, *, for_smoke: bool) -> config.Config:
+    overrides = list(args.overrides)
+    if for_smoke:
+        # The smoke path sends no size request and paints nothing, so auto size means nothing to it.
+        # Put first, so an explicit --set still wins.
+        overrides.insert(0, "size.auto_request=false")
+    return config.load(profile=args.profile, config_file=args.config, overrides=overrides)
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["drive"]:
+        # A subcommand with its own flags: `--broker` is required to run it, never for `--guide` or `--help`.
+        from .drive import runner
+
+        return runner.main(argv[1:])
     args = _parse_args(argv)
+    from . import app as app_mod
+    from .theme import ThemeError
+
     if args.smoke:
         from . import smoke
 
         if not args.target:
             print("tsb-tui --smoke: --target is required", file=sys.stderr)
             return 1
-        return smoke.run(args.broker, args.target, args.ca_file)
-
-    from .app import TsbTuiApp
+        try:
+            cfg = _load_config(args, for_smoke=True)
+        except config.ConfigError as exc:
+            print(f"tsb-tui: {exc}", file=sys.stderr)
+            return 1
+        return smoke.run(args.broker, args.target, args.ca_file, cfg=cfg)
 
     try:
+        cfg = _load_config(args, for_smoke=False)
         # A cleartext broker URL is refused here (`_http.HttpClient`) unless the host is
         # loopback — otherwise the login password would cross the network in clear.
-        app = TsbTuiApp(args.broker, ca_file=args.ca_file, target=args.target)
-    except ValueError as exc:
+        app = app_mod.TsbTuiApp(args.broker, ca_file=args.ca_file, target=args.target, cfg=cfg)
+    except (config.ConfigError, app_mod.EngineError, ThemeError, ValueError) as exc:
         print(f"tsb-tui: {exc}", file=sys.stderr)
         return 1
     app.run()

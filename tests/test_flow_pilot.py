@@ -1,11 +1,11 @@
 """The Textual pilot through the whole E0 journey — login, create, acknowledge, attach, type,
-resize, detach, see the session `detached` on the Sessions list — against the slow, chunked stub
+resize, detach, see the session `detached` in the sidebar — against the slow, chunked stub
 (stub_server.py).
 
 Why this test matters (Rule 9): Contract §11 makes the broker a raw byte pipe and the client the
 sole renderer, so the one way this surface can fail silently is by not draining that pipe
 concurrently with everything else Textual does. A regression that made the attach/render loop
-synchronous (e.g. a blocking call slipped into `_attach_and_pump`, or into pyte's `feed`) would
+synchronous (e.g. a blocking call slipped into `_attach_and_pump`, or into the engine's `feed`) would
 make a keystroke wait for the whole burst instead of interleaving with it — invisible in a fast
 unit test with no timing, and exactly what a real slow target (a network device, a busy log tail)
 would expose immediately. The bounded `asyncio.wait_for` below turns that into a fast,
@@ -16,28 +16,28 @@ from __future__ import annotations
 
 import asyncio
 
-from stub_server import SlowChunkedApp, StubServer
+from stub_server import SlowChunkedApp, StubServer, create_owner_session
+from tsb_contract_client import Client
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.model.fleet import GROUP_MINE_AND_JOINABLE
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.new_session import NewSessionScreen
-from tsb_tui.screens.sessions import SessionsScreen
-from tsb_tui.screens.terminal import TerminalScreen, banner_for
+from tsb_tui.screens.terminal import TerminalScreen
+from tsbc import _serve
+from workspace_support import login, open_new_session
 
 TARGET_ID = "stub-target"
 
 
-async def _run_flow() -> None:
+async def _run_flow(screen_text) -> None:
     stub = SlowChunkedApp(delay_s=0.02, max_chunks=400, tail_chunks=5)
     with StubServer(stub) as url:
         app = TsbTuiApp(url, target=TARGET_ID)
         async with app.run_test(size=(100, 30)) as pilot:
-            # -- Login --
-            screen = app.screen
-            screen.query_one("#username").value = "fixture-user"
-            screen.query_one("#password").value = "fixture-password"
-            await pilot.click("#login-button")
-            await pilot.pause()
-            assert isinstance(app.screen, NewSessionScreen)
+            # -- Login lands on the workspace with the sidebar open; New session is a dialog over it. --
+            workspace = await login(app, pilot)
+            assert workspace.sidebar_open and not workspace.slots
+            assert isinstance(await open_new_session(app, pilot), NewSessionScreen)
 
             # -- New session: target prefilled from --target; new connection is the default. --
             assert app.screen.query_one("#target-id").value == TARGET_ID
@@ -46,16 +46,15 @@ async def _run_flow() -> None:
             assert len(stub.sessions) == 1
             session_id = next(iter(stub.sessions))
 
-            # -- Attach confirm: the session records, so Attach stays disabled until the
-            # recording warning is acknowledged (every attach passes through here, not just the
-            # first one — session-record.schema.json). --
+            # -- Attach confirm: the session records, so the gate shows the recording text exactly as
+            # the record carries it before the first attach (session-attach CR1). It is a warning, not
+            # a question: nothing has to be ticked for it. --
             assert isinstance(app.screen, AttachConfirmScreen)
-            assert app.screen.query_one("#attach-button").disabled
-            await pilot.click("#recording-ack")
+            assert stub.sessions[session_id]["recording"]["warning_text"] in str(
+                app.screen.query_one("#attach-recording-warning").render())
             await pilot.click("#attach-button")
             await pilot.pause()
             assert isinstance(app.screen, TerminalScreen)
-            terminal_screen = app.screen
 
             # -- Wait until the slow stub has sent some, but not all, chunks. --
             for _ in range(500):
@@ -85,48 +84,101 @@ async def _run_flow() -> None:
             # still pending, not only after the whole burst had already finished.
             assert stub.chunks_sent > stub.chunk_at_first_client_frame
             await pilot.pause(0.05)
-            rendered = terminal_screen.view.emulator.render()
+            rendered = screen_text(app)
             # The screen only holds what still fits in the viewport — many more lines than that
             # may have scrolled past by now, so it is the *last* line sent, not the first, that
             # proves the render kept up with the stream.
             assert f"line {stub.chunks_sent - 1:03d} of slow output" in rendered
 
-            # -- Resize -> the C2 resize frame (PTY §7.2: the control-token holder's resize). --
+            # -- An outer window change -> one C2 resize frame from the typist (PTY §7.2), asking
+            # for the window minus the rail (4 columns) and the status row (1 row): D18. --
+            assert stub.resizes == [], "attaching must not send a resize (DT16)"
             await pilot.resize_terminal(90, 26)
-            await pilot.pause(0.1)
-            assert stub.resizes, "no resize frame reached the target"
-            assert stub.resizes[-1] == (terminal_screen.view.size.width, terminal_screen.view.size.height)
+            for _ in range(300):
+                if stub.resizes:
+                    break
+                await pilot.pause(0.01)
+            assert stub.resizes == [(90 - 4, 26 - 1)]
 
-            # -- Detach: the session lives on, `detached`, shown on the Sessions list. --
-            await pilot.press("f9")
+            # -- Detach: the session lives on, `detached`, and the workspace has nothing open, so the sidebar is
+            # open, listing it among the sessions to come back to. --
+            app.screen.action_detach()
             await pilot.pause()
-            assert isinstance(app.screen, SessionsScreen)
+            assert isinstance(app.screen, TerminalScreen) and not app.screen.slots and app.screen.sidebar_open
             for _ in range(200):
                 if stub.sessions[session_id]["state"] == "detached":
                     break
                 await pilot.pause(0.01)
             assert stub.sessions[session_id]["state"] == "detached"
-            await pilot.pause()
-            table = app.screen.query_one("#sessions-table")
-            assert table.get_row(session_id)[2] == "detached"
+            app.screen._refresh_fleet()
+            for _ in range(300):
+                if (GROUP_MINE_AND_JOINABLE, session_id) in app.screen.sidebar.view.rows:
+                    break
+                await pilot.pause(0.01)
+            assert (GROUP_MINE_AND_JOINABLE, session_id) in app.screen.sidebar.view.rows
 
 
-def test_full_flow_stays_responsive_through_a_slow_chunked_attach() -> None:
-    asyncio.run(_run_flow())
+def test_full_flow_stays_responsive_through_a_slow_chunked_attach(monkeypatch, screen_text) -> None:
+    monkeypatch.setenv("TSB_TUI_SIZE_AUTO_REQUEST", "true")
+    monkeypatch.setenv("TSB_TUI_SIZE_DEBOUNCE_MS", "50")
+    asyncio.run(_run_flow(screen_text))
 
 
-def test_banner_for_maps_every_close_code_the_contract_defines() -> None:
-    """Calls the real function under test rather than re-deriving the mapping in the test
-    (a mutation to `banner_for`'s own fallback must be able to fail this): a session that ended
-    is never mistaken, in the UI, for one still attachable, and a close that is not itself an end
-    state (session model §13) never gets one of those words at all."""
-    assert banner_for(4010) == "session ended: killed (by TSB, or through it)"
-    assert banner_for(4012) == "session ended: terminated (from outside TSB)"
-    assert banner_for(4011) == (
-        "detached by the server (missed heartbeats, or a send queue that would not drain) — "
-        "the session lives on")
-    # Any other 4xxx reads as 4010 — the contract's own rule for receivers.
-    assert banner_for(4099) == banner_for(4010)
-    # Not 4xxx at all: never one of the end-state words above.
-    for code in (1000, 1001, 1006, None):
-        assert banner_for(code) == "connection to the broker lost"
+def test_a_session_on_the_contracts_fixture_server_attaches_types_and_sees_the_echo(
+        serve, screen_text, wait_until) -> None:
+    """The whole path against the contract's own server rather than the TUI's slow stub: attach, the
+    dump, a typed key reaching the target as a frame, and the target's echo coming back onto the
+    screen. A canvas that parsed output but dropped what came back from a *typed* byte would pass
+    every test that only reads a scripted burst."""
+
+    async def _check() -> None:
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(80, 24)) as pilot:
+            session_id = create_owner_session(app, "normal", 80, 24)
+            app.push_screen(TerminalScreen(session_id))
+            screen = app.screen
+            await wait_until(pilot, lambda: screen.pump is not None and screen.pump.state.holds_keyboard,
+                             "the attach and the keyboard")
+            await pilot.press("h", "e", "l", "l", "o")
+            await wait_until(pilot, lambda: "hello" in screen_text(app), "the echo of what was typed")
+
+    asyncio.run(_check())
+
+
+def test_two_clients_on_one_session_both_see_what_the_typist_types(
+        serve, screen_text, wait_until) -> None:
+    """The `two-client` scenario: the TUI types, a second client attached to the same session reads
+    the same bytes (C2: the core sends every client the same output). Typing reaches the session, not
+    just this client's own screen."""
+
+    async def _check() -> None:
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(80, 24)) as pilot:
+            session_id = create_owner_session(app, "two-client", 80, 24)
+            app.push_screen(TerminalScreen(session_id))
+            screen = app.screen
+            await wait_until(pilot, lambda: screen.pump is not None and screen.pump.state.holds_keyboard,
+                             "the attach and the keyboard")
+            peer = Client(url)
+            peer.login(_serve.PEER, _serve.PASSWORD)
+            peer_attachment = peer.attach(session_id)
+            try:
+                await pilot.press("h", "i")
+                await wait_until(pilot, lambda: "hi" in screen_text(app), "the typist's own echo")
+
+                def peer_reads() -> bool:
+                    seen = b""
+                    while b"hi" not in seen:
+                        chunk = peer_attachment.recv(5.0)
+                        if chunk is None:
+                            return False
+                        seen += chunk
+                    return True
+
+                assert await asyncio.to_thread(peer_reads), "the second client never saw the typed bytes"
+            finally:
+                peer_attachment.close()
+
+    asyncio.run(_check())

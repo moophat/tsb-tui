@@ -54,9 +54,11 @@ class LoginScreen(Screen):
         # Read back by screens/new_session.py to tell this principal's own connections apart
         # from ones GET /sessions lists for others (Contract §12: the choice is never guessed).
         self.app.username = principal["username"]
-        from .new_session import NewSessionScreen
+        self.app.start_alerts()
+        from .terminal import TerminalScreen
 
-        self.app.switch_screen(NewSessionScreen(target=self.app.initial_target))
+        # With no session open the next screen is the workspace with the sidebar open (design §2.5, G1).
+        self.app.switch_screen(TerminalScreen())
 
     def _on_login_error(self, exc: ApiError | HttpError | OSError) -> None:
         self.query_one("#login-button", Button).disabled = False

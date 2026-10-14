@@ -1,5 +1,6 @@
 """The non-interactive smoke path the deploy hook runs after every deploy, alongside
-`harness/rigs/smoke.sh`: login, create a session, attach, one round trip, close — the same binary
+`harness/rigs/smoke.sh`: load the terminal engine, login, create a session, attach, one round trip,
+close — the same binary
 the operator runs, driven without a human. User from `TSB_SUPERADMIN_USER`; password read from the
 file named by `TSB_SUPERADMIN_PASSWORD_FILE`, or from stdin when that names `-` (mirroring the
 core's own `tsb seed-superadmin --password-file -`) — never argv, never a plaintext env value.
@@ -23,7 +24,9 @@ from pathlib import Path
 
 from tsb_contract_client import ApiError, Attachment, AttachRefused, Client
 
+from . import config
 from ._transport import ConnectionClosed, HandshakeError, HttpError, ProtocolError
+from .app import EngineError, load_engine
 
 TERM = "xterm-256color"
 COLS, ROWS = 80, 24
@@ -92,7 +95,33 @@ def _probe_round_trip(att: Attachment, recv_timeout: float) -> None:
         raise _ProbeFailed(str(exc)) from exc
 
 
-def run(broker: str, target: str, ca_file: str | None, *, recv_timeout: float = RECV_TIMEOUT_S) -> int:
+def _engine_step(cfg: config.Config) -> bool:
+    """Load the terminal engine and print what it is. The first step, so a node whose engine is
+    missing or unloadable fails the deploy check here, naming the knob and the path, before anything
+    is created on the broker (DT2, DT11)."""
+    try:
+        lib = load_engine(cfg)
+    except EngineError as exc:
+        print(f"FAIL engine: {exc}", file=sys.stderr)
+        return False
+    info = lib.build_info
+    print(f"engine: ok libghostty-vt {info.version_string} "
+          f"(simd={str(info.simd).lower()}, kitty_graphics={str(info.kitty_graphics).lower()})")
+    return True
+
+
+def run(broker: str, target: str, ca_file: str | None, *, recv_timeout: float = RECV_TIMEOUT_S,
+        cfg: config.Config | None = None) -> int:
+    if cfg is None:
+        try:
+            # Nothing here sends a size request, so auto size means nothing to this path; turn it off
+            # so the smoke never asks the target for anything.
+            cfg = config.load(overrides=["size.auto_request=false"])
+        except config.ConfigError as exc:
+            print(f"FAIL config: {exc}", file=sys.stderr)
+            return 1
+    if not _engine_step(cfg):
+        return 1
     user = os.environ.get("TSB_SUPERADMIN_USER")
     password_file = os.environ.get("TSB_SUPERADMIN_PASSWORD_FILE")
     if not user or not password_file:

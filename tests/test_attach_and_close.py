@@ -17,12 +17,10 @@ import asyncio
 from collections.abc import Callable
 
 from stub_server import SlowChunkedApp, StubServer
-from textual.css.query import NoMatches
-from textual.widgets import DataTable
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.login import LoginScreen
-from tsb_tui.screens.sessions import SessionsScreen
-from tsb_tui.screens.terminal import TerminalScreen, banner_for
+from tsb_tui.screens.prompts import EndedScreen
+from tsb_tui.screens.terminal import TerminalScreen
 
 TARGET_ID = "stub-target"
 
@@ -62,27 +60,23 @@ async def _wait_for_notification(
     return messages
 
 
-def _returned_screen_is_ready(screen) -> bool:
-    """True once the screen the terminal switched back to is fully up. `app.screen` becomes that
-    screen the instant it is switched in, before Textual has mounted its widgets, and
-    `SessionsScreen.on_mount` then fetches `GET /sessions`; until that first reply lands and its
-    rows are shown, a callback is still in flight and can run against an unmounted screen."""
-    if not screen.is_mounted:
-        return False
-    if not isinstance(screen, SessionsScreen):
-        return True
-    try:
-        return screen.query_one("#sessions-table", DataTable).row_count > 0
-    except NoMatches:
-        return False
+def _is_empty_workspace(screen) -> bool:
+    """The workspace with nothing open and the sidebar showing: where an attach that failed leaves the operator
+    (design §2.5), the session still listed in the broker."""
+    return (isinstance(screen, TerminalScreen) and screen.is_mounted and not screen.slots
+            and screen.sidebar_open)
 
 
-async def _push_terminal_and_wait_for(app: TsbTuiApp, pilot, screen_type: type) -> None:
+async def _push_terminal_and_wait_for(app: TsbTuiApp, pilot, screen_type: type | None) -> None:
+    """Push the terminal on a session and wait for the outcome: the login screen (a 401), or `None` for the
+    empty workspace with the sidebar open."""
     session_id = _create_session(app)
     app.push_screen(TerminalScreen(session_id))
     await pilot.pause()
-    await _wait_until(pilot, lambda: isinstance(app.screen, screen_type))
-    await _wait_until(pilot, lambda: _returned_screen_is_ready(app.screen))
+    if screen_type is None:
+        await _wait_until(pilot, lambda: _is_empty_workspace(app.screen))
+    else:
+        await _wait_until(pilot, lambda: isinstance(app.screen, screen_type))
     # The app is still running: a crashed worker (`WorkerFailed`, the bug this fixes) would have
     # set a non-zero return code and stopped the app instead of navigating.
     assert app.return_code is None
@@ -99,82 +93,107 @@ def test_a_401_minting_the_attach_ticket_sends_the_operator_back_to_login() -> N
     asyncio.run(_check())
 
 
-def test_a_404_minting_the_attach_ticket_returns_to_sessions_with_a_notice() -> None:
+def test_a_404_minting_the_attach_ticket_leaves_the_workspace_empty_with_a_notice() -> None:
     async def _check() -> None:
         stub = SlowChunkedApp(ticket_status=404)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
-                await _push_terminal_and_wait_for(app, pilot, SessionsScreen)
+                await _push_terminal_and_wait_for(app, pilot, None)
                 assert any("404" in m for m in _notification_messages(app))
 
     asyncio.run(_check())
 
 
-def test_a_refused_websocket_upgrade_returns_to_sessions() -> None:
+def test_a_refused_websocket_upgrade_leaves_the_workspace_empty() -> None:
     async def _check() -> None:
         stub = SlowChunkedApp(refuse_upgrade=True)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
-                await _push_terminal_and_wait_for(app, pilot, SessionsScreen)
+                await _push_terminal_and_wait_for(app, pilot, None)
                 assert any("could not attach" in m for m in _notification_messages(app))
 
     asyncio.run(_check())
 
 
-def test_attach_refused_by_a_close_code_returns_to_sessions() -> None:
+def test_attach_refused_by_a_close_code_leaves_the_workspace_empty() -> None:
     async def _check() -> None:
         stub = SlowChunkedApp(attach_close_code=4004)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
-                await _push_terminal_and_wait_for(app, pilot, SessionsScreen)
+                await _push_terminal_and_wait_for(app, pilot, None)
                 assert any("attach refused" in m for m in _notification_messages(app))
 
     asyncio.run(_check())
 
 
-def test_an_abrupt_drop_asks_the_broker_what_state_the_session_is_really_in() -> None:
+def test_an_abrupt_drop_reattaches_and_never_reads_as_an_end() -> None:
     """A dropped WebSocket used to read as "session ended: killed" for any code the app did not
     recognize, including 1006 (no close frame at all) — a client treating its own dropped link as
-    an end state the broker never declared. The fix fetches `GET /sessions/{id}` and shows
-    whatever it actually says, proving the mechanism rather than assuming a particular state."""
+    an end state the broker never declared (session model §13: a client's WebSocket dying ends
+    nothing). The pump's close table (DT13) reattaches with backoff while the session lives, so the
+    operator stays on the terminal and no end-state banner is shown."""
 
     async def _check() -> None:
         stub = SlowChunkedApp(delay_s=0.02, drop_after_chunks=2)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
-                await _push_terminal_and_wait_for(app, pilot, SessionsScreen)
-                expected = f"{banner_for(1006)} — the session is live; re-attach from Sessions"
-                assert expected in _notification_messages(app)
+                session_id = _create_session(app)
+                app.push_screen(TerminalScreen(session_id))
+                await _wait_until(pilot, lambda: stub.attaches >= 2)
+                assert isinstance(app.screen, TerminalScreen)
+                assert app.return_code is None
+                assert not any("ended" in m for m in _notification_messages(app))
 
     asyncio.run(_check())
 
 
-def test_a_protocol_error_after_attach_returns_to_sessions_instead_of_crashing() -> None:
+def test_a_protocol_error_after_attach_reattaches_instead_of_crashing() -> None:
     """RFC 6455 says the receiver must fail the connection on a broken frame. Before this fix,
     `_attach_and_pump`'s receive loop only caught `ConnectionClosed` — a real protocol violation
     from the wire (not just an ordinary close) would have escaped into the Textual worker and
     crashed the app, the same bug this whole file is about, for a different trigger.
 
-    Whether the broken frame is read together with `attached` in the same pass (raising from the
-    attach step) or on its own afterward (raising from the receive loop) is TCP scheduling, not
-    application behavior — `_push_terminal_and_wait_for`'s own `return_code is None` assertion is
-    what actually pins the invariant this test is for; the message is one of the app's two known,
-    non-crashing failure banners, never left blank. The notification is awaited because it is posted
-    after the screen switch, so a single read can beat it."""
+    The pump reads the broken frame as a socket that died with no close code, which the close table
+    treats as a transport loss: the app stays up and reattaches. Whether the broken frame is read
+    together with `attached` (raising while attaching) or on its own afterward (raising from the
+    read loop) is TCP scheduling, not application behaviour — either way the app must not crash."""
 
     async def _check() -> None:
         stub = SlowChunkedApp(invalid_frame_after_attach=True)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
-                await _push_terminal_and_wait_for(app, pilot, SessionsScreen)
-                messages = await _wait_for_notification(
-                    app, pilot, "connection to the broker lost", "could not attach")
-                assert any("connection to the broker lost" in m or "could not attach" in m
-                          for m in messages), messages
+                session_id = _create_session(app)
+                app.push_screen(TerminalScreen(session_id))
+                await _wait_until(pilot, lambda: stub.attaches >= 2 or _is_empty_workspace(app.screen))
+                assert app.return_code is None
+                if _is_empty_workspace(app.screen):
+                    # The break landed while attaching: the app's own, non-crashing failure banner.
+                    messages = await _wait_for_notification(app, pilot, "could not attach")
+                    assert any("could not attach" in m for m in messages), messages
+
+    asyncio.run(_check())
+
+
+def test_a_session_killed_while_attached_shows_the_end_and_is_not_reattached() -> None:
+    """4010 is an end state (session model §12), never retried: the operator is told the session was killed,
+    in a dialog over its last screen, instead of staring at a frozen one (D36)."""
+
+    async def _check() -> None:
+        stub = SlowChunkedApp(delay_s=0.01, stream_close=(4010, 3))
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test() as pilot:
+                session_id = _create_session(app)
+                app.push_screen(TerminalScreen(session_id))
+                await _wait_until(pilot, lambda: isinstance(app.screen, EndedScreen))
+                assert app.return_code is None
+                messages = await _wait_for_notification(app, pilot, "Session ended · killed")
+                assert "Session ended · killed (close 4010)" in messages
+                assert stub.attaches == 1, "a killed session must not be reattached"
 
     asyncio.run(_check())

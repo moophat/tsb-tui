@@ -12,7 +12,6 @@ description = "TSB tui — own manifest so this directory can leave by subtree s
 # "Install".
 dependencies = [
     "textual==8.2.8",
-    "pyte==0.8.2",
 ]
 
 [project.optional-dependencies]
@@ -25,8 +24,11 @@ tsb-tui = "tsb_tui.__main__:main"
 requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["tsb_tui", "tsb_tui.screens"]
+[tool.setuptools.packages.find]
+include = ["tsb_tui*"]
+
+[tool.setuptools.package-data]
+tsb_tui = ["config_default.toml", "drive/GUIDE.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

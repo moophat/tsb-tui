@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import http.server
 import json
+import queue
 import socket
 import threading
 import time
@@ -43,6 +44,7 @@ class ServerWS:
     def __init__(self, rfile, wfile, connection: socket.socket | None = None) -> None:
         self.rfile, self.wfile = rfile, wfile
         self._connection = connection
+        self._send_lock = threading.Lock()  # the burst thread and the reader thread both send
         self.parser = wf.FrameParser(expect_masked=True)
         self.assembler = wf.MessageAssembler()
         self.pending: list[wf.Frame] = []
@@ -61,8 +63,9 @@ class ServerWS:
                 return message
 
     def send(self, opcode: int, payload: bytes) -> None:
-        self.wfile.write(wf.encode_frame(opcode, payload, mask=False))
-        self.wfile.flush()
+        with self._send_lock:
+            self.wfile.write(wf.encode_frame(opcode, payload, mask=False))
+            self.wfile.flush()
 
     def send_text(self, text: str) -> None:
         self.send(wf.OP_TEXT, text.encode("utf-8"))
@@ -126,7 +129,17 @@ class SlowChunkedApp:
                  connection_choice_candidates: list[str] | None = None,
                  connection_choice_target: str = "stub-target",
                  sessions_call_delays: tuple[float, ...] = (),
-                 sessions_first_call_gate: threading.Event | None = None) -> None:
+                 sessions_first_call_gate: threading.Event | None = None,
+                 after_attach_frames: list[dict] | None = None,
+                 stream_close: tuple[int, int] | None = None,
+                 alerts_events: list[dict] | None = None,
+                 alerts_status: int = 200,
+                 alerts_hold_open: bool = False,
+                 attach_close_code_after_first: int | None = None,
+                 ping_after_chunks: int | None = None,
+                 respond_to: dict[str, list[dict]] | None = None,
+                 holder_is_client: bool = True,
+                 record_state_on_close: str | None = None) -> None:
         self.delay_s = delay_s
         self.max_chunks = max_chunks
         self.tail_chunks = tail_chunks
@@ -158,12 +171,53 @@ class SlowChunkedApp:
         self.sessions_first_call_started = threading.Event()
         self._sessions_calls = 0
 
+        # DT7: frames sent right after `attached` (before the prefix) — `notice`, `quiet_prompt`,
+        # `data_path`, `clients`, a `token`, a `size` — so one frame suffices and the in-process
+        # fixture server's canned order is not needed. Each is sent verbatim as a JSON object.
+        self.after_attach_frames = list(after_attach_frames or [])
+        # DT7: (code, after_chunks) — close the attach socket with `code` once `after_chunks`
+        # chunks have been sent (None = after the burst). Used for 4011 and 4012.
+        self.stream_close = stream_close
+        # DT7: a long-lived alert stream. Each dict is sent as one `alert` event; with
+        # `alerts_hold_open` the stream never ends by itself, so a worker thread must be stopped.
+        self.alerts_events = list(alerts_events or [])
+        self.alerts_status = alerts_status
+        self.alerts_hold_open = alerts_hold_open
+        self.alerts_opened = 0
+        self.alerts_requests = 0  # GET /alerts calls, refused ones included (a 403 must not be retried)
+        # Events a test pushes while the stream is held open: (event type, data), sent in order.
+        self.alerts_pending: queue.Queue = queue.Queue()
+        # Set by a test to hold every open after the first until it is released (a dismissal must come
+        # before the active set is resent).
+        self.alerts_reopen_gate: threading.Event | None = None
+        # DT7: every attach after the first is closed with this code before `attached` (a
+        # reattach refused, e.g. 4001), counted in `attaches`.
+        self.attach_close_code_after_first = attach_close_code_after_first
+        self.attaches = 0
+        self.alerts_stop = threading.Event()
+        # DT7 / session-detach 9: one WebSocket ping sent once `ping_after_chunks` chunks are out,
+        # mid-stream. A client must answer it while output keeps arriving; the times let a test ask
+        # how long the answer took, not merely whether it came.
+        self.ping_after_chunks = ping_after_chunks
+        self.ping_sent_at: float | None = None
+        self.pong_received_at: float | None = None
+
+        # DT7: frames the stub sends when a client text frame of that type arrives (a `handoff` answered
+        # by a `token` and a new `stale_prompt`, which the fixture server never sends), each verbatim.
+        self.respond_to = {kind: list(frames) for kind, frames in (respond_to or {}).items()}
+        # The session record's state once `stream_close` fires, as the core's record would read after an end.
+        self.record_state_on_close = record_state_on_close
+        self.ticket_mints = 0  # POST /auth/ws-ticket calls: a new one per attach (session-attach CR2)
+        # False: the attaching client does not hold the keyboard (someone else does).
+        self.holder_is_client = holder_is_client
+
         self.sessions: dict[str, dict] = {}
         self._next_id = 1
         self.chunks_sent = 0  # read by the test thread; plain int, GIL-safe for this scaffolding
         self.chunk_at_first_client_frame: int | None = None
         self.client_frames: list[bytes] = []
         self.resizes: list[tuple[int, int]] = []
+        self.text_frames: list[dict] = []  # every text frame a client sent, in order
         self._client_frame_seen = threading.Event()
 
         if connection_choice_candidates:
@@ -218,10 +272,19 @@ class SlowChunkedApp:
                 reply["hostkey"] = HOSTKEY
             return 201, [], reply
         if method == "POST" and path == "/auth/ws-ticket":
+            self.ticket_mints += 1
             if self.ticket_status != 200:
                 code = {401: "unauthenticated", 404: "session_not_found"}.get(self.ticket_status, "error")
                 return self.ticket_status, [], {"error": {"code": code, "message": "stub ticket failure"}}
             return 200, [], {"v": 1, "ticket": FIXTURE_TICKET, "expires_in": 30}
+        if method == "GET" and path == "/alerts":
+            self.alerts_requests += 1
+            if self.alerts_status != 200:
+                code = {401: "unauthenticated", 403: "forbidden"}.get(self.alerts_status, "error")
+                return self.alerts_status, [], {"error": {"code": code, "message": "stub alerts failure"}}
+            # A server-sent event stream: the opening active set, then each raise/clear. The body
+            # is produced as it is read so a test can stop the reader mid-stream.
+            return 200, [("Content-Type", "text/event-stream")], self._alerts_body()
         if method == "GET" and path == "/sessions":
             # Snapshot before the delay, not after: this is what the list looked like when the
             # request arrived, so a slow reply proves stale — not accidentally fresh because the
@@ -253,22 +316,67 @@ class SlowChunkedApp:
             return 204, [], None
         return 404, [], {"error": {"code": "session_not_found", "message": "no route in stub"}}
 
+    def _alerts_body(self):
+        """One `alert` event per configured alert, with a keepalive comment first (the core sends
+        one whenever no event was sent for `heartbeat_interval`). Held open past the last event so
+        the reader blocks, as it would against a live core, until `alerts_stop` is set."""
+        def generate():
+            yield b": keepalive\n\n"
+            for event in self.alerts_events:
+                data = json.dumps(event)
+                yield b"event: alert\ndata: " + data.encode("utf-8") + b"\n\n"
+            while not self.alerts_hold_open:
+                yield b""
+                return
+            while not self.alerts_stop.is_set():
+                try:
+                    kind, data = self.alerts_pending.get(timeout=0.05)
+                except queue.Empty:
+                    yield b": keepalive\n\n"
+                    continue
+                yield f"event: {kind}\ndata: {json.dumps(data)}\n\n".encode()
+
+        self.alerts_opened += 1
+        gate = self.alerts_reopen_gate
+        if gate is not None and self.alerts_opened > 1:
+            gate.wait(10)
+        return generate()
+
+    def push_alert(self, data: dict, kind: str = "alert") -> None:
+        """Send one event on the held-open alert stream."""
+        self.alerts_pending.put((kind, data))
+
     ws_paths = ("/ws/attach",)
 
     # -- WebSocket (C2) --
 
     def websocket(self, path: str, ws: ServerWS) -> None:
+        try:
+            self._websocket(path, ws)
+        except OSError:
+            pass  # the client went away (a test ended): nothing more to send
+
+    def _websocket(self, path: str, ws: ServerWS) -> None:
         message = ws.recv()
         frame = json.loads(message.data)
+        self.attaches += 1
         if self.attach_close_code is not None:
             ws.send_close(self.attach_close_code, "stub refusal")
             return
+        if self.attach_close_code_after_first is not None and self.attaches > 1:
+            ws.send_close(self.attach_close_code_after_first, "stub refusal")
+            return
         session = self.sessions[frame["session_id"]]
         session["state"] = "live"
-        session["control_holder"] = {"client_id": "stub-client-1", "user": "fixture-user"}
+        session["control_holder"] = ({"client_id": "stub-client-1", "user": "fixture-user"}
+                                     if self.holder_is_client
+                                     else {"client_id": "stub-other", "user": "fixture-other"})
         ws.send_text(json.dumps({
             "t": "attached", "v": 1, "session": session, "client_id": "stub-client-1",
         }))
+
+        for extra in self.after_attach_frames:
+            ws.send_text(json.dumps(extra))
 
         if self.invalid_frame_after_attach:
             # A short delay first: sent back-to-back, the `attached` text frame and this one can
@@ -288,10 +396,20 @@ class SlowChunkedApp:
         for i in range(self.max_chunks):
             self._send_chunk(ws, i)
             self.chunks_sent = i + 1
+            if self.ping_after_chunks is not None and self.chunks_sent == self.ping_after_chunks:
+                self.ping_sent_at = time.monotonic()
+                ws.send(wf.OP_PING, b"tsb-ping")
             if self.drop_after_chunks is not None and self.chunks_sent >= self.drop_after_chunks:
+                if self.record_state_on_close is not None:
+                    session["state"] = self.record_state_on_close
                 # No close frame, so the client sees an abnormal close (1006) rather than any of
                 # the contract's own end-state codes.
                 ws.drop()
+                return
+            if self.stream_close is not None and self.chunks_sent >= self.stream_close[1]:
+                if self.record_state_on_close is not None:
+                    session["state"] = self.record_state_on_close
+                ws.send_close(self.stream_close[0], "stub close")
                 return
             if self._client_frame_seen.is_set():
                 chunks_after_seen += 1
@@ -314,7 +432,9 @@ class SlowChunkedApp:
             message = ws.recv()
             if message.kind == "close":
                 break
-            if message.kind == "binary":
+            if message.kind == "pong":
+                self.pong_received_at = time.monotonic()
+            elif message.kind == "binary":
                 if self.chunk_at_first_client_frame is None:
                     self.chunk_at_first_client_frame = self.chunks_sent
                 self.client_frames.append(message.data)
@@ -323,8 +443,11 @@ class SlowChunkedApp:
                     ws.send_binary(message.data)
             elif message.kind == "text":
                 text_frame = json.loads(message.data)
+                self.text_frames.append(text_frame)
                 if text_frame.get("t") == "resize":
                     self.resizes.append((text_frame["cols"], text_frame["rows"]))
+                for reply in self.respond_to.get(text_frame.get("t"), ()):
+                    ws.send_text(json.dumps(reply))
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
@@ -356,6 +479,19 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b""
         body = json.loads(raw) if raw else None
         status, extra, reply = app.http(method, self.path, headers, body)
+        if hasattr(reply, "__next__"):  # a body sent as it is produced, with no length: a stream
+            self.close_connection = True
+            self.send_response(status)
+            for key, value in extra:
+                self.send_header(key, value)
+            self.end_headers()
+            try:
+                for chunk in reply:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
         data = b"" if reply is None else json.dumps(reply).encode("utf-8")
         self.send_response(status)
         for key, value in extra:
@@ -394,3 +530,33 @@ class StubServer:
     def __exit__(self, *exc: object) -> None:
         self.httpd.shutdown()
         self.httpd.server_close()
+
+
+# -- helpers for tests that run against the contract's fixture server (`tsbc._serve.ServeApp`, DT7) --
+
+def create_owner_session(app: Any, target: str, cols: int, rows: int) -> str:
+    """Log `app`'s client in as the fixture owner and create a session; returns its id."""
+    from tsbc import _serve
+
+    app.client.login(_serve.USER, _serve.PASSWORD)
+    return app.client.create_session(target, "new", "xterm-256color", cols, rows)["session"]["id"]
+
+
+def record_output(serve_app: Any, session_id: str, *chunks: bytes) -> dict:
+    """Replace the session's recorded output with these chunks, in order: what a core's ring holds,
+    and so what every later attach's dump is made of. Returns the server's session dict."""
+    sess = serve_app.sessions[session_id]
+    sess["output"] = [(seq, data) for seq, data in enumerate(chunks, start=1)]
+    sess["next_seq"] = len(chunks)
+    return sess
+
+
+def emit_live_output(serve_app: Any, sess: dict, data: bytes) -> None:
+    """Target output arriving now: recorded, and sent live to every attached client."""
+    with serve_app.lock:
+        serve_app._emit_output(sess, data)
+
+
+def resize_requests(serve_app: Any) -> list[tuple[int, int]]:
+    """Every `resize` frame any client has sent, as the server saw them (cols, rows), in order."""
+    return [(f["cols"], f["rows"]) for f in list(serve_app.frames) if f.get("t") == "resize"]
