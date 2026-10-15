@@ -150,6 +150,10 @@ from .whos_here import WhosHereScreen
 # is the same before the rail exists and after.
 STATUS_ROWS = 1
 
+# What a 401 on the reattach path is told as (`_on_login_needed`, which has no exception of its own to show):
+# the same words `notify_api_error` uses for a 401 anywhere.
+REATTACH_LOGIN_GONE = "the login this client held no longer works"
+
 # The Menu is Textual's command palette (D10); while it is open the keys are its own (D14).
 MENU_KEYS = KeysTarget("menu", (Hint("↑↓", "choose"), Hint("⏎", "run"), Hint("type", "to find"),
                                 Hint("Esc", "close")))
@@ -1232,7 +1236,8 @@ class TerminalScreen(Screen):
                             on_reattach=functools.partial(self._on_reattach, slot),
                             on_backoff=functools.partial(self._on_backoff, slot),
                             on_attached=functools.partial(self._on_attached, slot),
-                            on_run_done=functools.partial(self._on_run_done, slot)),
+                            on_run_done=functools.partial(self._on_run_done, slot),
+                            on_login_needed=functools.partial(self._on_login_needed, slot)),
             backoff_ms=tuple(int(step) for step in cfg["reattach.backoff_ms"]),
             cols=cols, rows=rows, auto=cfg["reattach.auto"])
         slot.pump = pump
@@ -1399,6 +1404,17 @@ class TerminalScreen(Screen):
             self._sync_prompts()
             self.refresh_status()
         self._sync_fleet_widgets()
+
+    def _on_login_needed(self, slot: SessionSlot) -> None:
+        """A 401 on the reattach path (DT13): the same rule as the first attach's 401 above, told through
+        `notify_api_error` and routed to Login. The slot is marked leaving here because the pump ends with close
+        4003 straight after this hook, and the end dialog must not be put on top of the login page."""
+        if self._unmounted or slot.leaving:
+            return
+        exc = ApiError(401, "unauthenticated", REATTACH_LOGIN_GONE)
+        slot.leaving = True
+        slot.left = str(exc)
+        self.app.notify_api_error(exc)
 
     def _on_backoff(self, slot: SessionSlot, state: AttachmentState, attempt: object) -> None:
         if self._unmounted or slot.closed:

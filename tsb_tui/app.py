@@ -374,4 +374,11 @@ class TsbTuiApp(App):
         from .screens.login import LoginScreen
 
         self.stop_alerts()
-        self.switch_screen(LoginScreen())
+        # Every screen above the base is removed first: `switch_screen` replaces only the top of the stack, so
+        # a dialog on top (the end dialog) leaves the workspace mounted under the login page, and a mounted
+        # TerminalScreen is what this app and drive count as logged in (`workspace()` scans the whole stack).
+        # Popping to the base is what a fresh start after a logout looks like.
+        while len(self.get_screen_stack()) > 1:
+            self.pop_screen()
+        self.push_screen(LoginScreen())
+

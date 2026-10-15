@@ -118,6 +118,14 @@ class NewSessionScreen(Screen):
     def _on_create_done(self, created: dict) -> None:
         from .attach_confirm import open_attach
 
+        # A completion that arrives after its dialog has gone — a 401 routed to Login while the request was in
+        # flight (`notify_api_error` → `_to_login`, which pops to the base) — is discarded: nothing is popped, so
+        # the login stack stays as it is, and nothing is opened through a workspace that no longer exists. The
+        # session the create made lives on the broker as a detached session, and the operator attaches to it
+        # after logging in (the ruling `plans/reports/rulings-261016-tui-reattach-login.md` item 3: nothing
+        # reattaches on its own across a logout).
+        if self.app.screen is not self or self.app.workspace() is None:
+            return
         # The dialog goes first, then the new session opens in the workspace under it, beside the others.
         self.app.pop_screen()
         open_attach(self.app, created["session"], created.get("hostkey"))
