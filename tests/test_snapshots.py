@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from colour_canvas import COLOUR
 from drive_support import Rig
 from input_server import InputRecordingApp, attached, make_session, other_client
 from model_frames import attached_frame, token_frame
@@ -127,12 +128,13 @@ def _no_recording_bar(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("size", SIZES, ids=lambda s: f"{s[0]}x{s[1]}")
-def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot) -> None:
+def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot, snapshot_dir) -> None:
     """Mockups T1 and T2. You type in 1; another login types in 2 and 3; a fourth session cannot be reached. The rail
     shows the Menu and the fleet at its first two rows, `▲1` and the alerts, a chip for each session with who types
     (`●` you, `◆` another login) and `◂` for the one in front, and `+`; the status row shows the pill, the session and
     `≡ Menu`. The session is 132 columns wide: a 65 or 120 column window shows its range with `▸`, a 200 column one
-    shows the whole grid and says nothing of panning."""
+    shows the whole grid and says nothing of panning. The canvas's background is painted: rects filled with theme.bg
+    (#0a0a0a) sit under the canvas's columns, right of the rail (phase 1, B1)."""
 
     async def check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -175,6 +177,56 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
                     assert label.startswith("cols 1-") and label.endswith("of 132 ▸") and label in status, (label, status)
                 else:
                     assert "cols" not in status, status
+                svg = (snapshot_dir / f"T1-terminal-{size[0]}x{size[1]}.svg").read_text(encoding="utf-8")
+                bg_rects = re.findall(r'<rect fill="#0a0a0a" x="([0-9.]+)"', svg)
+                assert bg_rects, "no rect filled with theme.bg is under the canvas"
+                assert min(float(x) for x in bg_rects) >= 40, (
+                    "a theme.bg rect starts left of the rail, so it is a full-window overlay, not the canvas")
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES, ids=lambda s: f"{s[0]}x{s[1]}")
+def test_t1c_the_terminal_with_coloured_output_shows_the_scheme(size, serve, wait_until, shoot,
+                                                                 snapshot_dir) -> None:
+    """Phase 1: T1c, state of T1 with a coloured Linux host in front. The canvas paints its background:
+    every snapshot SVG has rects filled with theme.bg (#0a0a0a) inside the canvas's columns (right of
+    the rail). The prompt text and a coloured cell's fill assert content.
+
+    fails today: the canvas paints no background, so no rects sit under it."""
+
+    async def check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        first, second, third, broken = named_sessions(
+            url, serve_app, "infra-db-02", "rtr-core-01", "k8s-node-07", "fw-edge-01", cols=132, rows=40)
+        serve_app.sessions[broken]["state"] = "unreachable"
+        record_output(serve_app, first, COLOUR)
+        with other_client(url, _serve.PEER, second), other_client(url, _serve.PEER, third):
+            app = TsbTuiApp(url)
+            async with app.run_test(size=size) as pilot:
+                screen = await fixture_login(app, pilot)
+                await _open_in_order(app, pilot, wait_until, screen, first, second, third)
+                screen.close_sidebar()
+                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                                 and screen.canvas.painted, "the rail to count")
+                await wait_until(pilot, lambda: "normal 0-7" in "".join(
+                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen")
+                await wait_until(pilot, lambda: screen.canvas.view_range.label in
+                                 list(app.screen._compositor.render_strips())[-1].text if size[0] - 4 < 132 else True,
+                                 "the row to draw the range")
+                await pilot.pause(0.2)
+                lines = shoot(app, "T1c-terminal-colour", size).splitlines()
+
+                # Content assertions: the T1c state's prompt and the ANSI swatch are drawn.
+                assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+                assert "normal 0-7" in "\n".join(lines), "the swatch is not drawn"
+                # The canvas paints its own background: rects filled with theme.bg (#0a0a0a) sit under
+                # the canvas's columns (right of the rail), never as a full-window overlay.
+                svg = (snapshot_dir / f"T1c-terminal-colour-{size[0]}x{size[1]}.svg").read_text(encoding="utf-8")
+                bg_rects = re.findall(r'<rect fill="#0a0a0a" x="([0-9.]+)"', svg)
+                assert bg_rects, "no rect filled with theme.bg is under the canvas"
+                assert min(float(x) for x in bg_rects) >= 40, (
+                    "a theme.bg rect starts left of the rail, so it is a full-window overlay, not the canvas")
 
     asyncio.run(check())
 

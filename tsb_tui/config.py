@@ -60,6 +60,9 @@ MIN_RAIL_WIDTH = 4
 # The sidebar needs room for its header (`▦ Fleet  ◂ close ^\ f`).
 MIN_SIDEBAR_WIDTH = 24
 
+# Phase 1: theme.term.bg validation
+_HEX_PATTERN = re.compile(r"#[0-9a-fA-F]{6}")
+
 # The values the full Fleet view's and the mouse's and the view's knobs may hold (phase 8). `targets` is a tab of
 # E3: it is accepted in `fleet_view.tabs` (the knob file lists it) and shown once it exists.
 FLEET_TABS = ("sessions", "targets", "alerts")
@@ -102,6 +105,7 @@ KNOB_TYPES: dict[str, type] = {
     "theme.warn": str,
     "theme.danger": str,
     "theme.term.palette": str,
+    "theme.term.bg": str,
     "theme.term.fg": str,
     "theme.term.cursor_typist": str,
     "theme.term.cursor_viewer": str,
@@ -205,6 +209,7 @@ KNOB_OWNERS: dict[str, int] = {
     "theme.warn": 3,
     "theme.danger": 3,
     "theme.term.palette": 3,
+    "theme.term.bg": 3,
     "theme.term.fg": 3,
     "theme.term.cursor_typist": 3,
     "theme.term.cursor_viewer": 3,
@@ -518,6 +523,7 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
             f"gates.recording = {resolved.get('gates.recording')!r}: expected first-attach or every-attach")
 
     _check_chrome_knobs(resolved)
+    _check_theme_knobs(resolved)
     _check_fleet_knobs(resolved)
     return Config(resolved, chosen, sources)
 
@@ -549,6 +555,13 @@ def _check_chrome_knobs(values: Mapping[str, Any]) -> None:
         raise ConfigError(f"status.stale_banner_pad = {values['status.stale_banner_pad']}: expected 0 to 8")
     if values["menu.open_on_leader_after_ms"] < 1:
         raise ConfigError("menu.open_on_leader_after_ms: expected at least 1")
+
+
+def _check_theme_knobs(values: Mapping[str, Any]) -> None:
+    """Phase 1: theme.term.bg holds "scheme", "outer" or #rrggbb."""
+    bg = values["theme.term.bg"]
+    if bg not in ("scheme", "outer") and not _HEX_PATTERN.fullmatch(bg):
+        raise ConfigError(f"theme.term.bg = {bg!r}: expected 'scheme', 'outer' or #rrggbb")
 
 
 def _one_of(values: Mapping[str, Any], key: str, allowed: tuple[str, ...]) -> None:

@@ -47,6 +47,9 @@ danger      = "#ff5c7a"
 
 [theme.term]
 palette  = "theme"
+# The canvas background: "scheme" takes the scheme's background (theme.bg until scheme files exist,
+# phase 3); "outer" keeps the terminal's own background (see-through); a #rrggbb hex is painted as given.
+bg       = "scheme"
 fg       = "#e6e6e6"
 cursor_typist = "block"
 cursor_viewer = "underline"

@@ -263,7 +263,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "theme.accent", "theme.accent_hot", "theme.accent_soft", "theme.bg", "theme.border",
         "theme.border_on_surface", "theme.danger", "theme.name", "theme.ok", "theme.on_accent",
         "theme.steel", "theme.surface", "theme.surface_2", "theme.surface_3", "theme.term.colors",
-        "theme.term.cursor_typist", "theme.term.cursor_viewer", "theme.term.fg",
+        "theme.term.bg", "theme.term.cursor_typist", "theme.term.cursor_viewer", "theme.term.fg",
         "theme.term.palette", "theme.text", "theme.text_faint", "theme.text_muted", "theme.warn",
         "toasts.max", "toasts.seconds", "view.chrome", "view.follow_cursor", "view.narrow_mode",
         "watch.held", "watch.take_back_brings_to_front"}
@@ -371,6 +371,17 @@ def test_a_choice_knob_outside_its_values_fails_naming_the_key(key: str, bad: st
     values refuses any other, and the message names the key."""
     with pytest.raises(config.ConfigError, match=re.escape(key)):
         config.load(config_file=Path("/nonexistent"), environ={}, overrides={"size.auto_request": "true", key: bad})
+
+
+def test_theme_term_bg_accepts_the_three_forms_and_refuses_other_values() -> None:
+    """Phase 1: theme.term.bg accepts "scheme", "outer" or #rrggbb and refuses "red" naming the key.
+
+    fails today: the key does not exist."""
+    assert _load(**{"theme.term.bg": "scheme"})["theme.term.bg"] == "scheme"
+    assert _load(**{"theme.term.bg": "outer"})["theme.term.bg"] == "outer"
+    assert _load(**{"theme.term.bg": "#123abc"})["theme.term.bg"] == "#123abc"
+    with pytest.raises(config.ConfigError, match=re.escape("theme.term.bg")):
+        _load(**{"theme.term.bg": "red"})
 
 
 def test_a_motion_knob_the_canvas_cannot_honour_fails_at_load_naming_the_key() -> None:

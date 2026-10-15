@@ -212,7 +212,8 @@ def test_the_typists_cursor_is_a_filled_accent_block_and_a_viewers_a_steel_under
 
             canvas.typist = False
             viewer = _style_at(canvas.render_line(0), 2)
-            assert viewer.bgcolor is None
+            # Phase 1: viewer cursor now has term_bg as background
+            assert viewer.bgcolor.get_truecolor()[:3] == (0x0a, 0x0a, 0x0a)
             assert viewer.underline
             assert viewer.color.get_truecolor()[:3] == STEEL
 
@@ -253,6 +254,96 @@ def test_outer_palette_passes_colour_indexes_through(lib) -> None:
             canvas.repaint_now()
             line = canvas.render_line(0)
             assert (_style_at(line, 0).color.number, _style_at(line, 1).color.number) == (1, 200)
+
+    asyncio.run(_check())
+
+
+def test_canvas_paints_its_background_on_every_default_cell_and_padding(lib) -> None:
+    """Phase 1: B1. The canvas is the darkest layer: blank rows, padding and cells with no SGR background
+    carry term_bg. Under "outer" with bg="scheme" or bg="outer", cells stay see-through. With a hex,
+    that hex. Dimmed rows carry it too. A reversed blank cell swaps fg and bg.
+
+    fails today: Strip.blank(width) and adjust_cell_length(width) carry no background."""
+
+    async def _check() -> None:
+        theme_bg = (0x0a, 0x0a, 0x0a)  # theme.bg="#0a0a0a"
+        canvas = _canvas(lib, 60, 10)
+        async with _Host(canvas).run_test(size=(40, 8)) as pilot:
+            await _first_paint(pilot, canvas)
+            # Blank row: not yet painted
+            blank = canvas.render_line(5)
+            assert all(seg.style.bgcolor and seg.style.bgcolor.get_truecolor()[:3] == theme_bg
+                      for seg in blank), "blank row carries no background"
+
+            # Feed output: one short line
+            canvas.feed(b"hello")
+            canvas.repaint_now()
+            line = canvas.render_line(0)
+            cells = _cells(line)
+            # The text itself
+            text_run = next((col, text, style) for col, text, style in cells if "hello" in text)
+            assert text_run[2].bgcolor and text_run[2].bgcolor.get_truecolor()[:3] == theme_bg, (
+                "cells with no SGR background carry no term_bg")
+            # Padding after the text
+            padding = [seg for seg in line if seg.text and seg.text[0] == " " and len(seg.text) > 5]
+            assert padding and all(seg.style.bgcolor and seg.style.bgcolor.get_truecolor()[:3] == theme_bg
+                                   for seg in padding), "padding carries no background"
+
+            # Dimmed: ended session
+            canvas.dimmed = True
+            dimmed = canvas.render_line(0)
+            assert all(seg.style.bgcolor and seg.style.bgcolor.get_truecolor()[:3] == theme_bg
+                      for seg in dimmed if seg.text.strip()), "dimmed rows carry no background"
+            canvas.dimmed = False
+
+            # Reversed blank cell
+            canvas.feed(b"\x1b[7m \x1b[0m")
+            canvas.repaint_now()
+            line = canvas.render_line(0)
+            # The reversed cell is the second character (index 5 is where 'hello' ends, next cell is reversed)
+            reversed_seg = _style_at(line, 5)
+            # Inverse swaps: bg becomes the default fg, fg becomes term_bg
+            assert reversed_seg.bgcolor.get_truecolor()[:3] == (0xe6, 0xe6, 0xe6), (
+                "reversed blank: bg should be default fg")
+
+    asyncio.run(_check())
+
+
+def test_canvas_background_is_see_through_under_outer(lib) -> None:
+    """Phase 1: TT4. Under palette="outer" with bg="scheme" or bg="outer", term_bg is None and cells
+    stay see-through as they are today.
+
+    fails today: (passes, because today the canvas is always see-through)"""
+
+    async def _check() -> None:
+        canvas = _canvas(lib, 40, 5, **{"theme.term.palette": "outer"})
+        async with _Host(canvas).run_test(size=(40, 5)) as pilot:
+            await _first_paint(pilot, canvas)
+            canvas.feed(b"text")
+            canvas.repaint_now()
+            line = canvas.render_line(0)
+            # No segment should have a background
+            assert all(seg.style.bgcolor is None for seg in line), (
+                "outer palette with bg=scheme should stay see-through")
+
+    asyncio.run(_check())
+
+
+def test_canvas_background_paints_a_given_hex(lib) -> None:
+    """Phase 1: step 2. theme.term.bg="#123456" paints that colour, regardless of palette mode.
+
+    fails today: the canvas paints no background."""
+
+    async def _check() -> None:
+        custom_bg = (0x12, 0x34, 0x56)
+        canvas = _canvas(lib, 40, 5, **{"theme.term.bg": "#123456"})
+        async with _Host(canvas).run_test(size=(40, 5)) as pilot:
+            await _first_paint(pilot, canvas)
+            canvas.feed(b"test")
+            canvas.repaint_now()
+            line = canvas.render_line(0)
+            assert all(seg.style.bgcolor and seg.style.bgcolor.get_truecolor()[:3] == custom_bg
+                      for seg in line if seg.text.strip()), "hex bg not painted"
 
     asyncio.run(_check())
 

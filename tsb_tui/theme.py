@@ -147,8 +147,26 @@ class TermPalette:
             _shape("theme.term.cursor_viewer", config["theme.term.cursor_viewer"]), roles["steel"])
         self._on_accent = roles["on-accent"]
         self._cache: dict[tuple, Style] = {}
-        # Blank cells and cells with no SGR state: the default foreground, no background of their own.
-        self.default = Style(color=RichColor.parse(self.fg))
+
+        # TT3, TT4: term_bg is None (see-through) under "outer" with bg="scheme" or bg="outer",
+        # else the hex when a hex is given, else theme.bg
+        bg_value = config["theme.term.bg"]
+        if not isinstance(bg_value, str) or not bg_value:
+            raise ThemeError(f"theme.term.bg: expected a non-empty string, got {bg_value!r}")
+        if bg_value not in ("scheme", "outer") and not _HEX.fullmatch(bg_value):
+            raise ThemeError(
+                f"theme.term.bg: expected 'scheme', 'outer' or #rrggbb, got {bg_value!r}")
+
+        if mode == PALETTE_OUTER and bg_value in ("scheme", "outer"):
+            self.term_bg: str | None = None
+        elif _HEX.fullmatch(bg_value):
+            self.term_bg = bg_value.lower()
+        else:  # bg_value == "scheme" and mode == PALETTE_THEME
+            self.term_bg = self.bg
+
+        # Blank cells and cells with no SGR state carry term_bg when set
+        default_bg = RichColor.parse(self.term_bg) if self.term_bg else None
+        self.default = Style(color=RichColor.parse(self.fg), bgcolor=default_bg)
 
     # -- engine colours --
 
@@ -187,15 +205,21 @@ class TermPalette:
         fg = self._colour_of(resolved.fg_color)
         bg = self._colour_of(resolved.bg_color)
         default_fg = RichColor.parse(self.fg)
-        default_bg = RichColor.parse(self.bg)
+        # A cell with no SGR background of its own gets term_bg; when term_bg is None the cell stays
+        # see-through (TT4). Inverse and invisible use term_bg as the default background, or today's
+        # `theme.bg` when term_bg is None (step 3: "when it is None, today's behaviour exactly").
+        painted_bg = RichColor.parse(self.term_bg) if self.term_bg else None
+        fallback_bg = painted_bg if painted_bg is not None else RichColor.parse(self.bg)
         if resolved.inverse:
-            # The painted default background is the theme's `bg`, so a reversed blank cell is a
-            # solid block of the foreground, as it is in a terminal.
-            fg, bg = (bg or default_bg), (fg or default_fg)
+            # The painted default background is term_bg, so a reversed blank cell is a solid block of
+            # the foreground, as it is in a terminal.
+            fg, bg = (bg or fallback_bg), (fg or default_fg)
         elif fg is None:
             fg = default_fg
+        if bg is None and not resolved.inverse:
+            bg = painted_bg
         if resolved.invisible:
-            fg = bg or default_bg
+            fg = bg or fallback_bg
         underline = resolved.underline
         return Style(
             color=fg, bgcolor=bg,

@@ -146,6 +146,9 @@ class Canvas(Widget):
         self._paint_background = bool(config["render.paint_background"])
         self._typist = typist
         self._dimmed = False
+        # Set the canvas CSS background to term_bg when set (phase 1, step 5)
+        if palette.term_bg:
+            self.styles.background = palette.term_bg
         # False for an attachment the operator is not looking at: parsed, not painted (D33) unless
         # `render.paint_background` says to paint it anyway.
         self.in_front = True
@@ -384,15 +387,16 @@ class Canvas(Widget):
         width = self.size.width
         grid_y = y + self._view_y
         strip = self._strips[grid_y] if 0 <= grid_y < len(self._strips) else None
+        # Phase 1: default cells carry term_bg. Strip.blank and adjust_cell_length use palette.default.
         if strip is None:
-            return Strip.blank(width)
+            return Strip.blank(width, self._palette.default)
         if self._dimmed:
-            return strip.crop(self._view_x, self._view_x + width).adjust_cell_length(width).apply_style(
-                Style(dim=True))
+            return strip.crop(self._view_x, self._view_x + width).adjust_cell_length(
+                width, self._palette.default).apply_style(Style(dim=True))
         cursor = self._cursor
         if cursor is not None and cursor.y == grid_y:
             strip = self._with_cursor(strip, grid_y, cursor)
-        return strip.crop(self._view_x, self._view_x + width).adjust_cell_length(width)
+        return strip.crop(self._view_x, self._view_x + width).adjust_cell_length(width, self._palette.default)
 
     def _with_cursor(self, strip: Strip, grid_y: int, cursor: Cursor) -> Strip:
         x = cursor.x - 1 if cursor.wide_tail else cursor.x
