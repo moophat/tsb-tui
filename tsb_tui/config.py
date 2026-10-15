@@ -12,6 +12,7 @@ owns is read by code outside this module. `CURRENT_PHASE` is bumped by each phas
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any
@@ -133,6 +134,9 @@ KNOB_TYPES: dict[str, type] = {
     "status.position": str,
     "status.hint_priority": list,
     "status.keys_indicator": bool,
+    "status.stale_banner_fg": str,
+    "status.stale_banner_bg": str,
+    "status.stale_banner_pad": int,
     "menu.search": bool,
     "menu.open_on_leader_after_ms": int,
     "mouse.enabled": bool,
@@ -233,6 +237,9 @@ KNOB_OWNERS: dict[str, int] = {
     "status.position": 5,
     "status.hint_priority": 5,
     "status.keys_indicator": 5,
+    "status.stale_banner_fg": 5,
+    "status.stale_banner_bg": 5,
+    "status.stale_banner_pad": 5,
     "menu.search": 5,
     "menu.open_on_leader_after_ms": 5,
     "mouse.enabled": 8,
@@ -535,6 +542,11 @@ def _check_chrome_knobs(values: Mapping[str, Any]) -> None:
     if unknown:
         raise ConfigError(
             f"status.hint_priority: unknown hint {unknown[0]!r} (one of {', '.join(sorted(HINT_NAMES))})")
+    for key in ("status.stale_banner_fg", "status.stale_banner_bg"):
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", values[key]):
+            raise ConfigError(f"{key} = {values[key]!r}: expected a #rrggbb colour")
+    if not 0 <= values["status.stale_banner_pad"] <= 8:
+        raise ConfigError(f"status.stale_banner_pad = {values['status.stale_banner_pad']}: expected 0 to 8")
     if values["menu.open_on_leader_after_ms"] < 1:
         raise ConfigError("menu.open_on_leader_after_ms: expected at least 1")
 

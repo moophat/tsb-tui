@@ -258,6 +258,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "sidebar.start_filter", "sidebar.wide_from", "sidebar.width", "sidebar.width_phone",
         "sidebar.width_wide", "size.auto_request", "size.debounce_ms",
         "status.hint_priority", "status.keys_indicator", "status.position", "status.show",
+        "status.stale_banner_bg", "status.stale_banner_fg", "status.stale_banner_pad",
         "term.library", "term.scrollback_bytes",
         "theme.accent", "theme.accent_hot", "theme.accent_soft", "theme.bg", "theme.border",
         "theme.border_on_surface", "theme.danger", "theme.name", "theme.ok", "theme.on_accent",

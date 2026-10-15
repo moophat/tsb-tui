@@ -27,6 +27,7 @@ from model_frames import clients_frame as _clients_frame
 from prompt_support import NOW, iso, notice, validated
 from stub_server import create_owner_session, record_output
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.widgets.stale_banner import STALE_NOTICE
 from tsbc import _serve
 from workspace_support import fixture_login, named_sessions
 
@@ -313,11 +314,13 @@ def test_f7_the_stale_dialog_offers_the_four_choices_to_the_one_who_types(size, 
             for words in ("Redraw the screen", "Send Ctrl-L", "Keep going without a redraw", "Start a fresh session"):
                 assert words in squeezed, f"no {words!r}"
             assert "1-4" in squeezed and "recorded" in squeezed, "the footer is missing"
-            status = " ".join(line.strip() for line in lines[-3:] if line.strip(" │"))  # a phone's row wraps (F12)
-            assert "you type" in status, status
-            # The row carries the contract's own notice line, as the core sent it (stale-screen rule 18), and on a
-            # phone it takes a second and third line rather than cut a word.
-            assert "▲ TSB: lost output - the screen may be stale until a choice is made." in re.sub(r"\s+", " ", status), status
+            status = _status(lines)
+            assert "you type" in status and "▲ stale" in status, status
+            assert "● REC" in status and "≡ Menu" in status, f"REC and the Menu stay on the one row: {status!r}"
+            assert screen.status.size.height == 1, "the status row never grows a second line"
+            # The row is one row; the contract's notice line (stale-screen rule 18) is the banner at the top of the
+            # canvas, whole, wrapped at spaces on a phone, never cut.
+            assert STALE_NOTICE in " ".join(line[4:].strip() for line in lines[:4]), lines[:4]
             assert "≡" in _rail(lines)[0]
 
     asyncio.run(check())
@@ -594,8 +597,8 @@ def test_f12_the_row_while_reattaching_says_which_try_is_next_and_that_esc_stops
 def test_f12_a_stale_screen_someone_else_is_choosing_shows_no_dialog_and_says_who(
         size, serve, wait_until, shoot) -> None:
     """Mockup F12, row "stale, someone else chooses". Only the one who types is asked: this client, which does not hold
-    the keyboard, gets no dialog, and its row carries the contract's notice line and says who is choosing and that its
-    input is refused meanwhile."""
+    the keyboard, gets no dialog; the contract's notice line is the banner at the top of the canvas, and its one-row
+    status row says the screen is stale, who is choosing and that its input is refused meanwhile."""
 
     async def check() -> None:
         _serve_app, url = serve(InputRecordingApp())
@@ -610,10 +613,13 @@ def test_f12_a_stale_screen_someone_else_is_choosing_shows_no_dialog_and_says_wh
                 await pilot.pause(0.3)
                 lines = shoot(app, "F12-stale-someone-else", size).splitlines()
                 joined = "\n".join(lines)
-                status = re.sub(r"\s+", " ", " ".join(line.strip() for line in lines[-3:] if line.strip(" │")))
-                assert "view only" in status and "screen may be stale" in status, status
+                status = _status(lines)
+                assert "view only" in status and "▲ stale" in status, status
+                assert "● REC" in status and "≡ Menu" in status, f"REC and the Menu stay on the one row: {status!r}"
+                assert screen.status.size.height == 1, "the status row never grows a second line"
+                assert STALE_NOTICE in " ".join(line[4:].strip() for line in lines[:4]), lines[:4]
                 assert "Choose:" not in joined, "a client that does not type was shown the dialog"
-                if size[0] >= 200:  # the contract's sentence is kept whole; the tail fits only where the row has room
+                if size[0] >= 120:  # who is choosing fits where the row has room; a phone keeps `▲ stale · input refused`
                     assert "fixture-peer is choosing · input refused" in status, status
 
     asyncio.run(check())

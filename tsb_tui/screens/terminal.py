@@ -100,6 +100,7 @@ from ..widgets.sidebar import (
     SidebarEntry,
     SidebarModel,
 )
+from ..widgets.stale_banner import StaleBanner
 from ..widgets.status_row import (
     REFUSAL_TEXT,
     EndedStatus,
@@ -277,6 +278,7 @@ class TerminalScreen(Screen):
         self.slots: list[SessionSlot] = []
         self._front: SessionSlot | None = None
         self._stale_layer: StaleLayer | None = None
+        self._stale_banner: StaleBanner | None = None
         self._stale_panel: StalePanel | None = None
         self._quiet_box: QuietBox | None = None
         self._alert_stack: AlertStack | None = None
@@ -368,12 +370,14 @@ class TerminalScreen(Screen):
         self.fleet_view = FleetView(cfg, leader=cfg["keys.leader"])
         self._stale_panel = StalePanel(self)
         self._stale_layer = StaleLayer(self._stale_panel)
+        self._stale_banner = StaleBanner(cfg)
         self._quiet_box = QuietBox(self)
         self._quiet_box.display = False
         self._alert_stack = AlertStack(self)
         self._alert_stack.display = False
         # The overlays live in the canvas area, so a dialog over the session leaves the rail on screen (mockup A1).
-        canvases = Container(self.fleet_view, self._stale_layer, self._quiet_box, self._alert_stack, id="canvases")
+        canvases = Container(self.fleet_view, self._stale_layer, self._stale_banner, self._quiet_box, self._alert_stack,
+                             id="canvases")
         with Horizontal(id="body"):
             if cfg["rail.side"] == "left":
                 yield self.rail
@@ -1463,7 +1467,7 @@ class TerminalScreen(Screen):
                 and state.holds_keyboard)
 
     def _sync_prompts(self) -> None:
-        if self._unmounted or self._stale_panel is None:
+        if self._unmounted or self._stale_panel is None or self._stale_banner is None:
             return
         panel, layer, box = self._stale_panel, self._stale_layer, self._quiet_box
         slot = self._front
@@ -1482,6 +1486,9 @@ class TerminalScreen(Screen):
         else:
             layer.display = False
             panel.prompt_id = None
+        # The notice is every attached client's, not the holder's alone (stale-screen rule 18).
+        self._stale_banner.display = (state is not None and self.ended is None and not state.closed
+                                      and state.stale_state == "pending")
         asked = state.quiet_prompt if state is not None and self.ended is None and not state.closed else None
         if asked is not None:
             holder = None if state.holds_keyboard or state.holder is None else state.holder.get("user")

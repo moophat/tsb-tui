@@ -41,16 +41,27 @@ def local_time(when: datetime, now: float) -> str:
     return local.strftime("%H:%M:%S" if local.date() == today else "%Y-%m-%d %H:%M:%S")
 
 
-def countdown_text(ends_by: str | None, ends_at: str | None, now: float) -> str | None:
-    """The status row's countdown phrase, or None when `ends_at` cannot be read."""
+def countdown_parts(ends_by: str | None, ends_at: str | None, now: float) -> tuple[str, str, str] | None:
+    """The countdown phrase in three parts, or None when `ends_at` cannot be read: why the session is in its
+    warning window (empty when the core named no known reason), the value (`ends in 4:12`), and what may
+    still save it. The status row keeps the value and gives the other two up first on a narrow window."""
     when = parse_timestamp(ends_at)
     if when is None:
         return None
     left = format_duration(when.timestamp() - now)
     if ends_by == "link_timeout":
-        return f"▲ not answering · ends in {left} unless it answers"
+        return "not answering", f"ends in {left}", " unless it answers"
     if ends_by == "idle":
-        return f"▲ no bytes either way · ends in {left} · any byte keeps it"
+        return "no bytes either way", f"ends in {left}", " · any byte keeps it"
     if ends_by == "unattended":
-        return f"▲ no client input · ends in {left} · any input from a client keeps it"
-    return f"▲ ends at {local_time(when, now)}"
+        return "no client input", f"ends in {left}", " · any input from a client keeps it"
+    return "", f"ends at {local_time(when, now)}", ""
+
+
+def countdown_text(ends_by: str | None, ends_at: str | None, now: float) -> str | None:
+    """The status row's countdown phrase, or None when `ends_at` cannot be read."""
+    parts = countdown_parts(ends_by, ends_at, now)
+    if parts is None:
+        return None
+    why, value, tail = parts
+    return f"▲ {why} · {value}{tail}" if why else f"▲ {value}{tail}"

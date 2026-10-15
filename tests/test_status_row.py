@@ -242,12 +242,14 @@ def test_the_pan_range_stays_on_a_phone_row_while_there_is_room_for_it() -> None
     assert "you took the keyboard from fixture-peer" in roomy and "cols 1-61 of 116 ▸" in roomy
 
 
-def test_when_even_the_menu_leaves_no_room_for_the_words_they_are_cut_not_the_menu() -> None:
-    """D43: a very narrow row still ends in `≡ Menu ^\\`; it is the session's name that gives way."""
+def test_when_even_the_menu_leaves_no_room_for_the_words_the_name_goes_whole_not_the_menu() -> None:
+    """D43: a very narrow row still ends in `≡ Menu ^\\`; it is the session's name that gives way, whole: a name
+    cut to `a-very-long…` is a different name (principle 4), and a row of half words is worse than a short row."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     row = _text(state, 36, session="a-very-long-session-name-indeed")
     assert row.endswith("≡ Menu ^\\") and len(row) == 36
-    assert "…" in row
+    assert "a-very-long" not in row and "…" not in row
+    assert row.startswith("‹you type›")
 
 
 # -- the real widget: clicks, position, the pan range --

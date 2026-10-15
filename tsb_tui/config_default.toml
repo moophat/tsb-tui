@@ -97,6 +97,11 @@ show = true
 position = "bottom"
 hint_priority = ["menu", "answer", "take_back", "fleet", "who", "detach", "end", "size", "scroll", "inspector", "keys"]
 keys_indicator = true
+# The stale notice banner at the top of the canvas (stale-screen rule 18): its text colour, its
+# background, and the blank cells kept at each side of the text.
+stale_banner_fg = "#0a0a0a"
+stale_banner_bg = "#e5b34a"
+stale_banner_pad = 1
 
 [menu]
 search = true

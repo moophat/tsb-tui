@@ -45,6 +45,12 @@ async def _holder_with_dialog(pilot, app, wait_until, serve_app, url):
     return screen, session_id
 
 
+def _banner(app) -> str:
+    """The notice line as the screen shows it (a banner over the canvas, stale-screen rule 18), rows joined."""
+    rows = [strip.text for strip in app.screen._compositor.render_strips()]
+    return " ".join(" ".join(rows[:3]).split())
+
+
 def test_the_holder_gets_the_dialog_with_the_texts_as_sent(serve, wait_until) -> None:
     """Rule 18: the prompt's text and each choice's text are shown exactly as the core sent them, so no
     surface softens the warning; the header says what happened; the note says the choice is TSB's own."""
@@ -66,7 +72,7 @@ def test_the_holder_gets_the_dialog_with_the_texts_as_sent(serve, wait_until) ->
             assert "Your choice is recorded as TSB's own action." in "\n".join(
                 str(w.render()) for w in panel.query(".stale-note"))
             row = screen.status.text
-            assert "TSB: lost output - the screen may be stale until a choice is made." in row
+            assert "TSB: lost output - the screen may be stale until a choice is made." in _banner(app)
             assert "nobody's input goes through until you choose" in row
             assert "1-4 choose" in row
 
@@ -159,7 +165,8 @@ def test_a_non_holder_sees_the_stale_line_and_no_dialog(serve, wait_until) -> No
                 await wait_until(pilot, lambda: screen.pump.state.stale_state == "pending", "the stale frame")
                 assert not screen.stale_active()
                 row = screen.status.text
-                assert "TSB: lost output - the screen may be stale until a choice is made." in row
+                await wait_until(pilot, lambda: "TSB: lost output - the screen may be stale until a choice is made."
+                                 in _banner(app), "the banner")
                 assert "fixture-peer is choosing · input refused" in row
                 assert "1-4 choose" not in row
 
