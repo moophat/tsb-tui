@@ -54,7 +54,7 @@ def describe_answer(answer: dict | None) -> str:
 class SizeDialog(ModalScreen[None]):
     DEFAULT_CSS = """
     SizeDialog { align: center middle; }
-    #size-panel { width: 100%; max-width: 90; height: auto; border: round $primary;
+    #size-panel { width: 100%; max-width: 90; height: auto; border: round $frame;
                   background: $surface; padding: 0 1; }
     #size-title { text-style: bold; }
     .size-row { height: auto; }

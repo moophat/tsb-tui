@@ -6,10 +6,11 @@ Two jobs, both read from the knobs and nothing else:
   status row and the dialogs share one set of values with the canvas (one accent for "you type", one
   steel for "view only").
 * `TermPalette` turns an engine style (a cell's resolved SGR state) into the `rich` style the canvas
-  paints. With `theme.term.palette = "theme"` the 16 ANSI colours come from `theme.term.colors`, so a
-  target's red is the theme's red on every operator's terminal. With `"outer"` an index passes
-  through as an ANSI colour and the operator's own terminal theme decides (the app then runs with
-  `ansi_color` on, or Textual would convert the index back to a colour of its own).
+  paints. With `theme.term.palette = "theme"` the 16 ANSI colours, the default foreground and the
+  background come from the selected scheme file, unless `theme.term.colors` / `theme.term.fg`
+  override them, so a target's red is the scheme's red on every operator's terminal. With `"outer"`
+  an index passes through as an ANSI colour and the operator's own terminal theme decides (the app
+  then runs with `ansi_color` on, or Textual would convert the index back to a colour of its own).
 
 A value that is not a colour fails with the key named: a typo in a config file must not paint a
 screen in the wrong colours and say nothing (Rule 12).
@@ -69,19 +70,21 @@ def _roles(config: Mapping[str, Any]) -> dict[str, str]:
         "ok": config["theme.ok"],
         "warn": config["theme.warn"],
         "danger": config["theme.danger"],
+        "frame": config["theme.frame"],
+        "rec": config["theme.rec"],
+        "rec-list": config["theme.rec_list"],
     }
     return {name: _colour("theme." + name.replace("-", "_"), value) for name, value in raw.items()}
 
 
-def build_theme(config: Mapping[str, Any]) -> Theme:
-    """The Textual theme for `theme.*`. Roles Textual has no slot for become theme variables, so a
-    stylesheet reads them as `$accent-soft`, `$text-muted` and so on."""
+def build_theme(config: Mapping[str, Any], chrome: Any) -> Theme:
+    """The Textual theme for `theme.*`, registered as `tsb-<id>` (TT13), so it never replaces
+    Textual's own `nord` or `dracula`; `dark` comes from the theme file's `variant`. Roles Textual
+    has no slot for become theme variables, so a stylesheet reads them as `$accent-soft`,
+    `$text-muted` and so on."""
     roles = _roles(config)
-    name = config["theme.name"]
-    if not isinstance(name, str) or not name:
-        raise ThemeError(f"theme.name: expected a non-empty name, got {name!r}")
     return Theme(
-        name=name,
+        name=f"tsb-{chrome.id}",
         primary=roles["accent"],
         secondary=roles["steel"],
         warning=roles["warn"],
@@ -92,12 +95,12 @@ def build_theme(config: Mapping[str, Any]) -> Theme:
         background=roles["bg"],
         surface=roles["surface"],
         panel=roles["surface-2"],
-        dark=True,
+        dark=chrome.variant == "dark",
         variables={
             key: roles[key]
             for key in ("surface-2", "surface-3", "border", "border-on-surface", "text-muted",
                         "text-faint", "accent-hot", "accent-soft", "on-accent", "steel", "ok",
-                        "warn", "danger")
+                        "warn", "danger", "frame", "rec", "rec-list")
         },
     )
 
@@ -112,12 +115,32 @@ def _indexed_hex(index: int) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def relative_luminance(hex_: str) -> float:
+    """WCAG 2 relative luminance of a `#rrggbb` colour (the formula `tools/contrast-check.py:12-23`
+    uses). Phases 11, 12 and 13 reuse it to compute a scheme's contrast and to lift a colour's
+    lightness until it meets `theme.term.minimum_contrast`."""
+
+    def ch(c: int) -> float:
+        c = c / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (int(hex_[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+
+
+def contrast_ratio(a: str, b: str) -> float:
+    """WCAG 2 contrast ratio of two `#rrggbb` colours, 1.0 (identical) to 21.0 (black on white)."""
+    la, lb = sorted((relative_luminance(a), relative_luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
 @dataclass(frozen=True)
 class CursorLook:
     """How one kind of cursor is drawn: its shape and the role colour it takes."""
 
     shape: str
     colour: str
+    text_colour: str | None = None  # the glyph colour under a block; None means the theme's on_accent
 
 
 class TermPalette:
@@ -128,28 +151,43 @@ class TermPalette:
     same `Style` object, which keeps a repainted row's segments cheap to compare.
     """
 
-    def __init__(self, config: Mapping[str, Any]) -> None:
+    def __init__(self, config: Mapping[str, Any], scheme: Any = None) -> None:
+        from .theme_files import Scheme  # local import: theme_files imports from theme
+
         mode = config["theme.term.palette"]
         if mode not in (PALETTE_THEME, PALETTE_OUTER):
             raise ThemeError(
                 f"theme.term.palette: expected {PALETTE_THEME!r} or {PALETTE_OUTER!r}, got {mode!r}")
-        colours = config["theme.term.colors"]
-        if not isinstance(colours, list) or len(colours) != 16:
-            raise ThemeError("theme.term.colors: expected a list of 16 #rrggbb colours")
+        if scheme is None or not isinstance(scheme, Scheme):
+            raise ThemeError("scheme: expected a Scheme")
         self.mode = mode
-        self._colours = tuple(_colour(f"theme.term.colors[{i}]", c) for i, c in enumerate(colours))
-        self.fg = _colour("theme.term.fg", config["theme.term.fg"])
+        self.scheme = scheme
+
+        # Colours 0-15: theme.term.colors when it holds 16, else the scheme's ansi (TT28).
+        raw_colors = config["theme.term.colors"]
+        if not isinstance(raw_colors, list):
+            raise ThemeError("theme.term.colors: expected a list")
+        if len(raw_colors) == 16:
+            self._colours = tuple(_colour(f"theme.term.colors[{i}]", c) for i, c in enumerate(raw_colors))
+        elif len(raw_colors) == 0:
+            self._colours = scheme.ansi
+        else:
+            raise ThemeError(f"theme.term.colors: expected [] or 16, got {len(raw_colors)}")
+
+        # Default foreground: theme.term.fg when set (non-empty), else scheme.foreground.
+        # Under palette="outer" with fg="" the outer terminal's own default is used (TT4): None.
+        fg_value = config["theme.term.fg"]
+        if fg_value == "":
+            if mode == PALETTE_OUTER:
+                self.fg: str | None = None
+            else:
+                self.fg = scheme.foreground
+        else:
+            self.fg = _colour("theme.term.fg", fg_value)
+
         roles = _roles(config)
         self.bg = roles["bg"]
-        self.cursor_typist = CursorLook(
-            _shape("theme.term.cursor_typist", config["theme.term.cursor_typist"]), roles["accent"])
-        self.cursor_viewer = CursorLook(
-            _shape("theme.term.cursor_viewer", config["theme.term.cursor_viewer"]), roles["steel"])
-        self._on_accent = roles["on-accent"]
-        self._cache: dict[tuple, Style] = {}
-
-        # TT3, TT4: term_bg is None (see-through) under "outer" with bg="scheme" or bg="outer",
-        # else the hex when a hex is given, else theme.bg
+        # TT3: term_bg for bg="scheme" is scheme.background (was theme.bg before phase 3).
         bg_value = config["theme.term.bg"]
         if not isinstance(bg_value, str) or not bg_value:
             raise ThemeError(f"theme.term.bg: expected a non-empty string, got {bg_value!r}")
@@ -162,11 +200,33 @@ class TermPalette:
         elif _HEX.fullmatch(bg_value):
             self.term_bg = bg_value.lower()
         else:  # bg_value == "scheme" and mode == PALETTE_THEME
-            self.term_bg = self.bg
+            self.term_bg = scheme.background
 
-        # Blank cells and cells with no SGR state carry term_bg when set
+        # Cursor colours (ruling 6, B2, step 6, OPEN-T4).
+        cursor_colour = config["theme.term.cursor_colour"]
+        if cursor_colour == "scheme" and mode == PALETTE_THEME:
+            # Both cursors take scheme.cursor (fallback scheme.foreground);
+            # block glyph takes scheme.cursor_text (fallback scheme.background).
+            c_colour = scheme.cursor or scheme.foreground
+            c_text = scheme.cursor_text or scheme.background
+            self.cursor_typist = CursorLook(
+                _shape("theme.term.cursor_typist", config["theme.term.cursor_typist"]), c_colour, c_text)
+            self.cursor_viewer = CursorLook(
+                _shape("theme.term.cursor_viewer", config["theme.term.cursor_viewer"]), c_colour, c_text)
+        else:
+            # "role" (default) or "scheme" under palette="outer" (OPEN-T4 ruled: outer ignores the
+            # scheme, so the cursor takes TSB's role colours, exactly as cursor_colour="role").
+            self.cursor_typist = CursorLook(
+                _shape("theme.term.cursor_typist", config["theme.term.cursor_typist"]), roles["accent"])
+            self.cursor_viewer = CursorLook(
+                _shape("theme.term.cursor_viewer", config["theme.term.cursor_viewer"]), roles["steel"])
+
+        self._on_accent = roles["on-accent"]
+        self._cache: dict[tuple, Style] = {}
+
         default_bg = RichColor.parse(self.term_bg) if self.term_bg else None
-        self.default = Style(color=RichColor.parse(self.fg), bgcolor=default_bg)
+        fg_colour = RichColor.parse(self.fg) if self.fg else None
+        self.default = Style(color=fg_colour, bgcolor=default_bg)
 
     # -- engine colours --
 
@@ -175,6 +235,11 @@ class TermPalette:
             return RichColor.from_ansi(index)
         if index < 16:
             return RichColor.parse(self._colours[index])
+        # Indexes 16-255: scheme.extended[index - 16] when present and not None, else xterm value.
+        if self.scheme.extended is not None:
+            extended_colour = self.scheme.extended[index - 16]
+            if extended_colour is not None:
+                return RichColor.parse(extended_colour)
         return RichColor.parse(_indexed_hex(index))
 
     def _colour_of(self, colour: Any) -> RichColor | None:
@@ -204,16 +269,23 @@ class TermPalette:
     def _build(self, resolved: Any) -> Style:
         fg = self._colour_of(resolved.fg_color)
         bg = self._colour_of(resolved.bg_color)
-        default_fg = RichColor.parse(self.fg)
+        # TT31: under outer with no default foreground (fg=None), an inverse cell uses Rich's reverse.
+        default_fg = RichColor.parse(self.fg) if self.fg else None
         # A cell with no SGR background of its own gets term_bg; when term_bg is None the cell stays
         # see-through (TT4). Inverse and invisible use term_bg as the default background, or today's
         # `theme.bg` when term_bg is None (step 3: "when it is None, today's behaviour exactly").
         painted_bg = RichColor.parse(self.term_bg) if self.term_bg else None
         fallback_bg = painted_bg if painted_bg is not None else RichColor.parse(self.bg)
+
+        reverse_attr = False
         if resolved.inverse:
-            # The painted default background is term_bg, so a reversed blank cell is a solid block of
-            # the foreground, as it is in a terminal.
-            fg, bg = (bg or fallback_bg), (fg or default_fg)
+            if default_fg is None:
+                # TT31: palette="outer" with fg="": no default to swap, so use reverse=True.
+                reverse_attr = True
+                # Keep fg and bg as they are (both may be None), Rich will swap them.
+            else:
+                # The painted default background is term_bg, so a reversed blank cell is a solid block.
+                fg, bg = (bg or fallback_bg), (fg or default_fg)
         elif fg is None:
             fg = default_fg
         if bg is None and not resolved.inverse:
@@ -227,16 +299,21 @@ class TermPalette:
             strike=bool(resolved.strikethrough), overline=bool(resolved.overline),
             underline=underline == 1 or underline >= 3,
             underline2=underline == 2,
+            reverse=reverse_attr,
         )
 
     # -- cursors --
 
     def cursor_style(self, look: CursorLook, base: Style) -> Style:
         """`base` (the cell's own style) with the cursor drawn over it: a block fills the cell with
-        the role colour; an underline keeps the cell and underlines it in the role colour."""
+        the cursor colour and draws the glyph in the scheme's cursorText; an underline keeps the cell
+        and underlines it in the cursor colour."""
         if look.shape == "block":
-            return base + Style(color=RichColor.parse(self._on_accent),
-                                bgcolor=RichColor.parse(look.colour), underline=False)
+            text = look.text_colour or self._on_accent
+            # The block fills the cell with its own colours, so clear `reverse`: a base cell that is
+            # reversed (TT31 under outer) would swap them, and the cursor must show what it is given.
+            return base + Style(color=RichColor.parse(text),
+                                bgcolor=RichColor.parse(look.colour), underline=False, reverse=False)
         return base + Style(color=RichColor.parse(look.colour), underline=True)
 
 

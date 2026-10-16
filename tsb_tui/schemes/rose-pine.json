@@ -1,0 +1,32 @@
+{
+  "name": "Ros\u00e9 Pine",
+  "variant": "dark",
+  "ansi": [
+    "#26233a",
+    "#eb6f92",
+    "#31748f",
+    "#f6c177",
+    "#9ccfd8",
+    "#c4a7e7",
+    "#ebbcba",
+    "#e0def4",
+    "#908caa",
+    "#eb6f92",
+    "#31748f",
+    "#f6c177",
+    "#9ccfd8",
+    "#c4a7e7",
+    "#ebbcba",
+    "#e0def4"
+  ],
+  "foreground": "#e0def4",
+  "background": "#191724",
+  "cursor": "#6e6a86",
+  "selectionBackground": "#403d52",
+  "source": {
+    "origin": "https://github.com/rose-pine/windows-terminal@89e1a277e4ac10e06f33b13cddabde3c42d8d411:rose-pine.scheme.json",
+    "author": "Ros\u00e9 Pine",
+    "license": "MIT",
+    "url": "https://github.com/rose-pine/windows-terminal"
+  }
+}

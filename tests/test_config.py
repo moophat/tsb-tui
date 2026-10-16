@@ -261,10 +261,11 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "status.stale_banner_bg", "status.stale_banner_fg", "status.stale_banner_pad",
         "term.library", "term.scrollback_bytes",
         "theme.accent", "theme.accent_hot", "theme.accent_soft", "theme.bg", "theme.border",
-        "theme.border_on_surface", "theme.danger", "theme.name", "theme.ok", "theme.on_accent",
-        "theme.steel", "theme.surface", "theme.surface_2", "theme.surface_3", "theme.term.colors",
-        "theme.term.bg", "theme.term.cursor_typist", "theme.term.cursor_viewer", "theme.term.fg",
-        "theme.term.palette", "theme.text", "theme.text_faint", "theme.text_muted", "theme.warn",
+        "theme.border_on_surface", "theme.danger", "theme.frame", "theme.name", "theme.ok", "theme.on_accent",
+        "theme.rec", "theme.rec_list",
+        "theme.steel", "theme.surface", "theme.surface_2", "theme.surface_3",         "theme.term.colors", "theme.term.bg", "theme.term.cursor_colour", "theme.term.cursor_typist",
+        "theme.term.cursor_viewer", "theme.term.fg", "theme.term.palette", "theme.term.scheme",
+        "theme.text", "theme.text_faint", "theme.text_muted", "theme.warn",
         "toasts.max", "toasts.seconds", "view.chrome", "view.follow_cursor", "view.narrow_mode",
         "watch.held", "watch.take_back_brings_to_front"}
     assert "view.inspector" in config.knobs_pending()
@@ -286,6 +287,14 @@ def test_defaults_match_the_design_knob_file_values() -> None:
     drive = config.load(profile="drive", config_file=Path("/nonexistent"), environ={})
     assert drive["sidebar.start_filter"] == "all"
     assert drive["mouse.enabled"] is False
+
+
+def test_text_faint_passes_on_the_surface_the_chrome_draws_it_on() -> None:
+    # fails today: the packaged default is #7a7a7a, 4.0:1 on surface.
+    """Design §1.7: the rail and sidebar draw `text_faint` on `surface`, where it must pass; the
+    packaged default is #858585 (4.76:1 on surface), not the old #7a7a7a."""
+    cfg = config.load(config_file=Path("/nonexistent"), environ={})
+    assert cfg["theme.text_faint"] == "#858585"
 
 
 def test_the_env_name_maps_every_key_uniquely() -> None:
@@ -382,6 +391,63 @@ def test_theme_term_bg_accepts_the_three_forms_and_refuses_other_values() -> Non
     assert _load(**{"theme.term.bg": "#123abc"})["theme.term.bg"] == "#123abc"
     with pytest.raises(config.ConfigError, match=re.escape("theme.term.bg")):
         _load(**{"theme.term.bg": "red"})
+
+
+def test_theme_term_scheme_resolves_the_file_and_a_missing_one_lists_what_exists() -> None:
+    """Phase 3, TT10: a selected scheme is resolved at `load`, so a missing one is a start-up
+    `ConfigError` naming the slug, the shipped slugs and both folders searched; a good one is kept on
+    the `Config` for the palette to read."""
+    # fails today: `theme.term.scheme` is an unknown key.
+    cfg = _load(**{"theme.term.scheme": "dracula"})
+    assert cfg.scheme.slug == "dracula" and cfg.scheme.name == "Dracula"
+    assert cfg.user_dir.name == "tsb-tui"
+
+    with pytest.raises(config.ConfigError) as exc:
+        _load(**{"theme.term.scheme": "no-such-scheme"})
+    message = str(exc.value)
+    assert "no-such-scheme" in message and "tsb-default" in message
+    assert "schemes" in message
+
+
+def test_the_chrome_theme_resolved_at_load_is_kept_on_the_config() -> None:
+    """TT28: `load` keeps the selected chrome theme on the `Config`, as it keeps the scheme, so
+    `build_theme(config, chrome)` takes the resolved file as an argument; a missing one is a
+    start-up `ConfigError` like a missing scheme."""
+    # fails today: there is no themes folder, and `Config` carries no chrome.
+    cfg = _load(**{"theme.name": "nord"})
+    assert cfg.chrome.id == "nord" and cfg.chrome.yours is False
+    assert cfg.chrome.variant == "dark"
+    with pytest.raises(config.ConfigError):
+        _load(**{"theme.name": "no-such-theme"})
+
+
+def test_a_broken_selected_user_scheme_fails_naming_the_file_and_the_field(tmp_path: Path) -> None:
+    """Phase 3, TT10/Rule 12: a user scheme that is selected and malformed stops start-up naming the
+    file and the field, so a typo is fixable from the message rather than painting a wrong screen."""
+    # fails today: `theme.term.scheme` is an unknown key.
+    config_home = tmp_path / "config"
+    schemes = config_home / "tsb-tui" / "schemes"
+    schemes.mkdir(parents=True)
+    (schemes / "mine.json").write_text('{"name":"Mine","ansi":["#000000"]}', encoding="utf-8")
+    with pytest.raises(config.ConfigError) as exc:
+        config.load(config_file=Path("/nonexistent"),
+                    environ={"XDG_CONFIG_HOME": str(config_home), "HOME": str(tmp_path)},
+                    overrides={"size.auto_request": "true", "theme.term.scheme": "mine"})
+    message = str(exc.value)
+    assert "mine.json" in message and "ansi" in message
+
+
+def test_theme_term_cursor_colour_and_colors_refuse_values_the_palette_cannot_use() -> None:
+    """Phase 3, Rule 12: `cursor_colour` is "role" or "scheme", and `colors` is [] or exactly 16.
+    Both are checked at `load` naming the key, so the failure is at start-up, not when a canvas is
+    built for the first attached session."""
+    # fails today: `theme.term.cursor_colour` is an unknown key.
+    assert _load(**{"theme.term.cursor_colour": "role"})["theme.term.cursor_colour"] == "role"
+    assert _load(**{"theme.term.cursor_colour": "scheme"})["theme.term.cursor_colour"] == "scheme"
+    with pytest.raises(config.ConfigError, match=re.escape("theme.term.cursor_colour")):
+        _load(**{"theme.term.cursor_colour": "blue"})
+    with pytest.raises(config.ConfigError, match=re.escape("theme.term.colors")):
+        _load(**{"theme.term.colors": "#010101,#020202,#030303"})
 
 
 def test_a_motion_knob_the_canvas_cannot_honour_fails_at_load_naming_the_key() -> None:

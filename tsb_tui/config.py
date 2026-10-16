@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,8 @@ from . import glyphs
 from .drive.events import EVENT_NAMES, OUTPUT_MODES
 from .model.actions import LEADER_LABELS, LEADER_MAP_IDS, KeymapError, leader_keys
 from .model.fleet import CHIP_MARKS, CHIP_SOURCES, GROUP_ORDER, NEEDS_REASONS
+from .theme import relative_luminance
+from .theme_files import SchemeError, ThemeFileError, find_scheme, find_theme
 
 # The phase whose keys are built so far. Every phase that reads knobs bumps this; phase 10, the last, owns
 # no key and sets it to 10, so every key but the Inspector's is read by code outside this module. DT19.
@@ -104,9 +107,14 @@ KNOB_TYPES: dict[str, type] = {
     "theme.ok": str,
     "theme.warn": str,
     "theme.danger": str,
+    "theme.frame": str,
+    "theme.rec": str,
+    "theme.rec_list": str,
     "theme.term.palette": str,
+    "theme.term.scheme": str,
     "theme.term.bg": str,
     "theme.term.fg": str,
+    "theme.term.cursor_colour": str,
     "theme.term.cursor_typist": str,
     "theme.term.cursor_viewer": str,
     "theme.term.colors": list,
@@ -208,9 +216,14 @@ KNOB_OWNERS: dict[str, int] = {
     "theme.ok": 3,
     "theme.warn": 3,
     "theme.danger": 3,
+    "theme.frame": 3,
+    "theme.rec": 3,
+    "theme.rec_list": 3,
     "theme.term.palette": 3,
+    "theme.term.scheme": 3,
     "theme.term.bg": 3,
     "theme.term.fg": 3,
+    "theme.term.cursor_colour": 3,
     "theme.term.cursor_typist": 3,
     "theme.term.cursor_viewer": 3,
     "theme.term.colors": 3,
@@ -443,10 +456,18 @@ class Config:
     """The resolved knobs. Read a key with `config["a.b"]` or `config.get("a.b")`."""
 
     def __init__(self, values: Mapping[str, Any], profile: str,
-                 sources: Mapping[str, str] | None = None) -> None:
+                 sources: Mapping[str, str] | None = None, *,
+                 user_dir: Path | None = None,
+                 scheme: Any = None, chrome: Any = None) -> None:
         self._values = dict(values)
         self.profile = profile
         self._sources = dict(sources or {})
+        # What `load` resolved alongside the knobs: the directory the user's theme and scheme files
+        # live in, the selected colour scheme, and the selected chrome theme (TT28). `load` is the
+        # only builder.
+        self.user_dir = user_dir
+        self.scheme = scheme
+        self.chrome = chrome
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._values.get(key, default)
@@ -504,10 +525,31 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
         for key in values:
             sources[key] = source(key) if callable(source) else source
 
-    layer(_profile_overlay(defaults_doc, chosen), f"profile {chosen}")
+    # TT12: build the four overlays first, resolve `theme.name` through them (defaults < profile
+    # < file < env < --set), find its file, and layer the theme's roles between the packaged
+    # defaults and the profile. A role the theme lacks keeps the packaged default (terracotta).
+    profile_values = _profile_overlay(defaults_doc, chosen)
+    env_values = _env_overlay(env)
+    set_values = _set_overlay(overrides)
+
+    name = merged["theme.name"]
+    for overlay in (profile_values, file_values, env_values, set_values):
+        if "theme.name" in overlay:
+            name = _coerce("theme.name", overlay["theme.name"])
+
+    # TT10, TT28: resolve the two files inside `load`, so a bad or missing one is a start-up
+    # ConfigError naming the file and the field, reported by every entry point.
+    user_config_dir = _default_path(env).parent
+    try:
+        chrome = find_theme(name, user_config_dir)
+    except ThemeFileError as exc:
+        raise ConfigError(f"theme.name = {name!r}: {exc}") from None
+
+    layer({f"theme.{role}": value for role, value in chrome.roles.items()}, f"theme {chrome.id}")
+    layer(profile_values, f"profile {chosen}")
     layer(file_values, f"config file {file_path}")
-    layer(_env_overlay(env), _env_name)
-    layer(_set_overlay(overrides), "--set")
+    layer(env_values, _env_name)
+    layer(set_values, "--set")
 
     for key in merged:
         if key not in KNOB_TYPES:
@@ -525,7 +567,20 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
     _check_chrome_knobs(resolved)
     _check_theme_knobs(resolved)
     _check_fleet_knobs(resolved)
-    return Config(resolved, chosen, sources)
+
+    # OPEN-T5 (ruled 2026-10-15): a theme file with no `variant` gets it computed from its `bg`
+    # luminance, as a scheme's is (TT9's rule). TT12: the rule reads the `theme.bg` in force after
+    # every layer, so an operator who sets `theme.bg` light gets `dark=False`; a theme file that
+    # carries `bg` keeps the variant parse_theme computed from it.
+    if chrome.variant is None:
+        chrome = replace(chrome, variant="light" if relative_luminance(resolved["theme.bg"]) > 0.179 else "dark")
+
+    try:
+        scheme = find_scheme(resolved["theme.term.scheme"], user_config_dir)
+    except SchemeError as exc:
+        raise ConfigError(str(exc)) from None
+
+    return Config(resolved, chosen, sources, user_dir=user_config_dir, scheme=scheme, chrome=chrome)
 
 
 def _check_chrome_knobs(values: Mapping[str, Any]) -> None:
@@ -558,10 +613,21 @@ def _check_chrome_knobs(values: Mapping[str, Any]) -> None:
 
 
 def _check_theme_knobs(values: Mapping[str, Any]) -> None:
-    """Phase 1: theme.term.bg holds "scheme", "outer" or #rrggbb."""
+    """Phase 1: theme.term.bg holds "scheme", "outer" or #rrggbb.
+    Phase 3: theme.term.cursor_colour holds "role" or "scheme"; theme.term.colors is [] or exactly 16."""
     bg = values["theme.term.bg"]
     if bg not in ("scheme", "outer") and not _HEX_PATTERN.fullmatch(bg):
         raise ConfigError(f"theme.term.bg = {bg!r}: expected 'scheme', 'outer' or #rrggbb")
+
+    cursor_colour = values["theme.term.cursor_colour"]
+    if cursor_colour not in ("role", "scheme"):
+        raise ConfigError(f"theme.term.cursor_colour = {cursor_colour!r}: expected 'role' or 'scheme'")
+
+    colors = values["theme.term.colors"]
+    if not isinstance(colors, list):
+        raise ConfigError("theme.term.colors: expected a list")
+    if colors and len(colors) != 16:
+        raise ConfigError(f"theme.term.colors: expected [] or exactly 16 colours, got {len(colors)}")
 
 
 def _one_of(values: Mapping[str, Any], key: str, allowed: tuple[str, ...]) -> None:

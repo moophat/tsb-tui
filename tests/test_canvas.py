@@ -58,7 +58,7 @@ def _cfg(**overrides: str) -> config.Config:
 def _canvas(lib, cols: int, rows: int, *, typist: bool = False, **overrides: str) -> Canvas:
     cfg = _cfg(**overrides)
     backend = VTBackend(lib, cols, rows, scrollback_bytes=cfg["term.scrollback_bytes"])
-    return Canvas(backend, TermPalette(cfg), cfg, typist=typist)
+    return Canvas(backend, TermPalette(cfg, cfg.scheme), cfg, typist=typist)
 
 
 def _cells(strip) -> list[tuple[int, str, object]]:

@@ -1,0 +1,32 @@
+{
+  "name": "Catppuccin Latte",
+  "variant": "light",
+  "ansi": [
+    "#5c5f77",
+    "#d20f39",
+    "#40a02b",
+    "#df8e1d",
+    "#1e66f5",
+    "#ea76cb",
+    "#179299",
+    "#acb0be",
+    "#acb0be",
+    "#d20f39",
+    "#40a02b",
+    "#df8e1d",
+    "#1e66f5",
+    "#ea76cb",
+    "#179299",
+    "#bcc0cc"
+  ],
+  "foreground": "#4c4f69",
+  "background": "#eff1f5",
+  "cursor": "#dc8a78",
+  "selectionBackground": "#acb0be",
+  "source": {
+    "origin": "https://github.com/catppuccin/windows-terminal@4d8bb2f00fb86927a98dd3502cdec74a76d25d7b:latte.json",
+    "author": "Catppuccin",
+    "license": "MIT",
+    "url": "https://github.com/catppuccin/windows-terminal"
+  }
+}

@@ -66,13 +66,13 @@ class _Dialog(ModalScreen[Any]):
 
     DEFAULT_CSS = """
     _Dialog { align: center middle; }
-    _Dialog .panel { width: 100%; max-width: 100; height: auto; max-height: 90%; border: round $primary;
+    _Dialog .panel { width: 100%; max-width: 100; height: auto; max-height: 90%; border: round $frame;
                      background: $surface; padding: 0 1; }
     _Dialog .panel-title { text-style: bold; }
     _Dialog .scroll { height: auto; max-height: 30; }
     _Dialog .buttons { height: 1; }
     _Dialog .buttons Choice { width: auto; margin-right: 2; }
-    _Dialog Choice:hover { background: $surface-lighten-1; }
+    _Dialog Choice:hover { background: $surface-3; }
     """
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close")]
     KEYS_NAME = "dialog"
@@ -211,7 +211,8 @@ def settings_lines(cfg: Any) -> list[str]:
     """Every knob in force, with the layer its value came from (design D40; D30's order of precedence)."""
     values = cfg.as_dict()
     width = max((len(key) for key in values), default=0)
-    lines = [f"profile {cfg.profile}; later layers win: default, profile, config file, environment, --set", ""]
+    lines = [(f"profile {cfg.profile}; later layers win: default, theme (roles), profile, config "
+             "file, environment, --set"), ""]
     for key in sorted(values):
         value = values[key]
         shown = f'"{value}"' if isinstance(value, str) else str(value).lower() if isinstance(value, bool) else str(value)

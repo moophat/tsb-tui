@@ -1,0 +1,32 @@
+{
+  "name": "Ros\u00e9 Pine Moon",
+  "variant": "dark",
+  "ansi": [
+    "#393552",
+    "#eb6f92",
+    "#3e8fb0",
+    "#f6c177",
+    "#9ccfd8",
+    "#c4a7e7",
+    "#ea9a97",
+    "#e0def4",
+    "#908caa",
+    "#eb6f92",
+    "#3e8fb0",
+    "#f6c177",
+    "#9ccfd8",
+    "#c4a7e7",
+    "#ea9a97",
+    "#e0def4"
+  ],
+  "foreground": "#e0def4",
+  "background": "#232136",
+  "cursor": "#6e6a86",
+  "selectionBackground": "#44415a",
+  "source": {
+    "origin": "https://github.com/rose-pine/windows-terminal@89e1a277e4ac10e06f33b13cddabde3c42d8d411:rose-pine-moon.scheme.json",
+    "author": "Ros\u00e9 Pine",
+    "license": "MIT",
+    "url": "https://github.com/rose-pine/windows-terminal"
+  }
+}

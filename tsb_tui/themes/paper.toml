@@ -1,0 +1,27 @@
+# Chrome theme "paper" — light, for a phone in a bright aisle. Surfaces from 9remote's light tokens
+# (globals.css :359-363), warmed and stepped so the chrome still separates from a light canvas; the accent is the
+# terracotta darkened until it holds 4.5:1 on the light surfaces.
+[theme]
+name = "paper"
+variant = "light"
+scheme = "solarized-light"
+bg          = "#fcfbf9"
+surface     = "#efece7"
+surface_2   = "#e4e0da"
+surface_3   = "#d9d4cd"
+border      = "#cfc9c1"
+border_on_surface = "#bdb6ad"
+text        = "#1c1b1a"
+text_muted  = "#4f4b46"
+text_faint  = "#6b665f"
+accent      = "#b0432a"
+accent_hot  = "#c2410c"
+accent_soft = "#f4d9cf"
+on_accent   = "#ffffff"
+steel       = "#2c5d8f"
+ok          = "#2d6f36"
+warn        = "#8a5300"
+danger      = "#b0203f"
+frame       = "#9c958c"
+rec         = "#b0203f"
+rec_list    = "#4f4b46"

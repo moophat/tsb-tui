@@ -1,0 +1,32 @@
+{
+  "name": "Kanagawa Wave",
+  "variant": "dark",
+  "ansi": [
+    "#090618",
+    "#c34043",
+    "#76946a",
+    "#c0a36e",
+    "#7e9cd8",
+    "#957fb8",
+    "#6a9589",
+    "#c8c093",
+    "#727169",
+    "#e82424",
+    "#98bb6c",
+    "#e6c384",
+    "#7fb4ca",
+    "#938aa9",
+    "#7aa89f",
+    "#dcd7ba"
+  ],
+  "foreground": "#dcd7ba",
+  "background": "#1f1f28",
+  "cursor": "#c8c093",
+  "selectionBackground": "#2d4f67",
+  "source": {
+    "origin": "https://github.com/rebelot/kanagawa.nvim@bb85e4bfc8d89b0e62c8fa53ccdd13d12e2f77b3:extras/windows-terminal/kanagawa.json",
+    "author": "Tommaso Laurenzi",
+    "license": "MIT",
+    "url": "https://github.com/rebelot/kanagawa.nvim"
+  }
+}

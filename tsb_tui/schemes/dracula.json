@@ -1,0 +1,32 @@
+{
+  "name": "Dracula",
+  "variant": "dark",
+  "ansi": [
+    "#21222c",
+    "#ff5555",
+    "#50fa7b",
+    "#f1fa8c",
+    "#bd93f9",
+    "#ff79c6",
+    "#8be9fd",
+    "#f8f8f2",
+    "#6272a4",
+    "#ff6e6e",
+    "#69ff94",
+    "#ffffa5",
+    "#d6acff",
+    "#ff92df",
+    "#a4ffff",
+    "#ffffff"
+  ],
+  "foreground": "#f8f8f2",
+  "background": "#282a36",
+  "cursor": "#f8f8f2",
+  "selectionBackground": "#44475a",
+  "source": {
+    "origin": "https://github.com/dracula/windows-terminal@06f63714a0477a7b5c12cf0aa94ecf92d78f32ca:dracula.json",
+    "author": "Zeno Rocha",
+    "license": "MIT",
+    "url": "https://github.com/dracula/windows-terminal"
+  }
+}

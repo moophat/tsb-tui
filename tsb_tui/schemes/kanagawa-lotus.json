@@ -1,0 +1,32 @@
+{
+  "name": "Kanagawa Lotus",
+  "variant": "light",
+  "ansi": [
+    "#1f1f28",
+    "#c84053",
+    "#6f894e",
+    "#77713f",
+    "#4d699b",
+    "#b35b79",
+    "#597b75",
+    "#545464",
+    "#8a8980",
+    "#d7474b",
+    "#6e915f",
+    "#836f4a",
+    "#6693bf",
+    "#624c83",
+    "#5e857a",
+    "#43436c"
+  ],
+  "foreground": "#545464",
+  "background": "#f2ecbc",
+  "cursor": "#c9cbd1",
+  "selectionBackground": "#b5cbd2",
+  "source": {
+    "origin": "https://github.com/rebelot/kanagawa.nvim@bb85e4bfc8d89b0e62c8fa53ccdd13d12e2f77b3:extras/windows-terminal/kanagawa.json",
+    "author": "Tommaso Laurenzi",
+    "license": "MIT",
+    "url": "https://github.com/rebelot/kanagawa.nvim"
+  }
+}

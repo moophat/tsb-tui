@@ -524,7 +524,7 @@ class StatusRow(Widget):
             "ok": base + Style(color=config["theme.ok"]),
             "warn": base + Style(color=config["theme.warn"]),
             "danger": base + Style(color=config["theme.danger"]),
-            "rec": base + Style(color=config["theme.danger"]),
+            "rec": base + Style(color=config["theme.rec"]),
             "pill_type": Style(color=config["theme.on_accent"], bgcolor=accent, bold=True),
             "pill_view": base + Style(color=config["theme.steel"], bold=True),
             "pill_none": base + Style(color=config["theme.text_muted"]),

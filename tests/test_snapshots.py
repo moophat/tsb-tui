@@ -186,16 +186,17 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
     asyncio.run(check())
 
 
-@pytest.mark.parametrize("size", SIZES, ids=lambda s: f"{s[0]}x{s[1]}")
-def test_t1c_the_terminal_with_coloured_output_shows_the_scheme(size, serve, wait_until, shoot,
-                                                                 snapshot_dir) -> None:
-    """Phase 1: T1c, state of T1 with a coloured Linux host in front. The canvas paints its background:
-    every snapshot SVG has rects filled with theme.bg (#0a0a0a) inside the canvas's columns (right of
-    the rail). The prompt text and a coloured cell's fill assert content.
+def _shoot_t1c(monkeypatch, serve, wait_until, shoot, snapshot_dir, size, *, env: dict[str, str],
+               stem: str) -> tuple[list[str], str]:
+    """Drive the T1c state (T1 with the coloured Linux host in front) under `env`'s look and shoot it.
 
-    fails today: the canvas paints no background, so no rects sit under it."""
+    One body shared by phase 1's tsb-default picture and phase 3's per-scheme pictures: the look is set
+    in the environment the app reads at start-up (`TSB_TUI_THEME_*`), so no two callers copy the state
+    and drift. Returns the screen lines and the SVG text."""
+    for key, value in env.items():
+        monkeypatch.setenv("TSB_TUI_" + key.upper().replace(".", "_"), value)
 
-    async def check() -> None:
+    async def check() -> tuple[list[str], str]:
         serve_app, url = serve(InputRecordingApp())
         first, second, third, broken = named_sessions(
             url, serve_app, "infra-db-02", "rtr-core-01", "k8s-node-07", "fw-edge-01", cols=132, rows=40)
@@ -215,20 +216,126 @@ def test_t1c_the_terminal_with_coloured_output_shows_the_scheme(size, serve, wai
                                  list(app.screen._compositor.render_strips())[-1].text if size[0] - 4 < 132 else True,
                                  "the row to draw the range")
                 await pilot.pause(0.2)
-                lines = shoot(app, "T1c-terminal-colour", size).splitlines()
+                lines = shoot(app, stem, size).splitlines()
+                svg = (snapshot_dir / f"{stem}-{size[0]}x{size[1]}.svg").read_text(encoding="utf-8")
+                return lines, svg
 
-                # Content assertions: the T1c state's prompt and the ANSI swatch are drawn.
-                assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
-                assert "normal 0-7" in "\n".join(lines), "the swatch is not drawn"
-                # The canvas paints its own background: rects filled with theme.bg (#0a0a0a) sit under
-                # the canvas's columns (right of the rail), never as a full-window overlay.
-                svg = (snapshot_dir / f"T1c-terminal-colour-{size[0]}x{size[1]}.svg").read_text(encoding="utf-8")
-                bg_rects = re.findall(r'<rect fill="#0a0a0a" x="([0-9.]+)"', svg)
-                assert bg_rects, "no rect filled with theme.bg is under the canvas"
-                assert min(float(x) for x in bg_rects) >= 40, (
-                    "a theme.bg rect starts left of the rail, so it is a full-window overlay, not the canvas")
+    return asyncio.run(check())
 
-    asyncio.run(check())
+
+@pytest.mark.parametrize("size", SIZES, ids=lambda s: f"{s[0]}x{s[1]}")
+def test_t1c_the_terminal_with_coloured_output_shows_the_scheme(size, monkeypatch, serve, wait_until, shoot,
+                                                                 snapshot_dir) -> None:
+    """Phase 1: T1c, state of T1 with a coloured Linux host in front. The canvas paints its background:
+    every snapshot SVG has rects filled with theme.bg (#0a0a0a) inside the canvas's columns (right of
+    the rail). The prompt text and a coloured cell's fill assert content.
+
+    fails today: the canvas paints no background, so no rects sit under it."""
+
+    lines, svg = _shoot_t1c(monkeypatch, serve, wait_until, shoot, snapshot_dir, size,
+                            env={"theme.term.scheme": "tsb-default"}, stem="T1c-terminal-colour")
+
+    # Content assertions: the T1c state's prompt and the ANSI swatch are drawn.
+    assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+    assert "normal 0-7" in "\n".join(lines), "the swatch is not drawn"
+    # The canvas paints its own background: rects filled with theme.bg (#0a0a0a) sit under
+    # the canvas's columns (right of the rail), never as a full-window overlay.
+    bg_rects = re.findall(r'<rect fill="#0a0a0a" x="([0-9.]+)"', svg)
+    assert bg_rects, "no rect filled with theme.bg is under the canvas"
+    assert min(float(x) for x in bg_rects) >= 40, (
+        "a theme.bg rect starts left of the rail, so it is a full-window overlay, not the canvas")
+
+
+# The six third-party schemes the design draws T1c with (design §5). The chrome is terracotta, whose
+# `surface` is #191919: the rail must keep it (ruling 2: the chrome and the scheme do not move each other).
+T1C_SCHEMES = ("dracula", "nord", "solarized-dark", "solarized-light", "catppuccin-mocha", "one-half-dark")
+TERRACOTTA_SURFACE = "#191919"
+# The colours are asserted from the shipped files, never the design's aggregator copies (phase 2's cross-check
+# listed where they differ); `parse_scheme` on the packaged file is the ground truth.
+_SHIPPED = Path(__file__).resolve().parents[1] / "tsb_tui" / "schemes"
+
+
+@pytest.mark.parametrize("slug", T1C_SCHEMES)
+@pytest.mark.parametrize("size", ((65, 30), (120, 40)), ids=lambda s: f"{s[0]}x{s[1]}")
+def test_t1c_scheme_colours_reach_the_canvas_and_leave_the_chrome(slug, size, monkeypatch, serve, wait_until,
+                                                                  shoot, snapshot_dir) -> None:
+    """Phase 3: T1c on terracotta with each design scheme. The session paints the scheme: the canvas's
+    background rects are the scheme's `background`, a red cell's fill is the scheme's `ansi[1]`, and the
+    rail keeps terracotta's `surface` (ruling 2: the chrome does not move with the scheme).
+
+    fails today: `theme.term.scheme` is an unknown key, so start-up refuses the environment."""
+    from tsb_tui.theme_files import parse_scheme
+
+    scheme = parse_scheme(_SHIPPED / f"{slug}.json")
+    lines, svg = _shoot_t1c(monkeypatch, serve, wait_until, shoot, snapshot_dir, size,
+                            env={"theme.name": "terracotta", "theme.term.scheme": slug},
+                            stem=f"T1c-scheme-{slug}")
+
+    assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+    assert "normal 0-7" in "\n".join(lines), "the swatch is not drawn"
+
+    # The canvas's background is the scheme's, right of the rail, never a full-window overlay.
+    bg_rects = re.findall(rf'<rect fill="{scheme.background}" x="([0-9.]+)"', svg)
+    assert bg_rects, f"no rect filled with {slug}'s background ({scheme.background}) is under the canvas"
+    assert min(float(x) for x in bg_rects) >= 40, (
+        f"a {slug}-background rect starts left of the rail, so it is a full-window overlay")
+
+    # A red cell (ANSI 1) carries the scheme's red, as the CSS fill of its text run.
+    fills = set(re.findall(r"fill: (#[0-9a-f]{6})", svg))
+    assert scheme.ansi[1] in fills, f"no text run carries {slug}'s ansi[1] ({scheme.ansi[1]})"
+
+    # The rail is terracotta's: a rect under the rail columns keeps theme.surface.
+    rail_rects = re.findall(r'<rect fill="(#[0-9a-f]{6})" x="([0-9.]+)"', svg)
+    assert any(fill == TERRACOTTA_SURFACE and float(x) < 40 for fill, x in rail_rects), (
+        f"the rail lost terracotta's surface ({TERRACOTTA_SURFACE}) with {slug}")
+
+
+# The five packaged chrome themes, each shot with the scheme its own file suggests (the `scheme` key).
+# ansi16 is not shipped yet, so the gallery is these five.
+GALLERY_THEMES = ("terracotta", "paper", "contrast", "nord", "dracula")
+_THEMES_DIR = Path(__file__).resolve().parents[1] / "tsb_tui" / "themes"
+
+
+@pytest.mark.parametrize("theme_id", GALLERY_THEMES)
+@pytest.mark.parametrize("size", ((65, 30), (120, 40)), ids=lambda s: f"{s[0]}x{s[1]}")
+def test_the_gallery_pictures_each_packaged_theme_with_its_suggested_scheme(theme_id, size, monkeypatch, serve,
+                                                                            wait_until, shoot, snapshot_dir) -> None:
+    """The gallery (design §4): T1c for each packaged chrome theme with the scheme its file suggests, at 65x30 and
+    120x40. The chrome is the theme's — the rail keeps its `surface`, the status row's pill ("you type", the typist in
+    T1c) keeps its `accent` — and the canvas paints the scheme's `background`; the text holds T1c's prompt and the
+    rail's chips, so a picture that is only a colour swatch, with no session drawn, fails. The two picks are
+    independent (ruling 2): the theme colours the chrome, the scheme colours the session, neither moves the other.
+
+    fails today: on `main` `theme.name` selects nothing and `theme.term.scheme` is unknown, so start-up refuses the
+    environment and no theme is painted."""
+    from tsb_tui.theme_files import parse_scheme, parse_theme
+
+    theme = parse_theme(_THEMES_DIR / f"{theme_id}.toml")
+    slug = theme.scheme
+    scheme = parse_scheme(_SHIPPED / f"{slug}.json")
+    surface, accent = theme.roles["surface"], theme.roles["accent"]
+
+    lines, svg = _shoot_t1c(monkeypatch, serve, wait_until, shoot, snapshot_dir, size,
+                            env={"theme.name": theme_id, "theme.term.scheme": slug},
+                            stem=f"gallery-{theme_id}-{slug}-T1c")
+
+    # The text is T1c's: the prompt beside the rail, and the chips as the T1 test asserts (test_snapshots.py:161-166).
+    assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+    assert _chip_rows(lines) == ["1●◂", "2◆", "3◆"], _chip_rows(lines)
+
+    # The canvas paints the scheme's background, right of the rail, never a full-window overlay.
+    bg_rects = re.findall(rf'<rect fill="{scheme.background}" x="([0-9.]+)"', svg)
+    assert bg_rects, f"no rect filled with {slug}'s background ({scheme.background}) is under the canvas"
+    assert min(float(x) for x in bg_rects) >= 40, (
+        f"a {slug}-background rect starts left of the rail, so it is a full-window overlay")
+
+    # The chrome is the theme's: a rect under the rail keeps its `surface`, and the status row's pill keeps its
+    # `accent` (the "you type" pill, at the row's left). Neither follows the scheme.
+    rect_fills = re.findall(r'<rect fill="(#[0-9a-f]{6})" x="([0-9.]+)"', svg)
+    assert any(fill == surface and float(x) < 40 for fill, x in rect_fills), (
+        f"the rail lost {theme_id}'s surface ({surface})")
+    assert any(fill == accent and float(x) < 40 for fill, x in rect_fills), (
+        f"the status row's pill lost {theme_id}'s accent ({accent})")
 
 
 @pytest.mark.parametrize("size", SIZES, ids=lambda s: f"{s[0]}x{s[1]}")

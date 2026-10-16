@@ -89,7 +89,7 @@ class StalePanel(Vertical):
                  background: $surface; padding: 0 1; }
     StalePanel .stale-title { text-style: bold; }
     StalePanel Choice { height: auto; }
-    StalePanel Choice:hover { background: $surface-lighten-1; }
+    StalePanel Choice:hover { background: $surface-3; }
     StalePanel .stale-note { color: $text-muted; }
     StalePanel .stale-refused { color: $warning; }
     """
@@ -167,7 +167,7 @@ class QuietBox(Vertical):
     QuietBox .quiet-title { text-style: bold; }
     QuietBox Horizontal { height: 1; }
     QuietBox Choice { width: auto; margin-right: 2; }
-    QuietBox Choice:hover { background: $surface-lighten-1; }
+    QuietBox Choice:hover { background: $surface-3; }
     """
 
     def __init__(self, terminal: Any) -> None:
@@ -373,7 +373,7 @@ class AlertPopup(Vertical):
     AlertPopup .alert-title { text-style: bold; }
     AlertPopup Horizontal { height: 1; }
     AlertPopup Choice { width: auto; margin-right: 2; }
-    AlertPopup Choice:hover { background: $surface-lighten-1; }
+    AlertPopup Choice:hover { background: $surface-3; }
     """
 
     def __init__(self, alert: Alert) -> None:

@@ -408,7 +408,7 @@ class Sidebar(Widget):
             "title": base + Style(bold=True),
             "close": base + Style(color=muted),
             "group": base + Style(color=muted, bold=True),
-            "hairline": base + Style(color=config["theme.border"]),
+            "hairline": base + Style(color=config["theme.border_on_surface"]),
             "mark": base + Style(color=accent, bold=True),
             "num": base + Style(color=muted),
             "num_front": base + Style(color=accent, bold=True),
@@ -420,14 +420,14 @@ class Sidebar(Widget):
             "who_unreachable": base + Style(color=muted),
             "who_ended": base + Style(color=config["theme.danger"]),
             "warn": base + Style(color=config["theme.warn"]),
-            "rec": base + Style(color=config["theme.danger"]),
+            "rec": base + Style(color=config["theme.rec_list"]),
             "alert": base + Style(color=config["theme.danger"], bold=True),
             "toggle": base + Style(color=muted),
             "toggle_on": base + Style(color=accent, bold=True),
             "filter": base,
             "button": base + Style(color=muted),
         }
-        self._border = base + Style(color=config["theme.border"])
+        self._border = base + Style(color=config["theme.border_on_surface"])
         self._glyph_set = glyphs.check(config["glyphs.set"])
         self._side = config["rail.side"]
         self._leader = leader

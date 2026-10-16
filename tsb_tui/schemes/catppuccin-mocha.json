@@ -1,0 +1,32 @@
+{
+  "name": "Catppuccin Mocha",
+  "variant": "dark",
+  "ansi": [
+    "#45475a",
+    "#f38ba8",
+    "#a6e3a1",
+    "#f9e2af",
+    "#89b4fa",
+    "#f5c2e7",
+    "#94e2d5",
+    "#bac2de",
+    "#585b70",
+    "#f38ba8",
+    "#a6e3a1",
+    "#f9e2af",
+    "#89b4fa",
+    "#f5c2e7",
+    "#94e2d5",
+    "#a6adc8"
+  ],
+  "foreground": "#cdd6f4",
+  "background": "#1e1e2e",
+  "cursor": "#f5e0dc",
+  "selectionBackground": "#585b70",
+  "source": {
+    "origin": "https://github.com/catppuccin/windows-terminal@4d8bb2f00fb86927a98dd3502cdec74a76d25d7b:mocha.json",
+    "author": "Catppuccin",
+    "license": "MIT",
+    "url": "https://github.com/catppuccin/windows-terminal"
+  }
+}

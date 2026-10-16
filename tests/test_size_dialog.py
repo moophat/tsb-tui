@@ -57,6 +57,7 @@ def test_the_typist_asks_for_the_window_minus_the_chrome_and_the_answer_shows_wi
             screen = await attached(pilot, app, session_id, wait_until)
             state = screen.pump.state
             dialog = await _open_size(pilot, app, wait_until)
+            assert dialog.query_one("#size-panel").styles.border_top[1].hex.lower() == app.cfg["theme.frame"]  # fails today: $primary is the accent
 
             ask = dialog.query_one("#ask", Button)
             assert str(ask.label) == "Ask for 116×29", "the window minus the rail (4) and the status row (1)"

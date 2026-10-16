@@ -1,0 +1,32 @@
+{
+  "name": "Ros\u00e9 Pine Dawn",
+  "variant": "light",
+  "ansi": [
+    "#f2e9e1",
+    "#b4637a",
+    "#286983",
+    "#ea9d34",
+    "#56949f",
+    "#907aa9",
+    "#d7827e",
+    "#575279",
+    "#797593",
+    "#b4637a",
+    "#286983",
+    "#ea9d34",
+    "#56949f",
+    "#907aa9",
+    "#d7827e",
+    "#575279"
+  ],
+  "foreground": "#575279",
+  "background": "#faf4ed",
+  "cursor": "#9893a5",
+  "selectionBackground": "#dfdad9",
+  "source": {
+    "origin": "https://github.com/rose-pine/windows-terminal@89e1a277e4ac10e06f33b13cddabde3c42d8d411:rose-pine-dawn.scheme.json",
+    "author": "Ros\u00e9 Pine",
+    "license": "MIT",
+    "url": "https://github.com/rose-pine/windows-terminal"
+  }
+}

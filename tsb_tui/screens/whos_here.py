@@ -74,7 +74,7 @@ class WhosHereScreen(ModalScreen[None]):
         width: 100%;
         max-width: 90;
         height: auto;
-        border: round $primary;
+        border: round $frame;
         background: $surface;
         padding: 0 1;
     }

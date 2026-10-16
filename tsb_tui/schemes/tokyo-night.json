@@ -1,0 +1,34 @@
+{
+  "name": "Tokyo Night",
+  "variant": "dark",
+  "ansi": [
+    "#414868",
+    "#f7768e",
+    "#41b59b",
+    "#e0af68",
+    "#7ba2f3",
+    "#bb9af7",
+    "#2ccee9",
+    "#c0caf5",
+    "#414868",
+    "#f7768e",
+    "#41b59c",
+    "#e0af68",
+    "#7ba2f3",
+    "#bb9af7",
+    "#2ac4df",
+    "#c0caf5"
+  ],
+  "foreground": "#bbc2e0",
+  "background": "#1b2031",
+  "cursor": "#c0caf5",
+  "cursorText": "#28b9d2",
+  "selectionBackground": "#323955",
+  "selectionForeground": "#c8d2ff",
+  "source": {
+    "origin": "https://github.com/enkia/tokyo-night-vscode-theme@7c0f11eaef322f293621ca7befe462214b7ea468:tokyo-night.itermcolors",
+    "author": "Enkia",
+    "license": "MIT",
+    "url": "https://github.com/enkia/tokyo-night-vscode-theme"
+  }
+}

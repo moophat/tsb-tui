@@ -28,7 +28,13 @@ build-backend = "setuptools.build_meta"
 include = ["tsb_tui*"]
 
 [tool.setuptools.package-data]
-tsb_tui = ["config_default.toml", "drive/GUIDE.md"]
+tsb_tui = [
+    "config_default.toml",
+    "drive/GUIDE.md",
+    "schemes/*.json",
+    "schemes/THIRD_PARTY_SCHEMES.md",
+    "themes/*.toml",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

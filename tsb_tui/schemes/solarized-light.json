@@ -1,0 +1,31 @@
+{
+  "name": "Solarized Light",
+  "variant": "light",
+  "ansi": [
+    "#eee8d5",
+    "#dc322f",
+    "#859900",
+    "#b58900",
+    "#268bd2",
+    "#d33682",
+    "#2aa198",
+    "#073642",
+    "#fdf6e3",
+    "#cb4b16",
+    "#93a1a1",
+    "#839496",
+    "#657b83",
+    "#6c71c4",
+    "#586e75",
+    "#002b36"
+  ],
+  "foreground": "#657b83",
+  "background": "#fdf6e3",
+  "cursor": "#586e75",
+  "source": {
+    "origin": "https://github.com/altercation/solarized@62f656a02f93c5190a8753159e34b385588d5ff3:xresources/solarized",
+    "author": "Ethan Schoonover",
+    "license": "MIT",
+    "url": "https://github.com/altercation/solarized"
+  }
+}

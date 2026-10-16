@@ -155,7 +155,7 @@ class Rail(Widget):
             "need": base + Style(color=config["theme.warn"], bold=True),
             "alert": base + Style(color=config["theme.danger"], bold=True),
             "count_zero": base + Style(color=faint),
-            "hairline": base + Style(color=config["theme.border"]),
+            "hairline": base + Style(color=config["theme.border_on_surface"]),
             "num": base + Style(color=muted),
             "num_front": base + Style(color=accent, bold=True),
             "who_me": base + Style(color=accent),
@@ -171,7 +171,7 @@ class Rail(Widget):
             "plus": base,
             "edge": base + Style(color=accent),
         }
-        self._border = base + Style(color=config["theme.border"])
+        self._border = base + Style(color=config["theme.border_on_surface"])
         self._glyph_set = glyphs.check(config["glyphs.set"])
         self._side = config["rail.side"]
         self.rail_width = int(config["rail.width"])

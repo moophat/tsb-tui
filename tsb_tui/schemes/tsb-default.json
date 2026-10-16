@@ -1,0 +1,20 @@
+{
+  "name": "TSB Default",
+  "variant": "dark",
+  "ansi": [
+    "#2b2b2b", "#e5534b", "#8cbf68", "#d9b25e", "#6f9fd8", "#c88bcb", "#5eb8b0", "#c9c9c9",
+    "#7d7d7d", "#ff7268", "#a8d98a", "#f1cf7d", "#91b9ea", "#ddabdf", "#84d3cb", "#f4f4f4"
+  ],
+  "foreground": "#e6e6e6",
+  "background": "#0a0a0a",
+  "cursor": "#e56a4a",
+  "cursorText": "#0a0a0a",
+  "selectionBackground": "#311b16",
+  "selectionForeground": "#ededed",
+  "source": {
+    "origin": "tsb-core tui/tsb_tui/config_default.toml [theme.term] at 2e163ff, background from theme.bg",
+    "author": "TSB",
+    "license": "TSB's own (undecided, plan.md §5.3)",
+    "url": ""
+  }
+}

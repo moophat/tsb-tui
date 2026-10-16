@@ -51,12 +51,13 @@ def _banner(app) -> str:
     return " ".join(" ".join(rows[:3]).split())
 
 
-def test_the_holder_gets_the_dialog_with_the_texts_as_sent(serve, wait_until) -> None:
+def test_the_holder_gets_the_dialog_with_the_texts_as_sent(serve, wait_until, monkeypatch) -> None:
     """Rule 18: the prompt's text and each choice's text are shown exactly as the core sent them, so no
     surface softens the warning; the header says what happened; the note says the choice is TSB's own."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
+        monkeypatch.setenv("TSB_TUI_THEME_SURFACE_3", "#123456")
         app = TsbTuiApp(url)
         async with app.run_test(size=(260, 40)) as pilot:
             screen, _ = await _holder_with_dialog(pilot, app, wait_until, serve_app, url)
@@ -75,6 +76,9 @@ def test_the_holder_gets_the_dialog_with_the_texts_as_sent(serve, wait_until) ->
             assert "TSB: lost output - the screen may be stale until a choice is made." in _banner(app)
             assert "nobody's input goes through until you choose" in row
             assert "1-4 choose" in row
+            await pilot.hover("#stale-choice-0")
+            await pilot.pause()
+            assert panel.query_one("#stale-choice-0").styles.background.hex.lower() == "#123456"  # fails today: $surface-lighten-1 is derived from surface and ignores the knob
 
     asyncio.run(_check())
 

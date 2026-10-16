@@ -1,0 +1,29 @@
+# Chrome theme "terracotta" — the shipped default (design §2.8, Tu's palette; 9remote's dark tokens).
+# A chrome theme is a named set of the theme.* role knobs. It colours the rail, the sidebar, the status row and the
+# dialogs. The terminal's own colours come from a separate scheme file (schemes/*.json); `scheme` below is only the
+# pairing the picker suggests.
+[theme]
+name = "terracotta"
+variant = "dark"
+scheme = "tsb-default"
+bg          = "#0a0a0a"
+surface     = "#191919"
+surface_2   = "#222222"
+surface_3   = "#2a2a2a"
+border      = "#313131"
+border_on_surface = "#3e3e3e"
+text        = "#ededed"
+text_muted  = "#a3a3a3"
+text_faint  = "#858585"   # was #7a7a7a: 4.0:1 on surface, where the rail and sidebar draw it; #858585 is 4.6:1
+accent      = "#e56a4a"
+accent_hot  = "#ff570a"
+accent_soft = "#311b16"
+on_accent   = "#0a0a0a"
+steel       = "#7aa7d6"
+ok          = "#7fc27f"
+warn        = "#e5b34a"
+danger      = "#ff5c7a"
+# Roles that need code before they are knobs (builder spec §B3); the value each theme would give them:
+frame       = "#5a5a5a"   # neutral dialog frames (today $primary = accent)
+rec         = "#ff5c7a"   # the status row's ● REC
+rec_list    = "#a3a3a3"   # REC on sidebar and fleet rows

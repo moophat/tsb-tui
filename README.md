@@ -11,6 +11,11 @@ The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO]
     tsb_tui/app.py              the Textual App: one client, a stack of screens
     tsb_tui/config.py           the knobs: packaged defaults, a profile, the TOML file, `TSB_TUI_*` and `--set`
     tsb_tui/config_default.toml every knob and its default (a knob no code reads is refused at load)
+    tsb_tui/theme_files.py      the two catalogues: chrome theme TOML files and terminal colour scheme JSON
+    tsb_tui/themes/             the packaged chrome themes (terracotta, paper, contrast, nord, dracula), one
+                                `[theme]` table of roles per file
+    tsb_tui/schemes/            the packaged terminal colour schemes, one JSON per file, and THIRD_PARTY_SCHEMES.md
+                                (author, repository, commit, path, SPDX, licence text for each shipped scheme)
     tsb_tui/_transport.py       the transport exceptions the published client re-exports (v0.2)
     tsb_tui/screens/login.py    TSB's own login (decision 5.34): username + password
     tsb_tui/screens/new_session.py   target id, connection choice; the size a session is created with
@@ -206,6 +211,34 @@ Every state a session's frames put it in is on screen, never only in a log:
   `--set key=value`, in that order of precedence. `size.auto_request` defaults on (OPEN-1 was ruled on 2026-10-12:
   a TUI's auto size is the one that tells the session what fits the window); the phone, drive and harness profiles
   keep it off. `input.guard` is on in every profile too (D52, same day).
+
+## Themes and colours
+
+Two independent picks (ruling 2 — a theme never derives a scheme, nor a scheme a theme):
+
+* **`theme.name`** picks the chrome — the rail, the sidebar, the status row and the dialogs. Packaged ids:
+  `terracotta` (the default), `paper`, `contrast`, `nord`, `dracula`.
+* **`theme.term.scheme`** picks the session's colours. The list is `tsb_tui/schemes/` (one JSON per scheme;
+  `THIRD_PARTY_SCHEMES.md` names each one's author, repository, commit, path, SPDX and licence). `tsb-default`
+  is TSB's own palette.
+
+To pick a look: `--set theme.name=nord --set theme.term.scheme=nord`, the env `TSB_TUI_THEME_NAME` and
+`TSB_TUI_THEME_TERM_SCHEME`, or the two keys in `config.toml`. They are independent: one does not move the other.
+
+Your own files: `$XDG_CONFIG_HOME/tsb-tui/themes/<id>.toml` (one `[theme]` table of roles; a role the file
+leaves out comes from the packaged defaults, terracotta) and `$XDG_CONFIG_HOME/tsb-tui/schemes/<slug>.json`
+(the same shape as `tsb_tui/schemes/tsb-default.json`). A user file named like a packaged one replaces it.
+
+Precedence (TT12):
+
+* names: packaged default < profile < config file < `TSB_TUI_*` < `--set`;
+* roles: packaged default < the named theme file < profile < config file < env < `--set`; a partial theme takes
+  its missing roles from the packaged defaults.
+
+`theme.name` used to be only a label. A value that names no theme now stops start-up, listing the themes found
+in both folders (R6). The scheme's colours are overridable: `theme.term.fg`, `theme.term.colors` (16 hex) and
+`theme.term.bg` override the scheme, and `theme.term.cursor_colour` (`role` keeps TSB's accent/steel, `scheme`
+takes the scheme's cursor).
 
 ## Install
 

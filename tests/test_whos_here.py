@@ -118,6 +118,8 @@ def test_the_dialog_frames_its_buttons_marks_remove_as_destructive_selects_neutr
                     "remove": "[ Remove selected… ]"}  # fails today: the labels have no frames
                 assert _button(dialog, "remove").variant == "error"
                 assert {_button(dialog, a).variant for a in ("take", "hand", "aside")} == {"default"}
+                frame = dialog.query_one("#whos-panel").styles.border_top[1].hex.lower()
+                assert frame == app.cfg["theme.frame"] and frame != app.cfg["theme.accent"]  # fails today: $primary is the accent
 
                 table = dialog.query_one(DataTable)
                 cursor = table.get_component_styles("datatable--cursor").background

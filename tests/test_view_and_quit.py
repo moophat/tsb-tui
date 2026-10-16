@@ -102,6 +102,8 @@ def test_all_keys_about_and_settings_open_from_the_table_and_say_what_they_are(s
                 await screen.run_action_id(action_id)
                 await wait_until(pilot, lambda: isinstance(app.screen, TextScreen)
                                  and app.screen.query("#text-body") and _body(app).strip(), f"{action_id} to open")
+                if action_id == "settings":
+                    assert app.screen.query_one(".panel").styles.border_top[1].hex.lower() == app.cfg["theme.frame"]  # fails today: $primary is the accent
                 if action_id == "about":
                     text = _body(app)
                     assert _pinned_commit()[:7] in text, f"About does not name the engine's pinned commit: {text}"

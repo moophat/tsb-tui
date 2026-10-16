@@ -157,7 +157,7 @@ class TsbTuiApp(App):
     }
     #login-panel, #new-session-panel, #attach-confirm-panel {
         width: 60;
-        border: round $primary;
+        border: round $frame;
         padding: 1 2;
     }
     """
@@ -169,8 +169,12 @@ class TsbTuiApp(App):
         # `ConfigError`, `EngineError` or `ThemeError`.
         resolved = cfg if cfg is not None else config_mod.load()
         engine = load_engine(resolved)
-        palette = TermPalette(resolved)
-        theme = build_theme(resolved)
+        palette = TermPalette(resolved, resolved.scheme)
+        theme = build_theme(resolved, resolved.chrome)
+        # TT30: Textual reads the CSS variables inside `App.__init__` and refuses at start-up a
+        # stylesheet naming a variable the active theme lacks, so the role variables are ready as an
+        # attribute before `super().__init__()`; the TSB theme only becomes active in `on_mount`.
+        self._theme_variables = dict(theme.variables)
         # `outer` hands colour indexes to the operator's own terminal, so Textual must not convert
         # them to colours of its own on the way out.
         super().__init__(ansi_color=resolved["theme.term.palette"] == PALETTE_OUTER)
@@ -199,6 +203,11 @@ class TsbTuiApp(App):
         # Who is told when a session's model changes: each line of an attachment's event log, a poll changing a
         # record, a session leaving the screen. `tsb-tui drive` is the one listener; nothing here reads the screen.
         self.taps: list[Callable[[str, str, Any], None]] = []
+
+    def get_theme_variable_defaults(self) -> dict[str, str]:
+        """TT30: Textual's own defaults, updated with the role variables of the resolved config, so
+        a stylesheet naming `$frame` parses before the TSB theme is active in `on_mount`."""
+        return {**super().get_theme_variable_defaults(), **self._theme_variables}
 
     def tapped(self, session_id: str, kind: str, detail: Any = None) -> None:
         """Tell every tap that something changed for `session_id`. Runs on the UI thread, in the middle of

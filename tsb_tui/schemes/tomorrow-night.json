@@ -1,0 +1,34 @@
+{
+  "name": "Tomorrow Night",
+  "variant": "dark",
+  "ansi": [
+    "#000000",
+    "#cc6666",
+    "#b5bd68",
+    "#f0c674",
+    "#81a2be",
+    "#b294bb",
+    "#8abeb7",
+    "#ffffff",
+    "#000000",
+    "#cc6666",
+    "#b5bd68",
+    "#f0c674",
+    "#81a2be",
+    "#b294bb",
+    "#8abeb7",
+    "#ffffff"
+  ],
+  "foreground": "#c5c8c6",
+  "background": "#1d1f21",
+  "cursor": "#c5c8c6",
+  "cursorText": "#1d1f21",
+  "selectionBackground": "#373b41",
+  "selectionForeground": "#c5c8c6",
+  "source": {
+    "origin": "https://github.com/chriskempson/tomorrow-theme@ccf6666d888198d341b26b3a99d0bc96500ad503:iTerm2/Tomorrow Night.itermcolors",
+    "author": "Chris Kempson",
+    "license": "MIT",
+    "url": "https://github.com/chriskempson/tomorrow-theme"
+  }
+}

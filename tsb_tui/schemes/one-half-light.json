@@ -1,0 +1,30 @@
+{
+  "name": "One Half Light",
+  "variant": "light",
+  "ansi": [
+    "#383a42",
+    "#e45649",
+    "#50a14f",
+    "#c18401",
+    "#0184bc",
+    "#a626a4",
+    "#0997b3",
+    "#fafafa",
+    "#383a42",
+    "#e45649",
+    "#50a14f",
+    "#c18401",
+    "#0184bc",
+    "#a626a4",
+    "#0997b3",
+    "#fafafa"
+  ],
+  "foreground": "#383a42",
+  "background": "#fafafa",
+  "source": {
+    "origin": "https://github.com/sonph/onehalf@75eb2e97acd74660779fed8380989ee7891eec56:windowsterminal/OneHalfLight.json",
+    "author": "Son A. Pham",
+    "license": "MIT",
+    "url": "https://github.com/sonph/onehalf"
+  }
+}

@@ -406,7 +406,7 @@ class FleetView(Widget):
         self._styles: dict[str, Style] = {
             "blank": base, "text": base, "front": base + Style(color=accent), "muted": base + Style(color=muted),
             "title": base + Style(bold=True), "group": base + Style(color=muted, bold=True),
-            "header": base + Style(color=muted), "hairline": base + Style(color=config["theme.border"]),
+            "header": base + Style(color=muted), "hairline": base + Style(color=config["theme.border_on_surface"]),
             "mark": base + Style(color=accent, bold=True), "tab_on": base + Style(color=accent, bold=True),
             "tab": base + Style(color=muted), "toggle": base + Style(color=muted),
             "toggle_on": base + Style(color=accent, bold=True), "filter": base,
@@ -415,7 +415,7 @@ class FleetView(Widget):
             "who_asks": base + Style(color=config["theme.warn"], bold=True),
             "who_unreachable": base + Style(color=muted), "who_ended": base + Style(color=config["theme.danger"]),
             "warn": base + Style(color=config["theme.warn"]), "ok": base + Style(color=config["theme.ok"]),
-            "danger": base + Style(color=config["theme.danger"]), "rec": base + Style(color=config["theme.danger"]),
+            "danger": base + Style(color=config["theme.danger"]), "rec": base + Style(color=config["theme.rec_list"]),
             "button": base + Style(color=muted),
         }
         self._glyph_set = glyphs.check(config["glyphs.set"])

@@ -35,7 +35,7 @@ border      = "#313131"
 border_on_surface = "#3e3e3e"
 text        = "#ededed"
 text_muted  = "#a3a3a3"
-text_faint  = "#7a7a7a"
+text_faint  = "#858585"   # was #7a7a7a: 4.0:1 on surface, where the rail and sidebar draw it; #858585 is 4.6:1
 accent      = "#e56a4a"
 accent_hot  = "#ff570a"
 accent_soft = "#311b16"
@@ -44,19 +44,28 @@ steel       = "#7aa7d6"
 ok          = "#7fc27f"
 warn        = "#e5b34a"
 danger      = "#ff5c7a"
+frame       = "#5a5a5a"   # neutral dialog frames (today $primary = accent)
+rec         = "#ff5c7a"   # the status row's ● REC
+rec_list    = "#a3a3a3"   # REC on sidebar and fleet rows
 
 [theme.term]
 palette  = "theme"
-# The canvas background: "scheme" takes the scheme's background (theme.bg until scheme files exist,
-# phase 3); "outer" keeps the terminal's own background (see-through); a #rrggbb hex is painted as given.
+# The canvas background: "scheme" takes the selected scheme's background; "outer" keeps the
+# terminal's own background (see-through); a #rrggbb hex is painted as given.
 bg       = "scheme"
-fg       = "#e6e6e6"
+# Default foreground: "" means the selected scheme's foreground (or, under palette="outer",
+# the outer terminal's own default); a hex overrides it.
+fg       = ""
 cursor_typist = "block"
 cursor_viewer = "underline"
-colors = [
-  "#2b2b2b", "#e5534b", "#8cbf68", "#d9b25e", "#6f9fd8", "#c88bcb", "#5eb8b0", "#c9c9c9",
-  "#7d7d7d", "#ff7268", "#a8d98a", "#f1cf7d", "#91b9ea", "#ddabdf", "#84d3cb", "#f4f4f4",
-]
+# Cursor colours: "role" uses TSB's accent/steel/on_accent roles (the default, ruling 6);
+# "scheme" uses the selected scheme's cursor/cursorText colours.
+cursor_colour = "role"
+# The terminal colour scheme: a file stem under tsb_tui/schemes/ (packaged) or
+# $XDG_CONFIG_HOME/tsb-tui/schemes/ (user). "tsb-default" is TSB's own palette.
+scheme = "tsb-default"
+# 16 ANSI colours: [] means "the scheme's"; a list of exactly 16 hex colours overrides.
+colors = []
 
 [glyphs]
 set = "unicode"
