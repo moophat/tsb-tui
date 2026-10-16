@@ -248,7 +248,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "keys.leader", "keys.leader_map.answer", "keys.leader_map.auto_size", "keys.leader_map.detach",
         "keys.leader_map.fleet", "keys.leader_map.new_session", "keys.leader_map.next",
         "keys.leader_map.prev", "keys.leader_map.size", "keys.leader_map.switch",
-        "keys.leader_map.take_back", "keys.leader_map.who",
+        "keys.leader_map.take_back", "keys.leader_map.theme", "keys.leader_map.who",
         "menu.open_on_leader_after_ms", "menu.search",
         "prompts.capture_unblocking", "prompts.input_guard_ms",
         "rail.chip_mark", "rail.chips", "rail.needs_you", "rail.needs_you_scope", "rail.phone", "rail.side",
@@ -296,6 +296,17 @@ def test_text_faint_passes_on_the_surface_the_chrome_draws_it_on() -> None:
     cfg = config.load(config_file=Path("/nonexistent"), environ={})
     assert cfg["theme.text_faint"] == "#858585"
 
+
+def test_the_default_roles_are_the_packaged_terracotta_roles() -> None:
+    """TT12: a theme file that lacks a role keeps the packaged default, and a partial theme's swatch
+    paints `Config.default_roles`. If that table drifted from the packaged theme, a partial theme would
+    paint colours no file carries, and its swatch would not match the chrome a switch to it produces."""
+    from tsb_tui.theme_files import packaged_dir, parse_theme
+
+    cfg = config.load(config_file=Path("/nonexistent"), environ={})
+    terracotta = parse_theme(packaged_dir("themes") / "terracotta.toml")
+    assert cfg.default_roles == {role: value.lower() for role, value in terracotta.roles.items()}, (
+        f"the packaged default roles are not the packaged theme's: {cfg.default_roles}")
 
 def test_the_env_name_maps_every_key_uniquely() -> None:
     """A collision in the `TSB_TUI_*` names would make one variable ambiguous."""

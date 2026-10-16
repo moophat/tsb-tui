@@ -45,6 +45,7 @@ from ..model.fleet import (
     WHO_OTHER,
     WHO_UNREACHABLE,
 )
+from ..theme import role_colours
 from .mouse import mouse_on, set_tip
 
 # What a click or a key on the sidebar asks the screen to do: `Sidebar.Command.name`.
@@ -397,37 +398,7 @@ class Sidebar(Widget):
 
     def __init__(self, config: Mapping, *, leader: str) -> None:
         super().__init__()
-        surface = config["theme.surface"]
-        base = Style(color=config["theme.text"], bgcolor=surface)
-        accent, muted, faint = config["theme.accent"], config["theme.text_muted"], config["theme.text_faint"]
-        self._styles: dict[str, Style] = {
-            "blank": base,
-            "text": base,
-            "front": base + Style(color=accent),
-            "muted": base + Style(color=muted),
-            "title": base + Style(bold=True),
-            "close": base + Style(color=muted),
-            "group": base + Style(color=muted, bold=True),
-            "hairline": base + Style(color=config["theme.border_on_surface"]),
-            "mark": base + Style(color=accent, bold=True),
-            "num": base + Style(color=muted),
-            "num_front": base + Style(color=accent, bold=True),
-            "who_me": base + Style(color=accent),
-            "who_other": base + Style(color=config["theme.steel"]),
-            "who_none": base + Style(color=faint),
-            "who_needs": base + Style(color=config["theme.warn"]),
-            "who_asks": base + Style(color=config["theme.warn"], bold=True),
-            "who_unreachable": base + Style(color=muted),
-            "who_ended": base + Style(color=config["theme.danger"]),
-            "warn": base + Style(color=config["theme.warn"]),
-            "rec": base + Style(color=config["theme.rec_list"]),
-            "alert": base + Style(color=config["theme.danger"], bold=True),
-            "toggle": base + Style(color=muted),
-            "toggle_on": base + Style(color=accent, bold=True),
-            "filter": base,
-            "button": base + Style(color=muted),
-        }
-        self._border = base + Style(color=config["theme.border_on_surface"])
+        self._build_styles(role_colours(config))
         self._glyph_set = glyphs.check(config["glyphs.set"])
         self._side = config["rail.side"]
         self._leader = leader
@@ -441,6 +412,45 @@ class Sidebar(Widget):
         self.sidebar_width = int(config["sidebar.width"])  # the columns it takes, the hairline included
         self._view = SidebarView((), (), 0)
         self._front_id: str | None = None
+
+    def _build_styles(self, roles: dict[str, str]) -> None:
+        """The sidebar's style table from the role colours (TT14): every colour is a role, so a theme
+        switch that rebuilds this table recolours every row without moving any role."""
+        base = Style(color=roles["text"], bgcolor=roles["surface"])
+        accent, muted, faint = roles["accent"], roles["text_muted"], roles["text_faint"]
+        self._styles: dict[str, Style] = {
+            "blank": base,
+            "text": base,
+            "front": base + Style(color=accent),
+            "muted": base + Style(color=muted),
+            "title": base + Style(bold=True),
+            "close": base + Style(color=muted),
+            "group": base + Style(color=muted, bold=True),
+            "hairline": base + Style(color=roles["border_on_surface"]),
+            "mark": base + Style(color=accent, bold=True),
+            "num": base + Style(color=muted),
+            "num_front": base + Style(color=accent, bold=True),
+            "who_me": base + Style(color=accent),
+            "who_other": base + Style(color=roles["steel"]),
+            "who_none": base + Style(color=faint),
+            "who_needs": base + Style(color=roles["warn"]),
+            "who_asks": base + Style(color=roles["warn"], bold=True),
+            "who_unreachable": base + Style(color=muted),
+            "who_ended": base + Style(color=roles["danger"]),
+            "warn": base + Style(color=roles["warn"]),
+            "rec": base + Style(color=roles["rec_list"]),
+            "alert": base + Style(color=roles["danger"], bold=True),
+            "toggle": base + Style(color=muted),
+            "toggle_on": base + Style(color=accent, bold=True),
+            "filter": base,
+            "button": base + Style(color=muted),
+        }
+        self._border = base + Style(color=roles["border_on_surface"])
+
+    def apply_theme(self, config: Mapping) -> None:
+        """A run-time look switch (B4): rebuild the table from the resolved roles and repaint."""
+        self._build_styles(role_colours(config))
+        self.refresh()
 
     # -- the model --
 

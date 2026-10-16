@@ -28,6 +28,7 @@ from model_frames import clients_frame as _clients_frame
 from prompt_support import NOW, iso, notice, validated
 from stub_server import create_owner_session, record_output
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.theme_picker import ThemePicker
 from tsb_tui.widgets.stale_banner import STALE_NOTICE
 from tsbc import _serve
 from workspace_support import fixture_login, named_sessions
@@ -336,6 +337,54 @@ def test_the_gallery_pictures_each_packaged_theme_with_its_suggested_scheme(them
         f"the rail lost {theme_id}'s surface ({surface})")
     assert any(fill == accent and float(x) < 40 for fill, x in rect_fills), (
         f"the status row's pill lost {theme_id}'s accent ({accent})")
+
+
+def test_a_switch_at_run_time_draws_the_picture_a_start_with_that_look_draws(serve, wait_until, shoot,
+                                                                            snapshot_dir) -> None:
+    """Phase 7 (B4, TT23): start on terracotta/tsb-default, open T1c, `apply_look("dracula", "dracula")`,
+    shoot `switched-dracula-dracula-T1c-120x40`. The canvas fills are Dracula's `background` and the rail's
+    fill Dracula's `surface` — the same picture phase 6's gallery shot of dracula/dracula draws, so a switch
+    at run time is what a start with that look draws.
+
+    fails today: no `apply_look`, so a run-time switch paints nothing."""
+    from tsb_tui.theme_files import parse_scheme, parse_theme
+
+    size = (120, 40)
+    dracula_scheme = parse_scheme(_SHIPPED / "dracula.json")
+    dracula_surface = parse_theme(_THEMES_DIR / "dracula.toml").roles["surface"]
+
+    async def check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        first, second, third, broken = named_sessions(
+            url, serve_app, "infra-db-02", "rtr-core-01", "k8s-node-07", "fw-edge-01", cols=132, rows=40)
+        serve_app.sessions[broken]["state"] = "unreachable"
+        record_output(serve_app, first, COLOUR)
+        with other_client(url, _serve.PEER, second), other_client(url, _serve.PEER, third):
+            app = TsbTuiApp(url)
+            async with app.run_test(size=size) as pilot:
+                screen = await fixture_login(app, pilot)
+                await _open_in_order(app, pilot, wait_until, screen, first, second, third)
+                screen.close_sidebar()
+                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                                 and screen.canvas.painted, "the rail to count")
+                await wait_until(pilot, lambda: "normal 0-7" in "".join(
+                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen")
+                app.apply_look("dracula", "dracula")
+                await pilot.pause(0.2)
+                lines = shoot(app, "switched-dracula-dracula-T1c", size).splitlines()
+                svg = (snapshot_dir / "switched-dracula-dracula-T1c-120x40.svg").read_text(encoding="utf-8")
+
+                assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+                bg_rects = re.findall(rf'<rect fill="{dracula_scheme.background}" x="([0-9.]+)"', svg)
+                assert bg_rects, (
+                    f"no rect filled with Dracula's background ({dracula_scheme.background}) is under the canvas")
+                assert min(float(x) for x in bg_rects) >= 40, (
+                    "a Dracula-background rect starts left of the rail, so it is a full-window overlay")
+                rail_rects = re.findall(r'<rect fill="(#[0-9a-f]{6})" x="([0-9.]+)"', svg)
+                assert any(fill == dracula_surface and float(x) < 40 for fill, x in rail_rects), (
+                    f"the rail lost Dracula's surface ({dracula_surface}) after the switch")
+
+    asyncio.run(check())
 
 
 @pytest.mark.parametrize("size", SIZES, ids=lambda s: f"{s[0]}x{s[1]}")
@@ -810,5 +859,144 @@ def test_f12_the_menu_takes_the_keys_and_says_how_to_use_it(size, serve, wait_un
             assert "keys → menu" in status and "Esc close" in status, status
             if size[0] >= 120:
                 assert "↑↓ choose" in status and "⏎ run" in status and "type to find" in status, status
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", ((120, 40), (200, 60)), ids=lambda s: f"{s[0]}x{s[1]}")
+def test_the_picker_over_T1c_shows_the_panel_and_the_previewed_scheme(size, monkeypatch, serve,
+                                                                       wait_until, shoot, snapshot_dir) -> None:
+    """Phase 8 (B5, TT23): T1c on terracotta/tsb-default with the picker open and the scheme highlight
+    moved to Solarized Dark, as the mock draws it (`tools/mock-picker.py`). The panel's frame sits in
+    the rightmost 54 columns; the canvas left of it is filled with Solarized Dark's `background`; the
+    rail keeps terracotta's `surface` (ruling 2); `✓` marks the terracotta and TSB Default rows and
+    `▸` the Solarized Dark row; the last line reads `keys → theme`.
+
+    fails today: no picker, so nothing draws the panel."""
+    from tsb_tui.theme_files import parse_scheme
+
+    scheme = parse_scheme(_SHIPPED / "solarized-dark.json")
+    for key, value in {"theme.name": "terracotta", "theme.term.scheme": "tsb-default"}.items():
+        monkeypatch.setenv("TSB_TUI_" + key.upper().replace(".", "_"), value)
+
+    async def check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        first, second, third, broken = named_sessions(
+            url, serve_app, "infra-db-02", "rtr-core-01", "k8s-node-07", "fw-edge-01", cols=132, rows=40)
+        serve_app.sessions[broken]["state"] = "unreachable"
+        record_output(serve_app, first, COLOUR)
+        with other_client(url, _serve.PEER, second), other_client(url, _serve.PEER, third):
+            app = TsbTuiApp(url)
+            async with app.run_test(size=size) as pilot:
+                screen = await fixture_login(app, pilot)
+                await _open_in_order(app, pilot, wait_until, screen, first, second, third)
+                screen.close_sidebar()
+                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                                 and screen.canvas.painted, "the rail to count")
+                await wait_until(pilot, lambda: "normal 0-7" in "".join(
+                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen")
+                await screen.run_action_id("theme")
+                await wait_until(pilot, lambda: isinstance(app.screen, ThemePicker), "the picker to open")
+                picker = app.screen
+                await wait_until(pilot, lambda: picker.query("#theme-schemes > Static"), "the lists to fill")
+                idx = [s.slug for s in picker._schemes].index("solarized-dark")
+                picker.set_highlight("schemes", idx)
+                await pilot.pause(0.2)
+                lines = shoot(app, "picker-T1c", size).splitlines()
+                svg = (snapshot_dir / f"picker-T1c-{size[0]}x{size[1]}.svg").read_text(encoding="utf-8")
+
+                px = size[0] - 54
+                assert "╭─" in lines[0] and lines[0].rstrip().endswith("╮"), (
+                    f"the panel's top border is not a full frame line: {lines[0]!r}")
+                # B5 and the CSS (`align: right top`): the panel docks at the right edge, so the session
+                # is drawn beside it. A centred panel covers the middle of the canvas a pick previews.
+                left = lines[0].index("╭")
+                assert left == px, (
+                    f"the panel is not docked at the right edge: its left border is at column {left}, "
+                    f"expected {px}")
+                assert lines[size[1] - 2].rstrip().endswith("╯"), (
+                    "the panel does not end one line above the status row")
+                # the panel background pins it to the rightmost 54 columns, above the status row
+                panel_rects = re.findall(
+                    rf'<rect fill="{TERRACOTTA_SURFACE}" x="([0-9.]+)" y="([0-9.]+)"', svg)
+                assert any(float(x) >= px and float(y) < size[1] - 1 for x, y in panel_rects), (
+                    f"the panel is not docked in the rightmost {54} columns")
+                bg_rects = re.findall(rf'<rect fill="{scheme.background}" x="([0-9.]+)"', svg)
+                assert bg_rects, (
+                    f"no rect filled with Solarized Dark's background ({scheme.background}) is under the canvas")
+                assert min(float(x) for x in bg_rects) >= 4, "a scheme-background rect starts left of the rail"
+                assert any(float(x) < px for x in bg_rects), "the canvas left of the panel did not preview the scheme"
+                rect_fills = re.findall(r'<rect fill="(#[0-9a-f]{6})" x="([0-9.]+)"', svg)
+                assert any(fill == TERRACOTTA_SURFACE and float(x) < 4 for fill, x in rect_fills), (
+                    f"the rail lost terracotta's surface ({TERRACOTTA_SURFACE})")
+                assert any("✓" in line and "terracotta" in line for line in lines), "no ✓ on the terracotta row"
+                assert any("✓" in line and "TSB Default" in line for line in lines), (
+                    "no ✓ on the TSB Default row")
+                assert any("▸" in line and "Solarized Dark" in line for line in lines), "no ▸ on Solarized Dark"
+                assert "keys → theme" in lines[-1], f"the last line: {lines[-1]!r}"
+
+    asyncio.run(check())
+
+
+def test_the_picker_on_the_phone_over_T1c(serve, monkeypatch, wait_until, shoot, snapshot_dir) -> None:
+    """Phase 9's picture (TT23): the picker at 65x30 with the Terminal colours tab active and Solarized
+    Dark highlighted, as the mock draws it (`png/mock-picker-terracotta-solarized-dark-65x30.png`). The
+    panel is the lower half beside the rail; the rail's fill is terracotta's `surface` on every row
+    (ruling 2: a scheme does not move the chrome); the canvas rows above the panel are filled with
+    Solarized Dark's background; the tab line reads `Chrome │ Terminal colours`; the last line reads
+    `keys → theme`.
+
+    fails today: at phone width the picker draws the laptop panel in the rightmost 54 columns, with no
+    tab line and both lists shown."""
+    from tsb_tui.theme_files import parse_scheme
+
+    scheme = parse_scheme(_SHIPPED / "solarized-dark.json")
+    for key, value in {"theme.name": "terracotta", "theme.term.scheme": "tsb-default"}.items():
+        monkeypatch.setenv("TSB_TUI_" + key.upper().replace(".", "_"), value)
+
+    async def check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        first, second, third, broken = named_sessions(
+            url, serve_app, "infra-db-02", "rtr-core-01", "k8s-node-07", "fw-edge-01", cols=132, rows=40)
+        serve_app.sessions[broken]["state"] = "unreachable"
+        record_output(serve_app, first, COLOUR)
+        with other_client(url, _serve.PEER, second), other_client(url, _serve.PEER, third):
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(65, 30)) as pilot:
+                screen = await fixture_login(app, pilot)
+                await _open_in_order(app, pilot, wait_until, screen, first, second, third)
+                screen.close_sidebar()
+                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                                 and screen.canvas.painted, "the rail to count")
+                await screen.run_action_id("theme")
+                await wait_until(pilot, lambda: isinstance(app.screen, ThemePicker), "the picker to open")
+                picker = app.screen
+                await wait_until(pilot, lambda: picker.query("#theme-themes > Static"), "the lists to fill")
+                idx = [s.slug for s in picker._schemes].index("solarized-dark")
+                picker.set_highlight("schemes", idx)
+                # `scroll_visible` animates; the highlighted row must be on screen before the picture.
+                await wait_until(pilot, lambda: any("▸" in s.text and "Solarized Dark" in s.text
+                                                    for s in app.screen._compositor.render_strips()),
+                                 "the Solarized Dark row to scroll into view")
+                lines = shoot(app, "picker-T1c", (65, 30)).splitlines()
+                svg = (snapshot_dir / "picker-T1c-65x30.svg").read_text(encoding="utf-8")
+
+                top = next(i for i, line in enumerate(lines) if "╭" in line)
+                assert top >= 15, f"the panel's top border is at row {top}, not the lower half of 30 rows"
+                rects = re.findall(r'<rect fill="(#[0-9a-f]{6})" x="([0-9.]+)" y="([0-9.]+)"', svg)
+                ys = sorted({float(y) for _, _, y in rects})
+                row_of = {y: i for i, y in enumerate(ys)}
+                rail_rows = {row_of[float(y)] for fill, x, y in rects
+                             if fill == TERRACOTTA_SURFACE and float(x) < 4}
+                missing = set(range(29)) - rail_rows
+                assert not missing, f"the rail lost terracotta's surface on rows {sorted(missing)}"
+                canvas_rows = {row_of[float(y)] for fill, x, y in rects
+                               if fill == scheme.background and float(x) >= 4}
+                above = set(range(top)) - canvas_rows
+                assert not above, f"the canvas rows above the panel are not Solarized Dark's background: {sorted(above)}"
+                tab_line = lines[top + 1]
+                assert "Chrome │ Terminal colours" in tab_line and "Tab switches" in tab_line, tab_line
+                assert any("▸" in line and "Solarized Dark" in line for line in lines), "no ▸ on Solarized Dark"
+                assert "keys → theme" in lines[-1], f"the last line: {lines[-1]!r}"
 
     asyncio.run(check())

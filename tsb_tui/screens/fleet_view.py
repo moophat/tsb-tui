@@ -43,6 +43,7 @@ from ..model.fleet import (
     WHO_OTHER,
     WHO_UNREACHABLE,
 )
+from ..theme import role_colours
 from ..widgets.mouse import mouse_on, set_tip
 from ..widgets.sidebar import (
     CMD_CLOSE,
@@ -401,23 +402,7 @@ class FleetView(Widget):
 
     def __init__(self, config: Mapping, *, leader: str) -> None:
         super().__init__()
-        base = Style(color=config["theme.text"], bgcolor=config["theme.surface"])
-        accent, muted, faint = config["theme.accent"], config["theme.text_muted"], config["theme.text_faint"]
-        self._styles: dict[str, Style] = {
-            "blank": base, "text": base, "front": base + Style(color=accent), "muted": base + Style(color=muted),
-            "title": base + Style(bold=True), "group": base + Style(color=muted, bold=True),
-            "header": base + Style(color=muted), "hairline": base + Style(color=config["theme.border_on_surface"]),
-            "mark": base + Style(color=accent, bold=True), "tab_on": base + Style(color=accent, bold=True),
-            "tab": base + Style(color=muted), "toggle": base + Style(color=muted),
-            "toggle_on": base + Style(color=accent, bold=True), "filter": base,
-            "who_me": base + Style(color=accent), "who_other": base + Style(color=config["theme.steel"]),
-            "who_none": base + Style(color=faint), "who_needs": base + Style(color=config["theme.warn"]),
-            "who_asks": base + Style(color=config["theme.warn"], bold=True),
-            "who_unreachable": base + Style(color=muted), "who_ended": base + Style(color=config["theme.danger"]),
-            "warn": base + Style(color=config["theme.warn"]), "ok": base + Style(color=config["theme.ok"]),
-            "danger": base + Style(color=config["theme.danger"]), "rec": base + Style(color=config["theme.rec_list"]),
-            "button": base + Style(color=muted),
-        }
+        self._build_styles(role_colours(config))
         self._glyph_set = glyphs.check(config["glyphs.set"])
         self._leader = leader
         self._details_from = int(config["fleet_view.details_from"])
@@ -431,6 +416,32 @@ class FleetView(Widget):
         self.window_width = 0
         self.scroll_top = 0
         self._layout = FleetLayout((), (), 0, 0)
+
+    def _build_styles(self, roles: dict[str, str]) -> None:
+        """The fleet view's style table from the role colours (TT14): every colour is a role, so a theme
+        switch that rebuilds this table recolours every row without moving any role."""
+        base = Style(color=roles["text"], bgcolor=roles["surface"])
+        accent, muted, faint = roles["accent"], roles["text_muted"], roles["text_faint"]
+        self._styles: dict[str, Style] = {
+            "blank": base, "text": base, "front": base + Style(color=accent), "muted": base + Style(color=muted),
+            "title": base + Style(bold=True), "group": base + Style(color=muted, bold=True),
+            "header": base + Style(color=muted), "hairline": base + Style(color=roles["border_on_surface"]),
+            "mark": base + Style(color=accent, bold=True), "tab_on": base + Style(color=accent, bold=True),
+            "tab": base + Style(color=muted), "toggle": base + Style(color=muted),
+            "toggle_on": base + Style(color=accent, bold=True), "filter": base,
+            "who_me": base + Style(color=accent), "who_other": base + Style(color=roles["steel"]),
+            "who_none": base + Style(color=faint), "who_needs": base + Style(color=roles["warn"]),
+            "who_asks": base + Style(color=roles["warn"], bold=True),
+            "who_unreachable": base + Style(color=muted), "who_ended": base + Style(color=roles["danger"]),
+            "warn": base + Style(color=roles["warn"]), "ok": base + Style(color=roles["ok"]),
+            "danger": base + Style(color=roles["danger"]), "rec": base + Style(color=roles["rec_list"]),
+            "button": base + Style(color=muted),
+        }
+
+    def apply_theme(self, config: Mapping) -> None:
+        """A run-time look switch (B4): rebuild the table from the resolved roles and repaint."""
+        self._build_styles(role_colours(config))
+        self.refresh()
 
     # -- the model --
 

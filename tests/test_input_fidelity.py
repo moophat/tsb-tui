@@ -53,7 +53,8 @@ def test_every_key_of_the_action_table_reaches_the_session_when_it_does_not_foll
     added later is held to this without being named here. The pinned environment holds the Menu's timer far away, so
     a letter after the leader never races it."""
     monkeypatch.setenv("TSB_TUI_MENU_OPEN_ON_LEADER_AFTER_MS", "10000")
-    chars = sorted({c for action in A.ACTIONS if action.key for c in action.key})
+    # scope theme's keys are printed forms the picker's own bindings act on (⏎, Esc), not terminal keys
+    chars = sorted({c for action in A.ACTIONS if action.key and action.scope != A.SCOPE_THEME for c in action.key})
     assert {"w", "r", "R", "d", "x", "f", "F", "t", "c", "s", "n", "p", "e", "v", "?", ":", "q", "a", "h"} <= set(chars)
 
     async def check() -> None:

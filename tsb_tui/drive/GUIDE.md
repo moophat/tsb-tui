@@ -30,6 +30,8 @@ tsb-tui drive --profile drive --broker https://<broker> --user <your-login> --pa
 | `--ca-file`, `--config`, `--set KEY=VALUE` | as for `tsb-tui` itself |
 | `--guide` | print this guide and exit |
 
+A theme and a scheme are chosen with `--set theme.name=… --set theme.term.scheme=…`; the Theme picker is not available under drive.
+
 - Run drive on a machine that is not the TSB host.
 - drive writes `{"ev":"ready","principal":"<your-login>","size":"120x40","profile":"drive","engine":"<version>"}` when it is up and logged in. With no `--user`, `principal` is `null` and the first command is `login`.
 - **Exit codes.** `0`: a script passed every step, or stdin ended. `1`: a step failed (a failed wait, or any command answering `ok: false`; **a script stops at the first one**, so it never types on after a step that did not do what it should), or drive could not start. `2`: bad usage. In interactive mode a failed wait is an answer and drive keeps running.

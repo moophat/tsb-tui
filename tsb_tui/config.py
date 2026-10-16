@@ -24,8 +24,8 @@ from . import glyphs
 from .drive.events import EVENT_NAMES, OUTPUT_MODES
 from .model.actions import LEADER_LABELS, LEADER_MAP_IDS, KeymapError, leader_keys
 from .model.fleet import CHIP_MARKS, CHIP_SOURCES, GROUP_ORDER, NEEDS_REASONS
-from .theme import relative_luminance
-from .theme_files import SchemeError, ThemeFileError, find_scheme, find_theme
+from .theme import relative_luminance, role_colours
+from .theme_files import ROLES, SchemeError, ThemeFileError, find_scheme, find_theme
 
 # The phase whose keys are built so far. Every phase that reads knobs bumps this; phase 10, the last, owns
 # no key and sets it to 10, so every key but the Inspector's is read by code outside this module. DT19.
@@ -458,16 +458,19 @@ class Config:
     def __init__(self, values: Mapping[str, Any], profile: str,
                  sources: Mapping[str, str] | None = None, *,
                  user_dir: Path | None = None,
-                 scheme: Any = None, chrome: Any = None) -> None:
+                 scheme: Any = None, chrome: Any = None,
+                 defaults: Mapping[str, Any] | None = None) -> None:
         self._values = dict(values)
         self.profile = profile
         self._sources = dict(sources or {})
         # What `load` resolved alongside the knobs: the directory the user's theme and scheme files
         # live in, the selected colour scheme, and the selected chrome theme (TT28). `load` is the
-        # only builder.
+        # only builder. The packaged defaults a switch falls back to when a new theme lacks a role
+        # (phases 7, 10).
         self.user_dir = user_dir
         self.scheme = scheme
         self.chrome = chrome
+        self._defaults = dict(defaults) if defaults is not None else {}
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._values.get(key, default)
@@ -481,6 +484,12 @@ class Config:
     def as_dict(self) -> dict[str, Any]:
         return dict(self._values)
 
+    @property
+    def default_roles(self) -> dict[str, str]:
+        """The packaged default chrome roles, keyed by role name (`surface`, `text_muted`): what a theme
+        file that lacks a role falls back to (TT12), and what a partial theme's swatch paints."""
+        return role_colours(self._defaults)
+
     def source(self, key: str) -> str:
         """Where the value in force came from: the packaged default, a profile, the config file, the environment,
         `--set`, or a change made during this run (Settings… shows it)."""
@@ -493,6 +502,71 @@ class Config:
             raise ConfigError(f"{key}: unknown configuration key")
         self._values[key] = _coerce(key, value)
         self._sources[key] = "this run"
+
+    def select_look(self, theme_id: str | None = None, scheme_slug: str | None = None, *,
+                    source: str = "this run") -> None:
+        """Switch the look at run time (B4, TT12). Load and validate the named theme and/or scheme; a
+        failure raises `ConfigError` and changes nothing. Set the given names with `source`. For a new
+        theme, every role whose source is the packaged default or a theme file takes the new theme's value
+        (source `theme <id>`), or the packaged default when the theme lacks it; a role set by any other
+        layer stays. Update `chrome` and `scheme`."""
+        new_chrome = None
+        if theme_id is not None:
+            try:
+                new_chrome = find_theme(theme_id, self.user_dir)
+            except ThemeFileError as exc:
+                raise ConfigError(f"theme.name = {theme_id!r}: {exc}") from None
+        new_scheme = None
+        if scheme_slug is not None:
+            try:
+                new_scheme = find_scheme(scheme_slug, self.user_dir)
+            except SchemeError as exc:
+                raise ConfigError(str(exc)) from None
+
+        if theme_id is not None:
+            self._values["theme.name"] = theme_id
+            self._sources["theme.name"] = source
+            for role in ROLES:
+                key = f"theme.{role}"
+                src = self._sources.get(key, "default")
+                if src == "default" or src.startswith("theme "):
+                    if role in new_chrome.roles:
+                        self._values[key] = new_chrome.roles[role]
+                        self._sources[key] = f"theme {new_chrome.id}"
+                    else:
+                        self._values[key] = self._defaults[key]
+                        self._sources[key] = "default"
+            self.chrome = new_chrome
+            if self.chrome.variant is None:
+                # OPEN-T5 (ruled): a theme file with no variant gets it computed from its resolved bg, as load does.
+                self.chrome = replace(self.chrome, variant=(
+                    "light" if relative_luminance(self._values["theme.bg"]) > 0.179 else "dark"))
+        if scheme_slug is not None:
+            self._values["theme.term.scheme"] = scheme_slug
+            self._sources["theme.term.scheme"] = source
+            self.scheme = new_scheme
+
+    def look(self) -> dict[str, Any]:
+        """The look in force: the two names (value and source), every role (value and source), chrome,
+        scheme — everything `restore_look` needs to put it back (TT12)."""
+        return {
+            "name": (self._values["theme.name"], self._sources.get("theme.name", "default")),
+            "scheme_name": (self._values["theme.term.scheme"], self._sources.get("theme.term.scheme", "default")),
+            "roles": {role: (self._values[f"theme.{role}"], self._sources.get(f"theme.{role}", "default"))
+                      for role in ROLES},
+            "chrome": self.chrome,
+            "scheme": self.scheme,
+        }
+
+    def restore_look(self, saved: dict[str, Any]) -> None:
+        """Put back a look `look()` captured: the names, every role value and source, chrome and scheme."""
+        self._values["theme.name"], self._sources["theme.name"] = saved["name"]
+        self._values["theme.term.scheme"], self._sources["theme.term.scheme"] = saved["scheme_name"]
+        for role, (value, src) in saved["roles"].items():
+            self._values[f"theme.{role}"] = value
+            self._sources[f"theme.{role}"] = src
+        self.chrome = saved["chrome"]
+        self.scheme = saved["scheme"]
 
     def leader_overrides(self) -> dict[str, str]:
         """`[keys.leader_map]` as the action ids it rebinds."""
@@ -518,6 +592,7 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
         raise ConfigError(f"profile: {chosen!r} is not one of {', '.join(PROFILES)}")
 
     merged = _load_defaults()
+    defaults = dict(merged)  # the packaged defaults a run-time switch falls back to (TT28, phases 7, 10)
     sources: dict[str, str] = {key: "default" for key in merged}
 
     def layer(values: Mapping[str, Any], source: str | Callable[[str], str]) -> None:
@@ -580,7 +655,8 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
     except SchemeError as exc:
         raise ConfigError(str(exc)) from None
 
-    return Config(resolved, chosen, sources, user_dir=user_config_dir, scheme=scheme, chrome=chrome)
+    return Config(resolved, chosen, sources, user_dir=user_config_dir, scheme=scheme, chrome=chrome,
+                  defaults=defaults)
 
 
 def _check_chrome_knobs(values: Mapping[str, Any]) -> None:

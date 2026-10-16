@@ -68,6 +68,7 @@ class Driver:
         self.app = app
         self.pilot = pilot
         self.cfg = app.cfg
+        app.under_drive = True  # TT29: the one place the runner and the test rig both pass
         self.quitting = False
         self._emit = emit
         self._enabled = frozenset(self.cfg["drive.events"])

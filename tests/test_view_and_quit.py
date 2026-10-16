@@ -89,6 +89,20 @@ def test_all_keys_lists_every_actions_key_from_the_table_and_follows_a_rebinding
     assert detach and detach[0].strip().startswith("^\\ D"), detach
 
 
+def test_all_keys_lists_the_theme_picker_keys_under_its_own_scope() -> None:
+    """D40: a dialog's own keys are listed under its scope, as Who's here's and Size's are. The picker's
+    `⏎` Use and `Esc` put back must show under "(while it is open)", so an operator who cannot see them
+    on the panel finds them in help.
+
+    fails today: `DIALOG_SCOPES` has no theme scope, so the picker's keys are in All keys nowhere."""
+    lines = "\n".join(keys_lines(_cfg())).splitlines()
+    headings = [line for line in lines if line.endswith("(while it is open)")]
+    assert any("Theme picker" in line for line in headings), f"the picker's keys are not listed: {headings}"
+    i = next(i for i, line in enumerate(lines) if "Theme picker" in line)
+    section = "\n".join(lines[i + 1:i + 3])
+    assert "⏎" in section and "Use" in section, f"the picker's `⏎` is not listed: {section!r}"
+    assert "Esc" in section and "put back" in section, f"the picker's `Esc` is not listed: {section!r}"
+
 def test_all_keys_about_and_settings_open_from_the_table_and_say_what_they_are(serve, wait_until) -> None:
     """D40: Settings…, All keys and About are actions of the table (the Menu lists them), each a dialog over the
     workspace; About names the TUI, the contract client and the engine's pinned commit (DT2, PIN)."""

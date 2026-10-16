@@ -35,6 +35,7 @@ from .. import glyphs
 from ..model import actions as A
 from ..model.attachment import AttachmentState
 from ..model.countdown import countdown_parts
+from ..theme import role_colours
 from .mouse import mouse_on, set_tip
 
 # Below this many columns the row is compact: the pill loses its inner spaces and a live session
@@ -511,26 +512,35 @@ class StatusRow(Widget):
 
     def __init__(self, config: Mapping) -> None:
         super().__init__()
-        text, surface = config["theme.text"], config["theme.surface"]
-        base = Style(color=text, bgcolor=surface)
-        accent = config["theme.accent"]
+        self._build_styles(role_colours(config))
+        self._inputs: StatusInputs | None = None
+        self._line: list[Piece] = []
+
+    def _build_styles(self, roles: dict[str, str]) -> None:
+        """The status row's style table from the role colours (TT14): every colour is a role, so a theme
+        switch that rebuilds this table recolours every piece without moving any role."""
+        base = Style(color=roles["text"], bgcolor=roles["surface"])
+        accent = roles["accent"]
         self._styles: dict[str, Style] = {
             "text": base,
-            "muted": base + Style(color=config["theme.text_muted"]),
-            "hint_key": base + Style(color=config["theme.text_muted"]),
+            "muted": base + Style(color=roles["text_muted"]),
+            "hint_key": base + Style(color=roles["text_muted"]),
             "hint": base,
             "glyph": base + Style(color=accent),
             "keys": base + Style(bold=True),
-            "ok": base + Style(color=config["theme.ok"]),
-            "warn": base + Style(color=config["theme.warn"]),
-            "danger": base + Style(color=config["theme.danger"]),
-            "rec": base + Style(color=config["theme.rec"]),
-            "pill_type": Style(color=config["theme.on_accent"], bgcolor=accent, bold=True),
-            "pill_view": base + Style(color=config["theme.steel"], bold=True),
-            "pill_none": base + Style(color=config["theme.text_muted"]),
+            "ok": base + Style(color=roles["ok"]),
+            "warn": base + Style(color=roles["warn"]),
+            "danger": base + Style(color=roles["danger"]),
+            "rec": base + Style(color=roles["rec"]),
+            "pill_type": Style(color=roles["on_accent"], bgcolor=accent, bold=True),
+            "pill_view": base + Style(color=roles["steel"], bold=True),
+            "pill_none": base + Style(color=roles["text_muted"]),
         }
-        self._inputs: StatusInputs | None = None
-        self._line: list[Piece] = []
+
+    def apply_theme(self, config: Mapping) -> None:
+        """A run-time look switch (B4): rebuild the table from the resolved roles and repaint."""
+        self._build_styles(role_colours(config))
+        self.refresh()
 
     # -- content --
 

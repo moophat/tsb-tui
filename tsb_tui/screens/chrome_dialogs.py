@@ -58,7 +58,8 @@ FLEET_VIEW_KEYS = (
     ("Esc", "back to the session"),
 )
 PAN_KEYS = (("← → ↑ ↓", "move the window over the grid by `view.pan_step`"), ("Esc  ⏎", "stop panning"))
-DIALOG_SCOPES = {A.SCOPE_WHO: "In Who's here", A.SCOPE_SIZE: "In Size"}
+DIALOG_SCOPES = {A.SCOPE_WHO: "In Who's here", A.SCOPE_SIZE: "In Size",
+                  A.SCOPE_THEME: "In Theme picker"}
 
 
 class _Dialog(ModalScreen[Any]):

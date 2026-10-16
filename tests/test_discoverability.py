@@ -203,9 +203,13 @@ def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, w
                 client_id = screen.pump.state.client_id
                 facts = screen.facts()
                 enabled = [a.id for a in SESSION_ACTIONS if A.blocked(a.id, facts) is None]
-                assert enabled == [a.id for a in SESSION_ACTIONS], (
-                    f"the seeded state must enable every action; blocked: "
+                # `theme` is blocked by design under drive (TT19), so the check is every session action
+                # enabled except it, and its reason is exactly TT19's.
+                assert enabled == [a.id for a in SESSION_ACTIONS if a.id != "theme"], (
+                    f"the seeded state must enable every action but theme; blocked: "
                     f"{[(a.id, A.blocked(a.id, facts)) for a in SESSION_ACTIONS if A.blocked(a.id, facts)]}")
+                assert A.blocked("theme", facts) == (
+                    "drive sets the theme with --set theme.name=… --set theme.term.scheme=…")
 
                 def front() -> str | None:
                     return screen.front.session_id if screen.front is not None else None
@@ -287,7 +291,7 @@ def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, w
                 await _settle(rig, lambda: app._exit, "Quit to end the TUI")  # Textual's own flag: no public one
                 reached.append("quit")
 
-                never_clicked = {a.id for a in SESSION_ACTIONS} - set(reached)
+                never_clicked = {a.id for a in SESSION_ACTIONS} - set(reached) - {"theme"}
                 assert not never_clicked, f"actions the table has and this test never clicked: {never_clicked}"
                 assert serve_app.received(client_id) == [], "a click reached the session as input"
 

@@ -37,7 +37,7 @@ from ._transport import HttpError
 from .model.alerts import Alert, AlertModel, AlertStreamer
 from .model.events import Event
 from .term import AbiError, GhosttyLib, LibraryError, load
-from .theme import PALETTE_OUTER, TermPalette, build_theme
+from .theme import PALETTE_OUTER, TermPalette, build_theme, role_colours
 
 T = TypeVar("T")
 
@@ -91,7 +91,7 @@ class MenuProvider(Provider):
             parts.append(f"not available: {why}")
         help_text = " · ".join(parts)
         if why is not None:
-            help_text = f"[{self.app.cfg['theme.text_muted']}]{markup_escape(help_text)}[/]"
+            help_text = f"[{role_colours(self.app.cfg)['text_muted']}]{markup_escape(help_text)}[/]"
         screen = self.screen
 
         async def run() -> None:
@@ -101,7 +101,7 @@ class MenuProvider(Provider):
 
     def _label(self, label: Content, why: str | None) -> Content:
         """The action's name, muted when it cannot run now (the match highlight, if any, stays on top)."""
-        return label if why is None else label.stylize_before(self.app.cfg["theme.text_muted"])
+        return label if why is None else label.stylize_before(role_colours(self.app.cfg)["text_muted"])
 
     async def discover(self) -> Hits:
         for action, keys, why in self._entries():
@@ -181,8 +181,14 @@ class TsbTuiApp(App):
         self.cfg = resolved
         self.engine = engine
         self.palette = palette
+        # TT29: one flag says this app is driven by `tsb-tui drive`; the action table reads it.
+        self.under_drive = False
         self.register_theme(theme)
         self._theme_name = theme.name
+        # The last theme pushed into Textual: `_push_look` compares the rebuilt theme to it, so a same-named
+        # theme whose content changed re-applies its CSS variables, and one that did not (a scheme-only move)
+        # does not. It starts unset; the theme registered above is pushed by `on_mount`'s `self.theme` set.
+        self._pushed_theme = None
         self.client = Client(broker_url, ca_file=ca_file)
         # The outer window's last size: only a change to it is a "window change" (D18).
         self._window_size: Size | None = None
@@ -236,6 +242,49 @@ class TsbTuiApp(App):
         from .screens.login import LoginScreen
 
         self.push_screen(LoginScreen())
+
+    # -- switching the look at run time (B4) --
+
+    def apply_look(self, theme_id: str | None = None, scheme_slug: str | None = None, *,
+                   source: str = "this run") -> None:
+        """Switch the chrome theme and/or the terminal scheme during this run (B4). Change the config, rebuild
+        the Textual theme and the palette, and push both into every terminal screen. Before login there is no
+        workspace, so only the theme and palette change."""
+        self.cfg.select_look(theme_id, scheme_slug, source=source)
+        self._push_look()
+
+    def restore_look(self, saved: dict[str, Any]) -> None:
+        """Put back a look `Config.look()` captured (the picker's Esc), sources included, and push it the same way."""
+        self.cfg.restore_look(saved)
+        self._push_look()
+
+    def _push_look(self) -> None:
+        """Rebuild the theme and palette from the resolved config and hand them to every terminal screen."""
+        cfg = self.cfg
+        theme = build_theme(cfg, cfg.chrome)
+        self.register_theme(theme)
+        name_changed = theme.name != self._theme_name
+        if name_changed:
+            # A scheme-only switch leaves the chrome alone; setting the same name does nothing (Textual re-reads
+            # every $ variable only when the name changes, so dialogs and app.CSS follow a real switch).
+            self.theme = theme.name
+            self._theme_name = theme.name
+        # TT30: refresh the CSS variable defaults so a stylesheet naming a role variable still parses.
+        self._theme_variables = dict(theme.variables)
+        if not name_changed and theme != self._pushed_theme:
+            # A user file edited while the picker is open, then Used, rebuilds the same-named theme: Textual
+            # re-reads every $ variable only on a name change, so the rebuilt colours never reach the dialogs.
+            # Re-apply them through Textual's own public refresh (the call `_watch_theme` makes), which
+            # re-reads `get_css_variables()` from the freshly registered theme and the new defaults. A
+            # scheme-only move leaves the chrome theme identical, so this does not run per arrow key.
+            self.refresh_css(animate=False)
+        self._pushed_theme = theme
+        self.palette = TermPalette(cfg, cfg.scheme)
+        from .screens.terminal import TerminalScreen
+
+        for screen in self.screen_stack:
+            if isinstance(screen, TerminalScreen):
+                screen.apply_look(self.palette)
 
     # -- toasts (D22) --
 

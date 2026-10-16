@@ -26,7 +26,8 @@ from .attachment import AttachmentState
 SCOPE_SESSION = "session"
 SCOPE_WHO = "who"
 SCOPE_SIZE = "size"
-SCOPES = (SCOPE_SESSION, SCOPE_WHO, SCOPE_SIZE)
+SCOPE_THEME = "theme"
+SCOPES = (SCOPE_SESSION, SCOPE_WHO, SCOPE_SIZE, SCOPE_THEME)
 
 GROUP_SESSION = "This session"
 GROUP_FLEET = "Fleet"
@@ -59,6 +60,7 @@ class Facts:
     state: AttachmentState | None
     selected: str | None = None
     open_sessions: int = 1
+    under_drive: bool = False
 
 
 Blocked = Callable[[Facts], "str | None"]
@@ -87,6 +89,12 @@ def _attached(facts: Facts) -> str | None:
 
 def _always(facts: Facts) -> str | None:
     return None
+
+
+def _theme_blocked(facts: Facts) -> str | None:
+    # TT19: drive sets the theme with --set, so its Theme action is listed and blocked with that reason.
+    return ("drive sets the theme with --set theme.name=… --set theme.term.scheme=…"
+            if facts.under_drive else None)
 
 
 def _any_open(facts: Facts) -> str | None:
@@ -237,6 +245,8 @@ ACTIONS: tuple[Action, ...] = (
            GROUP_VIEW, SCOPE_SESSION, None, _attached),
     Action("pan", "Pan", "move the window over a bigger grid with the arrow keys", "v", GROUP_VIEW,
            SCOPE_SESSION, None, _attached),
+    Action("theme", "Theme…", "chrome and terminal colours, previewed as you move", "T", GROUP_VIEW,
+           SCOPE_SESSION, None, _theme_blocked),
     Action("settings", "Settings…", "the knobs in force and where each came from", None, GROUP_SETTINGS,
            SCOPE_SESSION, None, _always),
     Action("keys", "All keys", "every action's key", "?", GROUP_SETTINGS, SCOPE_SESSION, None, _always),
@@ -253,6 +263,11 @@ ACTIONS: tuple[Action, ...] = (
            SCOPE_WHO, "Put it aside", _aside_blocked, in_menu=False),
     Action("remove", "Remove selected…", "disconnect that client; the session lives on", "x",
            GROUP_SESSION, SCOPE_WHO, "Remove…", _remove_blocked, in_menu=False),
+    # The picker's buttons (B5), keyed by the picker's own bindings; the key is the printed form.
+    Action("theme_use", "Use", "keep the look previewed for this run", "⏎", GROUP_SESSION, SCOPE_THEME,
+           "Use", _always, in_menu=False),
+    Action("theme_cancel", "Cancel", "put back what was in use", "Esc", GROUP_SESSION, SCOPE_THEME,
+           "put back", _always, in_menu=False),
     # Size's button (F11); its auto toggle is the session action `auto_size`.
     Action("ask_size", "Ask for my size", "asks the target to take my window's size; it may answer "
            "differently", "r", GROUP_SESSION, SCOPE_SIZE, "Ask", _ask_size_blocked, in_menu=False),

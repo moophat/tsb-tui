@@ -49,32 +49,41 @@ def _colour(key: str, value: Any) -> str:
     return value.lower()
 
 
-def _roles(config: Mapping[str, Any]) -> dict[str, str]:
-    """Every role of design §2.8, validated. The literal keys are spelled out so a reader (and the
-    knob-registry test) can see exactly which knobs this module reads."""
+def role_colours(config: Mapping[str, Any]) -> dict[str, str]:
+    """Every role of design §2.8, validated, keyed by the knob's role name (`text_muted`, `rec_list`).
+    The one reader of `config["theme.<role>"]` (TT14): the rail, the sidebar, the status row, the fleet
+    view and the Menu take every colour from here, so `ansi` values (phase 14) change one place. The
+    literal keys are spelled out so a reader (and the knob-registry test) can see exactly which knobs
+    this module reads."""
     raw = {
         "bg": config["theme.bg"],
         "surface": config["theme.surface"],
-        "surface-2": config["theme.surface_2"],
-        "surface-3": config["theme.surface_3"],
+        "surface_2": config["theme.surface_2"],
+        "surface_3": config["theme.surface_3"],
         "border": config["theme.border"],
-        "border-on-surface": config["theme.border_on_surface"],
+        "border_on_surface": config["theme.border_on_surface"],
         "text": config["theme.text"],
-        "text-muted": config["theme.text_muted"],
-        "text-faint": config["theme.text_faint"],
+        "text_muted": config["theme.text_muted"],
+        "text_faint": config["theme.text_faint"],
         "accent": config["theme.accent"],
-        "accent-hot": config["theme.accent_hot"],
-        "accent-soft": config["theme.accent_soft"],
-        "on-accent": config["theme.on_accent"],
+        "accent_hot": config["theme.accent_hot"],
+        "accent_soft": config["theme.accent_soft"],
+        "on_accent": config["theme.on_accent"],
         "steel": config["theme.steel"],
         "ok": config["theme.ok"],
         "warn": config["theme.warn"],
         "danger": config["theme.danger"],
         "frame": config["theme.frame"],
         "rec": config["theme.rec"],
-        "rec-list": config["theme.rec_list"],
+        "rec_list": config["theme.rec_list"],
     }
-    return {name: _colour("theme." + name.replace("-", "_"), value) for name, value in raw.items()}
+    return {name: _colour("theme." + name, value) for name, value in raw.items()}
+
+
+def _roles(config: Mapping[str, Any]) -> dict[str, str]:
+    """Textual's hyphenated variables, built from `role_colours` so there is one reader of
+    `config["theme.<role>"]` (TT14)."""
+    return {name.replace("_", "-"): colour for name, colour in role_colours(config).items()}
 
 
 def build_theme(config: Mapping[str, Any], chrome: Any) -> Theme:

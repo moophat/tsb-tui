@@ -71,6 +71,10 @@ def test_every_action_has_a_label_a_description_a_group_and_a_key() -> None:
             assert action.key is None, f"{action.id} was given a key the design does not give it"
         elif action.id == "quit":
             assert action.key == ":q", "Quit is `^\\ :q` (D38)"
+        elif action.scope == A.SCOPE_THEME:
+            # The picker's own buttons: their keys are printed forms its bindings act on, `Esc` as the
+            # mock prints it, not letters after the leader.
+            assert action.key, f"{action.id} has no key"
         else:
             assert action.key and len(action.key) == 1, f"{action.id} has no key after the leader"
 
@@ -103,7 +107,7 @@ def test_the_menu_lists_every_action_except_itself_and_the_dialog_buttons() -> N
     for action in A.ACTIONS:
         if action.id in listed:
             continue
-        assert action.id == "menu" or action.scope in (A.SCOPE_WHO, A.SCOPE_SIZE), (
+        assert action.id == "menu" or action.scope in (A.SCOPE_WHO, A.SCOPE_SIZE, A.SCOPE_THEME), (
             f"{action.id} is in neither the Menu nor a dialog")
     assert {"who", "size", "auto_size", "detach", "fleet"} <= listed
 

@@ -72,6 +72,7 @@ from ..term import (
     encode_mouse,
     encode_paste,
 )
+from ..theme import TermPalette
 from ..widgets.canvas import Canvas
 from ..widgets.rail import (
     ACT_ALERTS,
@@ -364,6 +365,22 @@ class TerminalScreen(Screen):
 
     def slot_of(self, canvas: Canvas) -> SessionSlot | None:
         return next((slot for slot in self.slots if slot.canvas is canvas), None)
+
+    def apply_look(self, palette: TermPalette) -> None:
+        """A run-time look switch (B4): give every canvas the new palette, then rebuild the rail, sidebar,
+        fleet view and status row's style tables from the config now in force. The status row is absent when
+        `status.show` is false. New canvases already take `app.palette`, so they need no restyle."""
+        cfg = self.app.cfg
+        for slot in self.slots:
+            slot.canvas.set_palette(palette)
+        if self.rail is not None:
+            self.rail.apply_theme(cfg)
+        if self.sidebar is not None:
+            self.sidebar.apply_theme(cfg)
+        if self.fleet_view is not None:
+            self.fleet_view.apply_theme(cfg)
+        if self.status is not None:
+            self.status.apply_theme(cfg)
 
     # -- layout --
 
@@ -1979,7 +1996,7 @@ class TerminalScreen(Screen):
 
     def facts(self, selected: str | None = None) -> A.Facts:
         return A.Facts(self.pump.state if self.pump is not None else None, selected,
-                       open_sessions=len(self.slots))
+                       open_sessions=len(self.slots), under_drive=self.app.under_drive)
 
     async def run_action_id(self, action_id: str) -> None:
         """Run one session action, or say why it is not available now. Every action of the table
@@ -2061,6 +2078,12 @@ class TerminalScreen(Screen):
         """`^\\ v`: the arrow keys move the window over the grid by `view.pan_step` until Esc (D4, D28)."""
         self._pan_mode = True
         self.refresh_status()
+
+    def do_theme(self) -> None:
+        """`^\\ T`: the Theme picker, previewing as the highlight moves (B5)."""
+        from .theme_picker import ThemePicker
+
+        self.app.push_screen(ThemePicker(self))
 
     def _end_pan(self) -> None:
         if self._pan_mode:

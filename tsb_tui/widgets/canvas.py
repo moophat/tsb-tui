@@ -49,7 +49,7 @@ from textual.widget import Widget
 
 from ..term import VTBackend
 from ..term import ghostty as G
-from ..term.backend import Cell, Cursor, Row
+from ..term.backend import Cursor, Row
 from ..theme import TermPalette
 
 # The engine's own advice for a renderer that finds a program holding the screen: stop waiting after a second.
@@ -155,7 +155,8 @@ class Canvas(Widget):
         self._pending = True
         self._hold_since: float | None = None
         self._strips: list[Strip | None] = [None] * backend.rows
-        self._cells: list[list[Cell] | None] = [None] * backend.rows
+        self._rows: list[Row | None] = [None] * backend.rows
+        self._restyle_pending = False
         self._cursor: Cursor | None = None
         self._view_x = 0
         self._view_y = 0
@@ -291,6 +292,9 @@ class Canvas(Widget):
         once, from its own grid. A hold on the screen (mode 2026) is honoured as ever, and the timer paints
         the frame when it ends."""
         self.in_front = True
+        if self._restyle_pending:
+            self._restyle()
+            self._restyle_pending = False
         if self._pending and self.is_attached and not self._backend.hold and not self._released:
             self.repaint_now()
         else:
@@ -299,6 +303,29 @@ class Canvas(Widget):
     def send_to_back(self) -> None:
         """Another session is in front: this grid keeps parsing and no longer paints (D33)."""
         self.in_front = False
+
+    def set_palette(self, palette: TermPalette) -> None:
+        """A run-time look switch (B4, TT15): the new palette colours every row the canvas has kept. The
+        engine is not read, so a held frame (mode 2026) keeps its last content in the new colours. In front,
+        rebuild and repaint at once; behind, mark for `bring_to_front` to rebuild when it next comes forward."""
+        self._palette = palette
+        if palette.term_bg:
+            self.styles.background = palette.term_bg
+        else:
+            # term_bg is None (e.g. theme.term.bg = "outer"): clear the inline rule so the CSS $background applies.
+            self.styles.clear_rule("background")
+        if self.in_front:
+            self._restyle()
+            self.refresh()
+        else:
+            self._restyle_pending = True
+
+    def _restyle(self) -> None:
+        """Rebuild every kept row's strip with the current palette (TT15). The engine is not read, so a held
+        frame keeps its last content, recoloured; the padding carries the new term background."""
+        for y, row in enumerate(self._rows):
+            if row is not None and y < len(self._strips):
+                self._strips[y] = self._build_strip(row)
 
     def pan_to(self, x: int, y: int) -> None:
         """Move the window over the grid, clamped to it."""
@@ -348,7 +375,7 @@ class Canvas(Widget):
         for row in rows:
             if row.y < len(self._strips):
                 self._strips[row.y] = self._build_strip(row)
-                self._cells[row.y] = list(row.cells)
+                self._rows[row.y] = row
         self.rebuilt_rows = [row.y for row in rows]
         self._cursor = cursor if cursor.visible else None
         if self._follow_cursor():
@@ -400,7 +427,8 @@ class Canvas(Widget):
 
     def _with_cursor(self, strip: Strip, grid_y: int, cursor: Cursor) -> Strip:
         x = cursor.x - 1 if cursor.wide_tail else cursor.x
-        cells = self._cells[grid_y]
+        row = self._rows[grid_y]
+        cells = row.cells if row is not None else None
         if cells is None or not 0 <= x < len(cells):
             return strip
         span = 2 if cells[x].wide == G.CELL_WIDE_WIDE else 1
@@ -490,7 +518,7 @@ class Canvas(Widget):
     def _reset_rows(self) -> None:
         rows = self._backend.rows
         self._strips = [None] * rows
-        self._cells = [None] * rows
+        self._rows = [None] * rows
         self._cursor = None
         self._set_view(self._view_x, self._view_y)
         self.refresh()

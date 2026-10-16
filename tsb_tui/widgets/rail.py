@@ -40,6 +40,7 @@ from ..model.fleet import (
     WHO_UNREACHABLE,
     Chip,
 )
+from ..theme import role_colours
 from .mouse import mouse_on, set_tip
 
 # What a click on a row does: the action ids `Rail.Activated` carries.
@@ -146,32 +147,7 @@ class Rail(Widget):
 
     def __init__(self, config: Mapping) -> None:
         super().__init__()
-        surface = config["theme.surface"]
-        base = Style(color=config["theme.text"], bgcolor=surface)
-        accent, muted, faint = config["theme.accent"], config["theme.text_muted"], config["theme.text_faint"]
-        self._styles: dict[str, Style] = {
-            "blank": base,
-            "entry": base + Style(color=accent),
-            "need": base + Style(color=config["theme.warn"], bold=True),
-            "alert": base + Style(color=config["theme.danger"], bold=True),
-            "count_zero": base + Style(color=faint),
-            "hairline": base + Style(color=config["theme.border_on_surface"]),
-            "num": base + Style(color=muted),
-            "num_front": base + Style(color=accent, bold=True),
-            "who_me": base + Style(color=accent),
-            "who_other": base + Style(color=config["theme.steel"]),
-            "who_none": base + Style(color=faint),
-            "who_needs": base + Style(color=config["theme.warn"]),
-            "who_asks": base + Style(color=config["theme.warn"], bold=True),
-            "who_unreachable": base + Style(color=muted),
-            "who_ended": base + Style(color=config["theme.danger"]),
-            "mark_front": base + Style(color=accent),
-            "mark_unseen": base,
-            "more": base + Style(color=muted),
-            "plus": base,
-            "edge": base + Style(color=accent),
-        }
-        self._border = base + Style(color=config["theme.border_on_surface"])
+        self._build_styles(role_colours(config))
         self._glyph_set = glyphs.check(config["glyphs.set"])
         self._side = config["rail.side"]
         self.rail_width = int(config["rail.width"])
@@ -179,6 +155,40 @@ class Rail(Widget):
         self._rows: list[RailRow] = rail_rows(self._model, self.rail_width - 1)
         self._leader = A.leader_label(config["keys.leader"])
         self._letters = A.leader_keys(config.leader_overrides())
+
+    def _build_styles(self, roles: dict[str, str]) -> None:
+        """The rail's style table from the role colours (TT14): every colour is a role, so a theme
+        switch that rebuilds this table recolours every glyph without moving any role."""
+        base = Style(color=roles["text"], bgcolor=roles["surface"])
+        accent, muted, faint = roles["accent"], roles["text_muted"], roles["text_faint"]
+        self._styles: dict[str, Style] = {
+            "blank": base,
+            "entry": base + Style(color=accent),
+            "need": base + Style(color=roles["warn"], bold=True),
+            "alert": base + Style(color=roles["danger"], bold=True),
+            "count_zero": base + Style(color=faint),
+            "hairline": base + Style(color=roles["border_on_surface"]),
+            "num": base + Style(color=muted),
+            "num_front": base + Style(color=accent, bold=True),
+            "who_me": base + Style(color=accent),
+            "who_other": base + Style(color=roles["steel"]),
+            "who_none": base + Style(color=faint),
+            "who_needs": base + Style(color=roles["warn"]),
+            "who_asks": base + Style(color=roles["warn"], bold=True),
+            "who_unreachable": base + Style(color=muted),
+            "who_ended": base + Style(color=roles["danger"]),
+            "mark_front": base + Style(color=accent),
+            "mark_unseen": base,
+            "more": base + Style(color=muted),
+            "plus": base,
+            "edge": base + Style(color=accent),
+        }
+        self._border = base + Style(color=roles["border_on_surface"])
+
+    def apply_theme(self, config: Mapping) -> None:
+        """A run-time look switch (B4): rebuild the table from the resolved roles and repaint."""
+        self._build_styles(role_colours(config))
+        self.refresh()
 
     # -- content --
 
