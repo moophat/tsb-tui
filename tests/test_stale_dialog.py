@@ -52,6 +52,8 @@ def _banner(app) -> str:
 
 
 def test_the_holder_gets_the_dialog_with_the_texts_as_sent(serve, wait_until, monkeypatch) -> None:
+    # fails today: the row and the banner are read in the same loop turn the dialog opened in, so on a loaded
+    # machine the status row has not repainted for the stale prompt yet and `row` says nothing about it.
     """Rule 18: the prompt's text and each choice's text are shown exactly as the core sent them, so no
     surface softens the warning; the header says what happened; the note says the choice is TSB's own."""
 
@@ -72,6 +74,10 @@ def test_the_holder_gets_the_dialog_with_the_texts_as_sent(serve, wait_until, mo
                 panel.query_one("#stale-guard").render())
             assert "Your choice is recorded as TSB's own action." in "\n".join(
                 str(w.render()) for w in panel.query(".stale-note"))
+            row_ready = lambda: ("TSB: lost output - the screen may be stale until a choice is made." in _banner(app)
+                                 and "nobody's input goes through until you choose" in screen.status.text
+                                 and "1-4 choose" in screen.status.text)
+            await wait_until(pilot, row_ready, "the status row and the banner to repaint for the stale prompt")
             row = screen.status.text
             assert "TSB: lost output - the screen may be stale until a choice is made." in _banner(app)
             assert "nobody's input goes through until you choose" in row
@@ -155,6 +161,8 @@ def test_each_choice_sends_its_own_answer_by_click(serve, wait_until) -> None:
 
 
 def test_a_non_holder_sees_the_stale_line_and_no_dialog(serve, wait_until) -> None:
+    # fails today: the row is read in the same loop turn the stale frame arrived in, before anything was waited for,
+    # so on a loaded machine it has not repainted for the stale prompt and says nothing about who is choosing.
     """Stale-screen step 4: only the holder's client is asked. Another client sees the notice line in its
     row, who is choosing, and that input is refused: the dialog would be a button that can only be refused."""
 
@@ -168,9 +176,10 @@ def test_a_non_holder_sees_the_stale_line_and_no_dialog(serve, wait_until) -> No
                 screen = await attached(pilot, app, session_id, wait_until)
                 await wait_until(pilot, lambda: screen.pump.state.stale_state == "pending", "the stale frame")
                 assert not screen.stale_active()
-                row = screen.status.text
                 await wait_until(pilot, lambda: "TSB: lost output - the screen may be stale until a choice is made."
-                                 in _banner(app), "the banner")
+                                 in _banner(app) and "fixture-peer is choosing · input refused" in screen.status.text,
+                                 "the banner and the status row to repaint for the stale prompt")
+                row = screen.status.text
                 assert "fixture-peer is choosing · input refused" in row
                 assert "1-4 choose" not in row
 

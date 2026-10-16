@@ -164,7 +164,7 @@ async def _click_menu_entry(rig: Rig, label: str) -> None:
     for _ in range(40):
         if any(line.strip().startswith(label) for line in (await rig.cmd("snapshot"))["text"].splitlines()):
             break
-        options.scroll_down(animate=False)
+        await rig.app_call(options.scroll_down, animate=False)
         await rig.pilot.pause()
     else:
         raise AssertionError(f"the Menu never showed {label!r}")
@@ -173,7 +173,11 @@ async def _click_menu_entry(rig: Rig, label: str) -> None:
 
 @pytest.mark.parametrize(("width", "height"), SIZES, ids=[f"{w}x{h}" for w, h in SIZES])
 def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, wait_until, server_frame_validator,
-                                                              width, height) -> None:
+                                                               width, height) -> None:
+    # fails today: at 65x30 the menu entry is below the fold, so this is the one size where the scroll loop runs, and
+    # it drives the list's own widget calls and `rig.pilot.pause()` from the test frame — outside `run_test`'s
+    # context, where Textual has no active app. The update timer those calls build lazily is made in that context,
+    # and its next render measures against no app: `LookupError: <ContextVar name='active_app' ...>` in visual.py.
     """Design §3.4 test 5, success criteria. The seeded state: two sessions open, the one in front held by another client
     of the owner's own login (so Take back is offered) and asking a quiet-prompt question (so Answer is). In it every
     action of the table is enabled, and an agent clicks `≡ Menu` and then the entry for each one, with no key pressed,

@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
+import inspect
 import io
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Self
 
@@ -41,6 +44,37 @@ class _Sink:
         pass
 
 
+class _InContextPilot:
+    """The rig's pilot, with every call run inside `run_test`'s own context.
+
+    Textual's pilot assumes its caller is inside that context, where `active_app` is set. A test frame is not: a
+    `pause()` from one touches the screen's lazily built update timer, which is then created in the test frame's
+    context with no active app. That timer later runs the screen's layout and render in that context, and Textual's
+    render path calls `active_app.get()` — `LookupError: <ContextVar name='active_app' ...>` (issue #277; at
+    teardown the app awaits the same task and re-raises it). The rig's task captured the context the app started in;
+    running a pilot call in it is what the app's own loop does.
+    """
+
+    def __init__(self, pilot: Any, ctx: contextvars.Context) -> None:
+        self._pilot = pilot
+        self._ctx = ctx
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._pilot, name)
+        if not callable(attr):
+            return attr
+
+        async def call(*args: Any, **kw: Any) -> Any:
+            return await asyncio.get_running_loop().create_task(attr(*args, **kw), context=self._ctx)
+
+        return call
+
+
+async def _run_step(func: Callable[..., Any], args: tuple[Any, ...], kw: dict[str, Any]) -> Any:
+    result = func(*args, **kw)
+    return await result if inspect.isawaitable(result) else result
+
+
 class Rig:
     def __init__(self, url: str, *, tmp_path: Path, profile: str = "drive", overrides: tuple[str, ...] = (),
                  size: tuple[int, int] = (120, 40), record: io.StringIO | None = None) -> None:
@@ -62,6 +96,7 @@ class Rig:
         self._ready = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._failure: BaseException | None = None
+        self._app_ctx: contextvars.Context | None = None
 
     # -- the process --
 
@@ -90,9 +125,10 @@ class Rig:
         cfg = config.load(profile=self._profile, overrides=list(self._overrides))
         app = TsbTuiApp(self.url, cfg=cfg)
         async with app.run_test(size=self._size) as pilot:
-            self.app, self.pilot = app, pilot
+            self._app_ctx = contextvars.copy_context()
+            self.app, self.pilot = app, _InContextPilot(pilot, self._app_ctx)
             out = Transcript(_Sink(self), self._record)  # type: ignore[arg-type]
-            self.driver = Driver(app, pilot, emit=out.outbound)
+            self.driver = Driver(app, self.pilot, emit=out.outbound)
             self._ready.set()
             try:
                 self.rc = await self.driver.serve(self._input(), out, script=False)
@@ -127,6 +163,13 @@ class Rig:
 
     def raw(self, line: str) -> None:
         self._queue.put_nowait(line)
+
+    async def app_call(self, func: Callable[..., Any], *args: Any, **kw: Any) -> Any:
+        """Run one app-side step inside the app's own context, as `_InContextPilot` does for the pilot. A widget
+        call made from the test frame runs with no active app there, and the update timer it builds lazily is
+        created in that context, so its later render has no app to measure against."""
+        assert self._app_ctx is not None
+        return await asyncio.get_running_loop().create_task(_run_step(func, args, kw), context=self._app_ctx)
 
     def events(self, name: str | None = None) -> list[dict[str, Any]]:
         return [line for line in self.lines if "ev" in line and (name is None or line["ev"] == name)]
