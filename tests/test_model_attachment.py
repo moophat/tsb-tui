@@ -702,11 +702,14 @@ class _Exchange:
             f"{sid}: frame {frame.get('t')} did not match {matches}"
 
 
+# Not attach-prefix-modes: since contract v0.4.3 the target prints the modes through `printf`, which the
+# fixture server's echo cannot run (the contract lists it in fixtures/C2/.serve-exempt); the post-merge loop
+# grades it live against a lab target.
 WS_FIXTURES = (
     "token-handoff", "token-owner-revoke-reassign", "owner-takeover-by-typing",
     "token-event-on-detach", "clients-frame", "handoff-refused", "size-request-applied",
     "size-request-clamped", "size-request-not-typist", "attach-prefix-mid-session",
-    "attach-prefix-modes", "attach-ok-bytes-roundtrip", "unknown-frame-ignored",
+    "attach-ok-bytes-roundtrip", "unknown-frame-ignored",
 )
 
 
