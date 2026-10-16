@@ -32,7 +32,9 @@ from drive_support import Rig
 from prompt_support import STUB_TARGET, create_stub_session, open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
 from tsb_contract_client import Client
+from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.drive.runner import Driver
 from tsb_tui.screens.terminal import TerminalScreen
 from tsbc._serve import PASSWORD, TARGET, USER, ServeApp
 from workspace_support import login, open_new_session
@@ -190,6 +192,84 @@ def test_a_driver_with_nothing_attached_still_drops_to_login_on_the_fleet_poll_4
             app.restart = True
             await _at_login_with_no_workspace(rig.app, rig.pilot, wait_until)
             assert rig.driver.screen() is None
+
+    asyncio.run(check())
+
+
+def test_a_drive_attach_after_a_relogin_waits_for_the_workspace_to_be_ready(
+        serve, tmp_path, wait_until) -> None:
+    # fails today: drive's next `attach` after the re-login reads `screen.fleet.records`
+    # (`drive/commands.py:272`) while that workspace's `on_mount` has not built the fleet yet, so it raises
+    # `AttributeError: 'NoneType' object has no attribute 'records'` — the exact failure `rig-prefix-restart`
+    # reported for TUI A's `restart-compare.jsonl:5 attach` on 9c007d2.
+    """The prefix-restart sequence through a drive app: log in, attach, core restart, re-login, then attach at
+    once. The re-login's `switch_screen` puts the TerminalScreen on the stack before its `on_mount` runs, so
+    `workspace()` is not None while `screen.fleet` is None; drive's attach must wait for that workspace to be
+    ready (the same readiness the login's own wait gives on a first start), not read a fleet that is not built.
+    The app runs in this task, as `tsb-tui drive` runs one app, so no second-login teardown race is involved."""
+
+    async def check() -> None:
+        server, url = serve(RestartApp())
+        sid = _session(url)
+        cfg = config.load(profile="harness", overrides=["fleet_view.refresh_s=1"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(120, 40)) as pilot:
+            driver = Driver(app, pilot, emit=lambda o: None)
+            await driver.log_in(USER, PASSWORD)
+            answer = await driver.commands.op_attach({"session": sid})
+            assert answer["session"] == sid
+            server.restart = True
+            with server.lock:
+                client_id = next(iter(server.clients[sid]))
+                server._drop_client(server.sessions[sid], client_id, code=4011, reason="")
+            await _at_login_with_no_workspace(app, pilot, wait_until)
+            assert driver.screen() is None
+            # The re-login lands (resetting the restart), and drive's next `attach` arrives in the same iteration
+            # as the login's `switch_screen` pushes the workspace, before its `on_mount` builds the fleet. This is
+            # the window that made the rig fail.
+            await driver.log_in(USER, PASSWORD)
+            app.switch_screen(TerminalScreen())
+            screen = driver.screen()
+            assert isinstance(screen, TerminalScreen) and screen.fleet is None, \
+                "the workspace must be pushed but not yet mounted for this to test the race"
+            answer = await driver.commands.op_attach({"session": sid})
+            assert answer["session"] == sid
+
+    asyncio.run(check())
+
+
+def test_a_drive_login_answers_only_after_the_workspace_has_mounted(serve) -> None:
+    # A guard, not a regression proof: it pins that a drive login answers "in" only with the workspace's fleet and
+    # poller built. In-process every await inside `log_in` drains Textual's queue and mounts the workspace first,
+    # so the old outcome check passes here too; the race it closes opens only under load (the post-merge loop),
+    # and the attach-wait test above is the one that fails on the old code.
+    """The login half of the fix: a re-login answers ready only after its workspace has mounted. Log in, go to
+    Login the way a 401 does (`_to_login` pops to base and shows `LoginScreen`), then re-login with drive's
+    `log_in`. The moment it returns "in" — no pause, no extra await — the workspace drive sees must be the one
+    login produced, with its fleet and poller built. On the old `runner.py`, `log_in` answered as soon as
+    `workspace()` was non-None, i.e. before `on_mount`."""
+
+    async def check() -> None:
+        _server, url = serve(RestartApp())
+        cfg = config.load(profile="harness", overrides=["fleet_view.refresh_s=1"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(120, 40)) as pilot:
+            driver = Driver(app, pilot, emit=lambda o: None)
+            await driver.log_in(USER, PASSWORD)
+            # Go to Login the way a 401 does: `_to_login` pops every screen above the base and shows LoginScreen,
+            # so `workspace()` is None — the state drive's `login` accepts.
+            app._to_login()
+            assert app.workspace() is None
+            # Let the LoginScreen the 401 pushed come up and lay out its form, so `log_in` can fill it (the pause
+            # is before the login, not after it — the assertion below has no pause).
+            await pilot.pause()
+            # Re-login. The moment `log_in` returns, with no pause and no extra await, read the readiness it
+            # answered on: it must be the workspace login produced, fully mounted.
+            await driver.log_in(USER, PASSWORD)
+            screen = driver.screen()
+            assert isinstance(screen, TerminalScreen), type(screen).__name__
+            assert screen.fleet is not None and screen.poller is not None, \
+                "drive answered a login ready before its workspace's on_mount built the fleet/poller"
 
     asyncio.run(check())
 

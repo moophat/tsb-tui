@@ -269,6 +269,11 @@ class Commands:
         screen = self._screen()
         slot = screen.slot_for(sid)
         if slot is None:
+            # The workspace must be mounted before its fleet is read: after a re-login the login's `switch_screen`
+            # puts the TerminalScreen on the stack before its `on_mount` builds the fleet, so drive's next attach
+            # can land here with `screen.fleet` None. The same readiness the login's own wait gives on a first
+            # start applies after a re-login (drive/runner.py:workspace_ready).
+            await self.d.workspace_ready(screen)
             record = screen.fleet.records.get(sid)
             if record is None:
                 await self.d.refresh_fleet()

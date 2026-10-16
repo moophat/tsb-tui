@@ -223,6 +223,17 @@ class Driver:
             await self.pilot.pause(SCREEN_POLL_S)
         raise DriveError("timeout", f"{what} did not come within {self.cfg['drive.wait_timeout_ms']} ms")
 
+    def _workspace_ready(self, screen: TerminalScreen | None) -> bool:
+        """The workspace is ready for an op that reads the fleet: its `on_mount` has run, so the fleet and the
+        poller it builds (terminal.py:410-411) are there. A `switch_screen` puts the screen on the stack before
+        its mount is processed, so `workspace()` is not None while they are still None."""
+        return screen is not None and screen.fleet is not None and screen.poller is not None
+
+    async def workspace_ready(self, screen: TerminalScreen) -> None:
+        """Wait until this workspace has mounted (the fleet and poller built), as the login's own wait does on a
+        first start — the same readiness every op that reads `screen.fleet` assumes."""
+        await self._until_screen(lambda: self._workspace_ready(screen), "the workspace to be ready")
+
     async def log_in(self, user: str, password: str) -> str:
         """The login screen, filled in and its button clicked, as a person does (honesty rule 1)."""
         from textual.widgets import Button, Input, Static
@@ -243,7 +254,10 @@ class Driver:
         await self.pilot.press("enter")
 
         def outcome() -> str | None:
-            if self.screen() is not None:
+            # "in" means the workspace is ready, not merely pushed: `switch_screen` puts the TerminalScreen on
+            # the stack before its `on_mount` runs, so a login that answered as soon as `workspace()` was
+            # non-None let drive's next op read a fleet that is not built yet (the re-login race).
+            if self._workspace_ready(self.screen()):
                 return "in"
             if (isinstance(self.app.screen, LoginScreen) and not login.query_one("#login-button", Button).disabled
                     and str(login.query_one("#login-error", Static).content)):
