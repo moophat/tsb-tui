@@ -130,6 +130,33 @@ def test_an_attached_client_that_loses_its_login_ends_at_login_with_no_workspace
     asyncio.run(check())
 
 
+def test_login_screen_on_mount_survives_missing_children() -> None:
+    """LoginScreen.on_mount must not raise when its username field is absent. An exception in
+    on_mount crashes the app (Textual propagates it), so on_mount must handle the case where
+    compose hasn't yielded the Input yet, or the screen is being torn down and its widgets are gone."""
+
+    async def check() -> None:
+        from tsb_tui.screens.login import LoginScreen
+        
+        # A LoginScreen subclass whose compose yields nothing, so on_mount runs with no #username Input.
+        class EmptyLoginScreen(LoginScreen):
+            def compose(self):
+                return iter([])
+        
+        stub = RestartStub(delay_s=0.02, stream_close=(4011, 1))
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url, target=STUB_TARGET)
+            async with app.run_test(size=(80, 24)) as pilot:
+                # Push the empty LoginScreen. Its on_mount runs but #username doesn't exist.
+                # Old code: raises NoMatches and crashes. New code: returns early without focusing.
+                app.push_screen(EmptyLoginScreen())
+                await pilot.pause()
+                # The screen mounted successfully without raising
+                assert isinstance(app.screen, EmptyLoginScreen)
+
+    asyncio.run(check())
+
+
 def test_an_attached_driver_that_lost_its_login_is_logged_in_again(serve, tmp_path, wait_until) -> None:
     # fails today: `rig.driver.screen()` is not None, which is exactly what makes drive answer
     # "already logged in as fixture-user; one driver is one login" (the harness rig's 10 s bound ran out).

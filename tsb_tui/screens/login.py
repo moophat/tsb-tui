@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from textual.widgets import Button, Input, Static
 from tsb_contract_client import ApiError
@@ -24,7 +25,10 @@ class LoginScreen(Screen):
             yield Button("Log in", id="login-button", variant="primary")
 
     def on_mount(self) -> None:
-        self.query_one("#username", Input).focus()
+        try:
+            self.query_one("#username", Input).focus()
+        except NoMatches:
+            return  # the screen is being torn down or children aren't mounted yet
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()

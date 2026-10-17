@@ -29,7 +29,7 @@ from workspace_support import login, open_new_session
 TARGET_ID = "stub-target"
 
 
-async def _run_flow(screen_text) -> None:
+async def _run_flow(screen_text, wait_until) -> None:
     stub = SlowChunkedApp(delay_s=0.02, max_chunks=400, tail_chunks=5)
     with StubServer(stub) as url:
         app = TsbTuiApp(url, target=TARGET_ID)
@@ -111,17 +111,14 @@ async def _run_flow(screen_text) -> None:
                 await pilot.pause(0.01)
             assert stub.sessions[session_id]["state"] == "detached"
             app.screen._refresh_fleet()
-            for _ in range(300):
-                if (GROUP_MINE_AND_JOINABLE, session_id) in app.screen.sidebar.view.rows:
-                    break
-                await pilot.pause(0.01)
-            assert (GROUP_MINE_AND_JOINABLE, session_id) in app.screen.sidebar.view.rows
+            await wait_until(pilot, lambda: (GROUP_MINE_AND_JOINABLE, session_id) in app.screen.sidebar.view.rows,
+                            "the detached session to appear in the sidebar after refresh")
 
 
-def test_full_flow_stays_responsive_through_a_slow_chunked_attach(monkeypatch, screen_text) -> None:
+def test_full_flow_stays_responsive_through_a_slow_chunked_attach(monkeypatch, screen_text, wait_until) -> None:
     monkeypatch.setenv("TSB_TUI_SIZE_AUTO_REQUEST", "true")
     monkeypatch.setenv("TSB_TUI_SIZE_DEBOUNCE_MS", "50")
-    asyncio.run(_run_flow(screen_text))
+    asyncio.run(_run_flow(screen_text, wait_until))
 
 
 def test_a_session_on_the_contracts_fixture_server_attaches_types_and_sees_the_echo(
