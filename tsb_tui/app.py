@@ -34,6 +34,7 @@ from tsb_contract_client import ApiError, Client
 
 from . import config as config_mod
 from ._transport import HttpError
+from .config import ConfigError
 from .model.alerts import Alert, AlertModel, AlertStreamer
 from .model.events import Event
 from .term import AbiError, GhosttyLib, LibraryError, load
@@ -209,6 +210,10 @@ class TsbTuiApp(App):
         # Who is told when a session's model changes: each line of an attachment's event log, a poll changing a
         # record, a session leaving the screen. `tsb-tui drive` is the one listener; nothing here reads the screen.
         self.taps: list[Callable[[str, str, Any], None]] = []
+        # Phase 10: the per-login state file, and whether it was unreadable at login (Save refuses then,
+        # TT17). `apply_saved_look` sets both after each login.
+        self._saved_theme_path: Path | None = None
+        self._saved_theme_unreadable = False
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
         """TT30: Textual's own defaults, updated with the role variables of the resolved config, so
@@ -257,6 +262,49 @@ class TsbTuiApp(App):
         """Put back a look `Config.look()` captured (the picker's Esc), sources included, and push it the same way."""
         self.cfg.restore_look(saved)
         self._push_look()
+
+    def apply_saved_look(self, login: str) -> None:
+        """Apply this TSB login's saved choice from the state file (TT16, TT17). Called in `_on_login_done`
+        right after `app.username` is set and before the workspace is built. Nothing happens under drive (TT19).
+        A state file that does not parse is toasted naming it and the field; Save refuses until it is fixed
+        or removed. No entry for this login: `cfg.unsave_names()` is called (the names an earlier login set go
+        back). An entry: each name is applied only when its current source is default, profile, or a previous
+        `saved for ...`; a `ConfigError` is toasted naming the state file and the field, and the entry is kept."""
+        if self.under_drive:
+            return
+        from . import saved_theme
+
+        path = saved_theme.state_path()
+        self._saved_theme_path = path
+        try:
+            entries = saved_theme.read(path)
+        except saved_theme.SavedThemeError as exc:
+            self._saved_theme_unreadable = True
+            self.toast(str(exc), title="cannot read saved theme", severity="warning")
+            return
+        self._saved_theme_unreadable = False
+        entry = entries.get(login)
+        if entry is None:
+            # unsave_names applies each fallback through select_look, which can raise ConfigError if a
+            # fallback theme/scheme file is missing or invalid. It restores the captured look and re-raises,
+            # so a failure leaves the look in force unchanged; toast it and keep that look.
+            try:
+                self.cfg.unsave_names()
+            except ConfigError as exc:
+                self.toast(f"{path}: could not restore the default look ({exc})", title="saved theme", severity="warning")
+                return
+            self._push_look()
+            return
+        source = f"saved for {login}"
+        for field, key in (("theme", "theme.name"), ("scheme", "theme.term.scheme")):
+            src = self.cfg.source(key)
+            if src == "default" or src.startswith(("profile ", "saved for ")):
+                try:
+                    self.apply_look(entry[field] if field == "theme" else None,
+                                    entry[field] if field == "scheme" else None,
+                                    source=source)
+                except ConfigError:
+                    self.toast(f"{path}: [{login!r}].{field} — could not apply", title="saved theme", severity="warning")
 
     def _push_look(self) -> None:
         """Rebuild the theme and palette from the resolved config and hand them to every terminal screen."""

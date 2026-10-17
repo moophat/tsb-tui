@@ -99,7 +99,7 @@ def test_all_keys_lists_the_theme_picker_keys_under_its_own_scope() -> None:
     headings = [line for line in lines if line.endswith("(while it is open)")]
     assert any("Theme picker" in line for line in headings), f"the picker's keys are not listed: {headings}"
     i = next(i for i, line in enumerate(lines) if "Theme picker" in line)
-    section = "\n".join(lines[i + 1:i + 3])
+    section = "\n".join(lines[i + 1:i + 4])  # three rows now: `⏎`, `s`, `Esc`
     assert "⏎" in section and "Use" in section, f"the picker's `⏎` is not listed: {section!r}"
     assert "Esc" in section and "put back" in section, f"the picker's `Esc` is not listed: {section!r}"
 
@@ -148,6 +148,22 @@ def test_settings_says_where_each_value_came_from(tmp_path, monkeypatch) -> None
     assert by_key["size.auto_request"].endswith("(this run)")
     assert settings_lines(cfg)[0].startswith("profile phone")
     assert len(by_key) == len(cfg.as_dict()), "every knob in force is listed"
+
+
+def test_the_settings_first_line_names_both_orders_of_precedence(tmp_path) -> None:
+    # fails today: the first line names only the names order; the roles order is not in settings_lines.
+    """Phase 10 step 6 (D30): the first line must name both orders - names "default, profile, saved for your
+    login, config file, environment, --set" and roles "default, theme, profile, config file, environment, --set" -
+    so an operator who sees a chrome colour they cannot change knows which layer to edit for a role, which is a
+    different order from a name."""
+    file = tmp_path / "config.toml"
+    file.write_text('[theme]\nname = "paper"\n', encoding="utf-8")
+    cfg = config.load(profile="default", config_file=file)
+    first = settings_lines(cfg)[0]
+    assert "names: default, profile, saved for your login, config file, environment, --set" in first, \
+        f"the names order: {first!r}"
+    assert "roles: default, theme, profile, config file, environment, --set" in first, \
+        f"the roles order: {first!r}"
 
 
 def test_a_view_knob_outside_its_values_fails_start_up_naming_the_key(tmp_path) -> None:

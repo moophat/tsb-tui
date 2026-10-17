@@ -209,15 +209,28 @@ def event_log_lines(terminal: Any) -> list[str]:
 
 
 def settings_lines(cfg: Any) -> list[str]:
-    """Every knob in force, with the layer its value came from (design D40; D30's order of precedence)."""
+    """Every knob in force, with the layer its value came from (design D40; D30's order of precedence).
+    Phase 11 step 5: after the knobs, list any theme or scheme files that could not be read."""
+    from ..theme_files import scheme_catalogue, theme_catalogue
+    
     values = cfg.as_dict()
     width = max((len(key) for key in values), default=0)
-    lines = [(f"profile {cfg.profile}; later layers win: default, theme (roles), profile, config "
-             "file, environment, --set"), ""]
+    lines = [(f"profile {cfg.profile}; names: default, profile, saved for your login, config file, "
+              "environment, --set; roles: default, theme, profile, config file, environment, --set"), ""]
     for key in sorted(values):
         value = values[key]
         shown = f'"{value}"' if isinstance(value, str) else str(value).lower() if isinstance(value, bool) else str(value)
         lines.append(f"{key.ljust(width)} = {_value(shown)}   ({cfg.source(key)})")
+    
+    # Phase 11 step 5: list broken theme and scheme files
+    _, bad_themes = theme_catalogue(cfg.user_dir)
+    _, bad_schemes = scheme_catalogue(cfg.user_dir)
+    if bad_themes or bad_schemes:
+        lines.append("")
+        lines.append("Theme and scheme files that could not be read")
+        for path, message in bad_themes + bad_schemes:
+            lines.append(f"  {path}: {message}")
+    
     return lines
 
 

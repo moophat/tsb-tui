@@ -18,6 +18,7 @@ import os
 import re
 from pathlib import Path
 
+import pytest
 from drive_support import Rig
 from input_server import InputRecordingApp, attached, make_session
 from stub_server import record_output
@@ -27,7 +28,12 @@ from textual.widgets import Static
 from tsb_tui import theme as tsb_theme
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
-from tsb_tui.screens.theme_picker import PANEL_WIDTH, ThemeList, ThemePicker
+from tsb_tui.screens.theme_picker import (
+    PANEL_WIDTH,
+    PickerButton,
+    ThemeList,
+    ThemePicker,
+)
 from tsb_tui.theme_files import packaged_dir, parse_scheme, parse_theme
 from tsb_tui.widgets.status_row import StatusRow
 from tsbc import _serve
@@ -56,14 +62,18 @@ def _user_dir() -> Path:
 
 
 def _listing_is_painted(picker: ThemePicker) -> bool:
-    """The listing's own completion condition: every row and every broken-file line has content. The
-    panel fills its rows in `call_after_refresh`, so the row widgets mount before any line is painted;
-    a test that reads on the widgets alone can read before a line is painted, so it waits on the painted
-    content."""
-    rows = list(picker.query("#theme-themes > Static")) + list(picker.query("#theme-schemes > Static"))
+    """The listing's own completion condition: every item row and every broken-file line has content.
+    The panel fills its rows in `call_after_refresh`, so the row widgets mount before any line is
+    painted; a test that reads on the widgets alone can read before a line is painted, so it waits on
+    the painted content. Rows past the filtered scheme list are blanked by design (the catalogue is
+    composed full), so they are not part of the condition."""
+    for kind in ("themes", "schemes"):
+        items = picker.items(kind)
+        rows = list(picker.query(f"#theme-{kind} > Static"))
+        if not items or not all(rows[i].render().plain.strip() for i in range(len(items))):
+            return False
     broken = list(picker.query(".broken-theme")) + list(picker.query(".broken-scheme"))
-    return bool(rows) and all(r.render().plain.strip() for r in rows) and all(
-        b.render().plain.strip() for b in broken)
+    return all(b.render().plain.strip() for b in broken)
 
 
 async def _open_picker(pilot, app, screen, wait_until) -> ThemePicker:
@@ -216,8 +226,10 @@ def test_esc_puts_back_both_names_their_sources_and_the_canvas(serve, wait_until
         app, screen, pilot = await gen.__anext__()
         assert app.cfg["theme.name"] == "paper" and app.cfg.source("theme.name").startswith("config file")
         picker = await _open_picker(pilot, app, screen, wait_until)
+        # paper is light, so the scheme list opens filtered to light (review round 1 ruling): preview
+        # a light scheme; dracula is not in the list.
         _move(picker, "themes", "nord")
-        _move(picker, "schemes", "dracula")
+        _move(picker, "schemes", "solarized-light")
         await pilot.pause(0.2)
         await pilot.press("escape")
         await wait_until(pilot, lambda: app.screen is screen and not screen.dialogs,
@@ -862,6 +874,500 @@ def test_a_failed_preview_leaves_the_highlight_on_the_row_that_is_previewed(serv
         text = screen.status.text
         assert "previewing Dracula" in text, f"the note does not name the previewed scheme: {text!r}"
         assert "My Lab" not in text, f"the note names the broken file that is not previewed: {text!r}"
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_the_save_key_and_button_are_present_with_the_hints(serve, wait_until) -> None:
+    # fails today: no Save action, no `[ Save as my default ]` button, and the row's hints say nothing about saving.
+    """Phase 10 step 5 (D14, TT20): the picker shows `[ Save as my default ]` between Use and Cancel, `s` is
+    bound to it, and the row reads `↑↓ choose · Tab chrome│colours · ⏎ Use · s Save · Esc put back` on the
+    laptop and `⏎ Use · s Save · Esc back` on the phone. An operator who cannot see the key cannot save, and a
+    phone row naming a key that is not there misleads them."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        ids = [b.id for b in picker.query("#theme-buttons > PickerButton")]
+        assert ids == ["theme_use", "theme_save", "theme_cancel"], \
+            f"the Save button is not between Use and Cancel: {ids}"
+        save = picker.query_one("#theme_save", PickerButton)
+        assert "Save as my default" in save.render().plain, f"the button's label: {save.render().plain!r}"
+        assert A.BY_ID["theme_save"].key == "s" and not A.BY_ID["theme_save"].in_menu, \
+            f"the Save action is not keyed `s` for the picker alone: {A.BY_ID['theme_save']!r}"
+        text = screen.status.text
+        for hint in ("↑↓ choose", "Tab chrome│colours", "⏎ Use", "s Save", "Esc put back"):
+            assert hint in text, f"the row is missing the hint {hint!r}: {text!r}"
+        await pilot.resize_terminal(65, 30)
+        await pilot.pause(0.3)
+        text = screen.status.text
+        assert "⏎ Use" in text and "s Save" in text and "Esc back" in text, f"the compact hints: {text!r}"
+        assert "↑↓ choose" not in text, f"the phone row shows a laptop hint: {text!r}"
+        await gen.aclose()
+
+    asyncio.run(check())
+    asyncio.run(check())
+
+
+def test_v_narrows_by_variant(serve, wait_until) -> None:
+    # fails today: v does nothing in the picker.
+    """Phase 11 step 1: `v` cycles the scheme list's variant filter dark→light→all→dark. After `v` to
+    light, every scheme row shown is a light scheme and Solarized Light is among them; after `all`,
+    every shipped scheme is listed. The filter narrows the scheme list only, not the theme list."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        # Initial state: the toggle starts on the variant of the chrome theme in use (OPEN-T6 b)
+        # terracotta is dark, so the filter should be dark
+        assert picker._variant_filter == "dark", f"initial filter: {picker._variant_filter}"
+        # Press `v` to cycle to light
+        await pilot.press("v")
+        await pilot.pause(0.2)
+        assert picker._variant_filter == "light", "v did not cycle to light"
+        schemes = picker._schemes
+        # Review round 1 ruling (OPEN-T6 c): the scheme in use is always listed, so the toggle filters
+        # every other scheme.
+        current = app.cfg["theme.term.scheme"]
+        assert all(s.variant == "light" or s.slug == current for s in schemes), (
+            f"a scheme that is neither light nor the one in use is listed: {[s.slug for s in schemes]}")
+        slugs = [s.slug for s in schemes]
+        assert "solarized-light" in slugs, f"Solarized Light is not in the light list: {slugs}"
+        # Press `v` again to cycle to all
+        await pilot.press("v")
+        await pilot.pause(0.2)
+        assert picker._variant_filter == "all", "v did not cycle to all"
+        schemes = picker._schemes
+        # All shipped schemes should be listed (19 schemes per phase 2 default)
+        assert len(schemes) >= 19, f"all does not show all schemes: {len(schemes)}"
+        # Press `v` again to cycle back to dark
+        await pilot.press("v")
+        await pilot.pause(0.2)
+        assert picker._variant_filter == "dark", "v did not cycle back to dark"
+        schemes = picker._schemes
+        assert all(s.variant == "dark" for s in schemes), "not every listed scheme is dark after cycling"
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_slash_filters_by_name(serve, wait_until) -> None:
+    # fails today: / does nothing in the picker.
+    """Phase 11 step 2: `/` filters by name or slug, case-insensitively, as a substring. `/`, `sol`:
+    only the Solarized schemes are listed; ⏎ keeps the text; Esc while editing clears it and the picker
+    stays open; a second Esc closes it and puts the look back."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        # Set variant filter to "all" first so both dark and light schemes are shown
+        await pilot.press("v")  # dark -> light
+        await pilot.press("v")  # light -> all
+        await pilot.pause(0.2)
+        # Press `/` to start editing
+        await pilot.press("slash")
+        await pilot.pause(0.2)
+        assert picker._editing_filter, "/ did not start editing"
+        # Type `sol` to filter
+        await pilot.press("s", "o", "l")
+        await pilot.pause(0.2)
+        assert picker._filter_text == "sol", f"filter text: {picker._filter_text}"
+        schemes = picker._schemes
+        slugs = [s.slug for s in schemes]
+        # Only Solarized schemes and the scheme in use should be listed (review round 1 ruling,
+        # OPEN-T6 c: the scheme in use is always listed).
+        current = app.cfg["theme.term.scheme"]
+        assert all("solarized" in s.slug or s.slug == current for s in schemes), (
+            f"schemes that match neither `sol` nor the pick in use are listed: {slugs}")
+        assert "solarized-dark" in slugs and "solarized-light" in slugs, f"Solarized schemes missing: {slugs}"
+        # Press ⏎ to keep the text and stop editing
+        await pilot.press("enter")
+        await pilot.pause(0.2)
+        assert not picker._editing_filter, "⏎ did not stop editing"
+        assert picker._filter_text == "sol", "⏎ did not keep the filter text"
+        # Start editing again and press Esc to clear
+        await pilot.press("slash")
+        await pilot.pause(0.2)
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+        assert not picker._editing_filter, "Esc did not stop editing"
+        assert picker._filter_text == "", "Esc did not clear the filter text"
+        assert isinstance(app.screen, ThemePicker), "Esc while editing closed the picker"
+        # Press Esc again to close the picker
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+        assert not isinstance(app.screen, ThemePicker), "second Esc did not close the picker"
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_a_filter_that_moves_the_highlight_previews_the_new_row(serve, wait_until) -> None:
+    # fails today: filters do not exist.
+    """Phase 11 step 3 (B5), as the review round 1 ruling (OPEN-T6 c) shapes it: a filter that moves
+    the highlight previews the new row. The scheme in use is always listed first, so the list is never
+    empty: a filter that matches nothing else leaves the scheme in use as the only row and the
+    highlight lands on it, previewing it."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        # Start with tsb-default highlighted, move to Dracula
+        _move(picker, "schemes", "dracula")
+        await pilot.pause(0.2)
+        assert app.cfg["theme.term.scheme"] == "dracula", "moving to Dracula did not preview it"
+        # Filter to `sol`: the scheme in use leads the list, so the highlight lands on it and previews it
+        await pilot.press("slash", "s", "o", "l", "enter")
+        await pilot.pause(0.2)
+        scheme_slug = app.cfg["theme.term.scheme"]
+        assert scheme_slug == "tsb-default", f"the filter did not preview the leading scheme in use: {scheme_slug}"
+        # Filter to a name that matches nothing: only the scheme in use is left, the preview stays on it
+        await pilot.press("slash", "x", "x", "x", "x", "x", "enter")
+        await pilot.pause(0.2)
+        assert app.cfg["theme.term.scheme"] == "tsb-default", (
+            f"the filter that leaves nothing moved the preview off the scheme in use: {app.cfg['theme.term.scheme']}")
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_the_footer_for_dracula(serve, wait_until) -> None:
+    # fails today: no footer.
+    """Phase 11 step 4: the footer (laptop layout only) shows the highlighted scheme's name, author,
+    license, and contrast ratios. The ratios equal theme.contrast_ratio computed from the shipped file."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        # Move to Dracula
+        _move(picker, "schemes", "dracula")
+        await pilot.pause(0.2)
+        footer = picker.query_one("#theme-footer", Static)
+        assert footer.styles.display == "block", "footer is not shown on laptop layout"
+        text = footer.render().plain
+        # Check that the footer shows Dracula's metadata
+        assert "Dracula" in text, f"footer does not show scheme name: {text!r}"
+        assert "Zeno Rocha" in text, f"footer does not show author: {text!r}"
+        assert "MIT" in text, f"footer does not show license: {text!r}"
+        # Check contrast ratios
+        text_contrast = tsb_theme.contrast_ratio(DRACULA.foreground, DRACULA.background)
+        ansi_indices = list(range(1, 8)) + list(range(9, 16))
+        lowest_contrast = min(tsb_theme.contrast_ratio(DRACULA.ansi[i], DRACULA.background) for i in ansi_indices)
+        assert f"{text_contrast:.2f}:1" in text, f"footer does not show text contrast: {text!r}"
+        assert f"{lowest_contrast:.2f}:1" in text, f"footer does not show lowest contrast: {text!r}"
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_settings_lists_a_broken_user_scheme(serve, wait_until) -> None:
+    # fails today: Settings… does not list broken files.
+    """Phase 11 step 5: Settings… lists a broken user scheme with its path and field, and lists nothing
+    when every file reads."""
+    from tsb_tui.screens.chrome_dialogs import settings_lines
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        # First check: no broken files
+        lines = settings_lines(app.cfg)
+        text = "\n".join(lines)
+        assert "Theme and scheme files that could not be read" not in text, \
+            "Settings lists a broken files section when there are none"
+        # Add a broken scheme file
+        user_dir = _user_dir()
+        schemes_dir = user_dir / "schemes"
+        schemes_dir.mkdir(parents=True, exist_ok=True)
+        broken = schemes_dir / "broken.json"
+        broken.write_text('{"name": "Broken"}', encoding="utf-8")  # missing ansi
+        # Reload the catalogues by opening the picker
+        await _open_picker(pilot, app, screen, wait_until)
+        await pilot.press("escape")
+        await pilot.pause(0.2)
+        # Check that Settings lists the broken file
+        lines = settings_lines(app.cfg)
+        text = "\n".join(lines)
+        assert "Theme and scheme files that could not be read" in text, \
+            "Settings does not list the broken files section"
+        assert "broken.json" in text, f"Settings does not list the broken file: {text}"
+        assert "ansi" in text, f"Settings does not list the field: {text}"
+        # Clean up
+        broken.unlink()
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_the_toggle_words_are_styled_where_they_are_drawn(serve, wait_until) -> None:
+    # fails today: the toggle's styling starts at `filter_end`, before the three spaces that precede
+    # "dark│light│all", so the active style lands on "   d" and the drawn word "dark" reads inactive.
+    """Phase 11 review round 1 (the orchestrator's picture finding on picker-T1c-120x40): with the
+    picker open on terracotta (dark), every cell of the word "dark" in the Terminal colours header
+    carries the active style (accent_hot, bold, underline) and no cell of "light" or "all" does. If
+    the underline sits three cells left of the words, the operator cannot tell which variant the
+    scheme list is filtered to."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        content = picker.query_one("#theme-schemes-head", Static).render()
+        plain = content.plain
+        for word, active in (("dark", True), ("light", False), ("all", False)):
+            i = plain.index(word)
+            for k in range(len(word)):
+                s = content.get_style_at_offset(i + k)
+                if active:
+                    assert s.underline and s.bold and s.foreground.hex.lower() == app.cfg["theme.accent_hot"], (
+                        f"the drawn word {word} is not styled active at cell {k}: {s!r}")
+                else:
+                    assert not s.underline and s.foreground.hex.lower() == app.cfg["theme.text_muted"], (
+                        f"the drawn word {word} is styled active at cell {k}: {s!r}")
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("editing", [True, False])
+@pytest.mark.parametrize("size", [(65, 30), (120, 40)])
+def test_a_long_filter_keeps_the_toggle_and_the_end_of_the_typed_text_visible(
+        serve, wait_until, monkeypatch, size, editing) -> None:
+    # fails today: the shortening keeps only the filter's LAST character (`/ …x`), so at 120x40 the
+    # tail shown is one character, not a suffix of at least 2 of what was typed.
+    """The schemes header must stay readable however long the filter is: the toggle says which
+    variant the list is filtered to, and the tail of the text is what the person is matching, so a
+    long filter that erases both leaves the picker unreadable. Typing a 40-character filter (which
+    matches no scheme) at 65x30 and 120x40, editing and not editing, keeps the header line inside
+    the panel's inner width, ends with `dark│light│all`, shows `/ …` followed by a suffix of the
+    typed text, and keeps at least one space between the title and the filter."""
+
+    async def check() -> None:
+        monkeypatch.setenv("TSB_TUI_VIEW_CHROME", "full")
+        typed = "abcdefghij" * 4
+        serve_app, url = serve(InputRecordingApp())
+        sid = make_session(url, target="normal")
+        record_output(serve_app, sid, b"ops@infra-db-02:~$ df -h /var\r\n")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            app.client.login(_serve.USER, _serve.PASSWORD)
+            screen = await attached(pilot, app, sid, wait_until)
+            picker = await _open_picker(pilot, app, screen, wait_until)
+            await pilot.press("slash", *list(typed))
+            if not editing:
+                await pilot.press("enter")
+            await pilot.pause(0.2)
+            plain = picker.query_one("#theme-schemes-head", Static).render().plain
+            toggle = "   dark│light│all"
+            assert len(plain) <= picker._inner, f"the header line overflows the panel: {plain!r}"
+            assert plain.endswith(toggle), f"the toggle is not at the end of the line: {plain!r}"
+            assert "/ …" in plain, f"the shortened filter marker is missing: {plain!r}"
+            prefix = plain[: len(plain) - len(toggle)]
+            tail = prefix[prefix.index("/ …") + 3:]
+            if editing:
+                assert tail.endswith("▏"), f"the edit cursor is not at the end of the filter: {plain!r}"
+                tail = tail[:-1]
+            assert tail and typed.endswith(tail), (
+                f"the shown tail is not a suffix of the typed filter: {tail!r}")
+            if size == (120, 40):
+                assert len(tail) >= 2, f"the shown tail is under 2 characters at 120x40: {tail!r}"
+            i = plain.index("/")
+            assert i > 0 and plain[i - 1] == " ", (
+                f"no space between the title and the filter: {plain!r}")
+
+    asyncio.run(check())
+
+
+def test_the_low_on_a_phone_line_keys_on_the_lowest_colour_ratio(serve, wait_until) -> None:
+    # fails today: the warning is keyed on the text ratio, so Solarized Dark (text 4.75:1, lowest
+    # colour 2.79:1) shows no line, and the drawn text is "▲ low on a phone", not the mock's full line.
+    """OPEN-T6 d(2), option (ii) of the original open item: the line shows when the scheme's LOWEST
+    ANSI colour ratio (ANSI 1–7, 9–15 on the background) is under the ruled 4.5:1. Solarized Dark's
+    lowest colour is 2.79:1, so its footer carries "▲ low on a phone: minimum_contrast can lift it";
+    Dracula's lowest is 4.53:1, so its footer does not. Keying on the text ratio hides the warning
+    on exactly the schemes a phone shows poorly."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        _move(picker, "schemes", "solarized-dark")
+        await pilot.pause(0.2)
+        footer = picker.query_one("#theme-footer", Static)
+        text = footer.render().plain
+        lowest = min(tsb_theme.contrast_ratio(SOLARIZED.ansi[i], SOLARIZED.background)
+                     for i in list(range(1, 8)) + list(range(9, 16)))
+        assert lowest < 4.5, f"the test scheme's lowest ratio is not under the threshold: {lowest:.2f}"
+        assert "▲ low on a phone: minimum_contrast can lift it" in text, (
+            f"Solarized Dark's footer shows no warning line: {text!r}")
+        _move(picker, "schemes", "dracula")
+        await pilot.pause(0.2)
+        text = picker.query_one("#theme-footer", Static).render().plain
+        assert "▲ low on a phone" not in text, (
+            f"Dracula's lowest colour is 4.53:1, over the threshold, and a warning shows: {text!r}")
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_the_variant_filter_applies_when_the_picker_opens(serve, wait_until) -> None:
+    # fails today: the filters are applied only by `v` and `/`, so on terracotta (dark) the list at
+    # open shows light schemes — Catppuccin Latte, Solarized Light.
+    """Phase 11 review round 1, fix 2 as ruled (the orchestrator's DEFAULT from OPEN-T6 c): both
+    filters apply when the picker opens, so on terracotta (dark) the list at open shows no light
+    scheme other than the one in use, and the scheme in use leads the list."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        assert picker._variant_filter == "dark", f"the toggle at open: {picker._variant_filter}"
+        current = app.cfg["theme.term.scheme"]
+        light = [s.slug for s in picker._schemes if s.variant == "light"]
+        assert light == [], f"light schemes are listed at open on a dark theme: {light}"
+        assert picker._schemes[0].slug == current, f"the scheme in use is not first: {[s.slug for s in picker._schemes]}"
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_a_light_scheme_in_use_is_listed_first_when_the_toggle_starts_dark(serve, wait_until, monkeypatch) -> None:
+    # fails today: at open no filter applies, so the rest of the list is every shipped scheme,
+    # light ones included.
+    """Phase 11 review round 1, fix 2 as ruled (OPEN-T6 c): with a light scheme in use
+    (`--set theme.term.scheme=solarized-light` on terracotta), it is listed first and marked ✓ while
+    the toggle reads dark, and every other row is a dark scheme."""
+
+    async def check() -> None:
+        monkeypatch.setenv("TSB_TUI_THEME_TERM_SCHEME", "solarized-light")
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        assert app.cfg["theme.term.scheme"] == "solarized-light", "the light scheme did not become the pick in use"
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        assert picker._variant_filter == "dark", f"the toggle at open: {picker._variant_filter}"
+        slugs = [s.slug for s in picker._schemes]
+        assert slugs[0] == "solarized-light", f"the scheme in use is not listed first: {slugs}"
+        row = picker.query_one("#theme-schemes", ThemeList).children[0].render().plain
+        assert "✓" in row, f"the scheme in use is not marked ✓: {row!r}"
+        rest_light = [s.slug for s in picker._schemes[1:] if s.variant == "light"]
+        assert rest_light == [], f"light schemes are listed beside the one in use: {rest_light}"
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_the_name_filter_keeps_the_scheme_in_use_listed(serve, wait_until) -> None:
+    # fails today: `/ sol` filters the list to the matching schemes only, dropping the scheme in use
+    # (tsb-default), which the ruling says is always listed.
+    """Phase 11 review round 1, fix 2 as ruled (OPEN-T6 c): the `/ sol` filter keeps the scheme in
+    use listed first beside the schemes that match the text."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        await pilot.press("slash", "s", "o", "l", "enter")
+        await pilot.pause(0.2)
+        slugs = [s.slug for s in picker._schemes]
+        assert slugs[0] == "tsb-default", f"the scheme in use is not listed first: {slugs}"
+        assert "solarized-dark" in slugs, f"the matching scheme is not listed: {slugs}"
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_a_failed_save_changes_nothing(serve, wait_until, monkeypatch) -> None:
+    # fails today: on an OSError the toast is shown and nothing is rolled back, so the ✓ moves onto the
+    # previewed pair, the names read `saved for <login>`, and the look that never reached the disk stays.
+    """TT17. A Save that does not reach the disk must not look saved: the picker stays open, the ✓ stays
+    on the pick in use before Save, the status row still says `· previewing`, and both names keep their
+    sources. If a full disk left the names marked saved, the operator would believe their default changed
+    and the next start would come up with names that were never written."""
+
+    async def check() -> None:
+        from tsb_tui import saved_theme
+
+        def boom(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(saved_theme, "save", boom)
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        use_before = picker._current[1]
+        _move(picker, "schemes", "dracula")
+        await pilot.pause(0.2)
+        name_before = app.cfg.source("theme.name")
+        scheme_before = app.cfg.source("theme.term.scheme")
+        await pilot.press("s")
+        await pilot.pause(0.3)
+        assert isinstance(app.screen, ThemePicker), "a failed Save closed the picker"
+        rows = list(picker.query_one("#theme-schemes", ThemeList).children)
+        marked = [s.slug for i, s in enumerate(picker._schemes) if "✓" in rows[i].render().plain]
+        assert marked == [use_before], f"the ✓ is not on the pick in use before Save: {marked!r}"
+        assert "· previewing" in screen.status.text, (
+            f"the row no longer says previewing: {screen.status.text!r}")
+        assert app.cfg.source("theme.name") == name_before, (
+            f"the chrome name's source changed on a failed Save: {app.cfg.source('theme.name')!r}")
+        assert app.cfg.source("theme.term.scheme") == scheme_before, (
+            f"the scheme's source changed on a failed Save: {app.cfg.source('theme.term.scheme')!r}")
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_a_light_theme_without_variant_or_bg_starts_the_toggle_on_light(serve, wait_until, monkeypatch) -> None:
+    # fails today: the picker took the variant from the theme file, which has none, so it opened on dark although the chrome in force is light.
+    """OPEN-T6 b (ruled): the toggle starts on the variant of the chrome theme in use. A partial user
+    theme carries no `variant` and no `bg`; the bg in force comes from a higher layer
+    (`TSB_TUI_THEME_BG`), and load computes the variant from that resolved bg (OPEN-T5, TT12). The
+    picker must open on the variant of the look in force, not of the file: a light chrome whose scheme
+    list opens filtered to dark is the wrong list."""
+
+    async def check() -> None:
+        themes_dir = _user_dir() / "themes"
+        themes_dir.mkdir(parents=True, exist_ok=True)
+        (themes_dir / "mylight.toml").write_text('[theme]\naccent = "#8a4b2c"\n', encoding="utf-8")
+        monkeypatch.setenv("TSB_TUI_THEME_NAME", "mylight")
+        monkeypatch.setenv("TSB_TUI_THEME_BG", "#f6f1e7")
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        assert app.cfg["theme.name"] == "mylight", "the partial user theme did not become the chrome in use"
+        assert app.cfg.chrome.variant == "light", (
+            f"the variant of the look in force is not light: {app.cfg.chrome.variant!r}")
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        assert picker._variant_filter == "light", f"the toggle at open: {picker._variant_filter}"
+        await gen.aclose()
+
+    asyncio.run(check())
+
+
+def test_the_filter_takes_hyphens_spaces_and_dots(serve, wait_until) -> None:
+    # fails today: the filter appends only single-character keys, so `minus` is dropped, the text becomes
+    # `onehalf`, and no scheme name or slug matches it.
+    """Scheme names and slugs contain hyphens, spaces and dots; a filter that drops those characters
+    cannot narrow to the schemes the person is looking for. On the all variant, `/ one-half` lists
+    exactly the One Half schemes beside the scheme in use (always listed first, OPEN-T6 c)."""
+
+    async def check() -> None:
+        gen = _session(serve, wait_until)
+        app, screen, pilot = await gen.__anext__()
+        picker = await _open_picker(pilot, app, screen, wait_until)
+        await pilot.press("v")  # dark -> light
+        await pilot.press("v")  # light -> all
+        await pilot.press("slash", "o", "n", "e", "minus", "h", "a", "l", "f")
+        await pilot.pause(0.2)
+        assert picker._filter_text == "one-half", f"filter text: {picker._filter_text!r}"
+        slugs = [s.slug for s in picker._schemes]
+        current = app.cfg["theme.term.scheme"]
+        matches = sorted(s for s in slugs if s != current)
+        assert matches == ["one-half-dark", "one-half-light"], (
+            f"the filter did not narrow to the One Half schemes: {slugs!r}")
         await gen.aclose()
 
     asyncio.run(check())

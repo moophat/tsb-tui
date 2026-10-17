@@ -266,6 +266,8 @@ ACTIONS: tuple[Action, ...] = (
     # The picker's buttons (B5), keyed by the picker's own bindings; the key is the printed form.
     Action("theme_use", "Use", "keep the look previewed for this run", "⏎", GROUP_SESSION, SCOPE_THEME,
            "Use", _always, in_menu=False),
+    Action("theme_save", "Save", "write this look to the per-login state file", "s", GROUP_SESSION, SCOPE_THEME,
+           "Save", _always, in_menu=False),
     Action("theme_cancel", "Cancel", "put back what was in use", "Esc", GROUP_SESSION, SCOPE_THEME,
            "put back", _always, in_menu=False),
     # Size's button (F11); its auto toggle is the session action `auto_size`.

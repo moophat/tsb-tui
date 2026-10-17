@@ -18,6 +18,7 @@ screen in the wrong colours and say nothing (Rule 12).
 
 from __future__ import annotations
 
+import colorsys
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -143,6 +144,49 @@ def contrast_ratio(a: str, b: str) -> float:
     return (la + 0.05) / (lb + 0.05)
 
 
+_LIFT_CACHE: dict[tuple[str, str, float], str] = {}
+
+
+def lift(fg: str, bg: str, ratio: float) -> str:
+    """The foreground that meets `ratio` against `bg` (TT21), keeping hue and saturation: binary-search
+    the HLS lightness toward white when `bg`'s relative luminance is at most 0.179 (where black and
+    white text contrast equally), toward black otherwise, until the ratio is met. If neither extreme
+    meets it, whichever of `#000000` and `#ffffff` contrasts more with `bg`. Cached per (fg, bg, ratio)."""
+    key = (fg, bg, ratio)
+    cached = _LIFT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    if contrast_ratio(fg, bg) >= ratio:
+        _LIFT_CACHE[key] = fg
+        return fg
+    h, l, s = colorsys.rgb_to_hls(*(int(fg[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+
+    def hex_of(light: float) -> str:
+        r, g, b = colorsys.hls_to_rgb(h, light, s)
+        return f"#{round(r * 255):02x}{round(g * 255):02x}{round(b * 255):02x}"
+
+    target = 1.0 if relative_luminance(bg) <= 0.179 else 0.0
+    if contrast_ratio(hex_of(target), bg) < ratio:
+        lifted = "#ffffff" if contrast_ratio("#ffffff", bg) >= contrast_ratio("#000000", bg) else "#000000"
+    else:
+        lo, hi = l, target
+        for _ in range(26):  # enough to converge at double precision
+            mid = (lo + hi) / 2
+            if contrast_ratio(hex_of(mid), bg) >= ratio:
+                hi = mid
+            else:
+                lo = mid
+        lifted = hex_of(hi)
+    _LIFT_CACHE[key] = lifted
+    return lifted
+
+
+def _rich_hex(colour: Any) -> str:
+    """A `RichColor` as the lowercase `#rrggbb` `lift` takes."""
+    tc = colour.get_truecolor()
+    return f"#{tc.red:02x}{tc.green:02x}{tc.blue:02x}"
+
+
 @dataclass(frozen=True)
 class CursorLook:
     """How one kind of cursor is drawn: its shape and the role colour it takes."""
@@ -231,10 +275,18 @@ class TermPalette:
                 _shape("theme.term.cursor_viewer", config["theme.term.cursor_viewer"]), roles["steel"])
 
         self._on_accent = roles["on-accent"]
+        # B7: the minimum contrast ratio, off at 1.0 (ruling 4). Config refuses it above 1.0 under
+        # palette="outer", so when it is above 1.0 the mode is "theme" and term_bg is a hex.
+        ratio = config["theme.term.minimum_contrast"]
+        if not isinstance(ratio, (int, float)) or isinstance(ratio, bool):
+            raise ThemeError(f"theme.term.minimum_contrast: expected a number, got {ratio!r}")
+        self._minimum_contrast = float(ratio)
         self._cache: dict[tuple, Style] = {}
 
         default_bg = RichColor.parse(self.term_bg) if self.term_bg else None
         fg_colour = RichColor.parse(self.fg) if self.fg else None
+        if self._minimum_contrast > 1.0 and self.fg and self.term_bg:
+            fg_colour = RichColor.parse(lift(self.fg, self.term_bg, self._minimum_contrast))
         self.default = Style(color=fg_colour, bgcolor=default_bg)
 
     # -- engine colours --
@@ -301,6 +353,13 @@ class TermPalette:
             bg = painted_bg
         if resolved.invisible:
             fg = bg or fallback_bg
+        # B7: above 1.0, lift the cell's final foreground against its final background (the cell's
+        # own, else term_bg), after inverse is applied. An invisible cell is never lifted: its text is
+        # drawn in its background on purpose, and lifting it would show what the target hid.
+        if self._minimum_contrast > 1.0 and not resolved.invisible:
+            lifted_bg = bg if bg is not None else painted_bg
+            if fg is not None and lifted_bg is not None:
+                fg = RichColor.parse(lift(_rich_hex(fg), _rich_hex(lifted_bg), self._minimum_contrast))
         underline = resolved.underline
         return Style(
             color=fg, bgcolor=bg,

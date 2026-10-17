@@ -118,6 +118,7 @@ KNOB_TYPES: dict[str, type] = {
     "theme.term.cursor_typist": str,
     "theme.term.cursor_viewer": str,
     "theme.term.colors": list,
+    "theme.term.minimum_contrast": float,
     "glyphs.set": str,
     "term.library": str,
     "term.scrollback_bytes": int,
@@ -227,6 +228,7 @@ KNOB_OWNERS: dict[str, int] = {
     "theme.term.cursor_typist": 3,
     "theme.term.cursor_viewer": 3,
     "theme.term.colors": 3,
+    "theme.term.minimum_contrast": 3,
     "glyphs.set": 7,
     "term.library": 3,
     "term.scrollback_bytes": 3,
@@ -352,6 +354,19 @@ def _parse_int(key: str, value: Any) -> int:
     raise ConfigError(f"{key}: expected an integer, got {value!r}")
 
 
+def _parse_float(key: str, value: Any) -> float:
+    if isinstance(value, bool):
+        raise ConfigError(f"{key}: expected a number, got {value!r}")
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            pass
+    raise ConfigError(f"{key}: expected a number, got {value!r}")
+
+
 def _parse_list(key: str, value: Any) -> list:
     if isinstance(value, list):
         return list(value)
@@ -360,7 +375,7 @@ def _parse_list(key: str, value: Any) -> list:
     raise ConfigError(f"{key}: expected a list, got {value!r}")
 
 
-_PARSERS = {bool: _parse_bool, int: _parse_int, list: _parse_list}
+_PARSERS = {bool: _parse_bool, int: _parse_int, float: _parse_float, list: _parse_list}
 
 
 def _coerce(key: str, value: Any) -> Any:
@@ -459,18 +474,20 @@ class Config:
                  sources: Mapping[str, str] | None = None, *,
                  user_dir: Path | None = None,
                  scheme: Any = None, chrome: Any = None,
-                 defaults: Mapping[str, Any] | None = None) -> None:
+                 defaults: Mapping[str, Any] | None = None,
+                 profile_values: Mapping[str, Any] | None = None) -> None:
         self._values = dict(values)
         self.profile = profile
         self._sources = dict(sources or {})
         # What `load` resolved alongside the knobs: the directory the user's theme and scheme files
         # live in, the selected colour scheme, and the selected chrome theme (TT28). `load` is the
         # only builder. The packaged defaults a switch falls back to when a new theme lacks a role
-        # (phases 7, 10).
+        # (phases 7, 10). The profile values (phase 10) are what unsave_names() falls back to.
         self.user_dir = user_dir
         self.scheme = scheme
         self.chrome = chrome
         self._defaults = dict(defaults) if defaults is not None else {}
+        self._profile_values = dict(profile_values) if profile_values is not None else {}
 
     def get(self, key: str, default: Any = None) -> Any:
         return self._values.get(key, default)
@@ -568,6 +585,34 @@ class Config:
         self.chrome = saved["chrome"]
         self.scheme = saved["scheme"]
 
+    def unsave_names(self) -> None:
+        """Each name whose source starts with `saved for ` goes back to its profile value (source
+        `profile <name>`) or its packaged default (source `default`), from what `load` stored (phase 7).
+        TT16: a login without an entry after one with it gets the default names back.
+
+        Apply each fallback through select_look so chrome, scheme, and all role values/sources match
+        the fallback look, not just the two names. A failure changes nothing: the first fallback is
+        applied before the second, so if the second raises we restore the captured look and re-raise."""
+        before = self.look()
+        try:
+            for key in ("theme.name", "theme.term.scheme"):
+                if self._sources.get(key, "").startswith("saved for "):
+                    if key in self._profile_values:
+                        fallback_value = self._profile_values[key]
+                        fallback_source = f"profile {self.profile}"
+                    else:
+                        fallback_value = self._defaults[key]
+                        fallback_source = "default"
+
+                    # Apply through select_look so chrome/scheme/roles all match the fallback
+                    if key == "theme.name":
+                        self.select_look(theme_id=fallback_value, source=fallback_source)
+                    else:  # theme.term.scheme
+                        self.select_look(scheme_slug=fallback_value, source=fallback_source)
+        except ConfigError:
+            self.restore_look(before)
+            raise
+
     def leader_overrides(self) -> dict[str, str]:
         """`[keys.leader_map]` as the action ids it rebinds."""
         return {key.removeprefix("keys.leader_map."): value for key, value in self._values.items()
@@ -656,7 +701,7 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
         raise ConfigError(str(exc)) from None
 
     return Config(resolved, chosen, sources, user_dir=user_config_dir, scheme=scheme, chrome=chrome,
-                  defaults=defaults)
+                  defaults=defaults, profile_values=profile_values)
 
 
 def _check_chrome_knobs(values: Mapping[str, Any]) -> None:
@@ -690,7 +735,9 @@ def _check_chrome_knobs(values: Mapping[str, Any]) -> None:
 
 def _check_theme_knobs(values: Mapping[str, Any]) -> None:
     """Phase 1: theme.term.bg holds "scheme", "outer" or #rrggbb.
-    Phase 3: theme.term.cursor_colour holds "role" or "scheme"; theme.term.colors is [] or exactly 16."""
+    Phase 3: theme.term.cursor_colour holds "role" or "scheme"; theme.term.colors is [] or exactly 16.
+    Phase 12: theme.term.minimum_contrast is 1.0 (off) to 21.0, and above 1.0 is refused under
+    palette = "outer", where the colours are unknown (TT21)."""
     bg = values["theme.term.bg"]
     if bg not in ("scheme", "outer") and not _HEX_PATTERN.fullmatch(bg):
         raise ConfigError(f"theme.term.bg = {bg!r}: expected 'scheme', 'outer' or #rrggbb")
@@ -704,6 +751,15 @@ def _check_theme_knobs(values: Mapping[str, Any]) -> None:
         raise ConfigError("theme.term.colors: expected a list")
     if colors and len(colors) != 16:
         raise ConfigError(f"theme.term.colors: expected [] or exactly 16 colours, got {len(colors)}")
+
+    minimum_contrast = values["theme.term.minimum_contrast"]
+    if not 1.0 <= minimum_contrast <= 21.0:
+        raise ConfigError(
+            f"theme.term.minimum_contrast = {minimum_contrast}: expected 1.0 (off) to 21.0")
+    if minimum_contrast > 1.0 and values["theme.term.palette"] == "outer":
+        raise ConfigError(
+            f"theme.term.minimum_contrast = {minimum_contrast}: refused under theme.term.palette "
+            "= 'outer', where the colours are unknown")
 
 
 def _one_of(values: Mapping[str, Any], key: str, allowed: tuple[str, ...]) -> None:

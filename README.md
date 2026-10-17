@@ -229,9 +229,17 @@ Your own files: `$XDG_CONFIG_HOME/tsb-tui/themes/<id>.toml` (one `[theme]` table
 leaves out comes from the packaged defaults, terracotta) and `$XDG_CONFIG_HOME/tsb-tui/schemes/<slug>.json`
 (the same shape as `tsb_tui/schemes/tsb-default.json`). A user file named like a packaged one replaces it.
 
+The picker (`Menu ▸ View ▸ Theme…` or leader + `T`) previews a look live. `⏎` uses it for this run; `s`
+(Save as my default) keeps it for this TSB login. Save writes `$XDG_STATE_HOME/tsb-tui/theme.toml`
+(default `~/.local/state/tsb-tui/theme.toml`) — one `["<login>"]` table per TSB login, each with `theme` and
+`scheme`. The next start, after login, applies the entry for that login only; another login on the same
+machine keeps its own. Only Save writes the file, and only the interactive TUI: `tsb-tui drive` never reads
+or writes it. If two TUIs save at once, the last one wins.
+
 Precedence (TT12):
 
-* names: packaged default < profile < config file < `TSB_TUI_*` < `--set`;
+* names: packaged default < profile < saved for your login (after login, interactive only) < config file <
+  `TSB_TUI_*` < `--set`;
 * roles: packaged default < the named theme file < profile < config file < env < `--set`; a partial theme takes
   its missing roles from the packaged defaults.
 

@@ -264,7 +264,8 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "theme.border_on_surface", "theme.danger", "theme.frame", "theme.name", "theme.ok", "theme.on_accent",
         "theme.rec", "theme.rec_list",
         "theme.steel", "theme.surface", "theme.surface_2", "theme.surface_3",         "theme.term.colors", "theme.term.bg", "theme.term.cursor_colour", "theme.term.cursor_typist",
-        "theme.term.cursor_viewer", "theme.term.fg", "theme.term.palette", "theme.term.scheme",
+        "theme.term.cursor_viewer", "theme.term.fg", "theme.term.minimum_contrast", "theme.term.palette",
+        "theme.term.scheme",
         "theme.text", "theme.text_faint", "theme.text_muted", "theme.warn",
         "toasts.max", "toasts.seconds", "view.chrome", "view.follow_cursor", "view.narrow_mode",
         "watch.held", "watch.take_back_brings_to_front"}

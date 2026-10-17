@@ -70,6 +70,7 @@ def _pinned_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, term_so
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(home / ".local" / "state"))
     for name in [name for name in os.environ if name.startswith("TSB_TUI_")]:
         monkeypatch.delenv(name)
     monkeypatch.setenv("TSB_TUI_TERM_LIBRARY", str(term_so))

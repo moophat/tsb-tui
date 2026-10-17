@@ -54,6 +54,7 @@ class LoginScreen(Screen):
         # Read back by screens/new_session.py to tell this principal's own connections apart
         # from ones GET /sessions lists for others (Contract §12: the choice is never guessed).
         self.app.username = principal["username"]
+        self.app.apply_saved_look(principal["username"])
         self.app.start_alerts()
         from .terminal import TerminalScreen
 

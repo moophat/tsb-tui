@@ -23,7 +23,7 @@ from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.term import VTBackend, load
 from tsb_tui.theme import TermPalette
-from tsb_tui.theme_files import parse_scheme, parse_theme
+from tsb_tui.theme_files import SchemeError, find_scheme, parse_scheme, parse_theme
 from tsb_tui.widgets.canvas import Canvas
 from tsbc import _serve
 from workspace_support import fixture_login, named_sessions, open_here
@@ -215,6 +215,35 @@ def test_a_bad_look_changes_nothing(tmp_path) -> None:
     after = cfg.look()
     assert after["name"] == before["name"] and after["scheme_name"] == before["scheme_name"]
     assert after["roles"] == before["roles"], "a failed switch changed a role value or source"
+
+
+def test_a_failed_unsave_leaves_the_look_unchanged(monkeypatch) -> None:
+    # fails today: unsave_names applies the theme fallback, then the scheme fallback. If the scheme fallback
+    # raises, the theme name, chrome, roles and sources are already switched, so cfg and the screen disagree.
+    """A failed restore must not leave half a look. Both names carry a `saved for x` source; unsave_names
+    applies the theme fallback first, then the scheme fallback. When the scheme fallback raises, the config
+    keeps the first login's look for the next person, and the app toasts and returns with cfg ahead of the
+    screen. unsave_names captures the look and restores it on ConfigError, so a failure changes nothing."""
+    cfg = config.load(config_file=Path("/nonexistent"), environ={})
+    cfg.select_look("nord", "dracula", source="saved for x")
+    assert cfg["theme.name"] == "nord" and cfg["theme.term.scheme"] == "dracula"
+    before = cfg.look()
+
+    def boom(slug, user_dir):
+        if slug == cfg._defaults["theme.term.scheme"]:
+            raise SchemeError(f"scheme {slug!r} is not found")
+        return find_scheme(slug, user_dir)
+
+    monkeypatch.setattr(config, "find_scheme", boom)
+    with pytest.raises(config.ConfigError):
+        cfg.unsave_names()
+
+    after = cfg.look()
+    assert after["name"] == before["name"], "the theme name and its source were left switched"
+    assert after["scheme_name"] == before["scheme_name"], "the scheme name and its source were left switched"
+    assert after["roles"] == before["roles"], "a role value or source leaked from the half-applied look"
+    assert after["chrome"] == before["chrome"], "chrome is not the look in force before the call"
+    assert after["scheme"] == before["scheme"], "scheme is not the scheme in force before the call"
 
 
 def test_pilot_a_switch_at_run_time_repaints_the_chrome_and_the_canvases(serve, wait_until) -> None:

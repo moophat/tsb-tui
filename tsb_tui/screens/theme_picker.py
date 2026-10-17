@@ -5,19 +5,24 @@ moving a highlight repaints the chrome or the terminal at once (`app.apply_look`
 previewed look for this run (OPEN-T6 a), Esc puts back what was in use. The pick in use leads each
 list, the rest follow alphabetically, user files marked `yours` (OPEN-T6 c); a user file that failed
 to load is listed after its list, file and field (TT10), where the highlight cannot reach it. While a
-preview is on, the status row says `· previewing …` (OPEN-T6 d1). Save, the filter, the toggle and
-the footer come in phase 11.
+preview is on, the status row says `· previewing …` (OPEN-T6 d1). `s` saves the previewed look to
+the per-login state file and closes the picker (phase 10). `v` cycles the scheme list's variant
+filter dark→light→all (phase 11, OPEN-T6 b); `/` filters by name; both apply when the picker opens,
+and the scheme in use is always listed first, whatever the filters say (review round 1 ruling, from
+OPEN-T6 c); the laptop footer shows the highlighted scheme's metadata and contrast ratios.
 
 Laptop: the panel fills the window's height in its rightmost 54 columns, both lists shown. Phone
 (`is_compact`, TT20): the panel takes the lower half beside the rail and shows one list at a time;
 its first line is the tab line `Chrome │ Terminal colours` with `Tab switches` at its right, and
 `Tab` switches the tab with the focus (the mock, tools/mock-picker.py:141-142, 197-204). A window
 that changes size re-lays the picker out with its highlights kept. The compact status row gives
-`⏎ Use` and `Esc back` (mock :259-260; `s Save` comes with phase 10).
+`⏎ Use`, `s Save` and `Esc back` (mock :259-260).
 
 Keys: `↑↓` moves the highlight, `Tab` switches between the two lists (TT20 — the buttons take no
-focus), `⏎` is Use, `Esc` puts it back; a click on `[ Use ]` / `[ Cancel ]` does the same. The action
-table's keys for the picker's buttons are the printed forms the status row shows (scope `theme`).
+focus), `⏎` is Use, `s` is Save as my default, `Esc` puts it back; `v` toggles variant filter;
+`/` starts filter editing; a click on `[ Use ]` / `[ Save as my default ]` / `[ Cancel ]` does the
+same. The action table's keys for the picker's buttons are the printed forms the status row shows
+(scope `theme`).
 """
 
 from __future__ import annotations
@@ -141,7 +146,9 @@ class ThemeList(Widget):
         self._kind = kind
 
     def compose(self) -> ComposeResult:
-        for _ in self._picker.items(self._kind):
+        # Rows are composed for the full catalogue, not the filtered list at mount: `v` and `/`
+        # change the item count after mount, and `fill_rows` blanks the rows past the filtered list.
+        for _ in self._picker.full(self._kind):
             yield Static(markup=False)
         # TT10, ruling 3: a catalogue's broken-file lines sit inside this list's scroll region, after its
         # last row, so they scroll with it. They are not items, so `highlightable_rows()` excludes them and
@@ -155,6 +162,9 @@ class ThemeList(Widget):
         return len(self._picker.items(self._kind))
 
     def on_key(self, event: events.Key) -> None:
+        # When editing the filter, let the picker handle the keys instead
+        if self._picker._editing_filter:
+            return
         if event.key == "up":
             event.stop()
             self.move_highlight(-1)
@@ -188,6 +198,7 @@ class ThemePicker(ModalScreen[None]):
     #theme-tabs { height: 1; display: none; }
     #theme-themes { overflow-y: auto; }
     #theme-schemes { height: 1fr; overflow-y: auto; }
+    #theme-footer { height: 2; display: none; }
     #theme-buttons { height: 1; }
     #theme-buttons Button { height: 1; min-width: 0; }
     #theme_use { text-style: bold; }
@@ -196,8 +207,11 @@ class ThemePicker(ModalScreen[None]):
     AUTO_FOCUS = "#theme-themes"
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("enter", "use", "Use", show=False),
+        Binding("s", "save", "Save", show=False),
         Binding("escape", "cancel", "put back", show=False),
         Binding("tab", "next_tab", "switch list", show=False),
+        Binding("v", "toggle_variant", "toggle variant", show=False),
+        Binding("slash", "start_filter", "filter", show=False),
     ]
 
     def __init__(self, terminal) -> None:
@@ -211,13 +225,21 @@ class ThemePicker(ModalScreen[None]):
         themes, bad_themes = theme_catalogue(cfg.user_dir)
         schemes, bad_schemes = scheme_catalogue(cfg.user_dir)
         self._themes = display_order(themes, cfg["theme.name"], lambda t: t.id, lambda t: t.id)
-        self._schemes = display_order(schemes, cfg["theme.term.scheme"], lambda s: s.name,
-                                      lambda s: s.slug)
         self._bad = {"themes": bad_themes, "schemes": bad_schemes}
         self._hl = {"themes": 0, "schemes": 0}  # each highlight sits on the row in use
         self._current = (cfg["theme.name"], cfg["theme.term.scheme"])  # the rows the ✓ marks
         self._compact = False  # set by `_layout` at mount and on every resize
         self._tab = "themes"  # the phone tab line's active list; follows the focus there
+        # Phase 11: variant filter and name filter
+        # OPEN-T6 b (ruled): starts on the variant of the chrome theme in use (the resolved variant in cfg.chrome).
+        # Use cfg.chrome.variant (resolved, includes computed variant from bg), not raw catalogue entry.
+        self._variant_filter = cfg.chrome.variant if cfg.chrome.variant else "dark"
+        self._filter_text = ""  # the `/` filter text
+        self._editing_filter = False  # whether the filter is being edited
+        self._all_schemes = schemes  # all schemes before filtering
+        # Both filters apply when the picker opens (review round 1, fix 2 as ruled): the list shown
+        # matches the toggle, with the scheme in use always listed first.
+        self._schemes = self._filtered_schemes(cfg)
         # The ruled name column (display defect fix, 2026-10-16): as wide as the longest name in the
         # lists. A longer name is truncated with `…` only when the panel is too narrow for the row:
         # markers + name + swatch block + gap + the longest note.
@@ -245,9 +267,12 @@ class ThemePicker(ModalScreen[None]):
             yield Static(id="theme-rule", markup=False)
             yield Static(id="theme-schemes-head", markup=False)
             yield ThemeList(self, "schemes", list_id="theme-schemes")
+            yield Static(id="theme-footer", markup=False)
             with Horizontal(id="theme-buttons"):
                 yield PickerButton(Content(f"[ {BY_ID['theme_use'].label} ]"), id="theme_use",
                                    variant="primary", compact=True)
+                yield PickerButton(Content("[ Save as my default ]"), id="theme_save",
+                                   compact=True)
                 yield PickerButton(Content(f"[ {BY_ID['theme_cancel'].label} ]"), id="theme_cancel",
                                    compact=True)
 
@@ -264,6 +289,36 @@ class ThemePicker(ModalScreen[None]):
         (`self._hl` is untouched) and its tab, then rebuild the rows for the new inner width."""
         self._layout()
         self.fill_rows()
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle filter editing keys (phase 11, sidebar.py:663-677 pattern)."""
+        if not self._editing_filter:
+            return
+        key = event.key
+        if key == "escape":
+            # Esc while editing: clear and stop editing; the picker stays open
+            event.stop()
+            event.prevent_default()
+            self._filter_text = ""
+            self._editing_filter = False
+            self._apply_filters()
+        elif key == "enter":
+            # ⏎: stop editing and keep the text
+            event.stop()
+            event.prevent_default()
+            self._editing_filter = False
+            self.fill_rows()
+        elif key == "backspace":
+            event.stop()
+            event.prevent_default()
+            if self._filter_text:
+                self._filter_text = self._filter_text[:-1]
+                self._apply_filters()
+        elif event.is_printable and event.character:
+            event.stop()
+            event.prevent_default()
+            self._filter_text += event.character
+            self._apply_filters()
 
     def _layout(self) -> None:
         """Laptop: the panel is the window's height less the status row's line. Phone (`is_compact`,
@@ -338,10 +393,70 @@ class ThemePicker(ModalScreen[None]):
         self.query_one(f"#theme-{kind}", ThemeList).focus()
         self.fill_rows()  # the tab line marks the active one, so it is redrawn with it
 
+    def action_toggle_variant(self) -> None:
+        """`v`: cycle the scheme list's variant filter dark→light→all→dark (phase 11 step 1)."""
+        if self._variant_filter == "dark":
+            self._variant_filter = "light"
+        elif self._variant_filter == "light":
+            self._variant_filter = "all"
+        else:
+            self._variant_filter = "dark"
+        self._apply_filters()
+
+    def action_start_filter(self) -> None:
+        """`/`: start editing the scheme filter (phase 11 step 2)."""
+        self._editing_filter = True
+        self.fill_rows()
+
+    def _filtered_schemes(self, cfg) -> list:
+        """The scheme list with the variant and name filters applied (phase 11 steps 1-2, applied at
+        open too). The scheme in use is always listed, first and marked ✓, whatever the filters say
+        (review round 1 ruling, from OPEN-T6 c "each list shows the pick in use first"); every other
+        scheme is filtered as the phase file says. The scheme in use is the ✓ row (`self._current[1]`),
+        not the previewed cfg value, which moves with the highlight. A scheme in use not in the
+        catalogue (an unknown name) cannot be listed."""
+        current_slug = self._current[1]
+        schemes = self._all_schemes
+        if self._variant_filter != "all":
+            schemes = [s for s in schemes if s.variant == self._variant_filter]
+        if self._filter_text:
+            text = self._filter_text.lower()
+            schemes = [s for s in schemes if text in s.name.lower() or text in s.slug.lower()]
+        if not any(s.slug == current_slug for s in schemes):
+            current = next((s for s in self._all_schemes if s.slug == current_slug), None)
+            if current is not None:
+                schemes = [current] + schemes
+        return display_order(schemes, current_slug, lambda s: s.name, lambda s: s.slug)
+
+    def _apply_filters(self) -> None:
+        """Apply variant filter and name filter to the scheme list (phase 11 steps 1-3). The highlight
+        moves onto the first match if it was on a now-filtered row. With the scheme in use always
+        listed, the list is never empty, so a filter that matches nothing else leaves the scheme in
+        use as the only row and the highlight lands on it (B5: moving the highlight applies at once)."""
+        cfg = self.app.cfg
+        old_hl_slug = self._schemes[self._hl["schemes"]].slug if self._schemes and self._hl["schemes"] < len(self._schemes) else None
+        self._schemes = self._filtered_schemes(cfg)
+        if self._schemes:
+            # Try to keep the same scheme highlighted; if it's gone, move to 0
+            new_index = 0
+            if old_hl_slug:
+                try:
+                    new_index = next(i for i, s in enumerate(self._schemes) if s.slug == old_hl_slug)
+                except StopIteration:
+                    pass
+            self.set_highlight("schemes", new_index)
+        # Rebuild rows (including the header with filter display)
+        self.fill_rows()
+
     # -- what it shows --
 
     def items(self, kind: str) -> list:
         return self._themes if kind == "themes" else self._schemes
+
+    def full(self, kind: str) -> list:
+        """The rows composed for this list: the full catalogue count, so a filter that widens the
+        list (`all`, or clearing `/`) has a row to paint on."""
+        return self._themes if kind == "themes" else self._all_schemes
 
     def broken(self, kind: str) -> list:
         """The catalogue's broken-file lines for `kind`, listed inside that list after its last row."""
@@ -381,12 +496,12 @@ class ThemePicker(ModalScreen[None]):
         return True
 
     def fill_rows(self) -> None:
-        """(Re)build every row, head, rule and broken-file line from the catalogues and the look in
+        """(Re)build every row, head, rule, footer and broken-file line from the catalogues and the look in
         force: the markers' colours follow the previewed chrome, so this runs after each move."""
         roles = theme.role_colours(self.app.cfg)
         self._fill_tabs()
         self._fill_head("theme-chrome-head", "Chrome", THEME_HEAD)
-        self._fill_head("theme-schemes-head", "Terminal colours", "")
+        self._fill_schemes_head()
         rule = Content("┄" * self._inner).stylize(style(roles["border_on_surface"]))
         self.query_one("#theme-rule", Static).update(rule)
         for kind, marks in (("themes", self._current[0]), ("schemes", self._current[1])):
@@ -396,10 +511,18 @@ class ThemePicker(ModalScreen[None]):
                 key = item.id if kind == "themes" else item.slug
                 rows[i].update(self._row_content(item, highlighted=i == self._hl[kind],
                                                  current=key == marks))
+            # Rows past the filtered list (the catalogue is composed full, so a filter that widens
+            # the list has a row to paint on): blank and hide them so they take no space.
+            for row in rows[len(items):len(self.full(kind))]:
+                row.update(Content(""))
+                row.styles.display = "none"
+            for i in range(len(items)):
+                rows[i].styles.display = "block"
             for static, (_path, message) in zip(self.query(f".broken-{'theme' if kind == 'themes' else 'scheme'}"),
                                                 self._bad[kind]):
                 line = Content(message).stylize(style(roles["text_muted"]))
                 static.update(line)
+        self._fill_footer()
 
     def _fill_head(self, id_: str, title: str, right: str) -> None:
         # `Content.stylize` is immutable (it returns a new Content), so every style is chained here.
@@ -409,6 +532,116 @@ class ThemePicker(ModalScreen[None]):
         if right:
             head = head.stylize(style(muted), INNER - len(right), INNER)
         self.query_one(f"#{id_}", Static).update(head)
+
+    def _fill_schemes_head(self) -> None:
+        """Terminal colours header with filter and toggle. The right part reads
+        `/ filter   dark│light│all`, with the active word in accent_hot bold underlined, others in
+        text_muted. While editing, the filter is drawn as `/ text▏`. When the line is too long for
+        the panel, the filter keeps as many of its last characters as fit (`/ …` + tail), the title
+        shortens from the right, the toggle stays whole, and at least one cell separates the title
+        from the filter."""
+        roles = theme.role_colours(self.app.cfg)
+        title = "Terminal colours"
+        # Toggle and gap always stay whole; shorten the filter's tail, then the title from the right.
+        toggle_parts = ["dark", "│", "light", "│", "all"]
+        toggle_gap = "   "
+        toggle = toggle_gap + "".join(toggle_parts)
+        cursor = "▏" if self._editing_filter else ""
+        text = self._filter_text
+
+        # Build the filter display
+        if self._editing_filter:
+            raw = f"/ {text}▏"
+        elif text:
+            raw = f"/ {text}"
+        else:
+            raw = "/ filter"
+
+        if len(title) + 1 + len(raw) + len(toggle) <= self._inner:
+            display_title = title
+            filter_display = raw
+        else:
+            if text:
+                room = self._inner - len(toggle) - len(title) - 1 - len("/ …") - len(cursor)
+                keep = min(max(room, 1), len(text))
+                filter_display = "/ …" + text[-keep:] + cursor
+            else:
+                filter_display = raw
+            if len(title) + 1 + len(filter_display) + len(toggle) > self._inner:
+                t = self._inner - len(toggle) - 1 - len(filter_display)
+                display_title = title[:t - 1] + "…" if t >= 2 else "…"
+            else:
+                display_title = title
+        pad = max(self._inner - len(display_title) - len(filter_display) - len(toggle), 1)
+
+        # Build the full line
+        line = Content(display_title + " " * pad + filter_display + toggle)
+
+        # Style the title
+        line = line.stylize(style(roles["text_muted"], bold=True), 0, len(display_title))
+
+        # Style the filter part
+        filter_start = len(display_title) + pad
+        filter_end = filter_start + len(filter_display)
+        filter_color = roles["text_muted"] if not self._filter_text and not self._editing_filter else roles["text"]
+        line = line.stylize(style(filter_color), filter_start, filter_end)
+
+        # Style the toggle parts (active in accent_hot bold underlined, others in text_muted).
+        # The styling starts after the three spaces that precede the words.
+        toggle_start = filter_end + len(toggle_gap)
+        pos = toggle_start
+        for part in toggle_parts:
+            if part == "│":
+                line = line.stylize(style(roles["text_muted"]), pos, pos + 1)
+                pos += 1
+            else:
+                if part == self._variant_filter:
+                    line = line.stylize(style(roles["accent_hot"], bold=True) + Style(underline=True), 
+                                      pos, pos + len(part))
+                else:
+                    line = line.stylize(style(roles["text_muted"]), pos, pos + len(part))
+                pos += len(part)
+        self.query_one("#theme-schemes-head", Static).update(line)
+
+    def _fill_footer(self) -> None:
+        """The footer (laptop only, phase 11 step 4): two lines under the scheme list, showing the
+        highlighted scheme's name, author, license, and contrast ratios. OPEN-T6 d2 (ruled): shows
+        the "▲ low on a phone" line when the lowest ANSI colour ratio is under 4.5:1."""
+        footer_widget = self.query_one("#theme-footer", Static)
+        # Show footer on laptop layout only
+        if self._compact or not self._schemes:
+            footer_widget.styles.display = "none"
+            return
+        footer_widget.styles.display = "block"
+        scheme = self._schemes[self._hl["schemes"]]
+        roles = theme.role_colours(self.app.cfg)
+        # First line: name · author · license
+        parts = [scheme.name]
+        if scheme.slug == "tsb-default":
+            parts.append("TSB")
+        elif scheme.source:
+            author = scheme.source.get("author", "")
+            license_text = scheme.source.get("license", "")
+            if author:
+                parts.append(author)
+            if license_text:
+                parts.append(license_text)
+        line1 = " · ".join(parts)
+        # Second line: contrast ratios
+        text_contrast = theme.contrast_ratio(scheme.foreground, scheme.background)
+        # Lowest of ANSI 1-7, 9-15 on background
+        ansi_indices = list(range(1, 8)) + list(range(9, 16))
+        lowest_contrast = min(theme.contrast_ratio(scheme.ansi[i], scheme.background) for i in ansi_indices)
+        line2 = f"text {text_contrast:.2f}:1 on its bg · lowest colour {lowest_contrast:.2f}:1"
+        # OPEN-T6 d2 (ruled): the warning keys on the scheme's LOWEST ANSI colour ratio under the
+        # ruled 4.5:1, not the text ratio; the mock's line (tools/mock-picker.py:242-243) is drawn
+        # as a third footer line, so the footer grows to three lines only when it shows.
+        lines = [line1, line2]
+        if lowest_contrast < 4.5:
+            lines.append("▲ low on a phone: minimum_contrast can lift it")
+        footer_widget.styles.height = len(lines)
+        content = Content("\n".join(lines)).stylize(style(roles["text_muted"]))
+        footer_widget.update(content)
 
     def _row_content(self, item, *, highlighted: bool, current: bool) -> Content:
         """One row as the mock draws it (tools/mock-picker.py:183-195): `▸` in accent-hot on the
@@ -465,12 +698,12 @@ class ThemePicker(ModalScreen[None]):
         previewed = []
         if cfg["theme.name"] != self._current[0]:
             previewed.append(cfg["theme.name"])
-        if cfg["theme.term.scheme"] != self._current[1]:
+        if cfg["theme.term.scheme"] != self._current[1] and self._schemes and self._hl["schemes"] < len(self._schemes):
             previewed.append(self._schemes[self._hl["schemes"]].name)
         note = f"previewing {' · '.join(previewed)}" if previewed else ""
-        hints = ((Hint("⏎", "Use"), Hint("Esc", "back")) if self._compact else
+        hints = ((Hint("⏎", "Use"), Hint("s", "Save"), Hint("Esc", "back")) if self._compact else
                  (Hint("↑↓", "choose"), Hint("Tab", "chrome│colours"),
-                  Hint("⏎", "Use"), Hint("Esc", "put back")))  # compact hints, mock :259-260
+                  Hint("⏎", "Use"), Hint("s", "Save"), Hint("Esc", "put back")))  # compact hints, mock :259-260
         return KeysTarget("theme", hints, note)
 
     def sync(self) -> None:
@@ -482,6 +715,8 @@ class ThemePicker(ModalScreen[None]):
         event.stop()
         if event.button.id == "theme_use":
             self.action_use()
+        elif event.button.id == "theme_save":
+            self.action_save()
         elif event.button.id == "theme_cancel":
             self.action_cancel()
 
@@ -503,6 +738,73 @@ class ThemePicker(ModalScreen[None]):
     def action_cancel(self) -> None:
         """Esc, or a click on Cancel: put back what was in use, sources included."""
         self.app.restore_look(self._saved)
+        self.dismiss(None)
+
+    def action_save(self) -> None:
+        """Save the previewed look to the per-login state file (phase 10, TT16–TT18). If the state file
+        was unreadable at login or is now, a toast and nothing is written. Otherwise write the previewed
+        names with source `saved for <login>`, toast the login, and close the picker (OPEN-T6 a). When
+        the config file, TSB_TUI_* or --set set either name before the picker opened, the toast names
+        that layer (TT18). An OSError is toasted naming the path and the error, and the look stays.
+
+        On persistence failure, restore_look rolls back the applied look, the ✓ stays on the pick in
+        use before Save, the status row still says '· previewing', and the picker stays open."""
+        from .. import saved_theme
+
+        app = self.app
+        if app._saved_theme_unreadable:
+            self.app.toast(f"cannot save: {app._saved_theme_path} could not be read; fix or remove it",
+                           title="cannot save", severity="warning")
+            return
+        theme_id = self._themes[self._hl["themes"]].id
+        scheme_slug = self._schemes[self._hl["schemes"]].slug
+
+        # Capture the look before applying, so we can roll back on failure.
+        before = app.cfg.look()
+        old_current = self._current
+
+        # Apply the previewed names first, so they are in force with the right source before writing.
+        try:
+            app.apply_look(theme_id, scheme_slug, source=f"saved for {app.username}")
+        except ConfigError as exc:
+            app.toast(str(exc), title="not available", severity="warning")
+            return
+        self._current = (theme_id, scheme_slug)
+        self.fill_rows()
+        # Write to the state file.
+        path = saved_theme.state_path()
+        try:
+            saved_theme.save(path, app.username, theme_id, scheme_slug)
+        except saved_theme.SavedThemeError:
+            # Rollback on persistence failure: save() propagates read errors if the file became unreadable since login.
+            app._saved_theme_unreadable = True
+            app.cfg.restore_look(before)
+            self._current = old_current
+            app._push_look()
+            self.fill_rows()
+            app.toast(f"cannot save: {path} could not be read; fix or remove it",
+                       title="cannot save", severity="warning")
+            return
+        except OSError as exc:
+            # Rollback on persistence failure.
+            app.cfg.restore_look(before)
+            self._current = old_current
+            app._push_look()
+            self.fill_rows()
+            app.toast(f"{path}: {exc}", title="cannot save", severity="warning")
+            return
+        # Saved. Toast the login, and mention a higher layer if one wins at the next start (TT18): the sources
+        # as they stood when the picker opened (`self._saved`), not after apply_look set `saved for <login>`.
+        higher = []
+        for src in (self._saved["name"][1], self._saved["scheme_name"][1]):
+            if src.startswith("config file"):
+                higher.append("config file")
+            elif src.startswith("TSB_TUI_"):
+                higher.append("environment")
+            elif src == "--set":
+                higher.append("--set")
+        note = f" ({', '.join(sorted(set(higher)))} wins at next start)" if higher else ""
+        app.toast(f"Saved for {app.username}{note}", title="saved theme")
         self.dismiss(None)
 
     def on_unmount(self) -> None:

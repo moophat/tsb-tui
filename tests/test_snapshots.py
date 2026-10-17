@@ -934,6 +934,26 @@ def test_the_picker_over_T1c_shows_the_panel_and_the_previewed_scheme(size, monk
                     "no ✓ on the TSB Default row")
                 assert any("▸" in line and "Solarized Dark" in line for line in lines), "no ▸ on Solarized Dark"
                 assert "keys → theme" in lines[-1], f"the last line: {lines[-1]!r}"
+                # Phase 11: the header shows the filter and toggle
+                header_lines = [l for l in lines if "Terminal colours" in l]
+                assert header_lines, "no Terminal colours header"
+                header = header_lines[0]
+                assert "/ filter" in header or "/" in header, f"header does not show filter: {header!r}"
+                assert "dark" in header and "light" in header and "all" in header, \
+                    f"header does not show variant toggle: {header!r}"
+                # Phase 11: the footer shows scheme metadata and contrast ratios (laptop only, two lines)
+                footer_line1 = [l for l in lines if "Solarized Dark" in l and "Ethan Schoonover" in l]
+                assert footer_line1, "no footer with scheme metadata"
+                assert "MIT" in footer_line1[0], f"footer does not show license: {footer_line1[0]!r}"
+                footer_line2 = [l for l in lines if "text" in l and ":1" in l and "lowest colour" in l]
+                assert footer_line2, "no footer with contrast ratios"
+                # Review round 1, OPEN-T6 d(2): Solarized Dark's lowest colour is 2.79:1, under the
+                # ruled 4.5:1, so the footer carries the warning line as its third line.
+                footer_warn = [l for l in lines if "▲ low on a phone" in l]
+                assert footer_warn, (
+                    f"no low-on-a-phone line for Solarized Dark's 2.79:1 lowest colour: {lines[-4:]!r}")
+                assert "minimum_contrast can lift it" in footer_warn[0], (
+                    f"the warning line is not the mock's text: {footer_warn[0]!r}")
 
     asyncio.run(check())
 
