@@ -794,14 +794,16 @@ def test_the_chrome_list_shows_six_rows_on_the_laptop_and_scrolls_beyond(serve, 
             "the schemes list gained a max-height; ruling 2 says it keeps its sizing")
         # Move the highlight onto the last theme row: it sits below the six visible rows, so the list scrolls it in.
         _move(picker, "themes", picker._themes[-1].id)
-        await pilot.pause(0.3)
-        lines = [s.text for s in app.screen._compositor.render_strips()]
-        assert any("▸" in line and picker._themes[-1].id in line for line in lines), (
-            "the highlighted chrome row below six rows never scrolled into view")
+
+        def last_row_in_view() -> bool:
+            lines = [s.text for s in app.screen._compositor.render_strips()]
+            return any("▸" in line and picker._themes[-1].id in line for line in lines)
+
+        # Wait on the scroll and its repaint, not on a fixed pause: under CI load 0.3 s was not enough.
+        await wait_until(pilot, last_row_in_view, "the highlighted chrome row below six rows to scroll into view")
         # On the phone, where one list shows at a time, the chrome list takes the panel's height and scrolls.
         await pilot.resize_terminal(65, 30)
-        await pilot.pause(0.3)
-        assert picker._compact is True, "the window did not become compact"
+        await wait_until(pilot, lambda: picker._compact is True, "the window to become compact")
         assert picker.query_one("#theme-themes", ThemeList).styles.height.unit.name == "FRACTION", (
             "the phone chrome list does not take the panel's height")
         await gen.aclose()
