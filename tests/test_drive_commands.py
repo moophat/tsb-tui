@@ -39,6 +39,16 @@ async def _shown(rig: Rig, text: str, *, present: bool = True) -> None:
     raise AssertionError(f"the screen never {'showed' if present else 'stopped showing'} {text!r}")
 
 
+async def _mode(rig: Rig, sid: str, mode: str) -> None:
+    """Wait, bounded, until the session's terminal in the TUI reports `mode` on: the key encoder reads the
+    session's modes, so a settle is not enough — the condition is the mode itself."""
+    for _ in range(300):
+        if (await rig.cmd("read", session=sid, what="screen"))["modes"][mode]:
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError(f"the session never entered mode {mode!r}")
+
+
 def _emit_output(serve_app, sid: str, data: bytes) -> None:
     """Output from the target, as the core relays it to every attached client."""
     with serve_app.lock:
@@ -237,7 +247,7 @@ def test_keys_are_encoded_for_the_sessions_modes_and_an_unknown_name_sends_nothi
             client = rig.app.workspace().slot_for(sid).pump.state.client_id
             assert (await rig.cmd("keys", keys=["up"]))["queued"] == 3
             _emit_output(serve_app, sid, b"\x1b[?1h")
-            await rig.cmd("wait", until={"settled_ms": 50})
+            await _mode(rig, sid, "cursor_keys_application")
             assert (await rig.cmd("keys", keys=["up", "ctrl+c"]))["queued"] == 4
             refused = await rig.cmd("keys", keys=["ctrl+d", "bogus-key"])
             assert refused["error"] == "unknown_key" and refused["key"] == "bogus-key" and refused["sent"] is False
