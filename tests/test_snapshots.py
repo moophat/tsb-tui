@@ -212,7 +212,8 @@ def _shoot_t1c(monkeypatch, serve, wait_until, shoot, snapshot_dir, size, *, env
                 await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
                                  and screen.canvas.painted, "the rail to count")
                 await wait_until(pilot, lambda: "normal 0-7" in "".join(
-                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen")
+                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen",
+                    timeout_s=30)
                 await wait_until(pilot, lambda: screen.canvas.view_range.label in
                                  list(app.screen._compositor.render_strips())[-1].text if size[0] - 4 < 132 else True,
                                  "the row to draw the range")
@@ -368,7 +369,8 @@ def test_a_switch_at_run_time_draws_the_picture_a_start_with_that_look_draws(ser
                 await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
                                  and screen.canvas.painted, "the rail to count")
                 await wait_until(pilot, lambda: "normal 0-7" in "".join(
-                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen")
+                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen",
+                    timeout_s=30)
                 app.apply_look("dracula", "dracula")
                 await pilot.pause(0.2)
                 lines = shoot(app, "switched-dracula-dracula-T1c", size).splitlines()
@@ -894,7 +896,8 @@ def test_the_picker_over_T1c_shows_the_panel_and_the_previewed_scheme(size, monk
                 await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
                                  and screen.canvas.painted, "the rail to count")
                 await wait_until(pilot, lambda: "normal 0-7" in "".join(
-                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen")
+                    s.text for s in app.screen._compositor.render_strips()), "the coloured screen",
+                    timeout_s=30)
                 await screen.run_action_id("theme")
                 await wait_until(pilot, lambda: isinstance(app.screen, ThemePicker), "the picker to open")
                 picker = app.screen

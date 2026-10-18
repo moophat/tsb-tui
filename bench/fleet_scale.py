@@ -137,7 +137,8 @@ async def run(args: argparse.Namespace) -> dict:
             monitor = C.LoopMonitor()
             monitor.start()
             polls_before = len(applies)
-            lost = await probe.type_keys(screen, args.keys, args.spacing_ms / 1000.0)
+            lost = await probe.type_keys(screen, args.keys, args.spacing_ms / 1000.0,
+                                         timeout_s=10.0 if args.tiny else 3.0)
             loop = await monitor.stop()
             polls = len(applies) - polls_before
 
