@@ -260,9 +260,16 @@ class Driver:
             # non-None let drive's next op read a fleet that is not built yet (the re-login race).
             if self._workspace_ready(self.screen()):
                 return "in"
-            if (isinstance(self.app.screen, LoginScreen) and not login.query_one("#login-button", Button).disabled
-                    and str(login.query_one("#login-error", Static).content)):
-                return "refused"
+            # Read the current screen each time, never `login`: a later 401 can replace the screen this call
+            # filled in (the one `_to_login` used to push on every 401), and querying that unmounted screen is
+            # the `NoMatches` this guards. If it was replaced, this attempt cannot answer.
+            current = self.app.screen
+            if isinstance(current, LoginScreen):
+                if current is not login:
+                    raise DriveError("login_failed", "the login screen was replaced before it answered")
+                if (not current.query_one("#login-button", Button).disabled
+                        and str(current.query_one("#login-error", Static).content)):
+                    return "refused"
             return None
 
         if await self._until_screen(outcome, "the login result") == "refused":

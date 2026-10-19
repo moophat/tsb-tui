@@ -479,6 +479,11 @@ class TsbTuiApp(App):
         # Imported here, not at module scope: see on_mount's own comment above.
         from .screens.login import LoginScreen
 
+        # The first 401 after a restart already showed Login. Every other request in flight with the old
+        # cookie can 401 too (the poller's GET /sessions, a reattach), so a later one must not replace the
+        # screen that is already up: the form the operator — or drive — is filling in would be unmounted.
+        if isinstance(self.screen, LoginScreen):
+            return
         self.stop_alerts()
         # Every screen above the base is removed first: `switch_screen` replaces only the top of the stack, so
         # a dialog on top (the end dialog) leaves the workspace mounted under the login page, and a mounted
