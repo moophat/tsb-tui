@@ -300,8 +300,23 @@ def test_a_detached_session_is_offered_for_reattach_and_an_ended_one_is_not(serv
         with other_client(url, _serve.USER, live):
             async with app.run_test(size=(120, 36)) as pilot:
                 _screen, view = await _open_targets(app, pilot, wait_until)
-                await wait_until(pilot, lambda: "1 * live" in view.text or "1 ● live" in view.text,
-                                 "the live session to be counted on its target")
+
+                # The row settles last: SESSIONS and YOU CAN come from one render of the same records
+                # (`terminal.py:_target_entries`), but as the view narrows the YOU CAN column leaves first
+                # (`TARGET_DROP_ORDER`), so a not-yet-settled layout can show the count with no `attach`.
+                # Wait for both cells on the row itself, bounded — the test still fails when `attach` never
+                # appears, and asserts nothing looser than before.
+                def live_row(prefix: str) -> str:
+                    return next((ln for ln in view.text.splitlines() if ln.lstrip(" ▸").startswith(prefix)), "")
+
+                def settled(prefix: str, count: str) -> bool:
+                    row = live_row(prefix)
+                    return count in row and "attach" in row
+
+                await wait_until(pilot, lambda: settled("normal ", "1 * live") or settled("normal ", "1 ● live"),
+                                  "the normal row to show its count and `attach` on one settled row")
+                await wait_until(pilot, lambda: settled("alt screen", "1 ○") or settled("alt screen", "1 o"),
+                                  "the detached row to show its count and `attach` on one settled row")
                 lines = view.text.splitlines()
 
                 def row(prefix: str) -> str:
