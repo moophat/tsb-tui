@@ -2,10 +2,10 @@
 `full view ▸`, the Menu or `^\\ F`, with the rail still on its left and `Esc` back to the session it came from.
 
 Tabs: Sessions (Needs you first, then a table of the sessions this login owns or may join: target, id, type,
-state, keys, open, clients, owner, ends in, REC) and Alerts (the active set, for a `broker.health` holder: a login
-the core answered 403 has no tab, DT14). Targets is E3's and is not drawn. The row actions are the status row's
-hints while the view has the keys, each a click (D11); details sit beside the table from
-`fleet_view.details_from` columns.
+state, keys, open, clients, owner, ends in, REC), Targets (F14: the inventory the core lists for this login, queried
+through the broker, a New session opened from a row) and Alerts (the active set, for a `broker.health` holder: a
+login the core answered 403 has no tab, DT14). The row actions are the status row's hints while the view has the
+keys, each a click (D11); details sit beside the table from `fleet_view.details_from` columns.
 
 Two parts, kept apart as the sidebar's are, so the layout is a pure function a test reads at any size:
 
@@ -23,7 +23,7 @@ from __future__ import annotations
 import textwrap
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 
 from rich.segment import Segment
@@ -62,13 +62,19 @@ from ..widgets.sidebar import (
 
 CMD_TAB = "tab"
 CMD_ENDED = "ended"  # the show-ended box
+CMD_OPEN_TARGET = "open_target"  # `⏎` on the Targets tab: New session on the selected target
+CMD_QUERY = "query"  # the Targets query was entered: `arg` is its text
+CMD_MORE_TARGETS = "more_targets"  # the selection reached the last row loaded: the next page, if there is one
+CMD_TAB_CHANGED = "tab_changed"  # the tab shown changed: `arg` is its name
 
 TAB_SESSIONS = "sessions"
+TAB_TARGETS = "targets"
 TAB_ALERTS = "alerts"
-TAB_LABELS = {TAB_SESSIONS: "Sessions", TAB_ALERTS: "Alerts"}
+TAB_LABELS = {TAB_SESSIONS: "Sessions", TAB_TARGETS: "Targets", TAB_ALERTS: "Alerts"}
 GROUP_NEEDS = "needs_you"
 GROUP_TABLE = "sessions"
 GROUP_ALERTS = "alert"
+GROUP_TARGETS = "targets"
 
 TABLE_TITLE = "Sessions you own or may join"
 DETAILS_WIDTH = 42  # the details pane beside the table, its hairline included
@@ -80,6 +86,15 @@ HEADERS = {"target": "TARGET", "id": "ID", "type": "TYPE", "state": "STATE", "ke
 DROP_ORDER = ("rec", "type", "clients", "ends", "owner", "open", "id", "state", "keys", "target")
 MAX_WIDTHS = {"target": 16, "id": 12, "type": 8, "state": 14, "keys": 12, "open": 4, "clients": 7, "owner": 12,
               "ends": 24, "rec": 3}
+# The Targets table (F14): NAME, TYPE, GROUP, TAGS, SOURCE (`discovered_by`), SESSIONS and YOU CAN. As the view
+# narrows the columns leave in this order (the last leaves first); NAME and TYPE stay.
+TARGET_COLUMNS = ("name", "type", "group", "tags", "source", "sessions", "can")
+TARGET_HEADERS = {"name": "NAME", "type": "TYPE", "group": "GROUP", "tags": "TAGS", "source": "SOURCE",
+                  "sessions": "SESSIONS", "can": "YOU CAN"}
+TARGET_DROP_ORDER = ("can", "source", "tags", "sessions", "group")
+TARGET_MAX_WIDTHS = {"name": 32, "type": 8, "group": 16, "tags": 26, "source": 10, "sessions": 12, "can": 8}
+TARGETS_TITLE = "Targets this login may see"
+QUERY_HINT = "/ query the inventory through the broker: type:  tag:  group:  source:"
 GAP = 2
 _WHO_ROLES = {WHO_ME: "who_me", WHO_OTHER: "who_other", WHO_NOBODY: "who_none", WHO_NEEDS_YOU: "who_needs",
               WHO_ASKS: "who_asks", WHO_UNREACHABLE: "who_unreachable", WHO_ENDED: "who_ended"}
@@ -110,6 +125,20 @@ class FleetRow:
 
 
 @dataclass(frozen=True)
+class TargetEntry:
+    """One target in the Targets tab, every cell already text (`model.targets.as_text`) and in words."""
+
+    target_id: str  # the record's own id: a key, never drawn
+    name: str
+    type: str
+    group: str
+    tags: str
+    source: str
+    sessions: str  # `2 ● live`, `1 ○`, or `·`
+    can: str  # `attach` where this login sees a live session there, else empty
+
+
+@dataclass(frozen=True)
 class FleetViewModel:
     """What the view shows. `alert_lines` is None for a login that is not a `broker.health` holder: it has no
     Alerts tab at all (DT14)."""
@@ -122,6 +151,11 @@ class FleetViewModel:
     tabs: tuple[str, ...] = (TAB_SESSIONS,)
     detail_for: Callable[[str], tuple[str, ...]] | None = None
     buttons_for: Callable[[str], tuple[str, ...]] | None = None
+    targets: tuple[TargetEntry, ...] = ()
+    targets_count: str | None = None  # `412`, `100+` while another page may follow; None before the first page
+    targets_note: str = ""  # why there is no list: the inventory is unavailable
+    query_error: str = ""  # the broker's (or the TUI's) refusal of the query, shown in the query line
+    target_details_for: Callable[[str], tuple[str, ...]] | None = None  # the two lines under the table
 
 
 @dataclass(frozen=True)
@@ -163,17 +197,48 @@ def _columns_for(rows: Sequence[FleetRow], width: int) -> list[tuple[str, int]]:
     }
     sizes = {name: min(max([len(HEADERS[name]), *(len(c) for c in cells[name])]), MAX_WIDTHS[name])
              for name in COLUMNS}
-    kept = list(COLUMNS)
+    return _keep_columns(COLUMNS, sizes, DROP_ORDER, width)
+
+
+def _keep_columns(names: Sequence[str], sizes: Mapping[str, int], drop_order: Sequence[str],
+                  width: int) -> list[tuple[str, int]]:
+    kept = list(names)
     lead = 3  # the selection mark and its gap
 
     def total() -> int:
         return lead + sum(sizes[n] for n in kept) + GAP * (len(kept) - 1)
 
-    for name in DROP_ORDER:
+    for name in drop_order:
         if total() <= width or len(kept) == 1:
             break
         kept.remove(name)
     return [(name, sizes[name]) for name in kept]
+
+
+def _target_cells(entry: TargetEntry) -> dict[str, str]:
+    return {"name": entry.name, "type": entry.type, "group": entry.group, "tags": entry.tags,
+            "source": entry.source, "sessions": entry.sessions, "can": entry.can}
+
+
+def _target_columns(entries: Sequence[TargetEntry], width: int) -> list[tuple[str, int]]:
+    """The Targets table's columns that fit in `width`, each with its width; they leave in `TARGET_DROP_ORDER`."""
+    cells = [_target_cells(entry) for entry in entries]
+    sizes = {name: min(max([len(TARGET_HEADERS[name]), *(len(c[name]) for c in cells)]), TARGET_MAX_WIDTHS[name])
+             for name in TARGET_COLUMNS}
+    return _keep_columns(TARGET_COLUMNS, sizes, TARGET_DROP_ORDER, width)
+
+
+def _target_row(entry: TargetEntry, columns: list[tuple[str, int]], *, selected: bool, width: int) -> Line:
+    parts = [Part(SELECTED if selected else " ", "mark" if selected else "blank"), Part("  ", "blank")]
+    cells = _target_cells(entry)
+    for index, (name, size) in enumerate(columns):
+        if index:
+            parts.append(Part(" " * GAP, "blank"))
+        role = "muted" if name in ("type", "source") else ("front" if name == "can" and cells[name] else "text")
+        parts.append(Part(_fit(cells[name], size), role))
+    used = sum(len(p.text) for p in parts)
+    parts.append(Part(" " * max(width - used, 0), "blank"))
+    return Line(tuple(parts), entry.target_id, GROUP_TARGETS)
 
 
 def _cell(row: FleetRow, name: str) -> tuple[str, str]:
@@ -220,11 +285,11 @@ def _text(text: str, role: str, width: int) -> Line:
     return Line((Part(_fit(text, width), role),))
 
 
-def _tab_parts(model: FleetViewModel, tab: str, counts: Mapping[str, int | None]) -> list[Part]:
+def _tab_parts(model: FleetViewModel, tab: str, counts: Mapping[str, int | str | None]) -> list[Part]:
     parts: list[Part] = [Part(" ", "blank")]
     for name in model.tabs:
         if name not in TAB_LABELS:
-            continue  # Targets is E3's
+            continue
         count = counts.get(name)
         label = TAB_LABELS[name] + (f" {count}" if count is not None else "")
         if name == tab:
@@ -253,6 +318,16 @@ def _controls(model: FleetViewModel, filter_text: str, editing: bool, show_ended
     ]
 
 
+def _query_controls(model: FleetViewModel, query_text: str, editing: bool) -> list[Part]:
+    """The Targets tab's query line: what is typed (or `/ query`), and the refusal of the last query if there was one."""
+    shown = f"/ {query_text}▏" if editing else (f"/ {query_text}" if query_text else "/ query")
+    parts = [Part(shown, "filter" if query_text or editing else "muted", CMD_FILTER, tip=QUERY_HINT)]
+    if model.query_error:
+        parts += [Part("    ", "blank"), Part("✕ " + model.query_error, "danger")]
+    parts.append(Part(" ", "blank"))
+    return parts
+
+
 def _joined(left: list[Part], right: list[Part], width: int) -> Line:
     used = sum(len(p.text) for p in left) + sum(len(p.text) for p in right)
     return Line((*left, Part(" " * max(width - used, 0), "blank"), *right))
@@ -260,7 +335,7 @@ def _joined(left: list[Part], right: list[Part], width: int) -> Line:
 
 def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str,
                      selected: tuple[str, str] | None, filter_text: str, editing: bool, show_ended: bool,
-                     group_by: str, details: bool, top: int) -> FleetLayout:
+                     group_by: str, details: bool, top: int, query_text: str = "") -> FleetLayout:
     """The view's lines at `width` by `height`: the header (title, tabs and controls), then the body, which scrolls
     from line `top`; beside it the selected session's details when `details` is set and the view is wide enough."""
     head: list[Line] = []
@@ -269,10 +344,16 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                         [Part(back, "muted", CMD_CLOSE, tip=f"{back} · or click here"), Part(" ", "blank")], width))
     needs = visible_needs(model, filter_text)
     table = visible_rows(model, filter_text, show_ended)
-    counts: dict[str, int | None] = {TAB_SESSIONS: len(table),
-                                     TAB_ALERTS: None if model.alert_lines is None else len(model.alert_lines)}
+    counts: dict[str, int | str | None] = {
+        TAB_SESSIONS: len(table), TAB_TARGETS: model.targets_count,
+        TAB_ALERTS: None if model.alert_lines is None else len(model.alert_lines)}
     tab_parts = _tab_parts(model, tab, counts)
-    controls = _controls(model, filter_text, editing, show_ended) if tab == TAB_SESSIONS else [Part(" ", "blank")]
+    if tab == TAB_SESSIONS:
+        controls = _controls(model, filter_text, editing, show_ended)
+    elif tab == TAB_TARGETS:
+        controls = _query_controls(model, query_text, editing)
+    else:
+        controls = [Part(" ", "blank")]
     if sum(len(p.text) for p in tab_parts) + sum(len(p.text) for p in controls) <= width:
         head.append(_joined(tab_parts, controls, width))
     else:
@@ -280,7 +361,7 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
         head.append(_joined([Part(" ", "blank")], controls, width))
     head.append(_text("", "blank", width))
 
-    pane = details and width >= DETAILS_WIDTH * 2
+    pane = details and width >= DETAILS_WIDTH * 2 and tab != TAB_TARGETS
     table_w = width - DETAILS_WIDTH if pane else width
     # A session's line is built only when it falls in the window shown: the layout lists every row (the selection and
     # the scroll need their order and place) but a keystroke must not pay for the lines of rows scrolled out of view.
@@ -288,7 +369,29 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
     rows: list[tuple[str, str]] = []
     row_at: dict[tuple[str, str], int] = {}
 
-    if tab == TAB_ALERTS and model.alert_lines is not None:
+    if tab == TAB_TARGETS:
+        body.append(_text(f" {TARGETS_TITLE} · {model.targets_count}" if model.targets_count is not None
+                          else f" {TARGETS_TITLE}", "group", table_w))
+        if model.targets_note:
+            body.append(_text("   " + model.targets_note, "warn", table_w))
+        elif not model.targets:
+            body.append(_text("   No targets to show." if model.targets_count is not None
+                              else "   Reading the inventory…", "muted", table_w))
+        else:
+            columns = _target_columns(model.targets, table_w)
+            header = [Part(" ", "blank"), Part("  ", "blank")]
+            for index, (name, size) in enumerate(columns):
+                if index:
+                    header.append(Part(" " * GAP, "blank"))
+                header.append(Part(_fit(TARGET_HEADERS[name], size), "header"))
+            header.append(Part(" " * max(table_w - sum(len(p.text) for p in header), 0), "blank"))
+            body.append(Line(tuple(header)))
+            for entry in model.targets:
+                key = (GROUP_TARGETS, entry.target_id)
+                row_at[key] = len(body)
+                rows.append(key)
+                body.append(partial(_target_row, entry, columns, selected=selected == key, width=table_w))
+    elif tab == TAB_ALERTS and model.alert_lines is not None:
         body.append(_text(" Active alerts · " + str(len(model.alert_lines)), "group", table_w))
         for text in model.alert_lines or ("No active alerts.",):
             for line in textwrap.wrap(text, width=max(table_w - 3, 8)) or [""]:
@@ -331,6 +434,11 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                 body.append(partial(_table_row, row, columns, selected=selected == key, width=table_w))
 
     room = max(height - len(head), 0)
+    foot: list[Line] = []
+    if tab == TAB_TARGETS and room >= 8:
+        # F14's two lines under the table: the selected target's facts, and the sessions this login sees there.
+        foot = _target_foot(model, selected, table_w)
+        room -= len(foot)
     chosen = selected if selected in row_at else None
     if chosen is not None:
         line = row_at[chosen]
@@ -345,7 +453,19 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
 
     if pane:
         window = _with_details(window, model, chosen, table_w, room)
-    return FleetLayout((*head, *window), tuple(rows), top, len(table))
+    shown = len(model.targets) if tab == TAB_TARGETS else len(table)
+    return FleetLayout((*head, *window, *foot), tuple(rows), top, shown)
+
+
+def _target_foot(model: FleetViewModel, selected: tuple[str, str] | None, width: int) -> list[Line]:
+    """A blank line, then the two lines of the selected target's details; blank when nothing is selected."""
+    lines: tuple[str, ...] = ()
+    if selected is not None and selected[0] == GROUP_TARGETS and model.target_details_for is not None:
+        lines = model.target_details_for(selected[1])
+    first = f"─ {lines[0]} " if lines else ""
+    second = f"  {lines[1]}" if len(lines) > 1 else ""
+    return [_text("", "blank", width), Line((Part(_fit(first.ljust(width, "─") if first else "", width), "muted"),)),
+            _text(second, "muted", width)]
 
 
 def _with_details(window: list[Line], model: FleetViewModel, chosen: tuple[str, str] | None, table_w: int,
@@ -411,6 +531,8 @@ class FleetView(Widget):
         self.tab = TAB_SESSIONS
         self.selected: tuple[str, str] | None = None
         self.filter_text = ""
+        self.query_text = ""  # the Targets tab's query as typed; `applied_query` is the one last entered
+        self.applied_query = ""
         self.editing = False
         self.show_ended = bool(config["fleet_view.show_ended"])
         self.window_width = 0
@@ -455,7 +577,7 @@ class FleetView(Widget):
 
     @property
     def tabs(self) -> tuple[str, ...]:
-        """The tabs shown: Alerts only for a login that has them (DT14); Targets is E3's."""
+        """The tabs shown: Alerts only for a login that has them (DT14)."""
         return tuple(name for name in self._model.tabs if name in TAB_LABELS
                      and (name != TAB_ALERTS or self._model.alert_lines is not None))
 
@@ -475,13 +597,12 @@ class FleetView(Widget):
         width = self.size.width or self.window_width or 80
         model = self._model
         # A model whose tabs the login cannot see never reaches the layout's tab row.
-        visible = FleetViewModel(
-            model.needs, model.rows, model.mode, model.alert_lines, model.back_label, self.tabs,
-            model.detail_for, model.buttons_for)
+        visible = replace(model, tabs=self.tabs)
         return fleet_view_lines(
             visible, width=width, height=height, tab=self.tab, selected=self.selected,
             filter_text=self.filter_text, editing=self.editing, show_ended=self.show_ended,
-            group_by=self._group_by, details=self.window_width >= self._details_from, top=self.scroll_top)
+            group_by=self._group_by, details=self.window_width >= self._details_from, top=self.scroll_top,
+            query_text=self.query_text)
 
     def _relayout(self) -> None:
         layout = self._build()
@@ -508,12 +629,22 @@ class FleetView(Widget):
         index = rows.index(self.selected) if self.selected in rows else -1
         self.selected = rows[max(0, min(index + step, len(rows) - 1))] if index >= 0 else rows[0]
         self._relayout()
+        if step > 0:
+            self._ask_more_targets()
 
     def _jump(self, last: bool) -> None:
         rows = self._layout.rows
         if rows:
             self.selected = rows[-1 if last else 0]
             self._relayout()
+            if last:
+                self._ask_more_targets()
+
+    def _ask_more_targets(self) -> None:
+        """The selection reached the last target loaded: the screen fetches the next page if the broker has one."""
+        rows = self._layout.rows
+        if self.tab == TAB_TARGETS and rows and self.selected == rows[-1]:
+            self.post_message(self.Command(CMD_MORE_TARGETS))
 
     def next_tab(self, step: int = 1) -> None:
         tabs = self.tabs
@@ -523,9 +654,11 @@ class FleetView(Widget):
     def set_tab(self, name: str) -> None:
         if name in self.tabs and name != self.tab:
             self.tab = name
+            self.editing = False
             self.selected = None
             self.scroll_top = 0
             self._relayout()
+            self.post_message(self.Command(CMD_TAB_CHANGED, name))
 
     def toggle_show_ended(self) -> None:
         self.show_ended = not self.show_ended
@@ -539,6 +672,8 @@ class FleetView(Widget):
         """Opened afresh: the sessions tab, no filter, the first row, the top."""
         self.tab = TAB_SESSIONS
         self.filter_text = ""
+        self.query_text = ""
+        self.applied_query = ""
         self.editing = False
         self.selected = None
         self.scroll_top = 0
@@ -602,7 +737,10 @@ class FleetView(Widget):
         if line.session_id is not None and line.group is not None:
             self.selected = (line.group, line.session_id)
             self._relayout()
-            self.post_message(self.Command(CMD_PICK, line.session_id))
+            if line.group != GROUP_TARGETS:  # a click on a target selects it; `⏎ New session here` opens one
+                self.post_message(self.Command(CMD_PICK, line.session_id))
+            else:
+                self._ask_more_targets()  # a click on the last target loaded asks for the next page, as `↓` does
 
     def _command_from_part(self, part: Part) -> None:
         if part.command == CMD_FILTER:
@@ -656,12 +794,14 @@ class FleetView(Widget):
             self.next_tab(-1)
         elif key == "escape":
             self.post_message(self.Command(CMD_CLOSE))
-        elif key == "slash" and self.tab == TAB_SESSIONS:
+        elif key == "slash" and self.tab in (TAB_SESSIONS, TAB_TARGETS):
             self.start_filter()
         elif key == "m" and self.tab == TAB_SESSIONS:
             self.post_message(self.Command(CMD_MODE))
         elif key == "e" and self.tab == TAB_SESSIONS:
             self.toggle_show_ended()
+        elif key == "enter" and self.tab == TAB_TARGETS and self.selected_session is not None:
+            self.post_message(self.Command(CMD_OPEN_TARGET, self.selected_session))
         elif key == "enter" and sid is not None:
             self.post_message(self.Command(CMD_PICK, sid))
         elif key == "t" and sid is not None:
@@ -674,6 +814,9 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_NEW))
 
     def _editing_key(self, event: events.Key) -> None:
+        if self.tab == TAB_TARGETS:
+            self._editing_query_key(event)
+            return
         key = event.key
         if key == "escape":
             self.filter_text = ""
@@ -686,6 +829,24 @@ class FleetView(Widget):
             self.filter_text += event.character
         self._relayout()
 
+    def _editing_query_key(self, event: events.Key) -> None:
+        """The query is the broker's: typing changes nothing on screen but the line, `⏎` asks, and `Esc` drops what was
+        typed since the last query asked."""
+        key = event.key
+        if key == "escape":
+            self.query_text = self.applied_query
+            self.editing = False
+        elif key == "enter":
+            self.editing = False
+            self.applied_query = self.query_text
+            self.post_message(self.Command(CMD_QUERY, self.query_text))
+        elif key == "backspace":
+            self.query_text = self.query_text[:-1]
+        elif event.is_printable and event.character:
+            self.query_text += event.character
+        self._relayout()
 
-__all__ = ["CMD_ENDED", "CMD_TAB", "SEPARATOR", "FleetLayout", "FleetRow", "FleetView", "FleetViewModel",
-           "fleet_view_lines", "visible_rows"]
+
+__all__ = ["CMD_ENDED", "CMD_MORE_TARGETS", "CMD_OPEN_TARGET", "CMD_QUERY", "CMD_TAB", "CMD_TAB_CHANGED",
+           "SEPARATOR", "FleetLayout", "FleetRow", "FleetView", "FleetViewModel", "TargetEntry", "fleet_view_lines",
+           "visible_rows"]

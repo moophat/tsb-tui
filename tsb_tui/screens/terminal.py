@@ -64,6 +64,15 @@ from ..model.fleet import (
     live_record,
     who_types,
 )
+from ..model.targets import (
+    PAGE_LIMIT,
+    Query,
+    QueryError,
+    TargetRow,
+    TargetsModel,
+    as_text,
+    parse_query,
+)
 from ..term import (
     UnknownKey,
     VTBackend,
@@ -124,11 +133,17 @@ from .chrome_dialogs import (
 )
 from .fleet_view import (
     CMD_ENDED,
+    CMD_MORE_TARGETS,
+    CMD_OPEN_TARGET,
+    CMD_QUERY,
     CMD_TAB,
+    CMD_TAB_CHANGED,
     TAB_ALERTS,
+    TAB_TARGETS,
     FleetRow,
     FleetView,
     FleetViewModel,
+    TargetEntry,
 )
 from .prompts import (
     AlertStack,
@@ -171,6 +186,7 @@ KEYBOARD_GAINED = {
 # `fleet_view:<command>` and `pan:<move>`: each a click (D11), none an action of the table.
 SIDEBAR_HINT = "sidebar:"
 FLEET_VIEW_HINT = "fleet_view:"
+TARGETS_UNAVAILABLE = "the inventory is unavailable"
 PAN_HINT = "pan:"
 # The wheel's two buttons in xterm's numbering, which the canvas reports as it has them.
 WHEEL_UP, WHEEL_DOWN = 4, 5
@@ -318,6 +334,13 @@ class TerminalScreen(Screen):
         self._leader_timer: Timer | None = None
         self.fleet: Fleet | None = None
         self.poller: FleetPoller | None = None
+        # The Targets tab's inventory, its query's refusal, whether a next page is on its way, and the timer that
+        # reads it again while the tab is shown.
+        self.targets = TargetsModel()
+        self._targets_query_error = ""
+        # The page request in flight: its generation and cursor. Only its own reply may clear it or append.
+        self._targets_page: tuple[int, str] | None = None
+        self._targets_timer: Timer | None = None
 
     # -- the session in front, and what the rest of the screen asks of it --
 
@@ -442,6 +465,7 @@ class TerminalScreen(Screen):
         self._unmounted = True
         if self._auto_timer is not None:
             self._auto_timer.stop()
+        self._stop_targets_timer()
         self._cancel_leader()
         if self._stop_alert_watch is not None:
             self._stop_alert_watch()
@@ -561,6 +585,9 @@ class TerminalScreen(Screen):
         if self.sidebar_open:
             self.close_sidebar()
         view.reset()
+        self.targets.reset()
+        self._targets_query_error = ""
+        self._targets_page = None
         view.set_window_width(self._window_width())
         view.display = True
         self._sync_fleet_widgets()
@@ -576,6 +603,7 @@ class TerminalScreen(Screen):
         if view is None or not view.display:
             return
         view.display = False
+        self._stop_targets_timer()
         self.set_focus(None)
         was_open, had_keys = self._sidebar_before_view
         self._sidebar_before_view = (False, False)
@@ -872,12 +900,175 @@ class TerminalScreen(Screen):
             f"▲ {alert_label(a)} · {alert_text(a)} {alert_raised(a)}" for a in reversed(list(alerts.active.values())))
         front = self._front
         back = f"{numbers[front.session_id]} {front.target}" if front is not None else ""
+        view = self.fleet_view
+        on_targets = view is not None and view.tab == TAB_TARGETS
         return FleetViewModel(
             needs=tuple(row(record) for record in needing),
             rows=tuple(row(record) for record in [*first, *rest]), mode=fleet.filter_mode,
             alert_lines=alert_rows, back_label=back,
             tabs=tuple(self.app.cfg["fleet_view.tabs"]), detail_for=self._details_for,
-            buttons_for=self._buttons_for)
+            buttons_for=self._buttons_for,
+            targets=self._target_entries(merged) if on_targets else (),
+            targets_count=self.targets.count_label(),
+            targets_note=TARGETS_UNAVAILABLE if self.targets.unavailable else "",
+            query_error=self._targets_query_error, target_details_for=self._target_details)
+
+    # -- the Targets tab (F14): the inventory the core lists, queried through the broker --
+
+    def _target_entries(self, records: Mapping[str, dict]) -> tuple[TargetEntry, ...]:
+        """A line per target on show. The sessions this login sees there are counted from the fleet's records by
+        `target_id`; `attach` is offered wherever one of them has not ended (live, detached or unreachable: a create's answer is not known before it, but a reattach is)."""
+        here = self._sessions_by_target(records)
+        entries = []
+        for row in self.targets.rows:
+            sessions = here.get(row.id, [])
+            live = sum(1 for record in sessions if record.get("state") == "live")
+            other = len(sessions) - live
+            cell = " ".join(part for part in (f"{live} ● live" if live else "", f"{other} ○" if other else "")
+                            if part)
+            entries.append(TargetEntry(
+                target_id=row.id, name=row.name, type=row.type, group=row.group, tags=" ".join(row.tags),
+                source=row.discovered_by, sessions=cell or "·", can="attach" if sessions else ""))
+        return tuple(entries)
+
+    @staticmethod
+    def _sessions_by_target(records: Mapping[str, dict]) -> dict[str, list[dict]]:
+        out: dict[str, list[dict]] = {}
+        for record in records.values():
+            if record.get("state") not in ("killed", "terminated"):
+                out.setdefault(record.get("target_id", ""), []).append(record)
+        return out
+
+    def _target_details(self, target_id: str) -> tuple[str, ...]:
+        """F14's two lines under the table: the target's facts, then the sessions this login sees on it."""
+        row = self.targets.row(target_id)
+        if row is None or self.fleet is None:
+            return ()
+        facts = [row.label]
+        if row.host:
+            facts.append(f"host {row.host}")
+        if row.port:
+            facts.append(f"port {row.port}")
+        if row.discovered_by:
+            facts.append(f"discovered by {row.discovered_by}")
+        seen = parse_timestamp(row.last_seen)
+        if seen is not None:
+            facts.append(f"last seen {age_text(self.app.wall_clock() - seen.timestamp())} ago")
+        live = self._live()
+        records = {**self.fleet.records, **live}
+        mine = self._sessions_by_target(records).get(target_id, [])
+        labels = self.fleet.display_ids(live)
+        me = self._me()
+        words = []
+        for record in mine[:4]:
+            holder = record.get("control_holder")
+            typing = " (you type)" if holder is not None and holder.get("user") == me else ""
+            words.append(f"{labels.get(record['id'], record['id'])} {as_text(record.get('state'))}{typing}")
+        if len(mine) > 4:
+            words.append(f"+{len(mine) - 4} more")
+        return (" · ".join(facts), "sessions here: " + (" · ".join(words) if words else "none"))
+
+    def _fetch_targets(self, *, query: Query | None = None, more: bool = False, background: bool = False) -> None:
+        """`GET /targets` off the UI thread: the query now wanted (or `query`) from its first page, or with `more`
+        the next page of the query on show. A page request carries its generation and cursor, and a reply older
+        than the newest request is discarded (`TargetsModel`). A refresh waits while a page is in flight: its own
+        reply must be the one that extends the list, not one that folds it back."""
+        model = self.targets
+        if more:
+            if model.next_cursor is None or self._targets_page is not None or model.wanted != model.query:
+                return  # no next page, one is in flight, or the query on show is no longer the one wanted
+            cursor, limit = model.next_cursor, PAGE_LIMIT
+            query = model.query
+            generation = model.begin()
+            self._targets_page = (generation, cursor)
+        else:
+            if background and self._targets_page is not None:
+                return
+            self._targets_page = None  # a fresh read supersedes any page still in flight
+            query = model.wanted if query is None else query
+            cursor, limit = None, (model.request_limit() if query == model.query else PAGE_LIMIT)
+            generation = model.begin(query)
+        call = functools.partial(self.app.client.list_targets, **query.filters(), limit=limit, cursor=cursor)
+        self.app.call_api(
+            call, on_done=lambda page: self._targets_reply(generation, query, page, more, cursor),
+            on_error=lambda exc: self._targets_failed(generation, exc, more, background, cursor))
+
+    def _targets_reply(self, generation: int, query: Query, page: dict, more: bool, cursor: str | None) -> None:
+        if more:
+            if self._targets_page != (generation, cursor):
+                return  # not this page's reply: it may neither append nor clear the one in flight
+            self._targets_page = None
+        if self._unmounted:
+            return
+        if self.targets.apply(generation, query, page, append=more):
+            self._sync_fleet_widgets()
+
+    def _targets_failed(self, generation: int, exc: Exception, more: bool, background: bool,
+                        cursor: str | None) -> None:
+        """503 `inventory_unavailable` is a state the tab shows; a refused query keeps the rows and says why in the
+        query line; a 401 goes the way every 401 goes; anything else is a toast, unless it was only the timer's read
+        (the next tick tries again). Only the newest request may change the tab."""
+        if more:
+            if self._targets_page != (generation, cursor):
+                return  # an old page's refusal is not this page's, and it does not clear it
+            self._targets_page = None
+        if self._unmounted:
+            return
+        if isinstance(exc, ApiError) and exc.code == "inventory_unavailable":
+            if self.targets.mark_unavailable(generation):
+                self._sync_fleet_widgets()
+        elif isinstance(exc, ApiError) and exc.code == "invalid_request":
+            if self.targets.is_current(generation):
+                # The refusal is the broker's answer to this query only: the rows stay, the message goes in the
+                # query line, and the wanted query returns to the one the rows show, so paging and polls ask for
+                # that and not for the refused one.
+                self.targets.revert_to_shown()
+                self._targets_query_error = as_text(exc.message)
+                self._sync_fleet_widgets()
+        elif not background or (isinstance(exc, ApiError) and exc.status == 401):
+            self.app.notify_api_error(exc)
+
+    def _run_query(self, text: str) -> None:
+        """The query line was entered: parse it (a refusal is shown in the line, the rows stay), then ask the broker."""
+        self._targets_query_error = ""
+        try:
+            query = parse_query(text)
+        except QueryError as exc:
+            self._targets_query_error = as_text(str(exc))
+            self._sync_fleet_widgets()
+            return
+        self._sync_fleet_widgets()
+        self._fetch_targets(query=query)
+
+    def _targets_tab_changed(self) -> None:
+        """The Targets tab was opened (read it now, then on `fleet_view.refresh_s`) or left (stop reading it)."""
+        view = self.fleet_view
+        self._stop_targets_timer()
+        self._sync_fleet_widgets()
+        if view is None or not view.display or view.tab != TAB_TARGETS:
+            return
+        self._fetch_targets()
+        interval = self.app.cfg["fleet_view.refresh_s"]
+        if interval > 0:
+            self._targets_timer = self.set_interval(interval, self._targets_tick)
+
+    def _targets_tick(self) -> None:
+        view = self.fleet_view
+        if self._unmounted or view is None or not view.display or view.tab != TAB_TARGETS:
+            self._stop_targets_timer()
+            return
+        self._fetch_targets(background=True)
+
+    def _stop_targets_timer(self) -> None:
+        if self._targets_timer is not None:
+            self._targets_timer.stop()
+            self._targets_timer = None
+
+    def _open_target(self, target_id: str | None) -> None:
+        """`⏎` on a target: New session there, with its type known so the dialog can apply the telnet rule."""
+        row: TargetRow | None = self.targets.row(target_id)
+        if row is not None:
+            self._new_session_dialog(row.id, row.type)
 
     def _fleet_row(self, record: dict, entry: SidebarEntry, me: str | None, numbers: dict[str, int],
                    labels: Mapping[str, str], now: float) -> FleetRow:
@@ -935,6 +1126,14 @@ class TerminalScreen(Screen):
             self.end_session(sid)
         elif name == CMD_NEW:
             self.run_worker(self.run_action_id("new_session"), exclusive=False)
+        elif name == CMD_OPEN_TARGET:
+            self._open_target(sid)
+        elif name == CMD_QUERY:
+            self._run_query(arg or "")
+        elif name == CMD_MORE_TARGETS:
+            self._fetch_targets(more=True)
+        elif name == CMD_TAB_CHANGED:
+            self._targets_tab_changed()
         elif name == CMD_MODE:
             self.fleet.filter_mode = arg if arg in ("mine", "all") else (
                 "all" if self.fleet.filter_mode == "mine" else "mine")
@@ -2041,10 +2240,10 @@ class TerminalScreen(Screen):
         stays open: the dialog is over the workspace."""
         self._new_session_dialog(self._target() if self._front is not None else self.app.initial_target)
 
-    def _new_session_dialog(self, target: str | None) -> None:
+    def _new_session_dialog(self, target: str | None, target_type: str | None = None) -> None:
         from .new_session import NewSessionScreen
 
-        self.app.push_screen(NewSessionScreen(target=target))
+        self.app.push_screen(NewSessionScreen(target=target, target_type=target_type))
 
     def do_fleet(self) -> None:
         self.toggle_sidebar()
@@ -2211,6 +2410,10 @@ class TerminalScreen(Screen):
         if view is not None and view.tab == TAB_ALERTS:
             return KeysTarget("fleet view", (Hint("Tab", "Next tab", click + CMD_TAB),
                                              Hint("Esc", "Back", click + CMD_CLOSE)))
+        if view is not None and view.tab == TAB_TARGETS:
+            return KeysTarget("targets", (
+                Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("/", "Query", click + CMD_FILTER),
+                Hint("Tab", "Next tab", click + CMD_TAB), Hint("Esc", "Back", click + CMD_CLOSE)))
         if self.compact:
             return KeysTarget("fleet view", (Hint("t", "Take back", click + CMD_TAKE_BACK),
                                              Hint("Esc", "Back", click + CMD_CLOSE)), "tap a row")

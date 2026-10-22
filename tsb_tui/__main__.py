@@ -31,7 +31,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         prog="tsb-tui", epilog="`tsb-tui drive --help` is the agent surface: the same app, headless, as JSON lines.")
     parser.add_argument("--broker", required=True, help="the core's base URL, e.g. https://host")
     parser.add_argument("--ca-file", default=None, help="a PEM bundle to verify the core's certificate against")
-    parser.add_argument("--target", default=None, help="a target id (no target list at this tag)")
+    parser.add_argument("--target", default=None, help="a target id")
     parser.add_argument("--smoke", action="store_true",
                         help="non-interactive: load the engine, login, create, attach, one round trip, "
                              "close, exit 0/1")

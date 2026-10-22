@@ -122,6 +122,8 @@ class SlowChunkedApp:
     def __init__(self, delay_s: float = 0.02, max_chunks: int = 400, tail_chunks: int = 5,
                  hostkey_on_create: bool = False, recording_on_create: bool = True,
                  create_error: tuple[int, str, str] | None = None,
+                 target_read_error: tuple[int, str, str] | None = None,
+                 create_gate: threading.Event | None = None,
                  ticket_status: int = 200, refuse_upgrade: bool = False,
                  attach_close_code: int | None = None, drop_after_chunks: int | None = None,
                  fragment_every: int | None = None, echo_client_frames: bool = False,
@@ -144,8 +146,15 @@ class SlowChunkedApp:
         self.max_chunks = max_chunks
         self.tail_chunks = tail_chunks
         self.hostkey_on_create = hostkey_on_create
+        self.target_types: dict[str, str] = {}  # target id -> type, for `GET /targets/{id}`; ssh when absent
         self.recording_on_create = recording_on_create
         self.create_error = create_error
+        # GET /targets/{id}: a refusal instead of the record (the inventory down), and a create held until the
+        # test releases it, so a test can read what the dialog says while the create is still in flight.
+        self.target_read_error = target_read_error
+        self.create_gate = create_gate
+        self.create_started = threading.Event()
+        self.creates: list[dict] = []
         self.ticket_status = ticket_status
         self.refuse_upgrade = refuse_upgrade
         self.attach_close_code = attach_close_code
@@ -238,6 +247,12 @@ class SlowChunkedApp:
             return 200, [("Set-Cookie", "tsb_session=stub; HttpOnly; Secure; SameSite=Strict")], \
                 {"username": body["username"]}
         if method == "POST" and path == "/sessions":
+            self.creates.append(body)
+            if self.create_gate is not None:
+                self.create_started.set()
+                if not self.create_gate.wait(timeout=10):
+                    return 503, [], {"error": {"code": "gate_timeout",
+                                               "message": "the create gate was never released"}}
             if self.create_error is not None:
                 status, code, message = self.create_error
                 return status, [], {"error": {"code": code, "message": message}}
@@ -302,6 +317,16 @@ class SlowChunkedApp:
             elif call_index < len(self.sessions_call_delays):
                 time.sleep(self.sessions_call_delays[call_index])
             return 200, [], {"sessions": snapshot}
+        if method == "GET" and path.startswith("/targets/"):
+            # A typed target id is read before a create (the dialog needs its type): any id is an ssh target here
+            # unless a test names its type, as `GET /targets/{id}` answers a record for a target the principal sees.
+            if self.target_read_error is not None:
+                status, code, message = self.target_read_error
+                return status, [], {"error": {"code": code, "message": message}}
+            target_id = path.rsplit("/", 1)[-1]
+            return 200, [], {"id": target_id, "type": self.target_types.get(target_id, "ssh"), "name": target_id,
+                             "group": "stub", "tags": [], "discovered_by": "manual",
+                             "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.50", "port": 22}
         if method == "GET" and path.startswith("/sessions/"):
             session = self.sessions.get(path.rsplit("/", 1)[-1])
             if session is None:

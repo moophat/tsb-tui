@@ -6,7 +6,7 @@
 
 ## 1. What you have, and what you do not
 
-- **Your own TSB login,** and nothing else. You hold no fleet credentials and cannot open a session yourself: TSB answers `no_resolving_credential`.
+- **Your own TSB login,** and nothing else. You hold no fleet credentials. `new` opens a session on a target only where TSB resolves a credential for your login; otherwise it answers `no_resolving_credential`.
 - **Sessions someone lends you.** A person (the owner) opens a session to a router, a server or a k8s node with their own credentials and lets you work in it. You never see their password or key.
 - **The keyboard, only when it is handed to you.** One client types at a time. You start as a viewer, and the owner hands you the keyboard, or you take it from no one when nobody holds it.
 - **The owner's brake.** The owner can take the keyboard back at any moment, even mid-command. From that instant your input is refused.
@@ -61,6 +61,8 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 |---|---|---|
 | `login` | `user`, `password_file` | `principal`. One driver is one login |
 | `sessions` | — | `sessions`: each with `session`, `target`, `state`, `owner`, `holder` (a login or null), `rec`, `ends_in`. Sessions open here come first |
+| `targets` | optional `query` | `targets`: the targets this login may see, each with `id`, `type`, `name`, `group`, `tags`, `discovered_by`, in id order, one page of them. The answer also carries `more`: true, and only then, when TSB has a next page that this command does not fetch. `query` is the Targets tab's: `type:`, `tag:` (repeatable), `group:` and `source:` words, matched by TSB; a word with no `field:` is `bad_request`. Every string is text: a control character in it (an escape included) is replaced by its picture, and a type you do not know is shown as it is |
+| `new` | `target` | a session opened on that target with `connection: new` (the only thing a telnet connection allows), then attached as `attach` does: `session`, `chip`, `front`, `you`, `holder`, `you_may_type`, `size`, with a `gate` event first when the session is recorded. A refused create answers TSB's own `error` code and `why`, for example `no_resolving_credential` or `target_not_found`. It needs `size.auto_request` on (`--set size.auto_request=true`; the `drive` profile has it off), because a new session carries a size; with it off the answer is `not_available`. A first-use host key is also `not_available`: it names the `session` and the `fingerprint`, and the gate waits for you to check the key out of band and tick it (`press` `space`, then `enter`) |
 | `attach` | `session` | `session`, `chip` (its number on the rail), `front`, `you` (`type` or `view_only`), `holder`, `you_may_type`, `size`. A `gate` event comes first when the session is recorded |
 | `switch` | `session` | `front` |
 | `read` | `session`, `what`, optional `join_wrapped`, `lines` | see § 6 |
@@ -242,6 +244,5 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 ## 13. Not available yet
 
 - **Asking for the keyboard** (`ask_to_type`).
-- **Opening a session yourself:** you have no credentials, by design.
 - **Seeing only the sessions lent to you:** today you may see every session on a device you were granted. How lending works is still to be designed.
 - **Files and scroll back beyond what your client holds** arrive later.

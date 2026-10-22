@@ -1,12 +1,14 @@
-"""New Session — target id (from `--target` or typed: no target list at E0), and the connection
-choice Contract §15.3 requires from this first tag. The recording warning and the host-key
+"""New Session — the target (from the Targets tab of the full Fleet view, `--target`, or typed), and the connection
+choice Contract §15.3 requires from this first tag. A telnet connection carries one session, so for a telnet target
+the dialog asks `new` and the reuse choice is greyed (DEFAULT 22); the type of a target typed in is read from
+`GET /targets/{id}` before the create. Every string from a target record is shown as text, never as markup. The recording warning and the host-key
 acknowledgement happen right before the attach itself (screens/attach_confirm.py), not here —
 every attach passes through there, including a later re-attach from Sessions, so gating on it at
 creation time only would miss that case."""
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -16,12 +18,22 @@ from textual.widgets import Button, Input, RadioButton, RadioSet, Select, Static
 from tsb_contract_client import ApiError
 
 from .._transport import HttpError
+from ..model.targets import as_text
 
 TERM = "xterm-256color"
 
 # error.schema.json: reuse with two or more candidate connections and no connection_id — the
 # broker presents the choice and never picks one itself (Contract §12).
 CONNECTION_CHOICE_REQUIRED = "connection_choice_required"
+
+# A telnet connection carries one session (DEFAULT 22): the worker refuses a reuse, so the dialog never asks one.
+TELNET = "telnet"
+TELNET_NO_REUSE = "a telnet connection carries one session"
+TARGET_REQUIRED = "a target id is required — pick one in the Targets tab of the full Fleet view (^\\ F)"
+NO_SUCH_TARGET = "no such target"
+# The inventory could not answer for this id (a 503, a transport error): the type is unknown, so the create asks
+# `connection: new`, which is safe for every protocol, and says what it could not read.
+TYPE_UNKNOWN = "the target's type could not be read — creating a new connection"
 
 
 # What the dialog says when the create size has no rule: with auto size off nothing in the design says what
@@ -33,12 +45,24 @@ CREATE_SIZE_OFF = ("auto size is off, so there is no size to create this session
                    "(terminal-size §4); turn auto size on (--set size.auto_request=true, or ^\\ R) to create")
 
 
+def create_size(app: Any) -> tuple[int, int] | None:
+    """The creator's size (terminal-size §4: session open carries it; size-control step 15), which is the
+    canvas the window gives: the window minus the rail and the status row, as an explicit request asks for.
+    None when `size.auto_request` is off, because nothing then says what size to carry."""
+    if not app.cfg["size.auto_request"]:
+        return None
+    return app.workspace().fit_size()
+
+
 class NewSessionScreen(Screen):
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
 
-    def __init__(self, target: str | None = None) -> None:
+    def __init__(self, target: str | None = None, target_type: str | None = None) -> None:
         super().__init__()
         self._initial_target = target or ""
+        # The type of each target id this dialog knows: the one it was opened on (the Targets tab knows it), and
+        # each one read from `GET /targets/{id}` before a create on a typed id.
+        self._types: dict[str, str] = {target: target_type} if target and target_type is not None else {}
         # The target id the create that raised connection_choice_required was attempted against
         # — the picker's retry (on_select_changed) reuses it rather than re-reading the Input,
         # which the operator may have already changed while the GET /sessions round trip was in
@@ -48,10 +72,12 @@ class NewSessionScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical(id="new-session-panel"):
             yield Static("New session", id="new-session-title")
-            yield Input(value=self._initial_target, placeholder="target id", id="target-id")
+            yield Static("", id="new-session-target", markup=False)
+            yield Input(value=as_text(self._initial_target), placeholder="target id", id="target-id")
             with RadioSet(id="connection-choice"):
                 yield RadioButton("New connection (fresh authentication)", value=True, id="conn-new")
                 yield RadioButton("Reuse a connection already open to this target", id="conn-reuse")
+            yield Static("", id="connection-note", markup=False)
             yield Input(placeholder="connection id (blank: the only candidate, if there is one)",
                        id="connection-id", disabled=True)
             # Populated only on 409 connection_choice_required (_offer_connection_choice below);
@@ -64,6 +90,29 @@ class NewSessionScreen(Screen):
 
     def on_mount(self) -> None:
         self.query_one("#target-id", Input).focus()
+        self._show_type()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "target-id":
+            self._show_type()
+
+    def _is_telnet(self, target_id: str) -> bool:
+        return self._types.get(target_id) == TELNET
+
+    def _show_type(self) -> None:
+        """F4's first line (the target and its type) and the telnet rule: with a telnet target the reuse choice is
+        greyed and says why, and `new` is the choice."""
+        target_id = self.query_one("#target-id", Input).value.strip()
+        target_type = self._types.get(target_id)
+        self.query_one("#new-session-target", Static).update(
+            f"{as_text(target_id)} · {as_text(target_type)}" if target_type is not None and target_id else "")
+        telnet = self._is_telnet(target_id)
+        reuse = self.query_one("#conn-reuse", RadioButton)
+        reuse.disabled = telnet
+        self.query_one("#connection-note", Static).update(TELNET_NO_REUSE if telnet else "")
+        if telnet:
+            self.query_one("#conn-new", RadioButton).value = True
+            self.query_one("#connection-id", Input).disabled = True
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         if event.radio_set.id == "connection-choice":
@@ -84,24 +133,64 @@ class NewSessionScreen(Screen):
         error = self.query_one("#new-session-error", Static)
         target_id = self.query_one("#target-id", Input).value.strip()
         if not target_id:
-            error.update("a target id is required — there is no target list at this tag")
+            error.update(TARGET_REQUIRED)
             return
-        connection = "reuse" if self.query_one("#conn-reuse", RadioButton).value else "new"
-        connection_id = self.query_one("#connection-id", Input).value.strip() or None
-        if connection_id and connection != "reuse":
-            connection_id = None
         error.update("")
         self._pending_target_id = target_id
         self.query_one("#create-button", Button).disabled = True
+        if target_id not in self._types:
+            self._read_target(target_id)
+            return
+        self._start_create(target_id)
+
+    def _start_create(self, target_id: str) -> None:
+        connection = "reuse" if self.query_one("#conn-reuse", RadioButton).value else "new"
+        connection_id = self.query_one("#connection-id", Input).value.strip() or None
+        if self._is_telnet(target_id):
+            connection, connection_id = "new", None  # a telnet connection carries one session (DEFAULT 22)
+        if connection_id and connection != "reuse":
+            connection_id = None
         self._create(target_id, connection, connection_id)
 
+    def _read_target(self, target_id: str) -> None:
+        """A typed id has no record behind it here: read it (`GET /targets/{id}`) so the telnet rule applies."""
+        self.app.call_api(self.app.client.get_target, target_id,
+                          on_done=lambda record: self._on_target_read(target_id, record),
+                          on_error=self._on_read_error)
+
+    def _on_target_read(self, target_id: str, record: dict) -> None:
+        if self.app.screen is not self:
+            return
+        self._types[target_id] = str(record.get("type", ""))
+        self._show_type()
+        self._start_create(target_id)
+
+    def _on_read_error(self, exc: ApiError | HttpError | OSError) -> None:
+        if self.app.screen is not self:
+            self.app.notify_api_error(exc)
+            return
+        if isinstance(exc, ApiError) and exc.status == 404:
+            self.query_one("#create-button", Button).disabled = False
+            self.query_one("#new-session-error", Static).update(NO_SUCH_TARGET)
+            return
+        if isinstance(exc, ApiError) and exc.status == 401:
+            self.query_one("#create-button", Button).disabled = False
+            self.app.notify_api_error(exc)
+            return
+        # Anything else (a 503, a transport error) means the type could not be read, not that the target is
+        # absent: create anyway, asking `connection: new`, which is safe whichever protocol it turns out to be.
+        # The fallback create is one create: Create stays greyed from the moment it starts until it ends
+        # (`_on_create_error` re-enables it, `_on_create_done` takes the dialog away), so a second click
+        # meanwhile starts nothing.
+        target_id = self._pending_target_id
+        self.query_one("#new-session-error", Static).update(TYPE_UNKNOWN)
+        if target_id is None:
+            self.query_one("#create-button", Button).disabled = False
+            return
+        self._create(target_id, "new", None)
+
     def _create_size(self) -> tuple[int, int] | None:
-        """The creator's size (terminal-size §4: session open carries it; size-control step 15), which is the
-        canvas the window gives: the window minus the rail and the status row, as an explicit request asks for.
-        None when `size.auto_request` is off, because nothing then says what size to carry."""
-        if not self.app.cfg["size.auto_request"]:
-            return None
-        return self.app.workspace().fit_size()
+        return create_size(self.app)
 
     def _create(self, target_id: str, connection: str, connection_id: str | None) -> None:
         size = self._create_size()

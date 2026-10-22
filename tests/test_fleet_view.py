@@ -203,11 +203,13 @@ def test_grouping_by_target_counts_each_group_once_however_long_the_table(monkey
 
 def test_the_alerts_tab_lists_the_active_alerts_and_is_not_drawn_without_them() -> None:
     """DT14: the Alerts tab holds the active set for a `broker.health` holder; a login that is not one (`alert_lines`
-    None) has no tab at all. Targets is E3's and is not drawn, though the knob names it."""
+    None) has no tab at all. Targets is drawn between Sessions and Alerts, in the order the knob names them, and
+    carries no count until the inventory has answered."""
     with_alerts = _text(_layout(_model([_row("a")], alert_lines=("▲ supervisor not answering · a",)), tab="alerts"))
     assert any("supervisor not answering" in line for line in with_alerts)
     head = "\n".join(_text(_layout(_model([_row("a")]))))
-    assert "Alerts 1" in head and "Targets" not in head
+    assert "Alerts 1" in head and "Targets" in head
+    assert head.index("Sessions") < head.index("Targets") < head.index("Alerts")
     # The widget drops the tab; the layout itself is told which tabs to draw, so it draws what it is given.
     without = _model([_row("a")], alert_lines=None, tabs=("sessions",))
     assert "Alerts" not in "\n".join(_text(_layout(without)))
@@ -410,9 +412,11 @@ def test_the_alerts_tab_is_there_for_a_holder_and_absent_after_a_403(serve, wait
             screen = await fixture_login(app, pilot)
             screen.open_fleet_view()
             view = screen.fleet_view
-            assert view.tabs == ("sessions", "alerts") and "Alerts" in view.text
+            assert view.tabs == ("sessions", "targets", "alerts") and "Alerts" in view.text
             await pilot.press("tab")
-            await wait_until(pilot, lambda: view.tab == "alerts", "Tab to move to the Alerts tab")
+            await wait_until(pilot, lambda: view.tab == "targets", "Tab to move to the Targets tab")
+            await pilot.press("tab")
+            await wait_until(pilot, lambda: view.tab == "alerts", "Tab to move on to the Alerts tab")
             assert "Active alerts" in view.text
             await pilot.press("tab")
             await wait_until(pilot, lambda: view.tab == "sessions", "Tab to come round")
@@ -428,10 +432,11 @@ def test_the_alerts_tab_is_there_for_a_holder_and_absent_after_a_403(serve, wait
                 screen.open_fleet_view()
                 view = screen.fleet_view
                 await pilot.pause(0.1)
-                assert view.tabs == ("sessions",) and "Alerts" not in view.text
+                assert view.tabs == ("sessions", "targets") and "Alerts" not in view.text
                 await pilot.press("tab")
-                await pilot.pause(0.05)
-                assert view.tab == "sessions"
+                await wait_until(pilot, lambda: view.tab == "targets", "Tab to move to the Targets tab")
+                await pilot.press("tab")
+                await wait_until(pilot, lambda: view.tab == "sessions", "Tab to come round without an Alerts tab")
                 assert stub.alerts_requests == 1
 
     asyncio.run(_holder())

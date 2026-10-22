@@ -157,16 +157,25 @@ canvas of the session in front, and one status row. With no session open the sid
 * **Take back.** `t` on a sidebar row (or `^\ t`, the Menu, the quiet prompt's button) brings the session to the
   front, attaches first when needed (the gate shows first), then sends `handoff` to this client's own id. The
   status row says whose keyboard it took, and a toast says how to give it back.
-* **New session** is a dialog over the workspace. It is created with the canvas's size (the window minus the rail
+* **New session** is a dialog over the workspace, on the target picked in the Targets tab, `--target` or typed. It is created with the canvas's size (the window minus the rail
   and the status row); auto size is on by default (`size.auto_request = true`, OPEN-1 ruled 2026-10-12). Turn it off
   and the dialog has no size to carry and says so, creating nothing (a guessed size would be a request the operator
   never made).
 * **The full Fleet view** (`full view ▸` in the sidebar, `^\ F`, the Menu) covers the canvas with the rail still
-  beside it: tabs Sessions and Alerts (Alerts only for a `broker.health` login), Needs you first, then a table of
+  beside it: tabs Sessions, Targets and Alerts (Alerts only for a `broker.health` login), Needs you first, then a table of
   the sessions you own or may join (target, id, type, state, keys, open, clients, owner, ends in, REC), a `/`
   filter, `mine│joinable`, "show ended" and `fleet_view.group_by`. `⏎` opens a row, `c` New session, `t` Take
   back, `w` Who's here, `x` End…, `Tab` the next tab, `Esc` back to the session it came from (and to the sidebar
   it was opened from). `Ctrl-Q` quits from here.
+* **The Targets tab** lists the inventory the core shows this login (name, type, group, tags, source, the sessions
+  you see there, and `attach` where one is live), a page at a time (`Targets 100+` until the end is reached), with the
+  selected target's host, port, source and last-seen under the table. `/` takes a query the broker answers
+  (`type:ssh tag:prod group:core source:nmaa`; `tag:` can be repeated); a word with no `field:` is refused with the
+  list of fields. `⏎` opens New session on the target, asking `connection: new` for a telnet target (a telnet
+  connection carries one session, so reuse is greyed there). Every string from a target record is drawn as text:
+  markup stays literal and a control character (an escape included) shows as its Unicode control picture. A
+  New session on a typed id reads `GET /targets/{id}` first, for its type. `tsb-tui drive` has the same two reads as
+  commands, `targets` and `new` (`tsb-tui drive --guide`).
 * **Mouse and touch.** A single click or tap acts on every piece of chrome: the rail, the sidebar, the status row's
   hints (the full view's and Pan's too) and the dialogs' buttons. The wheel moves through the sidebar and the
   view; over the canvas it goes to the session only when the session asked for the mouse and this client holds

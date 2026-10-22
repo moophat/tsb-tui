@@ -13,16 +13,23 @@ case is named in the build report and the code is the closest the guide has.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from tsb_contract_client import ApiError
+
+from .._transport import HttpError
 from ..model import actions as A
 from ..model.attachment import AttachmentState
 from ..model.countdown import format_duration, parse_timestamp
 from ..model.fleet import is_attachable
+from ..model.targets import PAGE_LIMIT, QueryError, as_text, make_row, parse_query
+from ..screens.new_session import CREATE_SIZE_OFF, TERM, create_size
 from ..screens.terminal import MARK_INPUT, SOURCE_KEY, SessionSlot, TerminalScreen
 from ..term import UnknownKey, VTBackend, encode_key
 from . import waits
@@ -31,12 +38,14 @@ if TYPE_CHECKING:
     from .runner import Driver
 
 # Every op, in the order the guide lists them.
-OPS = ("login", "sessions", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "ask_to_type",
+OPS = ("login", "sessions", "targets", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "ask_to_type",
        "answer", "size", "detach", "snapshot", "click", "press", "resize", "quit")
 READS = ("screen", "reply", "history", "who")
 
 ASK_TO_TYPE_WHY = ("TSB has no way to ask for the keyboard yet; ask the owner another way, then wait for "
                    "holder me")
+HOSTKEY_PENDING = ("the host key is seen for the first time: check it out of band, then tick it in the gate "
+                   "(press space, then enter); the session is created")
 
 
 class DriveError(Exception):
@@ -187,6 +196,9 @@ class Commands:
 
     def __init__(self, driver: Driver) -> None:
         self.d = driver
+        # A session whose create answered with a first-use host key: its gate stays up, and a later `attach` opens
+        # it with this fingerprint rather than a gate that would let Attach through unticked.
+        self._pending_hostkeys: dict[str, dict[str, Any]] = {}
 
     async def run(self, cmd: dict[str, Any]) -> dict[str, Any]:
         op = cmd.get("op")
@@ -262,6 +274,63 @@ class Commands:
             rows.append(row)
         return {"sessions": rows}
 
+    async def op_targets(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        """The rows the Targets tab shows for a query: one page of what `GET /targets` answers, every string through
+        `as_text`. `more` is true when the broker has a next page this command does not fetch."""
+        self._screen()
+        text = _field(cmd, "query", str, required=False) or ""
+        try:
+            query = parse_query(text)
+        except QueryError as exc:
+            raise DriveError("bad_request", f"query: {exc}") from None
+        call = functools.partial(self.d.app.client.list_targets, **query.filters(), limit=PAGE_LIMIT)
+        try:
+            page = await asyncio.to_thread(call)
+        except (ApiError, HttpError, OSError) as exc:
+            raise DriveError("request_failed", str(exc)) from None
+        rows = [make_row(record) for record in page.get("targets") or ()]
+        answer: dict[str, Any] = {"targets": [
+            {"id": row.label, "type": row.type, "name": row.name, "group": row.group, "tags": list(row.tags),
+             "discovered_by": row.discovered_by} for row in rows]}
+        if page.get("next_cursor"):
+            answer["more"] = True
+        return answer
+
+    async def op_new(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        """New session on a target, as the dialog's Create does (`connection: new`, which is all a telnet target
+        allows), then attached as `attach` does: the gate's text first, the gate passed, the answer `attach`'s. A
+        refused create answers with the core's own code and message."""
+        from ..screens.attach_confirm import AttachConfirmScreen
+
+        target = _field(cmd, "target", str)
+        screen = self._screen()
+        await self.d.workspace_ready(screen)
+        size = create_size(self.d.app)
+        if size is None:
+            raise DriveError("not_available", CREATE_SIZE_OFF)
+        call = functools.partial(self.d.app.client.create_session, target, "new", TERM, size[0], size[1])
+        try:
+            created = await asyncio.to_thread(call)
+        except ApiError as exc:
+            raise DriveError(exc.code, exc.message, target=target) from None
+        except (HttpError, OSError) as exc:
+            raise DriveError("request_failed", str(exc)) from None
+        record = created["session"]
+        sid = record["id"]
+        recording = record.get("recording") or {}
+        if recording.get("active"):
+            self.d.emit_event({"ev": "gate", "session": sid, "recording": recording.get("warning_text")})
+        hostkey = created.get("hostkey")
+        screen.open_session(record, hostkey)
+        if hostkey is not None:
+            # A first-use host key is the operator's to check out of band (session-open step 22): the gate stays up
+            # for a tick, and drive ticks nothing by itself.
+            self._pending_hostkeys[sid] = hostkey
+            raise DriveError("not_available", HOSTKEY_PENDING, session=sid,
+                             fingerprint=as_text(hostkey.get("fingerprint")))
+        await self.d.pass_gate(sid, AttachConfirmScreen)
+        return await self._attached_answer(screen, sid)
+
     async def op_attach(self, cmd: dict[str, Any]) -> dict[str, Any]:
         from ..screens.attach_confirm import AttachConfirmScreen
 
@@ -289,11 +358,38 @@ class Commands:
             if recording.get("active"):
                 # CR1: the recording text comes before the attach, whether or not the gate is shown this time.
                 self.d.emit_event({"ev": "gate", "session": sid, "recording": recording.get("warning_text")})
+            pending = self._pending_hostkeys.get(sid)
+            if pending is not None and sid in self.d.app.gated_sessions:
+                # The operator accepted this session's first-use gate, so it is not asked again (the ruling of
+                # 2026-10-22): the fingerprint is dropped as soon as the gate is accepted and the session attached,
+                # whichever path attached it, and a later detach and attach of the same session shows no gate.
+                self._pending_hostkeys.pop(sid)
+                pending = None
+            if pending is not None:
+                # The create saw this session's host key first: its gate is the one to use, and Attach stays greyed
+                # until the operator ticks it — exactly as the TUI's own attach does.
+                self._open_pending_hostkey(screen, record, pending)
+                raise DriveError("not_available", HOSTKEY_PENDING, session=sid,
+                                 fingerprint=as_text(pending.get("fingerprint")))
             screen.open_session(record)
             await self.d.pass_gate(sid, AttachConfirmScreen)
             slot = screen.slot_for(sid)
         else:
+            self._pending_hostkeys.pop(sid, None)
             screen.show_front(slot)
+        return await self._attached_answer(screen, sid)
+
+    def _open_pending_hostkey(self, screen: TerminalScreen, record: dict, hostkey: dict) -> None:
+        """Open the host-key gate for a session whose create saw the key first, unless it is already up."""
+        from ..screens.attach_confirm import AttachConfirmScreen
+
+        current = self.d.app.screen
+        if isinstance(current, AttachConfirmScreen) and current.is_mounted and current.session_id == record["id"]:
+            return
+        screen.open_session(record, hostkey)
+
+    async def _attached_answer(self, screen: TerminalScreen, sid: str) -> dict[str, Any]:
+        """Wait for the session to be attached, bring it forward and say how it stands: `attach`'s answer."""
         slot = await self.d.attached(sid)
         screen.show_front(slot)
         state = slot.pump.state
