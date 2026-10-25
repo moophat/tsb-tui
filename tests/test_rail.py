@@ -127,6 +127,14 @@ def test_the_rail_shows_who_types_in_each_session_open_here_and_the_one_in_front
                 await wait_until(pilot, lambda: not screen.sidebar_open, "the sidebar to close")
                 await wait_until(pilot, lambda: screen.rail.rows and screen.rail.rows[-2].text == "2◆◂",
                                  "the second chip to show the peer typing and to be in front")
+                # The fixture's alert stream raises `fixture-alert-1` and clears it again, on the streamer's
+                # thread (tsbc._serve.ALERTS): a read while it is raised says `!1`. This test is about who types,
+                # not about alerts, so it reads the rail at a moment with no alert raised (before the raise or
+                # after the clear, either will do): wait for `!0`, then read without yielding, so nothing can
+                # change between the wait and the read.
+                await wait_until(pilot, lambda: (row := rail_row(screen, ACT_ALERTS)) is not None
+                                 and screen.rail.rows[row].text.startswith("!0"),
+                                 "a moment with no alert raised, so the rail's alert row reads !0")
                 lines = screen.rail.text.splitlines()
                 assert lines[:5] == [" ≡ │", " ▦▸│", "▲0 │", "!0 │", "┄┄┄│"]
                 assert lines[5:8] == ["1● │", "2◆◂│", " + │"]

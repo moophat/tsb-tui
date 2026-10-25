@@ -702,6 +702,15 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
             screen = await fixture_login(app, pilot)
             await _open_in_order(app, pilot, wait_until, screen, sid)
             screen.close_sidebar()
+            # Hiding the sidebar only marks it gone; Textual gives the width back to the canvas on the next layout
+            # pass, and `close_sidebar` reads the row before that. Until it does, `view_range` still says
+            # `cols 1-88 of 116 ▸` (120 less the 32-column sidebar), and that extra range drops `^\ t Take back`
+            # at 120. Wait for the canvas to take the width back before delivering the frames the row is read from.
+            await wait_until(
+                pilot,
+                lambda: not screen.sidebar_open and screen.canvas is not None
+                and screen.canvas.size.width == size[0] - screen.rail.size.width,
+                "the canvas to take the width the closed sidebar gave back")
             slot = screen.slot_for(sid)
             state = slot.pump.state
             _deliver(screen, slot, *make(state))
