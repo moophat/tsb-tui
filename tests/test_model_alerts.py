@@ -19,6 +19,7 @@ hand.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -312,3 +313,74 @@ def test_stop_ends_a_thread_that_is_reading_a_long_lived_stream() -> None:
         app.alerts_stop.set()
     assert not streamer.running
     assert app.alerts_opened == 1
+
+
+def test_stop_while_blocked_in_a_read_exits_quietly() -> None:
+    """`stop()` closes the stream while the reader sits inside `readline`, and
+    http.client surfaces that as `AttributeError: 'NoneType' object has no attribute 'peek'`. The
+    thread must end with no exception, not print "Exception in thread Thread-1 (_run)" at exit.
+
+    Why: an exception escaping `_run` reaches the default excepthook and prints on every quit.
+    """
+    class _Stream:
+        def __init__(self) -> None:
+            self.closed = threading.Event()
+            self.entered = threading.Event()
+
+        def __iter__(self):
+            self.entered.set()
+            self.closed.wait(10)  # blocked in the read until `stop()` closes the stream
+            raise AttributeError("'NoneType' object has no attribute 'peek'")
+
+        def close(self) -> None:
+            self.closed.set()
+
+    stream = _Stream()
+
+    class _Client:
+        def alerts(self, read_timeout: float | None = None) -> Any:
+            return stream
+
+    seen: list = []
+    hook = threading.excepthook
+    threading.excepthook = lambda args: seen.append(args)
+    try:
+        streamer = AlertStreamer(_Client(), read_timeout_s=0.5)
+        streamer.start()
+        assert stream.entered.wait(5), "the reader never entered the read"
+        thread = streamer._thread
+        streamer.stop()
+        assert _wait(lambda: not thread.is_alive()), "the thread did not end"
+        assert seen == [], f"a stop must not raise: {seen}"
+    finally:
+        threading.excepthook = hook
+
+
+def test_an_attribute_error_while_running_is_still_reported() -> None:
+    """The `except Exception` in `_run` re-raises when no stop was asked for: an error while
+    running must still reach the excepthook, as it does today.
+
+    Why: swallowing every error would hide a real transport bug behind a quiet reopen.
+    """
+    class _Stream:
+        def __iter__(self):
+            raise AttributeError("'NoneType' object has no attribute 'peek'")
+
+        def close(self) -> None:
+            pass
+
+    class _Client:
+        def alerts(self, read_timeout: float | None = None) -> Any:
+            return _Stream()
+
+    seen: list = []
+    hook = threading.excepthook
+    threading.excepthook = lambda args: seen.append(args)
+    try:
+        streamer = AlertStreamer(_Client(), read_timeout_s=0.5, backoff_ms=(10,))
+        streamer.start()
+        assert _wait(lambda: bool(seen)), "the error never reached the excepthook"
+        streamer.stop()
+        assert seen[0].exc_type is AttributeError
+    finally:
+        threading.excepthook = hook

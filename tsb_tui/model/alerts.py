@@ -202,6 +202,12 @@ class AlertStreamer:
                 self._read_stream(stream)
             except (HttpError, OSError, ValueError):
                 pass  # a read timeout, a transport failure or a stream closed by `stop`: back off and reopen
+            except Exception:
+                # closing the stream from `stop` can surface as any error inside the blocked read
+                # (http.client raises AttributeError when its socket is gone mid-readline)
+                if self._stop.is_set():
+                    return  # a stop was asked for: any error is the stream ending
+                raise  # an error while running is still reported as today
             finally:
                 self._stream = None
                 with contextlib.suppress(Exception):  # already closed by `stop`
