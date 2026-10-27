@@ -15,8 +15,8 @@
 #     keep it false (§4's phone line, and drive acts on nothing, D53). Nothing is left unset.
 #   * drive.guard is renamed input.guard (the guard is the person's too, Frontend §9); default true.
 #     D52 is also ruled (2026-10-12): the harness profile keeps the guard on like every other profile.
-#   * new keys: term.library, term.scrollback_bytes, input.focus_reports, alerts.read_timeout_s;
-#     the drive profile sets sidebar.start_filter = "all" (DT15).
+#   * new keys: term.library, term.scrollback_bytes, input.focus_reports, alerts.read_timeout_s,
+#     broker.timeout_s; the drive profile sets sidebar.start_filter = "all" (DT15).
 #   * event_log.lines bounds the per-attachment event log (D22); the design's knob file carried no
 #     bound, so phase 2 adds one and owns it.
 #
@@ -175,6 +175,15 @@ hostkey_tick = true
 [reattach]
 auto = true
 backoff_ms = [500, 1000, 2000, 5000, 10000, 30000]
+
+[broker]
+# How long every REST call to the core may take, POST /sessions included. A create can take the
+# core's connect bound (30 s) plus a target's open bound plus one heartbeat interval: 55 s with the
+# deploy templates' defaults. 70 s waits for the core's own answer and stays under nginx's 90 s
+# /sessions read timeout. The contract client's own default is 10 s. The same value bounds an
+# attach's connect and its wait for `attached`: a TUI attach to a core that is up but hung waits up
+# to this long, where it waited 10 s.
+timeout_s = 70
 
 [alerts]
 popup = true

@@ -217,7 +217,8 @@ Every state a session's frames put it in is on screen, never only in a log:
   key, the fingerprint and a tick. Later attaches show the recording text in the status row for
   `gates.recording_bar_s`; `gates.recording = "every-attach"` shows the gate every time.
 * **Settings.** Profiles (`default`, `phone`, `drive`, `harness`), the config file, `TSB_TUI_*` and
-  `--set key=value`, in that order of precedence. `size.auto_request` defaults on (OPEN-1 was ruled on 2026-10-12:
+  `--set key=value`, in that order of precedence. `broker.timeout_s` (default 70 s) is how long every REST call to
+  the core may take, `POST /sessions` included. `size.auto_request` defaults on (OPEN-1 was ruled on 2026-10-12:
   a TUI's auto size is the one that tells the session what fits the window); the phone, drive and harness profiles
   keep it off. `input.guard` is on in every profile too (D52, same day).
 

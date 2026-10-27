@@ -122,6 +122,7 @@ class SlowChunkedApp:
     def __init__(self, delay_s: float = 0.02, max_chunks: int = 400, tail_chunks: int = 5,
                  hostkey_on_create: bool = False, recording_on_create: bool = True,
                  create_error: tuple[int, str, str] | None = None,
+                 create_delay_s: float = 0.0,
                  target_read_error: tuple[int, str, str] | None = None,
                  create_gate: threading.Event | None = None,
                  ticket_status: int = 200, refuse_upgrade: bool = False,
@@ -149,6 +150,9 @@ class SlowChunkedApp:
         self.target_types: dict[str, str] = {}  # target id -> type, for `GET /targets/{id}`; ssh when absent
         self.recording_on_create = recording_on_create
         self.create_error = create_error
+        # `POST /sessions` sleeps this long before answering (a create slower than the contract
+        # client's 10 s default). Default 0, so no existing test moves.
+        self.create_delay_s = create_delay_s
         # GET /targets/{id}: a refusal instead of the record (the inventory down), and a create held until the
         # test releases it, so a test can read what the dialog says while the create is still in flight.
         self.target_read_error = target_read_error
@@ -248,6 +252,8 @@ class SlowChunkedApp:
                 {"username": body["username"]}
         if method == "POST" and path == "/sessions":
             self.creates.append(body)
+            if self.create_delay_s:
+                time.sleep(self.create_delay_s)
             if self.create_gate is not None:
                 self.create_started.set()
                 if not self.create_gate.wait(timeout=10):

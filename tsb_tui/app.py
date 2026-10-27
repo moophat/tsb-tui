@@ -190,7 +190,9 @@ class TsbTuiApp(App):
         # theme whose content changed re-applies its CSS variables, and one that did not (a scheme-only move)
         # does not. It starts unset; the theme registered above is pushed by `on_mount`'s `self.theme` set.
         self._pushed_theme = None
-        self.client = Client(broker_url, ca_file=ca_file)
+        # `broker.timeout_s`: a create can take far longer than the client's 10 s default, so every
+        # REST call and the attach's open wait on the knob.
+        self.client = Client(broker_url, ca_file=ca_file, timeout=resolved["broker.timeout_s"])
         # The outer window's last size: only a change to it is a "window change" (D18).
         self._window_size: Size | None = None
         self.initial_target = target

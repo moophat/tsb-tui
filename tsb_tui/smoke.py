@@ -132,7 +132,9 @@ def run(broker: str, target: str, ca_file: str | None, *, recv_timeout: float = 
     try:
         # A cleartext broker URL is refused here (`_http.HttpClient`) unless the host is
         # loopback — otherwise the superadmin password below would cross the network in clear.
-        client = Client(broker, ca_file=ca_file)
+        # `broker.timeout_s`: the same knob as the app — a slow create must not read as a transport
+        # timeout.
+        client = Client(broker, ca_file=ca_file, timeout=cfg["broker.timeout_s"])
     except ValueError as exc:
         print(f"FAIL broker URL: {exc}", file=sys.stderr)
         return 1

@@ -37,6 +37,23 @@ def test_smoke_run_succeeds_end_to_end(monkeypatch, tmp_path) -> None:
         assert smoke.run(url, TARGET_ID, None) == 0
 
 
+def test_a_create_slower_than_ten_seconds_succeeds_with_the_default_timeout(monkeypatch, tmp_path, capsys) -> None:
+    """A create can legitimately take far longer than the contract client's 10 s default
+    (connect 30 s + a target's open bound + one heartbeat interval = 55 s with the deploy templates'
+    defaults), so the TUI's own `broker.timeout_s` knob, 70 s by default, must bound its REST calls.
+    Against a stub whose `POST /sessions` sleeps 10.5 s, `smoke.run` with the packaged defaults gets
+    past "create session" and passes. With the client's 10 s default it answers
+    `FAIL create session` with a timeout, so this is the one test that proves the 10 s default is
+    gone. It sleeps; it never spins."""
+    _set_creds(monkeypatch, tmp_path)
+    stub = SlowChunkedApp(max_chunks=0, echo_client_frames=True, create_delay_s=10.5)
+    with StubServer(stub) as url:
+        assert smoke.run(url, TARGET_ID, None) == 0
+    captured = capsys.readouterr()
+    assert "create session: ok" in captured.out
+    assert "FAIL create session" not in captured.err
+
+
 def test_smoke_run_fails_and_reports_a_close_failure(monkeypatch, tmp_path, capsys) -> None:
     """A close that itself fails must not be reported as `close: ok` — the whole point of a
     close-on-every-path smoke test is to catch exactly a broken close."""

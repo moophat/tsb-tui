@@ -18,10 +18,14 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any, ClassVar
 
 import pytest
 import tomllib
-from tsb_tui import config
+from stub_server import SlowChunkedApp, StubServer
+from test_smoke import _set_creds
+from tsb_contract_client import ApiError
+from tsb_tui import config, smoke
 
 LEADER_MAP = "keys.leader_map."
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "tsb_tui"
@@ -238,7 +242,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
     assert set(config.knobs_owned_through()) == {
         "drive.default_cols", "drive.default_rows", "drive.events", "drive.output_events", "drive.reply_max_lines",
         "drive.settled_ms", "drive.switch_on_action", "drive.wait_timeout_max_ms", "drive.wait_timeout_ms",
-        "alerts.popup", "alerts.read_timeout_s", "event_log.lines", "fleet_view.refresh_s",
+        "alerts.popup", "alerts.read_timeout_s", "broker.timeout_s", "event_log.lines", "fleet_view.refresh_s",
         "fleet_view.details_from", "fleet_view.group_by", "fleet_view.show_ended", "fleet_view.tabs",
         "keys.leader_map.end", "keys.leader_map.event_log", "keys.leader_map.full_view", "keys.leader_map.keys",
         "keys.leader_map.pan", "keys.leader_map.quit", "motion.level", "mouse.canvas_clicks", "mouse.enabled",
@@ -284,10 +288,78 @@ def test_defaults_match_the_design_knob_file_values() -> None:
     assert cfg["input.guard"] is True
     assert cfg["input.focus_reports"] is False
     assert cfg["alerts.read_timeout_s"] == 30
+    assert cfg["broker.timeout_s"] == 70
     assert cfg["event_log.lines"] > 0
     drive = config.load(profile="drive", config_file=Path("/nonexistent"), environ={})
     assert drive["sidebar.start_filter"] == "all"
     assert drive["mouse.enabled"] is False
+
+
+# -- the REST timeout knob --
+
+
+def _load_with(**overrides: str) -> config.Config:
+    """The packaged defaults plus `--set` overrides, in the pinned environment conftest sets (the
+    engine path the app needs), with no operator config file."""
+    return config.load(overrides=overrides)
+
+
+class _RecordingClient:
+    """A stand-in for `tsb_contract_client.Client` that records how each builder called it. It is
+    never asked to talk to a broker: the tests check the constructor's arguments, nothing on the wire."""
+
+    calls: ClassVar[list[dict]] = []
+
+    def __init__(self, base_url: str, ca_file: str | None = None, *, timeout: float = 10.0) -> None:
+        self.calls.append({"base_url": base_url, "ca_file": ca_file, "timeout": timeout})
+        self.timeout = timeout  # the real Client carries the one value it passes to every call
+
+    def login(self, *args: Any) -> None:
+        raise ApiError(401, "unauthenticated", "the recording stand-in never talks to a broker")
+
+
+@pytest.fixture
+def stub_url():
+    """A live loopback stub (cleartext is allowed off-loopback only for the real path's checks):
+    the tests check how each builder constructs its client, never a round trip."""
+    with StubServer(SlowChunkedApp(max_chunks=0, echo_client_frames=True)) as url:
+        yield url
+
+
+def test_the_rest_timeout_reaches_the_client(monkeypatch, tmp_path, stub_url) -> None:
+    """`broker.timeout_s` is the timeout every REST call waits on. The app builds its one client
+    with the knob and `smoke.run` builds its client with the same knob from the config it loads;
+    with no override both get the packaged 70, where the contract client's own default was 10.
+    A knob that reached the registry but not the client is a promise nothing keeps."""
+    import tsb_tui.app as app_mod
+    import tsb_tui.smoke as smoke_mod
+
+    _RecordingClient.calls = []
+    monkeypatch.setattr(app_mod, "Client", _RecordingClient)
+    monkeypatch.setattr(smoke_mod, "Client", _RecordingClient)
+    _set_creds(monkeypatch, tmp_path)
+
+    cfg33 = _load_with(**{"broker.timeout_s": "33"})
+    app = app_mod.TsbTuiApp(stub_url, target="stub-target", cfg=cfg33)
+    assert app.client.timeout == 33
+    smoke.run(stub_url, "stub-target", None, cfg=cfg33)
+    assert [call["timeout"] for call in _RecordingClient.calls] == [33, 33]
+
+    _RecordingClient.calls = []
+    default = _load_with()
+    app = app_mod.TsbTuiApp(stub_url, target="stub-target", cfg=default)
+    assert app.client.timeout == 70
+    smoke.run(stub_url, "stub-target", None, cfg=default)
+    assert [call["timeout"] for call in _RecordingClient.calls] == [70, 70]
+
+
+def test_a_rest_timeout_below_one_second_is_refused_naming_the_key() -> None:
+    """Rule 12: a `broker.timeout_s` below 1 fails start-up naming the key — a 0 s or negative wait
+    can never be answered in, and a silently ignored typo would leave the operator believing a
+    timeout took effect when it never did."""
+    for bad in ("0", "-5"):
+        with pytest.raises(config.ConfigError, match=rf"broker\.timeout_s = {bad}: expected at least 1"):
+            _load_with(**{"broker.timeout_s": bad})
 
 
 def test_text_faint_passes_on_the_surface_the_chrome_draws_it_on() -> None:

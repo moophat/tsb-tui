@@ -177,6 +177,7 @@ KNOB_TYPES: dict[str, type] = {
     "gates.hostkey_tick": bool,
     "reattach.auto": bool,
     "reattach.backoff_ms": list,
+    "broker.timeout_s": int,
     "alerts.popup": bool,
     "alerts.read_timeout_s": int,
     "toasts.seconds": int,
@@ -287,6 +288,7 @@ KNOB_OWNERS: dict[str, int] = {
     "gates.hostkey_tick": 6,
     "reattach.auto": 6,
     "reattach.backoff_ms": 6,
+    "broker.timeout_s": 2,
     "alerts.popup": 6,
     "alerts.read_timeout_s": 2,
     "toasts.seconds": 6,
@@ -687,6 +689,7 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
     _check_chrome_knobs(resolved)
     _check_theme_knobs(resolved)
     _check_fleet_knobs(resolved)
+    _check_broker_knobs(resolved)
 
     # OPEN-T5 (ruled 2026-10-15): a theme file with no `variant` gets it computed from its `bg`
     # luminance, as a scheme's is (TT9's rule). TT12: the rule reads the `theme.bg` in force after
@@ -809,6 +812,12 @@ def _check_fleet_knobs(values: Mapping[str, Any]) -> None:
     _check_drive_knobs(values)
     if values["fleet_view.refresh_s"] < 0:
         raise ConfigError(f"fleet_view.refresh_s = {values['fleet_view.refresh_s']}: expected 0 (manual) or more")
+
+
+def _check_broker_knobs(values: Mapping[str, Any]) -> None:
+    """`broker.timeout_s` is a real wait: below 1 s nothing can be answered in it."""
+    if values["broker.timeout_s"] < 1:
+        raise ConfigError(f"broker.timeout_s = {values['broker.timeout_s']}: expected at least 1")
 
 
 def _check_view_knobs(values: Mapping[str, Any]) -> None:
