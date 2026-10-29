@@ -53,7 +53,7 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 5. `wait` with `{"settled_ms": 800, "prompt": "<the prompt's regex>"}`.
 6. `read` with `"what": "reply"` to get everything the command printed, including what scrolled off the screen.
 7. Repeat 4 to 6, in any of your sessions. Commands to a session in the background bring it to the front for you; reads and waits never move anything.
-8. When you are done: `hand_back`, then `detach`.
+8. When you are done: `hand_back`, then `detach`; `logout` when you are finished with this login altogether, which detaches everything and signs out.
 
 ## 5. Commands
 
@@ -75,6 +75,8 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 | `answer` | `session`, `choice` (1 to 4) | `choice`: the name of the one sent. Only the keyboard holder is asked |
 | `size` | `session` | `asked`, `size` and `reason` of the answer. Only the keyboard holder may ask |
 | `detach` | `session` | — |
+| `end` | `session`, `confirm` (must be `true`) | `session`. **Ends the session for everyone and cannot be undone**, as the Menu's End session… does, so it needs `confirm: true`: without it the answer is `bad_request` and nothing is sent. It answers when TSB has: use `wait` with `{"ended": true}` for the end frame (§ 7). Only the session's owner, or someone allowed to terminate sessions, may end it; anyone else gets `refused`, whose `why` is the sentence the screen shows, and the session keeps running. `ended` when the record already says it ended (nothing is sent), `no_such_session` when TSB no longer knows it, `request_failed` for any other failure, `not_attached` when this drive has no such session open |
+| `logout` | — | `detached`: the sessions it left, in the order they were opened (each keeps running, none is ended), and `broker`: `signed_out`, or `unconfirmed` when TSB did not confirm the logout (your login there then ends when it expires; drive holds no login either way). It is the Menu's Sign out. A `login` is accepted afterwards. `not_logged_in` when there is nothing to sign out of |
 | `snapshot` | `format`: `text` (default) or `svg` | `text` or `svg`: the whole UI, as a person would see it |
 | `click`, `press` | `label`; `keys` | `click` presses a visible control by its label (not available while the mouse is off, as in the `drive` profile); `press` sends Textual key names, for example `["ctrl+backslash", "w"]` (for tests of the UI itself) |
 | `resize` | `size` (`"100x30"`) or `cols` and `rows` | `size`: the headless window changed |
@@ -109,6 +111,7 @@ Every read is made in your own client, from what it already received. TSB itself
 | `{"event": {"ev": "...", ...}}` | an event with those fields arrives, after the wait began (`output` counts cannot be waited for) |
 
 - A regex is searched with `^` and `$` meaning a line.
+- After your own `end`, which answers when TSB has, `wait` with `{"ended": true}` returns once the end frame has reached your client.
 - **`timeout_ms`** defaults to 30 000 and is capped at 600 000 (`drive.wait_timeout_ms`, `drive.wait_timeout_max_ms`). A timeout is an ordinary answer, `"error": "timeout"`, with `tail`: the last lines of the screen (up to ten, trailing blank rows dropped). A wait that fails for another reason carries `tail` too.
 - **Settled is a hint,** counted from the later of the wait and the last byte, so a wait never answers sooner than that after you sent it. A slow command can pause longer. Always pair `settled_ms` with a `prompt`.
 - **A wait fails at once,** with the reason, when one of these happens, unless the wait is for that very thing:

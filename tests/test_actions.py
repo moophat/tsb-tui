@@ -50,9 +50,10 @@ def _viewer() -> AttachmentState:
     return state_of(me=(VIEWER, VIEWER_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
 
 
-# The actions that have no key after the leader: the Menu itself, and the two entries of Settings and help whose key the
-# design does not name (mockup F3 prints `^\\ ?` for All keys and `:q` for Quit only).
-MENU_ONLY = frozenset({"settings", "about"})
+# The actions that have no key after the leader: the Menu itself, and the entries of Settings and help whose key the
+# design does not name (mockup F3 prints `^\\ ?` for All keys and `:q` for Quit only). Sign out is Menu-only:
+# a costly slip must never be one keystroke away.
+MENU_ONLY = frozenset({"settings", "about", "sign_out"})
 
 
 def test_every_action_has_a_label_a_description_a_group_and_a_key() -> None:

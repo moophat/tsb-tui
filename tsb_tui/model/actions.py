@@ -252,6 +252,8 @@ ACTIONS: tuple[Action, ...] = (
     Action("keys", "All keys", "every action's key", "?", GROUP_SETTINGS, SCOPE_SESSION, None, _always),
     Action("about", "About", "the TUI, the contract client and the engine", None, GROUP_SETTINGS,
            SCOPE_SESSION, None, _always),
+    Action("sign_out", "Sign out", "detach everything here and sign out; every session keeps running", None,
+           GROUP_SETTINGS, SCOPE_SESSION, None, _always),
     Action("quit", "Quit", "leave the TUI; every session keeps running", ":q", GROUP_SETTINGS,
            SCOPE_SESSION, None, _always),
     # Who's here's buttons (F5).

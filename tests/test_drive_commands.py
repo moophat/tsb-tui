@@ -14,11 +14,13 @@ import asyncio
 import io
 import json
 import sys
+import threading
 from typing import Any
 
 import pytest
 from drive_support import Rig
 from input_server import InputRecordingApp, make_session
+from signout_support import HeldRequestApp, LogoutProbeApp
 from tsb_tui.drive import runner
 from tsbc import _serve
 
@@ -443,6 +445,268 @@ def test_detach_leaves_the_session_running_and_a_later_command_says_not_attached
                     break
                 await asyncio.sleep(0.01)
             assert serve_app.sessions[sid]["state"] == "detached", "the session was ended, not detached"
+
+    _run(check())
+
+
+def test_logout_detaches_signs_out_and_a_new_login_is_accepted(serve, tmp_path) -> None:
+    """`logout` is the Menu's Sign out. It leaves every session open here (each lives on, `detached` in the core's
+    record, never ended), answers which ones and that the broker confirmed, and leaves drive logged out: the next
+    command is told `not_logged_in` and a `login` is accepted (one driver is one login, one at a time)."""
+
+    async def check() -> None:
+        serve_app, url = serve(LogoutProbeApp())
+        first, second = make_session(url, _serve.USER), make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(first)
+            await rig.attach(second)
+            answer = await rig.cmd("logout")
+            assert answer["ok"], answer  # fails today: bad_request, `op: expected one of ...`
+            assert answer["detached"] == [first, second] and answer["broker"] == "signed_out", answer
+            assert serve_app.at_logout == {first: ("detached", 0), second: ("detached", 0)}, (
+                "the sessions were not detached on the server before logout reached it")
+            assert not any(s["state"] in ("killed", "terminated") for s in serve_app.sessions.values())
+            assert (await rig.cmd("sessions"))["error"] == "not_logged_in"
+            assert (await rig.cmd("snapshot"))["text"].count("log in") >= 1, "Login is not showing"
+            assert (await rig.cmd("logout"))["error"] == "not_logged_in", "a second logout has nothing to sign out"
+            again = await rig.login()
+            assert again["principal"] == _serve.USER
+            assert (await rig.cmd("sessions"))["ok"]
+
+    _run(check())
+
+
+def test_logout_answers_unconfirmed_when_the_broker_did_not_confirm(serve, tmp_path) -> None:
+    """A failed logout seen through drive: the broker answered 500, drive is logged out anyway and says the broker did not
+    confirm, so an agent never believes the login ended there when it did not."""
+
+    async def check() -> None:
+        serve_app, url = serve(LogoutProbeApp())
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(sid)
+            serve_app.logout_status = 500
+            answer = await rig.cmd("logout")
+            assert answer["ok"], answer
+            assert answer["detached"] == [sid] and answer["broker"] == "unconfirmed", answer
+            assert (await rig.cmd("sessions"))["error"] == "not_logged_in"
+
+    _run(check())
+
+
+def test_logout_before_login_answers_not_logged_in(serve, tmp_path) -> None:
+    """There is nothing to sign out of before the first login: the guide's `not_logged_in`, like every other command."""
+
+    async def check() -> None:
+        _app, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            answer = await rig.cmd("logout")
+            assert answer.get("error") == "not_logged_in", answer  # fails today: bad_request
+
+    _run(check())
+
+
+def _deletes(serve_app) -> list[str]:
+    """Every `DELETE /sessions/{id}` the server received: what ending a session sends, and nothing else does."""
+    with serve_app.lock:
+        return [path for method, path, _body in serve_app.requests if method == "DELETE" and path.startswith("/sessions/")]
+
+
+def _toasts(rig: Rig) -> list[str]:
+    return [n.message for n in rig.app._notifications._notifications.values()]
+
+
+def test_end_ends_the_session_through_the_screens_path(serve, tmp_path) -> None:
+    """`end` runs `TerminalScreen.end_session`'s send half, so what ^\\ x does is what drive does: one `DELETE`, the
+    record `killed`, and the screen's own "You ended ..." toast. It answers after the core's 204, and the
+    agent then waits for the end frame in `wait`, where every other wait is."""
+
+    async def check() -> None:
+        serve_app, url = serve()
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(sid)
+            answer = await rig.cmd("end", session=sid, confirm=True)
+            assert answer["ok"] and answer["session"] == sid, answer  # fails today: bad_request, `op: expected one of`
+            assert _deletes(serve_app) == [f"/sessions/{sid}"]
+            assert serve_app.sessions[sid]["state"] == "killed"
+            assert any(t.startswith("You ended ") for t in _toasts(rig)), _toasts(rig)
+            waited = await rig.cmd("wait", session=sid, until={"ended": True})
+            assert waited["ok"], waited
+
+    _run(check())
+
+
+def test_end_without_confirm_true_is_a_bad_request_and_sends_nothing(serve, tmp_path) -> None:
+    """Ending is for everyone and cannot be undone, so the command must say so. A missing `confirm`, or
+    one that is not the boolean true, is `bad_request` with the reason, no dialog opens and no `DELETE` leaves."""
+
+    async def check() -> None:
+        serve_app, url = serve()
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(sid)
+            for fields in ({}, {"confirm": False}, {"confirm": "true"}, {"confirm": 1}):
+                answer = await rig.cmd("end", session=sid, **fields)
+                assert answer["error"] == "bad_request" and "confirm: true" in answer["why"] \
+                    and "cannot be undone" in answer["why"], (fields, answer)
+            assert _deletes(serve_app) == []
+            assert serve_app.sessions[sid]["state"] != "killed"
+            assert "End it" not in (await rig.cmd("snapshot"))["text"], "a dialog was opened"
+
+    _run(check())
+
+
+def test_end_by_a_non_owner_answers_refused(serve, tmp_path) -> None:
+    """The core says who may end (the owner, or `session.terminate`): PEER is attached to USER's session, the 403
+    is `refused` with the dialog's own sentence, the screen shows it too, and the session still runs."""
+
+    async def check() -> None:
+        serve_app, url = serve()
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login(_serve.PEER)
+            await rig.attach(sid)
+            answer = await rig.cmd("end", session=sid, confirm=True)
+            assert answer["error"] == "refused", answer  # fails today: bad_request, `op: expected one of`
+            assert answer["why"].startswith("Only the owner of ") and answer["why"].endswith(", or an admin, can end it."), answer
+            assert _deletes(serve_app) == [f"/sessions/{sid}"], "the op never pre-checks: the core answered"
+            assert serve_app.sessions[sid]["state"] != "killed"
+            assert any(t.startswith("Only the owner of ") for t in _toasts(rig)), _toasts(rig)
+
+    _run(check())
+
+
+def test_end_on_an_ended_session_answers_ended_and_sends_nothing(serve, tmp_path) -> None:
+    """The record check `end_session` makes: a session whose record says it ended is `ended`, and no `DELETE` is sent
+    (what the core answers to ending an ended session is contract open item 2)."""
+
+    async def check() -> None:
+        serve_app, url = serve()
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(sid)
+            with serve_app.lock:
+                serve_app._kill(serve_app.sessions[sid])
+            for _ in range(300):  # the record the screen holds says `killed` once it has polled
+                await rig.cmd("sessions")
+                if (rig.app.workspace()._record_for(sid) or {}).get("state") == "killed":
+                    break
+                await asyncio.sleep(0.02)
+            answer = await rig.cmd("end", session=sid, confirm=True)
+            assert answer["error"] == "ended", answer  # fails today: bad_request, `op: expected one of`
+            assert _deletes(serve_app) == []
+
+    _run(check())
+
+
+def test_end_maps_a_missing_session_and_other_failures_to_the_guides_codes(serve, tmp_path) -> None:
+    """404 is `no_such_session`; any other failure is `request_failed` with the core's words. Neither is the refusal."""
+
+    class Failing(_serve.ServeApp):
+        status = 404
+
+        def _http(self, method, path, headers, body, query=None):
+            if method == "DELETE" and path.startswith("/sessions/"):
+                return self._err(self.status, "session_not_found" if self.status == 404 else "internal", "no")
+            return super()._http(method, path, headers, body, query)
+
+    async def check() -> None:
+        serve_app, url = serve(Failing())
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(sid)
+            missing = await rig.cmd("end", session=sid, confirm=True)
+            assert missing["error"] == "no_such_session", missing  # fails today: bad_request, `op: expected one of`
+            serve_app.status = 500
+            failed = await rig.cmd("end", session=sid, confirm=True)
+            assert failed["error"] == "request_failed" and "500" in failed["why"], failed
+
+    _run(check())
+
+
+def test_a_late_end_answer_after_the_timeout_leaves_the_tui_running(serve, tmp_path) -> None:
+    """A late answer after a timeout. `end` answers `timeout` when the core is slower than `drive.wait_timeout_ms`, and
+    `wait_for` cancels the future the callback would settle. The DELETE's answer then arrives: the callback finds
+    the future done and leaves it. Not `InvalidStateError` inside the api worker, which ends the app. The late answer
+    still did what a person sees (the toast), and drive goes on answering."""
+
+    async def check() -> None:
+        serve_app, url = serve(HeldRequestApp())
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(sid)  # under the normal timeout: the gate can take longer than 300 ms on a loaded CI node
+            release = threading.Event()
+            serve_app.holds[("DELETE", "/sessions/")] = release
+            # Only `end`, which must time out, gets the short one.
+            rig.app.cfg.set_runtime("drive.wait_timeout_ms", 300)
+            answer = await rig.cmd("end", session=sid, confirm=True)
+            assert answer["error"] == "timeout", answer
+            release.set()  # the core answers now, after drive gave up
+            for _ in range(500):
+                if any(t.startswith("You ended ") for t in _toasts(rig)):
+                    break
+                await asyncio.sleep(0.01)
+            assert any(t.startswith("You ended ") for t in _toasts(rig)), _toasts(rig)
+            await asyncio.sleep(0)  # the callback that follows the toast is the one that used to raise
+            assert rig.app._exception is None, f"the late answer errored the api worker: {rig.app._exception!r}"
+            assert rig.app.is_running
+            assert (await rig.cmd("sessions"))["ok"], "drive stopped answering"
+
+    _run(check())
+
+
+def test_an_end_held_across_sign_out_still_gets_its_answer(serve, tmp_path) -> None:
+    """A drive `end` is at the broker when a sign-out replaces the client, so the DELETE reaches
+    the broker without a cookie and answers 401 on a client that is no longer current. That 401 must not navigate or
+    toast for the next login, but it must still reach the `end` waiting on it: it answers `request_failed` at once,
+    not `timeout` after `drive.wait_timeout_ms`."""
+
+    async def check() -> None:
+        serve_app, url = serve(HeldRequestApp())
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(sid)
+            release = threading.Event()
+            serve_app.holds[("DELETE", "/sessions/")] = release
+            ending = rig.send("end", session=sid, confirm=True)
+            for _ in range(500):
+                if serve_app.arrived.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert serve_app.arrived.is_set(), "the DELETE never reached the server"
+            await rig.app_call(rig.app.sign_out)  # replaces the client; the DELETE is still held
+            release.set()
+            answer = await asyncio.wait_for(ending, 10)
+            assert answer.get("error") == "request_failed", answer
+            assert not any(t.startswith("Request failed") for t in _toasts(rig)), _toasts(rig)
+            assert rig.app._exception is None
+
+    _run(check())
+
+
+def test_end_on_a_session_that_is_not_attached_answers_not_attached(serve, tmp_path) -> None:
+    """Like `detach`, `end` addresses a session this drive has open: with none in front it is `not_attached`, and the
+    session is not ended."""
+
+    async def check() -> None:
+        serve_app, url = serve()
+        sid = make_session(url, _serve.USER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            answer = await rig.cmd("end", confirm=True)
+            assert answer["error"] == "not_attached", answer  # fails today: bad_request, `op: expected one of`
+            answer = await rig.cmd("end", session=sid, confirm=True)
+            assert answer["error"] == "not_attached", answer
+            assert _deletes(serve_app) == []
 
     _run(check())
 

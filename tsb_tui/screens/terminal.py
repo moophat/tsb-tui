@@ -32,6 +32,7 @@ reaches the session (D17), re-encoded for the session's modes by libghostty's ow
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import time
 from collections.abc import Callable, Coroutine, Mapping
@@ -241,6 +242,11 @@ def age_text(seconds: float) -> str:
         if total < limit:
             return f"{total // size}{unit}"
     return f"{total // 86400}d"
+
+
+def end_refused_text(label: str) -> str:
+    """What the core's 403 on ending a session means to the person, and to drive's `refused`."""
+    return f"Only the owner of {label}, or an admin, can end it."
 
 
 @dataclass(eq=False)
@@ -1150,8 +1156,7 @@ class TerminalScreen(Screen):
     def end_session(self, session_id: str) -> None:
         """Ask once, naming the session, then `DELETE /sessions/{id}`. Whether this login may end it is the core's
         to answer (the owner or an admin): a refusal is shown, never guessed at beforehand."""
-        record = self._record_for(session_id)
-        if record is not None and record.get("state") in ("killed", "terminated"):
+        if self.has_ended(session_id):
             self.app.notify(f"{self._session_label(session_id)} has already ended.", title="not available",
                             severity="warning", markup=False)
             return
@@ -1159,11 +1164,40 @@ class TerminalScreen(Screen):
 
         def decided(confirmed: bool | None) -> None:
             if confirmed:
-                self.app.call_api(self.app.client.close, session_id,
-                                  on_done=lambda _: self._ended_by_me(label),
-                                  on_error=lambda exc: self._end_refused(label, exc))
+                self.send_end(session_id)
 
         self.app.push_screen(ConfirmEndScreen(self, label), decided)
+
+    def has_ended(self, session_id: str) -> bool:
+        """Whether the record this screen holds for the session says it is over."""
+        record = self._record_for(session_id)
+        return record is not None and record.get("state") in ("killed", "terminated")
+
+    def send_end(self, session_id: str, on_result: Callable[[ApiError | HttpError | OSError | None], None] | None = None
+                 ) -> None:
+        """The send half of End session…: `DELETE /sessions/{id}`, then what a person sees (the toast, or the
+        refusal). `on_result` gets None once the core answered 204, else the failure, after those have run. The dialog
+        calls this when End it is pressed; drive's `end` calls it with the agent's `confirm`."""
+        label = self._session_label(session_id)
+
+        def done(_: None) -> None:
+            self._ended_by_me(label)
+            if on_result is not None:
+                on_result(None)
+
+        def failed(exc: ApiError | HttpError | OSError) -> None:
+            self._end_refused(label, exc)
+            if on_result is not None:
+                on_result(exc)
+
+        def stale(exc: ApiError | HttpError | OSError) -> None:
+            # A 401 answered on a client sign-out has since replaced: no toast, no trip to Login, but a drive `end`
+            # future still settles so nothing waits on it forever.
+            if on_result is not None:
+                on_result(exc)
+
+        self.app.call_api(self.app.client.close, session_id, on_done=done, on_error=failed,
+                          on_stale_error=stale)
 
     def _ended_by_me(self, label: str) -> None:
         self.app.toast(f"You ended {label}.", title="session")
@@ -1171,7 +1205,7 @@ class TerminalScreen(Screen):
 
     def _end_refused(self, label: str, exc: ApiError | HttpError | OSError) -> None:
         if isinstance(exc, ApiError) and exc.status == 403:
-            self.app.notify(f"Only the owner of {label}, or an admin, can end it.", title="refused",
+            self.app.notify(end_refused_text(label), title="refused",
                             severity="warning", markup=False)
             return
         self.app.notify_api_error(exc)
@@ -1189,6 +1223,8 @@ class TerminalScreen(Screen):
         `gates.recording` says so (design G2, D24); nothing is attached until it is passed."""
         from .attach_confirm import AttachConfirmScreen
 
+        if self._refuse_while_signing_out():
+            return
         sid = session["id"]
         slot = self.slot_for(sid)
         if slot is not None:
@@ -1200,13 +1236,22 @@ class TerminalScreen(Screen):
         every = self.app.cfg["gates.recording"] == "every-attach"
         if hostkey is not None or every or sid not in self.app.gated_sessions:
             def attach(confirmed: bool | None) -> None:
-                if confirmed:
+                if confirmed and not self._refuse_while_signing_out():
                     self._add_slot(session, then=then, front=front)
 
             self.app.push_screen(AttachConfirmScreen(session, hostkey), attach)
             return
         self._add_slot(session, recording_bar=bool((session.get("recording") or {}).get("active")),
                        then=then, front=front)
+
+    def _refuse_while_signing_out(self) -> bool:
+        """Sign-out detaches every session and then tells the broker: a session opened or attached in between would
+        outlive it. True, with a one-line reason, while sign-out runs; the same gate as Login's."""
+        if not self.app.signing_out:
+            return False
+        self.app.notify("Signing out… the session was not opened.", title="signing out", severity="warning",
+                        markup=False)
+        return True
 
     def _add_slot(self, session: dict, *, recording_bar: bool = False,
                   then: Callable[[SessionSlot], Any] | None = None, front: bool = True) -> SessionSlot:
@@ -1959,6 +2004,27 @@ class TerminalScreen(Screen):
         """Leave the session in front, which lives on."""
         self._leave(self._front, "detached — the session lives on")
 
+    async def detach_all(self) -> list[str]:
+        """Leave every session open here (each lives on) and return their ids, in the order they were opened, only
+        once every attach worker has finished: its `finally` is what closes the session's WebSocket, so by then the
+        close has been sent for each of them (sign out's order: the detaches first, then `logout()`). No toast per
+        session: the caller says one thing."""
+        detached: list[str] = []
+        # Until no slot remains: a slot admitted before sign-out's gate closed (`_refuse_while_signing_out`) may
+        # still appear while a worker is awaited, and each pass leaves it too.
+        while self.slots:
+            slots = list(self.slots)
+            workers = [slot.worker for slot in slots if slot.worker is not None]
+            for slot in slots:
+                slot.leaving = True
+                slot.left = "signed out — the session lives on"
+                self._close_slot(slot)
+            detached.extend(slot.session_id for slot in slots)
+            for worker in workers:
+                with contextlib.suppress(Exception):  # a cancelled worker raises `WorkerCancelled`: that is the detach
+                    await worker.wait()
+        return detached
+
     # -- input: one path out (DT4) --
 
     async def send_input(self, source: str, data: bytes, slot: SessionSlot | None = None) -> bool:
@@ -2272,6 +2338,10 @@ class TerminalScreen(Screen):
 
     async def do_quit(self) -> None:
         await self.app.action_quit()
+
+    async def do_sign_out(self) -> None:
+        """Detach everything here, sign out and return to Login (no confirmation, as Quit has none)."""
+        await self.app.sign_out()
 
     def do_pan(self) -> None:
         """`^\\ v`: the arrow keys move the window over the grid by `view.pan_step` until Esc (D4, D28)."""

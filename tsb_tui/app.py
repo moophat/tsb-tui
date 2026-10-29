@@ -8,11 +8,12 @@ exception: `Client.async_attach` is already awaitable and runs directly on Textu
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, NamedTuple, TypeVar
 
 from rich.text import Text
 from textual import events, work
@@ -48,6 +49,15 @@ DEFAULT_LIBRARY = Path("lib") / "tsb-tui" / "libghostty-vt.so"
 # The fixed warning text a session record carries when recording is active (session-record
 # schema.json): shown before a surface attaches or sends input (open_decisions §5, LOCKED).
 NO_RESOLVING_CREDENTIAL = "no_resolving_credential"
+
+
+class SignedOut(NamedTuple):
+    """What a sign-out did: the sessions it detached (in the order they were open) and whether the broker confirmed
+    the logout (`signed_out`) or did not (`unconfirmed`: this client holds no login any more, the broker's may stand
+    until it expires)."""
+
+    detached: list[str]
+    broker: str
 
 
 class EngineError(Exception):
@@ -203,7 +213,8 @@ class TsbTuiApp(App):
         self._pushed_theme = None
         # `broker.timeout_s`: a create can take far longer than the client's 10 s default, so every
         # REST call and the attach's open wait on the knob.
-        self.client = Client(broker_url, ca_file=ca_file, timeout=resolved["broker.timeout_s"])
+        self._broker_url, self._ca_file, self._timeout = broker_url, ca_file, resolved["broker.timeout_s"]
+        self.client = self._new_client()
         # The outer window's last size: only a change to it is a "window change" (D18).
         self._window_size: Size | None = None
         self.initial_target = target
@@ -227,6 +238,10 @@ class TsbTuiApp(App):
         # TT17). `apply_saved_look` sets both after each login.
         self._saved_theme_path: Path | None = None
         self._saved_theme_unreadable = False
+        # Sign-out is single-flight (`_sign_out_task`), and every completed login bumps
+        # `_login_gen` so a sign-out that is still running never discards a login made after it began.
+        self._sign_out_task: asyncio.Task[SignedOut] | None = None
+        self._login_gen = 0
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
         """TT30: Textual's own defaults, updated with the role variables of the resolved config, so
@@ -458,12 +473,33 @@ class TsbTuiApp(App):
 
     # -- the one place a blocking Client call crosses into a worker thread --
 
+    def _new_client(self) -> Client:
+        return Client(self._broker_url, ca_file=self._ca_file, timeout=self._timeout)
+
     def call_api(self, func: Callable[..., T], *args: Any, on_done: Callable[[T], None],
-                on_error: Callable[[ApiError | HttpError | OSError], None]) -> None:
+                 on_error: Callable[[ApiError | HttpError | OSError], None],
+                 on_stale_error: Callable[[ApiError | HttpError | OSError], None] | None = None) -> None:
         """Run `func(*args)` (a blocking `Client` method) off the UI thread. Exactly one of
         `on_done`/`on_error` runs afterward, back on the UI thread (`call_from_thread`), so a
-        screen's own callbacks never touch Textual state from the worker thread."""
-        self._run_blocking(func, args, on_done, on_error)
+        screen's own callbacks never touch Textual state from the worker thread.
+
+        The request is bound to the client this app holds *now*, at submission (every caller passes a method of
+        `self.client`, taken on this thread in the same call). A sign-out replaces `self.client`, so a request
+        submitted before it runs on the old client, whose cookie jar logout cleared, and never carries the next
+        login's cookie. Its 401 is the old login's answer and nobody is waiting for it: it is dropped here, with no
+        error toast and no trip back to Login over the new login's screen. A caller whose callback must run even
+        then — a future that settles a sign-out or a drive `end` — passes `on_stale_error`, which runs in the
+        dropped 401's place instead of `on_error` (it never toasts or navigates)."""
+        client = self.client
+
+        def failed(exc: ApiError | HttpError | OSError) -> None:
+            if client is not self.client and isinstance(exc, ApiError) and exc.status == 401:
+                if on_stale_error is not None:
+                    on_stale_error(exc)
+                return
+            on_error(exc)
+
+        self._run_blocking(func, args, on_done, failed)
 
     @work(thread=True, exclusive=False)
     def _run_blocking(self, func: Callable[..., T], args: tuple[Any, ...], on_done: Callable[[T], None],
@@ -487,6 +523,67 @@ class TsbTuiApp(App):
         self.notify(str(exc), title="Request failed", severity="error", markup=False)
         if isinstance(exc, ApiError) and exc.status == 401:
             self._to_login()
+
+    @property
+    def signing_out(self) -> bool:
+        """Whether a sign-out is running now: the single-flight task exists and has not finished. Login reads this
+        to refuse a submit until the sign-out completes."""
+        return self._sign_out_task is not None and not self._sign_out_task.done()
+
+    async def sign_out(self) -> SignedOut:
+        """Sign out, single-flight: a second Menu Sign out (or drive `logout`) while one runs shares the first
+        and settles with it, so repeated sign-outs never leave a task waiting on a logout that never reaches it.
+        Callers wait through `shield`: the Menu's caller runs under the workspace screen, which an unrelated 401
+        tears down mid-sign-out, and cancelling a caller (the first or a joiner) must not cancel the sign-out the
+        others share. Once begun it runs to its end."""
+        if self._sign_out_task is None or self._sign_out_task.done():
+            self._sign_out_task = asyncio.create_task(self._sign_out())
+        return await asyncio.shield(self._sign_out_task)
+
+    async def _sign_out(self) -> SignedOut:
+        """The sign-out worker: detach every session open here, stop the alert feed, install a fresh client and show
+        Login, then tell the broker on the old client. The detaches come first and are complete before `logout()`,
+        so the core sees ordinary detaches whatever contract open item 5 (`login.md`: what logout does to a
+        principal's attached clients) becomes. A 401 from `logout()` means the login was already gone and is no
+        error. Any other failure still ends at Login, with a warning: `Client.logout` clears the
+        cookie jar of the old client whatever the broker answered, so no client here holds the old login."""
+        detached: list[str] = []
+        # Every session is left before the broker is told of the logout.
+        screen = self.workspace()
+        if screen is not None:
+            detached = await screen.detach_all()
+        self.stop_alerts()
+        generation = self._login_gen
+        # Login first, on a fresh client: `Client.logout` clears the jar of the instance it was sent on,
+        # so the logout goes on `old` and a login made while it is held lands on the new instance, whose jar it can
+        # never empty. Login's submit stays refused until this sign-out ends. Requests still on `old` are fenced by
+        # `call_api` (a 401 on a replaced client is dropped), as before.
+        old = self.client
+        self.client = self._new_client()
+        self._to_login()
+        answered: asyncio.Future[ApiError | HttpError | OSError | None] = asyncio.get_running_loop().create_future()
+
+        def settle(failure: ApiError | HttpError | OSError | None) -> None:
+            if not answered.done():  # this sign-out may have been cancelled while the broker was answering
+                answered.set_result(failure)
+
+        # `on_stale_error` too: a 401 answered after another sign-out already replaced the client still settles this
+        # future — a dropped 401 must never leave a sign-out waiting forever.
+        self.call_api(old.logout, on_done=lambda _: settle(None), on_error=settle, on_stale_error=settle)
+        failure = await answered
+        confirmed = failure is None or (isinstance(failure, ApiError) and failure.status == 401)
+        result = SignedOut(detached, "signed_out" if confirmed else "unconfirmed")
+        if self._login_gen != generation:
+            # A login completed after this sign-out began (the Login submit gate is the first line of defence; this
+            # generation check backs it). It is on the new client and its screen: nothing here touches either, and
+            # no toast speaks over it.
+            return result
+        if confirmed:
+            self.toast("Signed out. Your sessions keep running.", title="signed out")
+            return result
+        self.notify(f"Signed out here. The broker did not confirm ({failure}); your login there ends when it "
+                    f"expires.", title="signed out", severity="warning", markup=False)
+        return result
 
     def _to_login(self) -> None:
         # Imported here, not at module scope: see on_mount's own comment above.

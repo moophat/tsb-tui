@@ -239,6 +239,17 @@ class Driver:
         first start — the same readiness every op that reads `screen.fleet` assumes."""
         await self._until_screen(lambda: self._workspace_ready(screen), "the workspace to be ready")
 
+    async def wait_for_login_screen(self) -> None:
+        """Login is up with its form built: what `log_in` needs next (a form still being composed has no fields)."""
+        from ..screens.login import LoginScreen
+
+        def showing() -> bool:
+            screen = self.app.screen
+            return (self.screen() is None and isinstance(screen, LoginScreen) and screen.is_mounted
+                    and bool(screen.query("#login-button")))
+
+        await self._until_screen(showing, "the login screen")
+
     async def log_in(self, user: str, password: str) -> str:
         """The login screen, filled in and its button clicked, as a person does (honesty rule 1)."""
         from textual.widgets import Button, Input, Static

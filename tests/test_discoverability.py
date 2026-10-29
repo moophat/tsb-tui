@@ -161,7 +161,7 @@ async def _click_menu_entry(rig: Rig, label: str) -> None:
     await _settle(rig, lambda: isinstance(rig.app.screen, CommandPalette)
                   and len(_menu_texts(rig.app.screen)) >= len(SESSION_ACTIONS), "the Menu to fill")
     options = rig.app.screen.query_one(CommandList)
-    for _ in range(40):
+    for _ in range(80):
         if any(line.strip().startswith(label) for line in (await rig.cmd("snapshot"))["text"].splitlines()):
             break
         await rig.app_call(options.scroll_down, animate=False)
@@ -173,7 +173,7 @@ async def _click_menu_entry(rig: Rig, label: str) -> None:
 
 @pytest.mark.parametrize(("width", "height"), SIZES, ids=[f"{w}x{h}" for w, h in SIZES])
 def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, wait_until, server_frame_validator,
-                                                               width, height) -> None:
+                                                               screen_text, width, height) -> None:
     # fails today: at 65x30 the menu entry is below the fold, so this is the one size where the scroll loop runs, and
     # it drives the list's own widget calls and `rig.pilot.pause()` from the test frame — outside `run_test`'s
     # context, where Textual has no active app. The update timer those calls build lazily is made in that context,
@@ -287,6 +287,16 @@ def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, w
                 await _click_menu_entry(rig, A.BY_ID["detach"].label)
                 await _settle(rig, lambda: screen.slot_for(first) is None, "Detach to leave the session")
                 reached.append("detach")
+                # Sign out leaves Login, so it comes last but for Quit: the same login comes back for that.
+                await _click_menu_entry(rig, A.BY_ID["sign_out"].label)
+                await _settle(rig, lambda: rig.app.workspace() is None and "log in" in screen_text(rig.app),
+                              "Sign out to reach Login")
+                assert serve_app.sessions[second]["state"] == "detached", "Sign out ended the session it left open"
+                reached.append("sign_out")
+                await rig.login(_serve.USER)
+                screen = rig.app.workspace()
+                screen.close_sidebar()  # login opens it with no session, and it holds the keys: the Menu is not offered
+                await _settle(rig, lambda: not screen.sidebar_open, "the sidebar to close")
                 await _click_menu_entry(rig, A.BY_ID["quit"].label)
                 await _settle(rig, lambda: app._exit, "Quit to end the TUI")  # Textual's own flag: no public one
                 reached.append("quit")

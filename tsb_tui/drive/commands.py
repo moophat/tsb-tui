@@ -30,7 +30,13 @@ from ..model.countdown import format_duration, parse_timestamp
 from ..model.fleet import is_attachable
 from ..model.targets import PAGE_LIMIT, QueryError, as_text, make_row, parse_query
 from ..screens.new_session import CREATE_SIZE_OFF, TERM, create_size
-from ..screens.terminal import MARK_INPUT, SOURCE_KEY, SessionSlot, TerminalScreen
+from ..screens.terminal import (
+    MARK_INPUT,
+    SOURCE_KEY,
+    SessionSlot,
+    TerminalScreen,
+    end_refused_text,
+)
 from ..term import UnknownKey, VTBackend, encode_key
 from . import waits
 
@@ -39,7 +45,7 @@ if TYPE_CHECKING:
 
 # Every op, in the order the guide lists them.
 OPS = ("login", "sessions", "targets", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "ask_to_type",
-       "answer", "size", "detach", "snapshot", "click", "press", "resize", "quit")
+       "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize", "quit")
 READS = ("screen", "reply", "history", "who")
 
 ASK_TO_TYPE_WHY = ("TSB has no way to ask for the keyboard yet; ask the owner another way, then wait for "
@@ -678,6 +684,49 @@ class Commands:
         self._to_front(slot)
         self._screen().action_detach()
         return {}
+
+    async def op_end(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        """End a session for everyone, through the send half of `^\\ x` (`TerminalScreen.send_end`): the same request,
+        the same toast or refusal. `confirm: true` is the agent saying it knows (ending is for everyone and cannot be undone), so no
+        dialog opens. It answers once the core has; the end frame is for `wait {"ended": true}`. Whether
+        this login may end it is the core's to say: nothing is pre-checked but the record's own `ended`."""
+        if cmd.get("confirm") is not True:
+            raise DriveError("bad_request", "ending is for everyone and cannot be undone; send confirm: true")
+        slot = self._slot(cmd)
+        screen = self._screen()
+        sid = slot.session_id
+        label = screen._session_label(sid)
+        if screen.has_ended(sid):
+            raise DriveError("ended", f"{label} has already ended", session=sid)
+        self._to_front(slot)
+        answered: asyncio.Future[Exception | None] = asyncio.get_running_loop().create_future()
+
+        def settle(failure: Exception | None) -> None:
+            if not answered.done():  # `wait_for` cancels it on a timeout, and the core's answer can come after
+                answered.set_result(failure)
+
+        screen.send_end(sid, settle)
+        timeout_ms = self.d.cfg["drive.wait_timeout_ms"]
+        try:
+            failure = await asyncio.wait_for(answered, timeout_ms / 1000.0)
+        except TimeoutError:
+            raise DriveError("timeout", f"no answer to ending {label} within {timeout_ms} ms", session=sid) from None
+        if failure is None:
+            return {"session": sid}
+        if isinstance(failure, ApiError) and failure.status == 403:
+            raise DriveError("refused", end_refused_text(label), session=sid)
+        if isinstance(failure, ApiError) and failure.status == 404:
+            raise DriveError("no_such_session", "not a session you may see", session=sid)
+        raise DriveError("request_failed", str(failure), session=sid)
+
+    async def op_logout(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        """The Menu's Sign out: every session open here is detached (each lives on), then the broker is told, and drive
+        is back at Login, where a `login` is accepted again. `broker` is `unconfirmed` when the broker did not take
+        the logout: this client holds no login either way."""
+        self._screen()
+        result = await self.d.app.sign_out()
+        await self.d.wait_for_login_screen()
+        return {"detached": result.detached, "broker": result.broker}
 
     # -- the UI itself --
 

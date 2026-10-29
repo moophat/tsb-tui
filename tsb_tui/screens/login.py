@@ -39,9 +39,14 @@ class LoginScreen(Screen):
             self._attempt_login()
 
     def _attempt_login(self) -> None:
+        error = self.query_one("#login-error", Static)
+        if self.app.signing_out:
+            # While a sign-out runs, no login can begin inside it: a submit is refused, and the
+            # generation check in `TsbTuiApp._sign_out` backs this for a login that completed anyway.
+            error.update("Signing out…")
+            return
         username = self.query_one("#username", Input).value.strip()
         password = self.query_one("#password", Input).value
-        error = self.query_one("#login-error", Static)
         if not username or not password:
             error.update("username and password are both required")
             return
@@ -58,6 +63,7 @@ class LoginScreen(Screen):
         # Read back by screens/new_session.py to tell this principal's own connections apart
         # from ones GET /sessions lists for others (Contract §12: the choice is never guessed).
         self.app.username = principal["username"]
+        self.app._login_gen += 1  # a login completed: a running sign-out checks this and leaves it alone
         self.app.apply_saved_look(principal["username"])
         self.app.start_alerts()
         from .terminal import TerminalScreen
