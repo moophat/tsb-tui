@@ -168,7 +168,7 @@ def test_hints_are_key_first_and_end_with_the_menu_and_the_fleet() -> None:
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     text = _text(state, 200)
     assert text.rstrip().endswith(
-        "^\\ d Detach   ^\\ w Who's here   ^\\ r Size   ^\\ x End…   ≡ Menu ^\\   ▦ Fleet ^\\ f")
+        "^\\ d Detach   ^\\ w Who's here   ^\\ r Size   ^\\ [ Scroll   ^\\ x End…   ≡ Menu ^\\   ▦ Fleet ^\\ f")
     assert len(text) == 200
 
 
@@ -198,7 +198,7 @@ def test_hints_drop_from_the_right_by_priority_and_the_menu_is_the_last_to_go() 
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     in_order = [name for name in reversed(PRIORITY) if name != "menu"]
     normal, compact = _drop_order(state, True), _drop_order(state, False)
-    assert normal == ["size", "end", "detach", "who"], "all six fit at 200; Fleet and the Menu outlast these"
+    assert normal == ["scroll", "size", "end", "detach", "who"], "all seven fit at 200; Fleet and the Menu outlast these"
     assert compact == ["who", "fleet"], "what is left at 79 columns keeps the Menu to the end"
     for dropped in (normal, compact):
         assert dropped == sorted(dropped, key=in_order.index), "a hint left before a lower-priority one"
@@ -212,9 +212,9 @@ def test_a_different_priority_drops_a_different_hint_first() -> None:
     """`status.hint_priority` is a knob the operator owns: reversing it must reverse what drops first, or
     the knob is read nowhere (DT19)."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
-    reversed_priority = ["menu", "fleet", "size", "end", "detach", "who"]
-    assert _drop_order(state, True, hint_priority=reversed_priority) == ["who", "detach", "end"]
-    assert _drop_order(state, False, hint_priority=reversed_priority) == ["size", "fleet"]
+    reversed_priority = ["menu", "fleet", "scroll", "size", "end", "detach", "who"]
+    assert _drop_order(state, True, hint_priority=reversed_priority) == ["who", "detach", "end", "size"]
+    assert _drop_order(state, False, hint_priority=reversed_priority) == ["scroll", "fleet"]
 
 
 def test_the_phone_row_is_compact_and_carries_the_pan_range_and_the_menu() -> None:
@@ -272,7 +272,7 @@ def test_a_click_on_the_pill_opens_whos_here_and_a_click_on_a_hint_runs_its_acti
             screen = await attached(pilot, app, session_id, wait_until)
             await wait_until(pilot, lambda: "Detach" in _text_of(screen), "the status row to fill")
             row = screen.status
-            assert set(row.actions()) == {"who", "detach", "size", "end", "menu", "fleet"}
+            assert set(row.actions()) == {"who", "detach", "size", "scroll", "end", "menu", "fleet"}
 
             assert row.text.startswith("‹ you type ›")
             await pilot.click(StatusRow, offset=(3, 0))  # on the pill itself, not on the `Who's here` hint

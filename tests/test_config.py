@@ -246,12 +246,12 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "fleet_view.details_from", "fleet_view.group_by", "fleet_view.show_ended", "fleet_view.tabs",
         "keys.leader_map.end", "keys.leader_map.event_log", "keys.leader_map.full_view", "keys.leader_map.keys",
         "keys.leader_map.pan", "keys.leader_map.quit", "motion.level", "mouse.canvas_clicks", "mouse.enabled",
-        "mouse.tooltips", "view.pan_step",
+        "mouse.tooltips", "view.pan_step", "scroll.wheel_lines",
         "gates.hostkey_tick", "glyphs.set", "gates.recording", "gates.recording_bar_s",
         "input.focus_reports", "input.guard",
         "keys.leader", "keys.leader_map.answer", "keys.leader_map.auto_size", "keys.leader_map.detach",
         "keys.leader_map.fleet", "keys.leader_map.new_session", "keys.leader_map.next",
-        "keys.leader_map.prev", "keys.leader_map.size", "keys.leader_map.switch",
+        "keys.leader_map.prev", "keys.leader_map.scroll", "keys.leader_map.size", "keys.leader_map.switch",
         "keys.leader_map.take_back", "keys.leader_map.theme", "keys.leader_map.who",
         "menu.open_on_leader_after_ms", "menu.search",
         "prompts.capture_unblocking", "prompts.input_guard_ms",
@@ -293,6 +293,19 @@ def test_defaults_match_the_design_knob_file_values() -> None:
     drive = config.load(profile="drive", config_file=Path("/nonexistent"), environ={})
     assert drive["sidebar.start_filter"] == "all"
     assert drive["mouse.enabled"] is False
+
+
+def test_the_scroll_wheel_step_is_three_rows_and_a_step_below_one_is_refused_naming_the_key() -> None:
+    """`scroll.wheel_lines` is how many rows one wheel turn moves the scroll view: 3 unless set, and a step that moves
+    nothing (0, or less) is refused at load, naming the key, not left as a wheel that does nothing."""
+    assert config.load(config_file=Path("/nonexistent"), environ={},
+                       overrides={"size.auto_request": "true"})["scroll.wheel_lines"] == 3
+    assert config.load(config_file=Path("/nonexistent"), environ={"TSB_TUI_SCROLL_WHEEL_LINES": "7"},
+                       overrides={"size.auto_request": "true"})["scroll.wheel_lines"] == 7
+    for refused in ("0", "-2"):
+        with pytest.raises(config.ConfigError, match="scroll.wheel_lines"):
+            config.load(config_file=Path("/nonexistent"), environ={},
+                        overrides={"size.auto_request": "true", "scroll.wheel_lines": refused})
 
 
 # -- the REST timeout knob --

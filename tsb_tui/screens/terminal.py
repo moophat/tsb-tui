@@ -82,6 +82,7 @@ from ..term import (
     encode_mouse,
     encode_paste,
 )
+from ..term import ghostty as G
 from ..theme import TermPalette
 from ..widgets.canvas import Canvas
 from ..widgets.rail import (
@@ -189,6 +190,10 @@ SIDEBAR_HINT = "sidebar:"
 FLEET_VIEW_HINT = "fleet_view:"
 TARGETS_UNAVAILABLE = "the inventory is unavailable"
 PAN_HINT = "pan:"
+SCROLL_HINT = "scroll:"  # the scroll view's own keys as status-row hints: `scroll:up`, `scroll:down`, `scroll:done`
+# What the scroll view says when it drops a key it does not use: nothing reaches the session while it is open.
+SCROLL_DROPPED_NOTE = "Esc to return to live, then type"
+SCROLL_DROPPED = "scroll_view"  # the reason the event log gives for input dropped while the view is open
 # The wheel's two buttons in xterm's numbering, which the canvas reports as it has them.
 WHEEL_UP, WHEEL_DOWN = 4, 5
 
@@ -332,6 +337,10 @@ class TerminalScreen(Screen):
         # What the sidebar was doing when the full view opened, so `Esc` returns to it: (it was open, it had the keys).
         self._sidebar_before_view: tuple[bool, bool] = (False, False)
         self._pan_mode = False  # `^\ v`: the arrow keys move the window over the grid
+        # `^\ [`: PageUp, PageDown and the wheel move the front session's viewport through its scrollback. Only the
+        # session in front is ever scrolled; every way off it puts the viewport back at the bottom.
+        self._scroll_mode = False
+        self._scroll_dropped = False  # a key was dropped since the view last moved: the status row says why
         self._chord: str | None = None  # the first character of a two-character key after the leader (`:` of `:q`)
         # The dialogs open over this screen, innermost last; each has `sync()` and `status_target()`.
         self.dialogs: list[Any] = []
@@ -353,6 +362,10 @@ class TerminalScreen(Screen):
     @property
     def front(self) -> SessionSlot | None:
         return self._front
+
+    @property
+    def scroll_view_open(self) -> bool:
+        return self._scroll_mode
 
     @property
     def pump(self) -> AttachmentPump | None:
@@ -485,6 +498,8 @@ class TerminalScreen(Screen):
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
         """The sidebar took the keys (or the session got them back): the status row says where they go (D14)."""
+        if self._scroll_mode and (self._sidebar_has_keys() or self._view_has_keys()):
+            self.close_scroll_view()  # the view's keys are not what they go to now
         self.refresh_status()
 
     def on_descendant_blur(self, event: events.DescendantBlur) -> None:
@@ -1291,6 +1306,8 @@ class TerminalScreen(Screen):
         """Bring `slot` to the front: paint it from its own grid at once, say whose keys these are. Nothing is
         sent to any session (D44; terminal-size §4: nothing the TUI opens or closes asks)."""
         previous = self._front
+        if slot is not previous:
+            self.close_scroll_view()  # the viewport goes back to the bottom while the session is still the one in front
         if self.view_open:
             self.close_fleet_view()  # a session came to the front: the operator wants to see it
         if slot is previous:
@@ -1584,6 +1601,11 @@ class TerminalScreen(Screen):
         else:
             canvas.after_run("output")
             self._sync_size(slot)
+            if self._scroll_mode and slot is self._front:
+                if canvas.backend.active_screen() == G.SCREEN_ALTERNATE:
+                    self.close_scroll_view()  # a full-screen program has no scrollback, and wants its keys
+                else:
+                    self.refresh_status()  # the rows held, and so how far back the view is, changed
             if slot is not self._front and not slot.unseen:
                 slot.unseen = True
                 self._sync_fleet_widgets()
@@ -1841,6 +1863,7 @@ class TerminalScreen(Screen):
         slot.ended = view
         slot.canvas.dimmed = view.ended
         if slot is self._front:
+            self.close_scroll_view()
             self._sync_prompts()
             self._show_end_dialog(slot)
         self._sync_fleet_widgets()
@@ -1863,6 +1886,10 @@ class TerminalScreen(Screen):
             before = (canvas.backend.cols, canvas.backend.rows)
             canvas.resize_grid(cols, rows)
             if slot is self._front and (canvas.backend.cols, canvas.backend.rows) != before:
+                if self._scroll_mode:
+                    # The engine moved its viewport with the grid: the view is no longer on the rows it showed.
+                    self.close_scroll_view()
+                    self._toast("The size changed; back to live.", "scroll")
                 self.refresh_status()
 
     def _sync_typist(self, slot: SessionSlot) -> None:
@@ -1958,6 +1985,8 @@ class TerminalScreen(Screen):
         attach worker too; a worker that is releasing its own slot is already on its way out."""
         if slot.closed:
             return
+        if slot is self._front:
+            self.close_scroll_view()
         slot.closed = True
         if cancel and slot.worker is not None:
             slot.worker.cancel()
@@ -2041,6 +2070,17 @@ class TerminalScreen(Screen):
         state = pump.state
         if state.client_id is None or state.closed:
             return False  # not attached (yet, or any more): there is no one to send to
+        if self._scroll_mode and slot is self._front and source != SOURCE_REPLY:
+            # The viewport is scrolled: no key, paste, mouse or focus report leaves for the session until the view is
+            # closed. Dropped, never held. The engine's answers to the session's own queries are computed from the
+            # active area, not the viewport, and a program waiting for one must not hang: they go as when live.
+            self.dropped_inputs += 1
+            state.log.add(KIND_INPUT_DROPPED, time.monotonic(), source=source, bytes=len(data),
+                          reason=SCROLL_DROPPED)
+            if source in _TYPED:
+                self._scroll_dropped = True
+                self.refresh_status()
+            return False
         if source in _TYPED:
             if not state.may_type and self.app.cfg["input.guard"]:
                 self.suppressed_inputs += 1
@@ -2125,13 +2165,14 @@ class TerminalScreen(Screen):
         if self.pump is None and not leader and not self._leader_pending:
             return  # nothing to send to yet: the key goes on to the app (Ctrl-Q quits while attaching)
         if (event.key == "escape" and self.pump is not None and self.pump.state.reattach is not None
-                and not self._leader_pending):
+                and not self._leader_pending and not self._scroll_mode):
             event.stop()
             self.pump.stop_reattach()  # Esc stops the reattaching: no further attempt (F12)
             return
         event.stop()
         if leader:
             self._end_pan()
+            self.close_scroll_view()
             if self._leader_pending:
                 self._cancel_leader()
                 await self._send_key(event)
@@ -2162,6 +2203,9 @@ class TerminalScreen(Screen):
             if letter is not None and letter in "123456789":
                 self.switch_to_number(int(letter))
                 return
+        if self._scroll_mode:
+            self._scroll_key(event)  # the view's, or dropped: no key reaches the session while the view is open
+            return
         if self._pan_mode:
             if self._pan_key(event.key):
                 return
@@ -2203,6 +2247,9 @@ class TerminalScreen(Screen):
         if self.pump is None or self.canvas is None or not event.text:
             return
         event.stop()
+        if self._scroll_mode:
+            self._drop_while_scrolled(SOURCE_PASTE, len(event.text))
+            return
         try:
             data = encode_paste(self.backend, event.text)
         except RuntimeError as exc:
@@ -2223,6 +2270,11 @@ class TerminalScreen(Screen):
         cfg = self.app.cfg
         if not cfg["mouse.enabled"] or self.canvas is None or event.canvas is not self.canvas:
             return
+        if self._scroll_mode:
+            # The canvas's mouse belongs to the view: the wheel moves it, and nothing is reported to the session.
+            if event.button in (WHEEL_UP, WHEEL_DOWN) and event.action == G.MOUSE_ACTION_PRESS:
+                self._scroll_wheel(event.button == WHEEL_UP)
+            return
         reported = False
         if not event.shift and cfg["mouse.canvas_clicks"] == "session_if_asked":
             data = encode_mouse(self.backend, action=event.action, button=event.button, x=event.x,
@@ -2230,8 +2282,15 @@ class TerminalScreen(Screen):
             if data:
                 reported = await self.send_input(SOURCE_MOUSE, data)
         if not reported and event.button in (WHEEL_UP, WHEEL_DOWN):
-            # The session did not take the wheel (it never asked for the mouse, or DT4 (b) holds the report back): it
-            # scrolls this client's own window over the grid, which is the only local scroll before E5.
+            # The session did not take the wheel (it never asked for the mouse, or the report is held back): it moves
+            # this client's own window over the grid, and when that window already shows the grid from its top, a wheel
+            # up opens the scroll view over the scrollback the engine holds. Older output than this client holds
+            # arrives with broker pages, which extend the view; they do not replace it.
+            if (event.button == WHEEL_UP and self.canvas.view_y == 0 and A.blocked("scroll", self.facts()) is None
+                    and self.backend.scrollback_position().offset > 0):
+                self.do_scroll()
+                self._scroll_wheel(True)
+                return
             step = cfg["view.pan_step"]
             self.canvas.pan_to(self.canvas.view_x, self.canvas.view_y + (-step if event.button == WHEEL_UP else step))
 
@@ -2261,7 +2320,8 @@ class TerminalScreen(Screen):
 
     def facts(self, selected: str | None = None) -> A.Facts:
         return A.Facts(self.pump.state if self.pump is not None else None, selected,
-                       open_sessions=len(self.slots), under_drive=self.app.under_drive)
+                       open_sessions=len(self.slots), under_drive=self.app.under_drive,
+                       alternate_screen=self.canvas is not None and self.backend.active_screen() == G.SCREEN_ALTERNATE)
 
     async def run_action_id(self, action_id: str) -> None:
         """Run one session action, or say why it is not available now. Every action of the table
@@ -2348,6 +2408,70 @@ class TerminalScreen(Screen):
         self._pan_mode = True
         self.refresh_status()
 
+    def do_scroll(self) -> None:
+        """`^\\ [`: PageUp, PageDown and the wheel move the viewport through the scrollback this client's engine holds,
+        until Esc. The session keeps running into the engine meanwhile; the view stays on the rows it shows."""
+        self._end_pan()
+        if self.view_open:
+            self.close_fleet_view()  # run from the Menu over the full view: the terminal gets the keys back first
+        if self._sidebar_has_keys():
+            self.set_focus(None)
+        self._scroll_mode = True
+        self._scroll_dropped = False
+        self.refresh_status()
+
+    def close_scroll_view(self) -> None:
+        """Close the view and put the session's viewport back on the live screen. Safe whatever state the slot is in."""
+        if not self._scroll_mode:
+            return
+        self._scroll_mode = False
+        self._scroll_dropped = False
+        front = self._front
+        if front is not None and not front.closed:
+            front.canvas.scroll_to_bottom()
+        self.refresh_status()
+
+    def _scroll_key(self, event: events.Key) -> None:
+        if event.key == "escape":
+            self.close_scroll_view()
+        elif event.key in ("pageup", "pagedown"):
+            self._scroll_by(-1 if event.key == "pageup" else 1, pages=True)
+        elif event.key in ("up", "down"):
+            self._scroll_by(-1 if event.key == "up" else 1, rows=1)
+        else:
+            self._drop_while_scrolled(SOURCE_KEY, 0, key=event.key)
+
+    def _scroll_wheel(self, up: bool) -> None:
+        self._scroll_by(-1 if up else 1, rows=self.app.cfg["scroll.wheel_lines"])
+
+    def _scroll_by(self, direction: int, *, pages: bool = False, rows: int = 1) -> None:
+        """Move the view `direction` (-1 older, 1 newer) by a page, or by `rows` rows."""
+        canvas = self.canvas
+        if canvas is None:
+            return
+        self._scroll_dropped = False
+        canvas.scroll_by(direction * (canvas.page_rows if pages else rows))
+        self.refresh_status()
+
+    def _drop_while_scrolled(self, source: str, size: int, **detail: Any) -> None:
+        """A key or paste the view does not use: dropped, said so in the status row and the event log."""
+        self.dropped_inputs += 1
+        if self.pump is not None:
+            self.pump.state.log.add(KIND_INPUT_DROPPED, time.monotonic(), source=source, bytes=size,
+                                    reason=SCROLL_DROPPED, **detail)
+        self._scroll_dropped = True
+        self.refresh_status()
+
+    def _scroll_note(self) -> str:
+        """Where the viewport is, from the engine's own position: rows back of the rows held, and a word at the top."""
+        if self._scroll_dropped:
+            return SCROLL_DROPPED_NOTE
+        position = self.backend.scrollback_position()
+        held = position.total - position.length
+        back = held - position.offset
+        note = f"⇡ {_spaced(back)} rows back of {_spaced(held)}"
+        return f"{note} · the oldest output this client holds" if position.offset == 0 else note
+
     def do_theme(self) -> None:
         """`^\\ T`: the Theme picker, previewing as the highlight moves (B5)."""
         from .theme_picker import ThemePicker
@@ -2413,6 +2537,13 @@ class TerminalScreen(Screen):
             else:
                 self._fleet_view_command(name)
             return
+        if message.action.startswith(SCROLL_HINT):
+            move = message.action.removeprefix(SCROLL_HINT)
+            if move == "done":
+                self.close_scroll_view()
+            else:
+                self._scroll_by(-1 if move == "up" else 1, pages=True)
+            return
         if message.action.startswith(PAN_HINT):
             move = message.action.removeprefix(PAN_HINT)
             if move == "done":
@@ -2454,6 +2585,8 @@ class TerminalScreen(Screen):
             return self.dialogs[-1].status_target()
         if self._menu_open:
             return MENU_KEYS
+        if self._scroll_mode:
+            return self._scroll_keys_target()
         if self._pan_mode:
             return self._pan_keys_target()
         if self._chord is not None:
@@ -2463,6 +2596,12 @@ class TerminalScreen(Screen):
         if self._sidebar_has_keys():
             return self._sidebar_keys_target()
         return None
+
+    def _scroll_keys_target(self) -> KeysTarget:
+        """The scroll view's own keys as hints, each a click, so a touch screen can scroll too."""
+        click = SCROLL_HINT
+        return KeysTarget("scroll", (Hint("PgUp", "Older", click + "up"), Hint("PgDn", "Newer", click + "down"),
+                                     Hint("Esc", "Live", click + "done")), self._scroll_note())
 
     def _pan_keys_target(self) -> KeysTarget:
         """Pan's own keys as hints, each a click, so a touch screen can pan too (D13)."""
@@ -2558,6 +2697,11 @@ class TerminalScreen(Screen):
     def refresh_status(self) -> None:
         if self.status is not None and not self._unmounted:
             self.status.set_inputs(self.status_inputs())
+
+
+def _spaced(count: int) -> str:
+    """A row count with a space between thousands: `9 870`."""
+    return f"{count:,}".replace(",", " ")
 
 
 def _key_name(event: events.Key) -> str:

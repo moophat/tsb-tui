@@ -575,3 +575,144 @@ def test_has_mark_tells_no_input_yet_from_a_reply_that_is_empty(lib) -> None:
         assert backend.has_mark("input") is False, "a reset frees every mark"
     finally:
         backend.close()
+
+
+# -- the viewport: the scroll view's engine contract --
+
+
+def _numbered(first: int, last: int) -> bytes:
+    return b"".join(f"L{i:03d}\r\n".encode() for i in range(first, last + 1))
+
+
+def _row_text(row) -> str:
+    return "".join(cell.text or " " for cell in row.cells if not cell.wide_tail).rstrip()
+
+
+class _Shown:
+    """What a canvas would be showing: the rows `dirty_rows()` has handed over so far, by viewport row, so a row the
+    engine did not flag dirty stays as it was drawn. Reading it is how the tests see the viewport."""
+
+    def __init__(self, backend: VTBackend) -> None:
+        self.backend = backend
+        self.rows: dict[int, str] = {}
+
+    def read(self) -> list[str]:
+        for row in self.backend.dirty_rows():
+            self.rows[row.y] = _row_text(row)
+        self.backend.mark_clean()
+        return [self.rows.get(y, "") for y in range(self.backend.rows)]
+
+
+def test_scroll_viewport_shows_older_rows_and_bottom_returns_to_live(lib) -> None:
+    """The binding the scroll view stands on: after 200 numbered lines into 80×24, scrolling up one page puts the 24 rows
+    before the live window in `dirty_rows()` (a scroll must dirty the whole window, or the canvas repaints nothing), and
+    BOTTOM puts the live window back."""
+    from tsb_tui.term import ghostty as G
+
+    backend = VTBackend(lib, 80, 24, scrollback_bytes=SCROLLBACK)
+    try:
+        backend.feed(_numbered(0, 199))
+        shown = _Shown(backend)
+        live = shown.read()
+        assert "L199" in live and "L000" not in live
+        first = next(int(line[1:]) for line in live if line.startswith("L"))
+
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_DELTA, -24)
+        dirtied = backend.dirty_rows()
+        assert [row.y for row in dirtied] == list(range(24)), "a scroll must mark every row of the window dirty"
+        older = [_row_text(row) for row in dirtied]
+        backend.mark_clean()
+        assert older == [f"L{i:03d}" for i in range(first - 24, first)], "one page up is the 24 rows before the window"
+
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_TOP)
+        top = [_row_text(row) for row in backend.dirty_rows()]
+        backend.mark_clean()
+        assert top[0] == "L000", "TOP shows the oldest row held"
+
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_BOTTOM)
+        assert [_row_text(row) for row in backend.dirty_rows()] == live, "BOTTOM is the live window again"
+    finally:
+        backend.close()
+
+
+def test_text_reads_do_not_follow_the_viewport(lib) -> None:
+    """`visible_rows`, `grid_lines`, `scrollback`, `text_since` and the live cursor give the same answer with the viewport
+    at the bottom and scrolled away: drive's reads and the input mark are about the session, never about where a person is looking."""
+    from tsb_tui.term import ghostty as G
+
+    backend = VTBackend(lib, 80, 24, scrollback_bytes=SCROLLBACK)
+    try:
+        backend.feed(_numbered(0, 99))
+        backend.set_mark("input")
+        backend.feed(_numbered(100, 199))
+
+        def reads():
+            return (backend.visible_rows(), backend.grid_lines(), backend.grid_lines(join_wrapped=True),
+                    backend.scrollback(), backend.scrollback_rows(), backend.text_since("input"),
+                    backend.has_mark("input"), backend.live_cursor())
+
+        live = reads()
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_DELTA, -48)
+        assert reads() == live, "a page and a half up changes no text read"
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_TOP)
+        assert reads() == live, "the top changes no text read"
+    finally:
+        backend.close()
+
+
+def test_output_while_scrolled_keeps_the_viewport_on_its_rows(lib) -> None:
+    """The behaviour the view relies on (the engine, as pinned): output that arrives while the viewport is scrolled does
+    not drag it to the bottom. The rows on view are the same rows, at the same offset, and BOTTOM then shows the newest."""
+    from tsb_tui.term import ghostty as G
+
+    backend = VTBackend(lib, 80, 24, scrollback_bytes=SCROLLBACK)
+    try:
+        backend.feed(_numbered(0, 199))
+        shown = _Shown(backend)
+        shown.read()
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_DELTA, -48)
+        before = shown.read()
+        position = backend.scrollback_position()
+        assert position.offset + position.length < position.total, "scrolled off the bottom"
+
+        backend.feed(_numbered(200, 229))
+        after = shown.read()
+        assert after == before, "the rows on view are the rows that were on view"
+        moved = backend.scrollback_position()
+        assert moved.offset == position.offset, "the viewport stayed at its offset from the top"
+        assert moved.total == position.total + 30, "the output went into the engine all the same"
+
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_BOTTOM)
+        assert "L229" in shown.read(), "BOTTOM shows the output that arrived meanwhile"
+    finally:
+        backend.close()
+
+
+def test_grid_lines_and_the_scrollbar_share_one_row_space(lib) -> None:
+    """Search maps a match found in `grid_lines()` to a viewport row: for that, line n of `grid_lines()` and row n of the
+    scrollbar's space must be the same row. With a full screen the counts agree; with trailing blank rows (the formatter
+    trims them) the list is a prefix of the space; and ROW n puts `grid_lines()[n]` on top."""
+    from tsb_tui.term import ghostty as G
+
+    backend = VTBackend(lib, 80, 24, scrollback_bytes=SCROLLBACK)
+    try:
+        backend.feed(_numbered(0, 198) + b"L199")  # no newline: the last row of the screen holds text
+        lines = backend.grid_lines()
+        position = backend.scrollback_position()
+        assert len(lines) == position.total, "one row space: the formatter's rows and the scrollbar's total"
+        assert position.length == 24
+        shown = _Shown(backend)
+        for n in (0, 1, 57, 100, position.total - position.length):
+            backend.scroll_viewport(G.SCROLL_VIEWPORT_ROW, n)
+            assert backend.scrollback_position().offset == n
+            assert shown.read()[0] == lines[n], f"ROW {n} puts grid_lines()[{n}] on top"
+
+        backend.feed(b"\r\n")  # a blank row under the text: the formatter trims it, the scrollbar counts it
+        trimmed = backend.grid_lines()
+        position = backend.scrollback_position()
+        assert trimmed == lines, "the trimmed blank row is the only difference"
+        assert len(trimmed) <= position.total
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_ROW, 57)
+        assert shown.read()[0] == trimmed[57], "trimming the tail does not move a row's index"
+    finally:
+        backend.close()

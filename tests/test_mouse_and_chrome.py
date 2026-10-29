@@ -102,6 +102,7 @@ def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(s
         "who": lambda app, screen: isinstance(app.screen, WhosHereScreen),
         "size": lambda app, screen: isinstance(app.screen, SizeDialog),
         "end": lambda app, screen: isinstance(app.screen, ConfirmEndScreen),
+        "scroll": lambda app, screen: screen.scroll_view_open,
     }
 
     async def _at(width: int, height: int) -> None:
@@ -137,6 +138,9 @@ def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(s
                     await wait_until(pilot, lambda: app.screen is screen, f"{action} to close")
                 elif action == "fleet":
                     screen.close_sidebar()
+                elif action == "scroll":
+                    screen.close_scroll_view()
+                    await wait_until(pilot, lambda: "Menu" in screen.status.text, "the hints to come back")
 
     for size in SIZES:
         asyncio.run(_at(*size))

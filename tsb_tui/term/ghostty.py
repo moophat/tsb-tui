@@ -57,6 +57,7 @@ DATA_CURSOR_Y = 4
 DATA_ACTIVE_SCREEN = 6
 DATA_CURSOR_VISIBLE = 7
 DATA_KITTY_KEYBOARD_FLAGS = 8
+DATA_SCROLLBAR = 9
 DATA_TOTAL_ROWS = 14
 DATA_SCROLLBACK_ROWS = 15
 DATA_MODE = 37
@@ -112,6 +113,12 @@ CELL_STYLE_ID_LSB = 26
 CELL_STYLE_ID_WIDTH = 16
 CELL_WIDE_LSB = 42
 CELL_WIDE_WIDTH = 2
+
+# ---- Scroll viewport tag (terminal.h:296 GhosttyTerminalScrollViewportTag) --------------------
+SCROLL_VIEWPORT_TOP = 0
+SCROLL_VIEWPORT_BOTTOM = 1
+SCROLL_VIEWPORT_DELTA = 2
+SCROLL_VIEWPORT_ROW = 3
 
 # ---- Point tag (point.h:49 GhosttyPointTag) --------------------------------------------------
 POINT_ACTIVE = 0
@@ -305,6 +312,25 @@ class GhosttyGridRef(ctypes.Structure):
     ]
 
 
+class GhosttyTerminalScrollViewportValue(ctypes.Union):
+    """terminal.h:326. `delta` is signed (up is negative); `row` is an offset from the top of the scrollable area."""
+
+    _fields_ = [("delta", ctypes.c_ssize_t), ("row", ctypes.c_size_t), ("_padding", ctypes.c_uint64 * 2)]
+
+
+class GhosttyTerminalScrollViewport(ctypes.Structure):
+    """terminal.h:343. Passed **by value** to ghostty_terminal_scroll_viewport (terminal.h:3121)."""
+
+    _fields_ = [("tag", ctypes.c_int), ("value", GhosttyTerminalScrollViewportValue)]
+
+
+class GhosttyTerminalScrollbar(ctypes.Structure):
+    """terminal.h:392. What DATA_SCROLLBAR fills: the scrollable area's rows, the viewport's offset into it, and the
+    viewport's own length in rows."""
+
+    _fields_ = [("total", ctypes.c_uint64), ("offset", ctypes.c_uint64), ("len", ctypes.c_uint64)]
+
+
 class GhosttyTerminalModeConfig(ctypes.Structure):
     """terminal.h:1823 / types.h manifest. 4 bytes."""
 
@@ -437,6 +463,9 @@ _DECLARED_STRUCTS: tuple[tuple[str, type[ctypes.Structure]], ...] = (
     ("GhosttyPointValue", GhosttyPointValue),
     ("GhosttyPoint", GhosttyPoint),
     ("GhosttyGridRef", GhosttyGridRef),
+    ("GhosttyTerminalScrollViewportValue", GhosttyTerminalScrollViewportValue),
+    ("GhosttyTerminalScrollViewport", GhosttyTerminalScrollViewport),
+    ("GhosttyTerminalScrollbar", GhosttyTerminalScrollbar),
     ("GhosttyTerminalModeConfig", GhosttyTerminalModeConfig),
     ("GhosttyRenderStateOverscan", GhosttyRenderStateOverscan),
     ("GhosttyRenderStateRowId", GhosttyRenderStateRowId),
@@ -469,11 +498,18 @@ _DECLARED_ENUMS: dict[str, dict[str, int]] = {
         "ACTIVE_SCREEN": DATA_ACTIVE_SCREEN,
         "CURSOR_VISIBLE": DATA_CURSOR_VISIBLE,
         "KITTY_KEYBOARD_FLAGS": DATA_KITTY_KEYBOARD_FLAGS,
+        "SCROLLBAR": DATA_SCROLLBAR,
         "TOTAL_ROWS": DATA_TOTAL_ROWS,
         "SCROLLBACK_ROWS": DATA_SCROLLBACK_ROWS,
         "MODE": DATA_MODE,
     },
     "GhosttyTerminalScreen": {"PRIMARY": SCREEN_PRIMARY, "ALTERNATE": SCREEN_ALTERNATE},
+    "GhosttyTerminalScrollViewportTag": {
+        "TOP": SCROLL_VIEWPORT_TOP,
+        "BOTTOM": SCROLL_VIEWPORT_BOTTOM,
+        "DELTA": SCROLL_VIEWPORT_DELTA,
+        "ROW": SCROLL_VIEWPORT_ROW,
+    },
     "GhosttyRenderStateData": {
         "COLS": RS_DATA_COLS,
         "ROWS": RS_DATA_ROWS,
@@ -711,6 +747,9 @@ class GhosttyLib:
         # terminal.h:3194
         L.ghostty_terminal_get.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
         L.ghostty_terminal_get.restype = ctypes.c_int
+        # terminal.h:3121
+        L.ghostty_terminal_scroll_viewport.argtypes = [ctypes.c_void_p, GhosttyTerminalScrollViewport]
+        L.ghostty_terminal_scroll_viewport.restype = None
         # terminal.h:3257
         L.ghostty_terminal_grid_ref.argtypes = [
             ctypes.c_void_p,
@@ -1022,6 +1061,7 @@ _FUNCTION_NAMES: tuple[str, ...] = (
     "ghostty_terminal_set",
     "ghostty_terminal_vt_write",
     "ghostty_terminal_get",
+    "ghostty_terminal_scroll_viewport",
     "ghostty_terminal_grid_ref",
     "ghostty_terminal_grid_ref_track",
     "ghostty_tracked_grid_ref_free",

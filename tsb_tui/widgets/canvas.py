@@ -332,6 +332,26 @@ class Canvas(Widget):
         if self._set_view(x, y):
             self.refresh()
 
+    @property
+    def page_rows(self) -> int:
+        """The rows one page of the scroll view moves: those the window shows of the engine's viewport, which is no
+        taller than the grid, so a window taller than the grid does not skip rows it never showed."""
+        return max(1, min(self.size.height, self._backend.rows))
+
+    def scroll_by(self, rows: int) -> None:
+        """Move the engine's viewport `rows` rows (up is negative); the next paint shows the rows it lands on."""
+        self._scroll(G.SCROLL_VIEWPORT_DELTA, rows)
+
+    def scroll_to_bottom(self) -> None:
+        """Put the viewport back on the live screen."""
+        self._scroll(G.SCROLL_VIEWPORT_BOTTOM)
+
+    def _scroll(self, kind: int, amount: int = 0) -> None:
+        if self._released:
+            return
+        self._backend.scroll_viewport(kind, amount)
+        self._pending = True
+
     # -- the paint timer --
 
     def on_mount(self) -> None:

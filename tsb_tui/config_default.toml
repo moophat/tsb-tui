@@ -150,6 +150,10 @@ follow_cursor = "auto"
 pan_step = 8
 inspector = "auto"
 
+[scroll]
+# Rows one wheel turn moves the scroll view.
+wheel_lines = 3
+
 [render]
 # 60: an echo waits at most one paint tick (16 ms) for the next frame; 30 left keystroke-to-screen
 # over its gate on large windows.

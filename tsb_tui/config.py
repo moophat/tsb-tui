@@ -164,6 +164,7 @@ KNOB_TYPES: dict[str, type] = {
     "view.narrow_mode": str,
     "view.follow_cursor": str,
     "view.pan_step": int,
+    "scroll.wheel_lines": int,
     "view.inspector": str,
     "render.max_fps": int,
     "render.paint_background": bool,
@@ -275,6 +276,7 @@ KNOB_OWNERS: dict[str, int] = {
     "view.narrow_mode": 3,
     "view.follow_cursor": 3,
     "view.pan_step": 8,
+    "scroll.wheel_lines": 8,
     "view.inspector": UNASSIGNED,
     "render.max_fps": 3,
     "render.paint_background": 3,
@@ -837,6 +839,8 @@ def _check_view_knobs(values: Mapping[str, Any]) -> None:
         raise ConfigError(f"fleet_view.details_from = {values['fleet_view.details_from']}: expected at least 1")
     if values["view.pan_step"] < 1:
         raise ConfigError(f"view.pan_step = {values['view.pan_step']}: expected at least 1")
+    if values["scroll.wheel_lines"] < 1:
+        raise ConfigError(f"scroll.wheel_lines = {values['scroll.wheel_lines']}: expected at least 1")
 
 
 def _check_drive_knobs(values: Mapping[str, Any]) -> None:

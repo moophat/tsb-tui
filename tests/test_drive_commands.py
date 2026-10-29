@@ -990,3 +990,63 @@ def test_a_click_lands_on_the_cell_a_label_starts_at_even_after_wide_characters(
     of characters would click the wrong control."""
     assert runner.cell_len("abc") == 3 and runner.cell_len("≡ Menu") == 6
     assert runner.cell_len("日本") == 4 and runner.cell_len("e\u0301") == 1
+
+
+def test_drive_reads_are_live_while_the_view_is_open(serve, tmp_path) -> None:
+    """Guide §6: `read screen`, `reply` and `history` are about the session, not about where a person is looking. With
+    the scroll view open and the window moved a page up (the snapshot shows older output), the three reads answer
+    exactly what they answered before, the newest line included."""
+
+    async def check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        sid = make_session(url, _serve.USER, 80, 24)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.attach(sid)
+            await rig.cmd("type", text="first\r\n")
+            assert (await rig.cmd("wait", until={"reply": "first"}))["ok"]
+            _emit_output(serve_app, sid, b"".join(f"L{i:03d}\r\n".encode() for i in range(300)))
+            assert (await rig.cmd("wait", until={"reply": "L299"}))["ok"]
+
+            async def reads() -> list[dict[str, Any]]:
+                answers = [await rig.cmd("read", what="screen"), await rig.cmd("read", what="reply"),
+                           await rig.cmd("read", what="history", lines=50)]
+                return [{key: value for key, value in answer.items() if key != "id"} for answer in answers]
+
+            live = await reads()
+            await _shown(rig, "L299")
+            assert "L299" in live[0]["lines"]
+            assert (await rig.cmd("press", keys=["ctrl+backslash", "left_square_bracket"]))["ok"]
+            await _shown(rig, "keys → scroll")
+            assert (await rig.cmd("press", keys=["pageup"]))["ok"]
+            await _shown(rig, "L299", present=False)
+            assert "L275" in (await rig.cmd("snapshot"))["text"], "the window shows the page before the live one"
+            assert await reads() == live, "an open view changes no read"
+
+    _run(check())
+
+
+def test_type_while_the_scroll_view_is_open_sends_nothing_and_says_not_available(serve, tmp_path) -> None:
+    """Guide §6: with the scroll view open nothing reaches the session. `type` and `keys` answer `not_available`, the
+    server receives no input, and after `escape` the same `type` is sent."""
+
+    async def check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        sid = make_session(url, _serve.USER, 80, 24)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            attached = await rig.attach(sid)
+            _emit_output(serve_app, sid, b"".join(f"L{i:03d}\r\n".encode() for i in range(100)))
+            assert (await rig.cmd("wait", until={"screen": "L099"}))["ok"]
+            assert (await rig.cmd("press", keys=["ctrl+backslash", "left_square_bracket"]))["ok"]
+            await _shown(rig, "keys → scroll")
+            for op, fields in (("type", {"text": "ls\r"}), ("keys", {"keys": ["ctrl+c"]})):
+                refused = await rig.cmd(op, **fields)
+                assert refused["error"] == "not_available" and "scroll view" in refused["why"], refused
+                assert refused["sent"] is False
+            assert serve_app.received(attached["you"]) == [], "something reached the session while the view was open"
+            assert (await rig.cmd("press", keys=["escape"]))["ok"]
+            await _shown(rig, "keys → scroll", present=False)
+            assert (await rig.cmd("type", text="ls\r"))["ok"]
+
+    _run(check())

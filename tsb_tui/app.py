@@ -548,9 +548,10 @@ class TsbTuiApp(App):
         error. Any other failure still ends at Login, with a warning: `Client.logout` clears the
         cookie jar of the old client whatever the broker answered, so no client here holds the old login."""
         detached: list[str] = []
-        # Every session is left before the broker is told of the logout.
+        # Every session is left before the broker is told of the logout, the scroll view closed first.
         screen = self.workspace()
         if screen is not None:
+            screen.close_scroll_view()
             detached = await screen.detach_all()
         self.stop_alerts()
         generation = self._login_gen

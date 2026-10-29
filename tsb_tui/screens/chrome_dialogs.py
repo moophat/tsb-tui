@@ -58,6 +58,12 @@ FLEET_VIEW_KEYS = (
     ("Esc", "back to the session"),
 )
 PAN_KEYS = (("← → ↑ ↓", "move the window over the grid by `view.pan_step`"), ("Esc  ⏎", "stop panning"))
+SCROLL_KEYS = (
+    ("PgUp  PgDn", "move the view one window up or down the output this client holds"),
+    ("↑ ↓", "move it one row"),
+    ("wheel", "move it `scroll.wheel_lines` rows; a wheel up opens it when the window shows the grid from its top"),
+    ("Esc", "back to the live screen; any other key is dropped; no typed key, paste, mouse or focus report reaches the session meanwhile"),
+)
 DIALOG_SCOPES = {A.SCOPE_WHO: "In Who's here", A.SCOPE_SIZE: "In Size",
                   A.SCOPE_THEME: "In Theme picker"}
 
@@ -253,7 +259,7 @@ def keys_lines(cfg: Any) -> list[str]:
             lines.append(f"{name} (while it is open)")
             lines += [f"  {a.key:<8} {a.label:<24} {a.description}" for a in entries]
     for title, entries in (("In the fleet sidebar", SIDEBAR_KEYS), ("In the full fleet view", FLEET_VIEW_KEYS),
-                           ("In Pan", PAN_KEYS)):
+                           ("In Pan", PAN_KEYS), ("In the scroll view", SCROLL_KEYS)):
         lines.append(title)
         lines += [f"  {key:<8} {what}" for key, what in entries]
     return lines

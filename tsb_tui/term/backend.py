@@ -34,6 +34,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from . import ghostty as G
 from .ghostty import GhosttyLib
@@ -144,6 +145,16 @@ class Cursor:
     y: int
     visible: bool
     wide_tail: bool = False
+
+
+class ScrollPosition(NamedTuple):
+    """Where the viewport is in the scrollable area, in the engine's row space: `total` rows (scrollback plus the
+    active area), the viewport's `offset` from the top, and its `length`. At the bottom, `offset + length == total`.
+    Row n of this space is line n of `grid_lines()`."""
+
+    total: int
+    offset: int
+    length: int
 
 
 @dataclass(frozen=True)
@@ -504,6 +515,21 @@ class VTBackend:
                 return Cursor(x=0, y=0, visible=False)
             return Cursor(x=cur.viewport_x, y=cur.viewport_y, visible=cur.visible, wide_tail=cur.wide_tail)
 
+    def live_cursor(self) -> Cursor:
+        """The cursor in the active area, under the lock: where the session's next byte lands, whichever rows the
+        viewport shows. `cursor()` is the render state's view of the viewport, and has nothing to report while the
+        viewport is scrolled off the active area; this does not move with it, so a read that must stay the session's
+        (drive's) uses this one."""
+        with self._lock:
+            x, y, visible = ctypes.c_uint16(), ctypes.c_uint16(), ctypes.c_bool()
+            if self._terminal is None:
+                return Cursor(x=0, y=0, visible=False)
+            get = self._libc.ghostty_terminal_get
+            get(self._terminal, G.DATA_CURSOR_X, ctypes.byref(x))
+            get(self._terminal, G.DATA_CURSOR_Y, ctypes.byref(y))
+            get(self._terminal, G.DATA_CURSOR_VISIBLE, ctypes.byref(visible))
+            return Cursor(x=x.value, y=y.value, visible=visible.value)
+
     def dirty_rows(self) -> list[Row]:
         """The dirty rows, each as paint-ready cells with cached style ids.
 
@@ -769,6 +795,35 @@ class VTBackend:
             v = ctypes.c_size_t()
             self._libc.ghostty_terminal_get(self._terminal, G.DATA_SCROLLBACK_ROWS, ctypes.byref(v))
             return int(v.value)
+
+    # -- the viewport: where the scroll view looks --
+
+    def scroll_viewport(self, kind: int, amount: int = 0) -> None:
+        """Move the viewport, under the lock: `G.SCROLL_VIEWPORT_TOP`, `_BOTTOM`, `_DELTA` (`amount` rows, up is
+        negative) or `_ROW` (`amount` is a row from the top of the scrollable area; see `scrollback_position`). The
+        engine clamps. Nothing the text reads return depends on where the viewport is; the render state does, so the
+        next `dirty_rows()` shows the new rows."""
+        value = G.GhosttyTerminalScrollViewportValue()
+        if kind == G.SCROLL_VIEWPORT_DELTA:
+            value.delta = amount
+        elif kind == G.SCROLL_VIEWPORT_ROW:
+            value.row = amount
+        behavior = G.GhosttyTerminalScrollViewport()
+        behavior.tag = kind
+        behavior.value = value
+        with self._lock:
+            if self._terminal is None:
+                return  # closed under us
+            self._libc.ghostty_terminal_scroll_viewport(self._terminal, behavior)
+
+    def scrollback_position(self) -> ScrollPosition:
+        """The viewport's place in the scrollable area, under the lock."""
+        with self._lock:
+            bar = G.GhosttyTerminalScrollbar()
+            if self._terminal is None or self._libc.ghostty_terminal_get(
+                    self._terminal, G.DATA_SCROLLBAR, ctypes.byref(bar)) != G.GHOSTTY_SUCCESS:
+                return ScrollPosition(self.rows, 0, self.rows)
+            return ScrollPosition(int(bar.total), int(bar.offset), int(bar.len))
 
     # -- the tracked mark, for `read reply` (D50) --
 

@@ -61,6 +61,7 @@ class Facts:
     selected: str | None = None
     open_sessions: int = 1
     under_drive: bool = False
+    alternate_screen: bool = False  # the session in front is on its alternate screen (no scrollback there)
 
 
 Blocked = Callable[[Facts], "str | None"]
@@ -95,6 +96,16 @@ def _theme_blocked(facts: Facts) -> str | None:
     # TT19: drive sets the theme with --set, so its Theme action is listed and blocked with that reason.
     return ("drive sets the theme with --set theme.name=… --set theme.term.scheme=…"
             if facts.under_drive else None)
+
+
+def _scroll_blocked(facts: Facts) -> str | None:
+    """Scroll back needs a session and its scrollback. The engine keeps none for the alternate screen: the viewport
+    stays on the active area while a full-screen program runs."""
+    if (why := _attached(facts)) is not None:
+        return why
+    if facts.alternate_screen:
+        return "the session is on its alternate screen (a full-screen program); its own keys scroll it"
+    return None
 
 
 def _any_open(facts: Facts) -> str | None:
@@ -243,6 +254,8 @@ ACTIONS: tuple[Action, ...] = (
            SCOPE_SESSION, None, _another_open),
     Action("event_log", "Event log", "what this session's frames told this client, newest last", "e",
            GROUP_VIEW, SCOPE_SESSION, None, _attached),
+    Action("scroll", "Scroll back", "older output this client holds; Esc returns to live", "[", GROUP_VIEW,
+           SCOPE_SESSION, "Scroll", _scroll_blocked),
     Action("pan", "Pan", "move the window over a bigger grid with the arrow keys", "v", GROUP_VIEW,
            SCOPE_SESSION, None, _attached),
     Action("theme", "Theme…", "chrome and terminal colours, previewed as you move", "T", GROUP_VIEW,

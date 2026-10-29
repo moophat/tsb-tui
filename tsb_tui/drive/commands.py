@@ -188,7 +188,7 @@ class SlotProbe:
     def cursor_row(self) -> str:
         backend = self._slot.canvas.backend
         backend.sync_render_state()
-        row = backend.cursor().y
+        row = backend.live_cursor().y
         rows = screen_lines(backend)
         return rows[row] if 0 <= row < len(rows) else ""
 
@@ -508,7 +508,7 @@ class Commands:
             lines = backend.grid_lines(join_wrapped=join)[-min(asked or cap, cap):]
             return {"lines": lines, "alt": alt_screen(backend)}
         backend.sync_render_state()
-        cursor = backend.cursor()
+        cursor = backend.live_cursor()
         modes = backend.modes()
         return {"lines": screen_lines(backend, join_wrapped=join), "cursor": [cursor.y, cursor.x],
                 "cols": backend.cols, "rows": backend.rows, "alt": modes.alternate_screen,
@@ -542,6 +542,9 @@ class Commands:
             return out
         if state.closed:
             raise DriveError("not_attached", "the session is closed; nothing was sent", sent=False)
+        if screen.scroll_view_open and slot is screen.front:
+            raise DriveError("not_available", "the scroll view is open in this TUI, and nothing reaches the session "
+                             "while it is: press escape to close it; nothing was sent", sent=False)
         if not state.may_type and self.d.cfg["input.guard"]:
             raise DriveError("not_typist", "you do not hold the keyboard; nothing was sent",
                              holder=self._holder_user(state), sent=False)

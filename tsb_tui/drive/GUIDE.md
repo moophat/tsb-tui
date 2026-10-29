@@ -94,6 +94,7 @@ Every read is made in your own client, from what it already received. TSB itself
 - **`reply`:** everything printed since your last `type` or `keys` in that session, scrollback included, **starting with what you typed if the session echoed it**. With no input yet it is everything this client has received. `truncated` says the knob `drive.reply_max_lines` (5 000) cut it, keeping the first lines. In a full-screen program there is no scrollback: `reply` returns the screen and says `alt: true`.
 - **`history`:** the last `lines` lines (at most `drive.reply_max_lines`), scrollback included.
 - **`who`:** `holder` (a login or null), `holder_client`, `owner`, `you` (your client id), `clients` (each with `user`, `client_id`, `may_control`) and `you_may_type`.
+- **A scroll view** open in this TUI (`press` `["ctrl+backslash", "left_square_bracket"]`, then `pageup`) changes none of these reads: they are about the session, never about which rows the window shows. While it is open nothing typed reaches the session (the engine still answers the session's own queries): `type` and `keys` answer `not_available` and send nothing, and `press` `escape` closes it.
 - `join_wrapped: true` joins a line that wrapped over several rows into one (and drops the blank rows at the bottom of `screen`); the cursor stays in screen rows.
 
 ## 7. Waiting
