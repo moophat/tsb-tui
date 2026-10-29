@@ -77,8 +77,10 @@ async def _run_step(func: Callable[..., Any], args: tuple[Any, ...], kw: dict[st
 
 class Rig:
     def __init__(self, url: str, *, tmp_path: Path, profile: str = "drive", overrides: tuple[str, ...] = (),
-                 size: tuple[int, int] = (120, 40), record: io.StringIO | None = None) -> None:
+                 size: tuple[int, int] = (120, 40), record: io.StringIO | None = None,
+                 script: bool = False) -> None:
         self.url = url
+        self._script = script  # the loop as `--script` runs it: the first failed step ends it
         self._tmp = tmp_path
         self._profile = profile
         self._overrides = overrides
@@ -131,7 +133,7 @@ class Rig:
             self.driver = Driver(app, self.pilot, emit=out.outbound)
             self._ready.set()
             try:
-                self.rc = await self.driver.serve(self._input(), out, script=False)
+                self.rc = await self.driver.serve(self._input(), out, script=self._script)
             finally:
                 self.driver.close()
 

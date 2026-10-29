@@ -70,6 +70,10 @@ class Driver:
         self.cfg = app.cfg
         app.under_drive = True  # TT29: the one place the runner and the test rig both pass
         self.quitting = False
+        # The lines the loop is taking commands from, and whether they are a script's: `new`'s `password_from: stdin`
+        # takes the next one itself (set by `serve`).
+        self._lines: AsyncIterator[str] | None = None
+        self.script = False
         self._emit = emit
         self._enabled = frozenset(self.cfg["drive.events"])
         self._signals: list[tuple[int, str, dict[str, Any]]] = []
@@ -407,9 +411,16 @@ class Driver:
             return {"ok": False, "error": "bad_request", "why": f"not JSON: {exc}"}
         return await self.execute(cmd)
 
+    async def take_stdin_line(self) -> str | None:
+        """The next input line, as it came (its line end included) and not as a command: it is not shown to the
+        transcript, which only `serve` writes to. None when the input has ended."""
+        assert self._lines is not None
+        return await anext(self._lines, None)
+
     async def serve(self, lines: AsyncIterator[str], out: Transcript, *, script: bool) -> int:
         """Take commands until the lines end or `quit`. In a script the first step that fails ends it, with 1: a script
         that went on typing after a wait failed would be typing into a screen it did not expect."""
+        self._lines, self.script = lines, script
         async for raw in lines:
             line = raw.strip()
             if not line or line.startswith("#"):

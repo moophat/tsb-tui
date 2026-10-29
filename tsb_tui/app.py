@@ -161,6 +161,17 @@ class TsbTuiApp(App):
         border: round $frame;
         padding: 1 2;
     }
+    #login-fields, #login-row {
+        height: auto;
+    }
+    #login-row Input {
+        width: 1fr;
+    }
+    /* The picker takes its rows only once the core has asked for a choice, so the login fields fit the dialog on a
+       24-row window with Create in reach (login-at-connect phase A). */
+    #connection-picker:disabled {
+        display: none;
+    }
     """
 
     def __init__(self, broker_url: str, ca_file: str | None = None, target: str | None = None,

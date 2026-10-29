@@ -59,16 +59,39 @@ class DriveError(Exception):
         self.extra = extra
 
 
+PASSWORD_MAX = 1024  # bytes: the longest password a password_file may hold
+
+
 def read_password_file(path: str) -> str:
-    """The password in a file: its first line, without the newline. A file that is group- or other-readable is
-    warned about on stderr, as the smoke path does; an absent or empty file is an error. Never argv, never the
+    """The password in a file: its first line, without the line end, at most `PASSWORD_MAX` bytes. The path may name
+    a regular file or a pipe (`/dev/fd/N`, what a process substitution is), so nothing need rest on disk; a device or
+    anything else is refused before it is opened (`/dev/zero` has no first line to end). At most one byte more than
+    the limit is read. A regular file that is group- or other-readable is warned about on stderr, as the smoke path
+    does; an absent, empty or over-long file is an error whose words never carry what was read. Never argv, never the
     environment (honesty rule 5)."""
     file = Path(path)
-    if not file.is_file():
+    try:
+        mode = file.stat().st_mode
+    except OSError:
+        mode = None
+    if mode is None or stat.S_ISDIR(mode):
         raise DriveError("bad_request", f"password_file {path} does not name a file")
-    if file.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+    if not (stat.S_ISREG(mode) or stat.S_ISFIFO(mode)):
+        raise DriveError("bad_request", f"password_file {path} is not a regular file or a pipe")
+    if stat.S_ISREG(mode) and mode & (stat.S_IRWXG | stat.S_IRWXO):
         print(f"WARNING: {path} is group- or other-readable; it should be owner-only", file=sys.stderr)
-    value = file.read_text(encoding="utf-8").split("\n", 1)[0].rstrip("\r")
+    try:
+        with file.open("rb") as stream:
+            data = stream.read(PASSWORD_MAX + 1)
+    except OSError as exc:
+        raise DriveError("bad_request", f"password_file {path} could not be read: {exc.strerror}") from None
+    line = data.split(b"\n", 1)[0].rstrip(b"\r")
+    if len(line) > PASSWORD_MAX:
+        raise DriveError("bad_request", f"password_file {path} holds a password longer than {PASSWORD_MAX} bytes")
+    try:
+        value = line.decode("utf-8")
+    except UnicodeDecodeError:
+        raise DriveError("bad_request", f"password_file {path} is not UTF-8 text") from None
     if not value:
         raise DriveError("bad_request", f"password_file {path} is empty")
     return value
@@ -296,19 +319,70 @@ class Commands:
             answer["more"] = True
         return answer
 
+    async def _supplied_login(self, cmd: dict[str, Any]) -> dict[str, Any] | None:
+        """The `login` of a `new` that supplies one (login-at-connect, rulings A11 and 15:36 (6)), or None for a `new`
+        that does not. The password has two doors, `password_from: "stdin"` (the next stdin line, raw) and
+        `password_file` (a path, `/dev/fd/N` among them); `password` in the command is refused. Where the command asks
+        for the next stdin line, that line is taken before anything else about the command is judged, so a refusal
+        leaves the stream in step and the password is never read as a command (nor written to the transcript). It is
+        never kept: the returned value is the call's argument and nothing here holds it."""
+        source = cmd.get("password_from")
+        from_stdin = None
+        if source == "stdin" and not self.d.script:
+            from_stdin = await self.d.take_stdin_line()
+        if "password" in cmd:
+            raise DriveError("bad_request",
+                             "a password is never given in a command: use password_from or password_file")
+        if source is not None and source != "stdin":
+            raise DriveError("bad_request", 'password_from: expected "stdin"')
+        if source == "stdin" and self.d.script:
+            raise DriveError("bad_request", "password_from: stdin is refused in --script mode: the script would hold "
+                                            "the password and stdin carries no commands to take it from")
+        user = _field(cmd, "login_user", str, required=False)
+        path = _field(cmd, "password_file", str, required=False)
+        acknowledged = cmd.get("recording_acknowledged")
+        if acknowledged is not None and not isinstance(acknowledged, bool):
+            raise DriveError("bad_request", "recording_acknowledged: expected bool")
+        if user is None and path is None and source is None:
+            if acknowledged is not None:
+                raise DriveError("bad_request", "recording_acknowledged: it goes with a login (login_user)")
+            return None
+        if source is not None and path is not None:
+            raise DriveError("bad_request", "give one password source, password_from or password_file, not both")
+        if not user:
+            raise DriveError("bad_request", "login_user: required, and not empty, with a password source")
+        if source is None and path is None:
+            raise DriveError("bad_request", "login_user needs a password source: password_from or password_file")
+        if source == "stdin":
+            if from_stdin is None:
+                raise DriveError("bad_request", "password_from: stdin ended before the password line")
+            password = from_stdin.rstrip("\n").rstrip("\r")
+            if not password:
+                raise DriveError("bad_request", "password_from: the password line is empty")
+        else:
+            password = await asyncio.to_thread(read_password_file, path)  # type: ignore[arg-type]
+        login: dict[str, Any] = {"user": user, "auth": {"kind": "password", "password": password}}
+        if acknowledged:
+            login["recording_acknowledged"] = True
+        return login
+
     async def op_new(self, cmd: dict[str, Any]) -> dict[str, Any]:
         """New session on a target, as the dialog's Create does (`connection: new`, which is all a telnet target
         allows), then attached as `attach` does: the gate's text first, the gate passed, the answer `attach`'s. A
-        refused create answers with the core's own code and message."""
+        refused create answers with the core's own code and message. With `login_user` and a password source the create
+        carries that login for this one connection (`_supplied_login`); the core's refusal of it, the consent it asks
+        for among them (`login_recording_not_acknowledged`), is passed on as it is, never answered for the agent."""
         from ..screens.attach_confirm import AttachConfirmScreen
 
+        login = await self._supplied_login(cmd)
         target = _field(cmd, "target", str)
         screen = self._screen()
         await self.d.workspace_ready(screen)
         size = create_size(self.d.app)
         if size is None:
             raise DriveError("not_available", CREATE_SIZE_OFF)
-        call = functools.partial(self.d.app.client.create_session, target, "new", TERM, size[0], size[1])
+        call = functools.partial(self.d.app.client.create_session, target, "new", TERM, size[0], size[1],
+                                 login=login)
         try:
             created = await asyncio.to_thread(call)
         except ApiError as exc:
