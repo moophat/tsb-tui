@@ -246,7 +246,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "fleet_view.details_from", "fleet_view.group_by", "fleet_view.show_ended", "fleet_view.tabs",
         "keys.leader_map.end", "keys.leader_map.event_log", "keys.leader_map.full_view", "keys.leader_map.keys",
         "keys.leader_map.pan", "keys.leader_map.quit", "motion.level", "mouse.canvas_clicks", "mouse.enabled",
-        "mouse.tooltips", "view.pan_step", "scroll.wheel_lines",
+        "mouse.tooltips", "view.pan_step", "scroll.wheel_lines", "scroll.match_style", "scroll.current_match_style",
         "gates.hostkey_tick", "glyphs.set", "gates.recording", "gates.recording_bar_s",
         "input.focus_reports", "input.guard",
         "keys.leader", "keys.leader_map.answer", "keys.leader_map.auto_size", "keys.leader_map.detach",
@@ -306,6 +306,24 @@ def test_the_scroll_wheel_step_is_three_rows_and_a_step_below_one_is_refused_nam
         with pytest.raises(config.ConfigError, match="scroll.wheel_lines"):
             config.load(config_file=Path("/nonexistent"), environ={},
                         overrides={"size.auto_request": "true", "scroll.wheel_lines": refused})
+
+
+def test_the_search_styles_default_to_attributes_and_a_string_rich_cannot_parse_is_refused_naming_the_key() -> None:
+    """`scroll.match_style` and `scroll.current_match_style` are Rich style strings the scroll view's search marks use:
+    underline, and reverse bold, unless set (attributes, so they read on every theme). A string Rich cannot parse is
+    refused at load, naming the key, not left to fail on the first search."""
+    base = {"size.auto_request": "true"}
+    loaded = config.load(config_file=Path("/nonexistent"), environ={}, overrides=base)
+    assert loaded["scroll.match_style"] == "underline"
+    assert loaded["scroll.current_match_style"] == "reverse bold"
+    environ = {"TSB_TUI_SCROLL_MATCH_STYLE": "bold italic", "TSB_TUI_SCROLL_CURRENT_MATCH_STYLE": "underline"}
+    chosen = config.load(config_file=Path("/nonexistent"), environ=environ, overrides=base)
+    assert chosen["scroll.match_style"] == "bold italic"
+    assert chosen["scroll.current_match_style"] == "underline"
+    for key in ("scroll.match_style", "scroll.current_match_style"):
+        for refused in ("sparkly", "bold on"):
+            with pytest.raises(config.ConfigError, match=key):
+                config.load(config_file=Path("/nonexistent"), environ={}, overrides={**base, key: refused})
 
 
 # -- the REST timeout knob --

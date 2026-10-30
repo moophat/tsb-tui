@@ -186,6 +186,13 @@ canvas of the session in front, and one status row. With no session open the sid
   frames told it), Pan (`^\ v`, then the arrow keys by `view.pan_step`, `Esc` to stop; a quick look, since with `view.follow_cursor = auto` the next output or keystroke returns the window to the cursor), Settings… (every knob in
   force and which layer its value came from), All keys (`^\ ?`, written from the action table), About (the TUI,
   the contract client, the engine). The Inspector and Zoom are left out of E2 (`view.inspector` accepts only its default).
+* **Search in the scroll view** (`^\ [` opens the view): `/` asks for text and Enter finds the nearest older match
+  from the top row on view; `n` and `N` step to the next older and newer match, with no wrap-around, and the note in
+  the status row says "no older match", "no newer match" or "not found: …". The query is a literal string, and a
+  capital letter in it makes it case-sensitive. It is searched in the rows the TUI's engine holds, one screen row at a
+  time, so **a match broken across a wrapped row is not found**. The current match is `scroll.current_match_style`
+  (`reverse bold`) and the others on view are `scroll.match_style` (`underline`). New output drops the marks; `n` or
+  `N` finds them again in what is held by then.
 * **End session…** (`^\ x`, the Menu, `x` on a sidebar or view row) asks once, naming the session, then sends
   `DELETE /sessions/{id}`; a login that is neither the owner nor an admin is refused by the core, and the TUI says so.
 * **Quit** (`^\ :q`, the Menu, `Ctrl-Q` in a full view) leaves every session running and prints which.

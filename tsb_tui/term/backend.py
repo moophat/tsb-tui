@@ -220,6 +220,9 @@ class VTBackend:
         self.scrollback_bytes = scrollback_bytes
         self._lock = threading.RLock()
         self._muted = 0
+        # Changes whenever the rows the engine holds may have changed (bytes fed, a resize, a reset), never for a
+        # move of the viewport: what a reader formatted at one value is stale at another.
+        self.generation = 0
         self._reply_callback: Callable[[bytes], None] | None = None
         # While a DT20 feed run is in flight on the feed thread, replies are collected here instead
         # of going to `_reply_callback`, so the processor delivers them on the loop in order.
@@ -343,6 +346,7 @@ class VTBackend:
             if self._terminal is None:
                 return  # closed under us; never write to a freed terminal
             self._libc.ghostty_terminal_vt_write(self._terminal, data, len(data))
+            self.generation += 1
 
     def feed_run(self, data: bytes) -> list[bytes]:
         """Feed one run on the DT20 feed thread: `FEED_SLICE_BYTES` at a time, each slice under the
@@ -359,6 +363,7 @@ class VTBackend:
                     if self._terminal is None:
                         break  # closed under us; never write to a freed terminal
                     self._libc.ghostty_terminal_vt_write(self._terminal, chunk, len(chunk))
+                    self.generation += 1
                 # Python's lock is not fair: without yielding, a busy feed would starve the paint.
                 time.sleep(0)
         finally:
@@ -382,6 +387,7 @@ class VTBackend:
                 raise BackendError(f"ghostty_terminal_resize failed with result {rc}")
             self.cols = cols
             self.rows = rows
+            self.generation += 1
 
     def reset(self, cols: int, rows: int) -> None:
         """A fresh terminal at cols × rows, muted for the duration (DT3), under the lock (DT20).
@@ -400,6 +406,7 @@ class VTBackend:
                 self.cols = cols
                 self.rows = rows
                 self._held = False
+                self.generation += 1
             finally:
                 self._muted -= 1
 

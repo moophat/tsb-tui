@@ -153,6 +153,10 @@ inspector = "auto"
 [scroll]
 # Rows one wheel turn moves the scroll view.
 wheel_lines = 3
+# How the search in the scroll view marks what it found, as Rich style strings. They are attributes, not colours, so
+# they read on every theme. The current match is the one `n` and `N` stand on.
+match_style = "underline"
+current_match_style = "reverse bold"
 
 [render]
 # 60: an echo waits at most one paint tick (16 ms) for the next frame; 30 left keystroke-to-screen

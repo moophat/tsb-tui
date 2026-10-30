@@ -22,7 +22,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Static
+from textual.widgets import Input, Static
 
 from ..model import actions as A
 from ..model.events import KIND_OUTPUT, Event
@@ -61,6 +61,9 @@ PAN_KEYS = (("← → ↑ ↓", "move the window over the grid by `view.pan_step
 SCROLL_KEYS = (
     ("PgUp  PgDn", "move the view one window up or down the output this client holds"),
     ("↑ ↓", "move it one row"),
+    ("/", ("ask for text to find in the output this client holds, Enter to find the nearest older match from the top "
+           "row on view (a literal string; a capital letter makes it case-sensitive), Esc to cancel")),
+    ("n  N", "the next older, the next newer match; a match broken across a wrapped row is not found"),
     ("wheel", "move it `scroll.wheel_lines` rows; a wheel up opens it when the window shows the grid from its top"),
     ("Esc", "back to the live screen; any other key is dropped; no typed key, paste, mouse or focus report reaches the session meanwhile"),
 )
@@ -134,6 +137,37 @@ class ConfirmEndScreen(_Dialog):
 
     def action_close(self) -> None:
         self.dismiss(None)
+
+
+class SearchPrompt(_Dialog):
+    """The one-line prompt the scroll view's `/` opens, docked over the status row: it returns the query on Enter and
+    None on Esc. It is the screen's only focus while open, so what is typed here reaches no session."""
+
+    DEFAULT_CSS = """
+    SearchPrompt { background: transparent; }
+    SearchPrompt .search-line { width: 100%; height: 1; background: $surface; }
+    SearchPrompt .search-mark { width: 1; }
+    SearchPrompt Input { width: 1fr; height: 1; border: none; padding: 0; background: $surface; }
+    """
+    KEYS_NAME = "search"
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(classes="search-line"):
+            yield Static("/", classes="search-mark", markup=False)
+            yield Input(placeholder="search the output this client holds", id="search-query")
+
+    def on_mount(self) -> None:
+        # Textual runs each class's own `on_mount` down the MRO, so `_Dialog`'s registration has run already.
+        top = self._terminal.app.cfg["status.position"] == "top"
+        self.styles.align_vertical = "top" if top else "bottom"
+        self.query_one(Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        self.dismiss(event.value)
+
+    def status_target(self) -> KeysTarget:
+        return KeysTarget(self.KEYS_NAME, (Hint("⏎", "Search"), Hint("Esc", "Cancel")))
 
 
 class TextScreen(_Dialog):

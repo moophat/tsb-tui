@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import tomllib
+from rich.errors import StyleSyntaxError
+from rich.style import Style
 
 from . import glyphs
 from .drive.events import EVENT_NAMES, OUTPUT_MODES
@@ -165,6 +167,8 @@ KNOB_TYPES: dict[str, type] = {
     "view.follow_cursor": str,
     "view.pan_step": int,
     "scroll.wheel_lines": int,
+    "scroll.match_style": str,
+    "scroll.current_match_style": str,
     "view.inspector": str,
     "render.max_fps": int,
     "render.paint_background": bool,
@@ -277,6 +281,8 @@ KNOB_OWNERS: dict[str, int] = {
     "view.follow_cursor": 3,
     "view.pan_step": 8,
     "scroll.wheel_lines": 8,
+    "scroll.match_style": 8,
+    "scroll.current_match_style": 8,
     "view.inspector": UNASSIGNED,
     "render.max_fps": 3,
     "render.paint_background": 3,
@@ -841,6 +847,11 @@ def _check_view_knobs(values: Mapping[str, Any]) -> None:
         raise ConfigError(f"view.pan_step = {values['view.pan_step']}: expected at least 1")
     if values["scroll.wheel_lines"] < 1:
         raise ConfigError(f"scroll.wheel_lines = {values['scroll.wheel_lines']}: expected at least 1")
+    for key in ("scroll.match_style", "scroll.current_match_style"):
+        try:
+            Style.parse(values[key])
+        except StyleSyntaxError as exc:
+            raise ConfigError(f"{key} = {values[key]!r}: not a style Rich can parse ({exc})") from exc
 
 
 def _check_drive_knobs(values: Mapping[str, Any]) -> None:

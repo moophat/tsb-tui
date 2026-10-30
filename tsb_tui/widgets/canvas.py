@@ -21,6 +21,11 @@ What it guarantees, and why (Rule 9):
 * **The mouse goes up, not out (D13).** A press, release, drag or wheel turn on the canvas is posted as
   a `MouseReport` in the *grid's* cells (the window's offset over the grid added back); the screen
   decides whether the session gets it. The canvas never sends anything.
+* **Marks sit on the engine's rows (search).** A `Highlight` names a row of the engine's row space, and the
+  characters of that row's text it covers. At each paint the canvas turns the ones on view into cells of its
+  own rows (a wide character is two cells), and `render_line` lays their style over the strip after it is cut to
+  the window. A mark belongs to one `generation` of the engine's rows: once bytes arrive it is dropped, since the
+  row it named may be another row or another text by then.
 * **The cursor says who types (D21).** A filled block in `accent` for the typist, an underline in
   `steel` for a viewer.
 
@@ -33,7 +38,8 @@ the style's contents rather than by id.
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
+from bisect import bisect_left
+from collections.abc import Mapping, Sequence
 from itertools import groupby
 from operator import attrgetter
 from typing import Any, NamedTuple
@@ -60,6 +66,38 @@ _STYLE_ID = attrgetter("style_id")
 # The wheel is buttons four and five in xterm's numbering, which mouse/event.h keeps (FOUR, FIVE).
 _WHEEL_UP, _WHEEL_DOWN = 4, 5
 _BUTTONS = {1: G.MOUSE_BUTTON_LEFT, 2: G.MOUSE_BUTTON_MIDDLE, 3: G.MOUSE_BUTTON_RIGHT}
+
+
+class Highlight(NamedTuple):
+    """A mark: the characters [start, end) of the text of one row of the engine's row space, drawn in `style` over
+    whatever the row's cells already show."""
+
+    row: int
+    start: int
+    end: int
+    style: Style
+
+
+def _cells_of(row: Row, start: int, end: int) -> tuple[int, int] | None:
+    """The cells [x_start, x_end) that show characters [start, end) of the row's text, or None when it has no such
+    characters. A cell holds a whole grapheme (`len(text)` characters, a blank one space), a wide character's spacer
+    tail holds none, and a wide character covers two cells."""
+    first: int | None = None
+    last = 0
+    position = 0
+    for x, cell in enumerate(row.cells):
+        if cell.wide_tail:
+            continue
+        width = 2 if cell.wide == G.CELL_WIDE_WIDE else 1
+        following = position + (len(cell.text) or 1)
+        if following > start and position < end:
+            if first is None:
+                first = x
+            last = x + width
+        position = following
+        if position >= end:
+            break
+    return None if first is None else (first, last)
 
 
 class ViewRange(NamedTuple):
@@ -143,6 +181,9 @@ class Canvas(Widget):
         self._palette = palette
         self._max_fps = max_fps
         self._follow_enabled = follow != "off"
+        # True while the scroll view is open: the window follows the view then (the screen pans it to a match), and
+        # never the live cursor, which the viewport is not showing.
+        self.follow_paused = False
         self._paint_background = bool(config["render.paint_background"])
         self._typist = typist
         self._dimmed = False
@@ -161,6 +202,12 @@ class Canvas(Widget):
         self._view_x = 0
         self._view_y = 0
         self._last_motion: tuple[int, int] | None = None
+        # The marks, sorted by row, the engine generation they were made in, and the ones on view as cells:
+        # grid row -> [(x_start, x_end, style)].
+        self._highlights: Sequence[Highlight] = ()
+        self._highlight_rows: list[int] = []
+        self._highlight_generation = 0
+        self._overlay: dict[int, list[tuple[int, int, Style]]] = {}
         # Counters the tests (and phase 10's benchmark) read: how many paints, which rows the last
         # paint rebuilt.
         self.paint_count = 0
@@ -332,6 +379,15 @@ class Canvas(Widget):
         if self._set_view(x, y):
             self.refresh()
 
+    def show_row(self, grid_y: int) -> None:
+        """Pan the window the least distance that brings grid row `grid_y` into it (a window shorter than the grid
+        would otherwise leave the viewport's top rows out of sight)."""
+        height = self.size.height
+        if height <= 0:
+            return
+        y = grid_y if grid_y < self._view_y else max(self._view_y, grid_y - height + 1)
+        self.pan_to(self._view_x, y)
+
     @property
     def page_rows(self) -> int:
         """The rows one page of the scroll view moves: those the window shows of the engine's viewport, which is no
@@ -351,6 +407,48 @@ class Canvas(Widget):
             return
         self._backend.scroll_viewport(kind, amount)
         self._pending = True
+
+    def scroll_to_row(self, row: int) -> None:
+        """Put `row` (of the engine's row space) at the top of the viewport; the engine keeps the last window on the
+        bottom of what it holds, so the rows below the clamp show with the row somewhere in the window."""
+        self._scroll(G.SCROLL_VIEWPORT_ROW, row)
+
+    # -- marks --
+
+    def set_highlights(self, highlights: Sequence[Highlight], generation: int) -> None:
+        """Mark these (sorted by row and column), found in the engine's rows as of `generation`; the next paint puts
+        them on the cells. They replace whatever was marked before."""
+        self._highlights = tuple(highlights)
+        self._highlight_rows = [h.row for h in self._highlights]
+        self._highlight_generation = generation
+        self._pending = True
+
+    def clear_highlights(self) -> None:
+        if self._highlights or self._overlay:
+            self._highlights = ()
+            self._highlight_rows = []
+            self._overlay = {}
+            self.refresh()
+
+    def _rebuild_overlay(self, origin: int) -> bool:
+        """The marks on view as cells of this canvas's rows, given the engine row the viewport starts at. True when
+        they differ from what was drawn."""
+        if self._highlights and self._highlight_generation != self._backend.generation:
+            self._highlights, self._highlight_rows = (), []
+        overlay: dict[int, list[tuple[int, int, Style]]] = {}
+        if self._highlights:
+            index = bisect_left(self._highlight_rows, origin)
+            while index < len(self._highlights) and self._highlights[index].row < origin + len(self._rows):
+                mark = self._highlights[index]
+                index += 1
+                grid_y = mark.row - origin
+                row = self._rows[grid_y]
+                cells = _cells_of(row, mark.start, mark.end) if row is not None else None
+                if cells is not None:
+                    overlay.setdefault(grid_y, []).append((cells[0], cells[1], mark.style))
+        changed = overlay != self._overlay
+        self._overlay = overlay
+        return changed
 
     # -- the paint timer --
 
@@ -386,6 +484,7 @@ class Canvas(Widget):
             self.lock_wait_ms += (time.perf_counter() - waiting) * 1000.0
             rows = backend.dirty_rows()
             cursor = backend.cursor()
+            origin = backend.scrollback_position().offset if self._highlights else 0
             backend.mark_clean()
         self._pending = False
         self.paint_count += 1
@@ -398,7 +497,8 @@ class Canvas(Widget):
                 self._rows[row.y] = row
         self.rebuilt_rows = [row.y for row in rows]
         self._cursor = cursor if cursor.visible else None
-        if self._follow_cursor():
+        marked = self._rebuild_overlay(origin)
+        if self._follow_cursor() or marked:
             self.refresh()
             return
         self._refresh_rows(*self.rebuilt_rows, *before, *self._cursor_rows())
@@ -443,7 +543,21 @@ class Canvas(Widget):
         cursor = self._cursor
         if cursor is not None and cursor.y == grid_y:
             strip = self._with_cursor(strip, grid_y, cursor)
-        return strip.crop(self._view_x, self._view_x + width).adjust_cell_length(width, self._palette.default)
+        strip = strip.crop(self._view_x, self._view_x + width).adjust_cell_length(width, self._palette.default)
+        marks = self._overlay.get(grid_y)
+        return self._with_marks(strip, marks) if marks else strip
+
+    def _with_marks(self, strip: Strip, marks: list[tuple[int, int, Style]]) -> Strip:
+        """Lay each mark's style over the cells it covers, in the window's own columns (`strip` is already cut)."""
+        width = strip.cell_length
+        for x_start, x_end, style in marks:
+            start, end = max(x_start - self._view_x, 0), min(x_end - self._view_x, width)
+            if start >= end:
+                continue
+            marked = Strip([Segment(seg.text, (seg.style or Style.null()) + style, seg.control)
+                            for seg in strip.crop(start, end)])
+            strip = Strip.join([strip.crop(0, start), marked, strip.crop(end)])
+        return strip
 
     def _with_cursor(self, strip: Strip, grid_y: int, cursor: Cursor) -> Strip:
         x = cursor.x - 1 if cursor.wide_tail else cursor.x
@@ -475,7 +589,7 @@ class Canvas(Widget):
         """Pan the least distance that brings the cursor into view. True when the window moved."""
         cursor = self._cursor
         width, height = self.size.width, self.size.height
-        if not self._follow_enabled or cursor is None or width <= 0 or height <= 0:
+        if not self._follow_enabled or self.follow_paused or cursor is None or width <= 0 or height <= 0:
             return False
         x, y = self._view_x, self._view_y
         if cursor.x < x:

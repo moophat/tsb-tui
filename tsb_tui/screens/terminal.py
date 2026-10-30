@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from rich.style import Style
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
@@ -83,8 +84,9 @@ from ..term import (
     encode_paste,
 )
 from ..term import ghostty as G
+from ..term.search import SearchResult, reanchor, search
 from ..theme import TermPalette
-from ..widgets.canvas import Canvas
+from ..widgets.canvas import Canvas, Highlight
 from ..widgets.rail import (
     ACT_ALERTS,
     ACT_CHIP,
@@ -127,6 +129,7 @@ from . import prompts
 from .chrome_dialogs import (
     ConfirmEndScreen,
     EventLogScreen,
+    SearchPrompt,
     TextScreen,
     about_lines,
     event_log_lines,
@@ -190,9 +193,14 @@ SIDEBAR_HINT = "sidebar:"
 FLEET_VIEW_HINT = "fleet_view:"
 TARGETS_UNAVAILABLE = "the inventory is unavailable"
 PAN_HINT = "pan:"
-SCROLL_HINT = "scroll:"  # the scroll view's own keys as status-row hints: `scroll:up`, `scroll:down`, `scroll:done`
+# the scroll view's own keys as status-row hints: `scroll:up`, `scroll:down`, `scroll:search`, `scroll:done`
+SCROLL_HINT = "scroll:"
 # What the scroll view says when it drops a key it does not use: nothing reaches the session while it is open.
 SCROLL_DROPPED_NOTE = "Esc to return to live, then type"
+SEARCH_NONE_YET = "no search yet: / to search"
+SEARCH_NOT_OLDER = "no older match"
+SEARCH_NOT_NEWER = "no newer match"
+SEARCH_HISTORY_MOVED = "the history moved; searching from the view"
 SCROLL_DROPPED = "scroll_view"  # the reason the event log gives for input dropped while the view is open
 # The wheel's two buttons in xterm's numbering, which the canvas reports as it has them.
 WHEEL_UP, WHEEL_DOWN = 4, 5
@@ -340,7 +348,12 @@ class TerminalScreen(Screen):
         # `^\ [`: PageUp, PageDown and the wheel move the front session's viewport through its scrollback. Only the
         # session in front is ever scrolled; every way off it puts the viewport back at the bottom.
         self._scroll_mode = False
-        self._scroll_dropped = False  # a key was dropped since the view last moved: the status row says why
+        # What the status row says in place of the position, since the view last moved: why a key did nothing.
+        self._scroll_notice: str | None = None
+        # The last query's result while the view is open, and the key (row, start) of the match the view stands on.
+        self._search: SearchResult | None = None
+        self._search_at: tuple[int, int] | None = None
+        self._search_text = ""  # the text of that match's row, to find the row again once the engine drops rows
         self._chord: str | None = None  # the first character of a two-character key after the leader (`:` of `:q`)
         # The dialogs open over this screen, innermost last; each has `sync()` and `status_target()`.
         self.dialogs: list[Any] = []
@@ -2078,7 +2091,7 @@ class TerminalScreen(Screen):
             state.log.add(KIND_INPUT_DROPPED, time.monotonic(), source=source, bytes=len(data),
                           reason=SCROLL_DROPPED)
             if source in _TYPED:
-                self._scroll_dropped = True
+                self._scroll_notice = SCROLL_DROPPED_NOTE
                 self.refresh_status()
             return False
         if source in _TYPED:
@@ -2417,7 +2430,9 @@ class TerminalScreen(Screen):
         if self._sidebar_has_keys():
             self.set_focus(None)
         self._scroll_mode = True
-        self._scroll_dropped = False
+        self._scroll_notice = None
+        if self.canvas is not None:
+            self.canvas.follow_paused = True
         self.refresh_status()
 
     def close_scroll_view(self) -> None:
@@ -2425,9 +2440,12 @@ class TerminalScreen(Screen):
         if not self._scroll_mode:
             return
         self._scroll_mode = False
-        self._scroll_dropped = False
+        self._scroll_notice = None
+        self._search = self._search_at = None
         front = self._front
         if front is not None and not front.closed:
+            front.canvas.clear_highlights()
+            front.canvas.follow_paused = False
             front.canvas.scroll_to_bottom()
         self.refresh_status()
 
@@ -2438,6 +2456,10 @@ class TerminalScreen(Screen):
             self._scroll_by(-1 if event.key == "pageup" else 1, pages=True)
         elif event.key in ("up", "down"):
             self._scroll_by(-1 if event.key == "up" else 1, rows=1)
+        elif event.character == "/":
+            self.do_search()
+        elif event.character in ("n", "N"):
+            self._search_step(older=event.character == "n")
         else:
             self._drop_while_scrolled(SOURCE_KEY, 0, key=event.key)
 
@@ -2449,7 +2471,7 @@ class TerminalScreen(Screen):
         canvas = self.canvas
         if canvas is None:
             return
-        self._scroll_dropped = False
+        self._scroll_notice = None
         canvas.scroll_by(direction * (canvas.page_rows if pages else rows))
         self.refresh_status()
 
@@ -2459,13 +2481,102 @@ class TerminalScreen(Screen):
         if self.pump is not None:
             self.pump.state.log.add(KIND_INPUT_DROPPED, time.monotonic(), source=source, bytes=size,
                                     reason=SCROLL_DROPPED, **detail)
-        self._scroll_dropped = True
+        self._scroll_notice = SCROLL_DROPPED_NOTE
+        self.refresh_status()
+
+    # -- search in the view --
+
+    def do_search(self) -> None:
+        """`/` in the view: ask for the text to find. The view stays open under the prompt, and Esc in the prompt
+        returns to it where it was."""
+        if self._scroll_mode and not self.dialogs:
+            self.app.push_screen(SearchPrompt(self), self._searched)
+
+    def _searched(self, query: str | None) -> None:
+        """The prompt's answer. Nothing typed, or nothing left to search in: the view is as it was. Otherwise the
+        search runs from the top row on view toward older output."""
+        if not query or not self._scroll_mode or self.canvas is None:
+            return
+        self._search = search(self.backend, query)
+        self._search_at = None
+        if not self._search.matches:
+            self.canvas.clear_highlights()
+            self._say_in_view(f"not found: {query}")
+            return
+        index = self._search.at_or_before_row(self.backend.scrollback_position().offset)
+        if index is None:
+            self._mark_matches()
+            self._say_in_view(SEARCH_NOT_OLDER)
+        else:
+            self._show_match(index)
+
+    def _search_step(self, *, older: bool) -> None:
+        """`n` (older) and `N` (newer): the next match from the one the view stands on. New output since the query was
+        run means the rows it read are not the engine's now, so it is run again first."""
+        if self._search is None or self.canvas is None:
+            self._say_in_view(SEARCH_NONE_YET)
+            return
+        moved = False
+        if self._search.generation != self.backend.generation:
+            fresh = search(self.backend, self._search.query)
+            if self._search_at is not None:
+                row = reanchor(fresh.rows, self._search_at[0], self._search_text)
+                if row is None:
+                    self._search_at = None  # its row is not held any more: step from the view
+                    moved = True
+                else:
+                    self._search_at = (row, self._search_at[1])
+            self._search = fresh
+        result = self._search
+        if not result.matches:
+            self.canvas.clear_highlights()
+            self._say_in_view(f"not found: {result.query}")
+            return
+        if self._search_at is not None:
+            index = result.before(self._search_at) if older else result.after(self._search_at)
+        else:
+            top = self.backend.scrollback_position().offset
+            index = result.at_or_before_row(top) if older else result.after((top, 1 << 62))
+        if index is None:
+            self._mark_matches()
+            self._say_in_view(SEARCH_NOT_OLDER if older else SEARCH_NOT_NEWER)
+        else:
+            self._show_match(index)
+            if moved:
+                self._say_in_view(SEARCH_HISTORY_MOVED)
+
+    def _show_match(self, index: int) -> None:
+        """Stand on match `index`: its row in the window, every match marked and this one marked as the current."""
+        result = self._search
+        canvas = self.canvas
+        if result is None or canvas is None:
+            return
+        match = result.matches[index]
+        self._search_at = match.key
+        self._search_text = result.rows[match.row]
+        self._scroll_notice = None
+        canvas.scroll_to_row(match.row)
+        canvas.show_row(match.row - self.backend.scrollback_position().offset)
+        self._mark_matches()
+        self.refresh_status()
+
+    def _mark_matches(self) -> None:
+        result, canvas = self._search, self.canvas
+        if result is None or canvas is None:
+            return
+        cfg = self.app.cfg
+        other, current = Style.parse(cfg["scroll.match_style"]), Style.parse(cfg["scroll.current_match_style"])
+        canvas.set_highlights([Highlight(m.row, m.start, m.end, current if m.key == self._search_at else other)
+                               for m in result.matches], result.generation)
+
+    def _say_in_view(self, note: str) -> None:
+        self._scroll_notice = note
         self.refresh_status()
 
     def _scroll_note(self) -> str:
         """Where the viewport is, from the engine's own position: rows back of the rows held, and a word at the top."""
-        if self._scroll_dropped:
-            return SCROLL_DROPPED_NOTE
+        if self._scroll_notice:
+            return self._scroll_notice
         position = self.backend.scrollback_position()
         held = position.total - position.length
         back = held - position.offset
@@ -2541,6 +2652,8 @@ class TerminalScreen(Screen):
             move = message.action.removeprefix(SCROLL_HINT)
             if move == "done":
                 self.close_scroll_view()
+            elif move == "search":
+                self.do_search()
             else:
                 self._scroll_by(-1 if move == "up" else 1, pages=True)
             return
@@ -2601,7 +2714,8 @@ class TerminalScreen(Screen):
         """The scroll view's own keys as hints, each a click, so a touch screen can scroll too."""
         click = SCROLL_HINT
         return KeysTarget("scroll", (Hint("PgUp", "Older", click + "up"), Hint("PgDn", "Newer", click + "down"),
-                                     Hint("Esc", "Live", click + "done")), self._scroll_note())
+                                     Hint("/", "Search", click + "search"), Hint("Esc", "Live", click + "done")),
+                          self._scroll_note())
 
     def _pan_keys_target(self) -> KeysTarget:
         """Pan's own keys as hints, each a click, so a touch screen can pan too (D13)."""
