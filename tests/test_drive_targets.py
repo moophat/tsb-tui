@@ -27,8 +27,8 @@ FINGERPRINT = "SHA256:FIXTUREFIRSTUSEHOSTKEY000000000000000000000"
 class _FirstUseHostKey(ServeApp):
     """The fixture app, answering a create with a first-use host key as the core does for a target it has never seen."""
 
-    def _create(self, user, body):
-        status, headers, reply = super()._create(user, body)
+    def _create(self, user, body, cookie=""):
+        status, headers, reply = super()._create(user, body, cookie)
         if status == 201:
             reply = {**reply, "hostkey": {"fingerprint": FINGERPRINT, "first_use": True}}
         return status, headers, reply
