@@ -169,6 +169,10 @@ KNOB_TYPES: dict[str, type] = {
     "scroll.wheel_lines": int,
     "scroll.match_style": str,
     "scroll.current_match_style": str,
+    "scroll.selection_style": str,
+    "copy.osc52": bool,
+    "copy.max_bytes": int,
+    "copy.join_wrapped": bool,
     "view.inspector": str,
     "render.max_fps": int,
     "render.paint_background": bool,
@@ -283,6 +287,10 @@ KNOB_OWNERS: dict[str, int] = {
     "scroll.wheel_lines": 8,
     "scroll.match_style": 8,
     "scroll.current_match_style": 8,
+    "scroll.selection_style": 8,
+    "copy.osc52": 8,
+    "copy.max_bytes": 8,
+    "copy.join_wrapped": 8,
     "view.inspector": UNASSIGNED,
     "render.max_fps": 3,
     "render.paint_background": 3,
@@ -847,7 +855,9 @@ def _check_view_knobs(values: Mapping[str, Any]) -> None:
         raise ConfigError(f"view.pan_step = {values['view.pan_step']}: expected at least 1")
     if values["scroll.wheel_lines"] < 1:
         raise ConfigError(f"scroll.wheel_lines = {values['scroll.wheel_lines']}: expected at least 1")
-    for key in ("scroll.match_style", "scroll.current_match_style"):
+    if values["copy.max_bytes"] < 1:
+        raise ConfigError(f"copy.max_bytes = {values['copy.max_bytes']}: expected at least 1")
+    for key in ("scroll.match_style", "scroll.current_match_style", "scroll.selection_style"):
         try:
             Style.parse(values[key])
         except StyleSyntaxError as exc:

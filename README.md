@@ -193,6 +193,17 @@ canvas of the session in front, and one status row. With no session open the sid
   time, so **a match broken across a wrapped row is not found**. The current match is `scroll.current_match_style`
   (`reverse bold`) and the others on view are `scroll.match_style` (`underline`). New output drops the marks; `n` or
   `N` finds them again in what is held by then.
+* **Copying** (from the scroll view; `^\ [` opens it). `v` starts selecting whole lines at the top row on view, or at
+  the current match when one is shown; `v` again takes the selection off. `↑ ↓` and `PgUp PgDn` move its loose end,
+  and `y` or `Enter` sends the selected lines to your terminal's clipboard as one OSC 52 write; the selection stays until
+  `Esc`. With the mouse on, a drag over the canvas selects the lines it covers and copies on release (a click that does
+  not move does nothing). The write is blind: the terminal does not say whether it took it, so the toast says "Sent",
+  not "Copied". **Your terminal must allow OSC 52**, and inside tmux set `set -g set-clipboard on`; zellij and other
+  multiplexers differ. The lines are read again at copy, and if the history moved under the selection nothing is
+  sent. A text over `copy.max_bytes` (100000) is refused, never cut; `copy.join_wrapped` joins a row that wrapped into
+  the next selected row; `copy.osc52 = false` stops every write. The selection is `scroll.selection_style`
+  (`reverse`). **Without any of this**, turn the mouse off (`mouse.enabled = false`) or hold Shift while dragging, and
+  the terminal's own selection works as it always did. Nothing a session sends can write to your clipboard.
 * **End session…** (`^\ x`, the Menu, `x` on a sidebar or view row) asks once, naming the session, then sends
   `DELETE /sessions/{id}`; a login that is neither the owner nor an admin is refused by the core, and the TUI says so.
 * **Quit** (`^\ :q`, the Menu, `Ctrl-Q` in a full view) leaves every session running and prints which.

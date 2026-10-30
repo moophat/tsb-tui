@@ -147,6 +147,15 @@ class Cursor:
     wide_tail: bool = False
 
 
+class RowText(NamedTuple):
+    """One row of the engine's row space as text: what its cells hold across the full width (a blank cell is a space, a
+    wide character is one character, a spacer is nothing), and whether the engine marked the row as soft-wrapped into
+    the next row."""
+
+    text: str
+    wrapped: bool
+
+
 class ScrollPosition(NamedTuple):
     """Where the viewport is in the scrollable area, in the engine's row space: `total` rows (scrollback plus the
     active area), the viewport's `offset` from the top, and its `length`. At the bottom, `offset + length == total`.
@@ -831,6 +840,70 @@ class VTBackend:
                     self._terminal, G.DATA_SCROLLBAR, ctypes.byref(bar)) != G.GHOSTTY_SUCCESS:
                 return ScrollPosition(self.rows, 0, self.rows)
             return ScrollPosition(int(bar.total), int(bar.offset), int(bar.len))
+
+    def changed_since(self, generation: int) -> bool:
+        """Whether the rows the engine holds may have changed (bytes fed, a resize, a reset) since `generation` was read
+        from `self.generation`, under the lock."""
+        with self._lock:
+            return self.generation != generation
+
+    def row_texts(self, first: int, last: int) -> list[RowText | None]:
+        """Rows `first`..`last` of the engine's row space (the numbers `scrollback_position` and the ROW scroll use; row 0
+        is the oldest the engine holds), however far they have scrolled off. None for a row the engine does not hold.
+        Each row is read under the lock on its own, so a long read lets the feed through between rows."""
+        return [self._row_text(y) for y in range(first, last + 1)]
+
+    def _row_text(self, y: int) -> RowText | None:
+        with self._lock:
+            if self._terminal is None or y < 0:
+                return None
+            libc = self._libc
+            point = G.GhosttyPoint()
+            point.tag = G.POINT_SCREEN
+            point.value.coordinate.x = 0
+            point.value.coordinate.y = y
+            ref = G.GhosttyGridRef()
+            ref.size = ctypes.sizeof(ref)
+            row = ctypes.c_uint64()
+            if (libc.ghostty_terminal_grid_ref(self._terminal, point, ctypes.byref(ref)) != G.GHOSTTY_SUCCESS
+                    or libc.ghostty_grid_ref_row(ctypes.byref(ref), ctypes.byref(row)) != G.GHOSTTY_SUCCESS):
+                return None
+            wrapped = ctypes.c_bool()
+            libc.ghostty_row_get(row.value, G.ROW_DATA_WRAP, ctypes.byref(wrapped))
+            cell = ctypes.c_uint64()
+            parts: list[str] = []
+            for x in range(self.cols):
+                ref.x = x
+                if libc.ghostty_grid_ref_cell(ctypes.byref(ref), ctypes.byref(cell)) != G.GHOSTTY_SUCCESS:
+                    parts.append(" ")
+                    continue
+                raw = cell.value
+                wide = (raw >> _WIDE_LSB) & _WIDE_MASK
+                if wide == _WIDE_TAIL or wide == _WIDE_HEAD:
+                    continue  # the second half of a wide character, or the blank where one did not fit
+                tag = (raw >> _TAG_LSB) & _TAG_MASK
+                if tag == _TAG_GRAPHEME:
+                    parts.append(self._grapheme_at(ref))
+                elif tag == _TAG_CODEPOINT:
+                    codepoint = (raw >> _CODEPOINT_LSB) & _CODEPOINT_MASK
+                    parts.append(chr(codepoint) if codepoint else " ")
+                else:
+                    parts.append(" ")
+            return RowText("".join(parts), bool(wrapped.value))
+
+    def _grapheme_at(self, ref: G.GhosttyGridRef) -> str:
+        """The whole grapheme cluster of the cell `ref` is on: its base codepoint and any combining ones."""
+        size = 8
+        while True:
+            buf = (ctypes.c_uint32 * size)()
+            count = ctypes.c_size_t()
+            rc = self._libc.ghostty_grid_ref_graphemes(ctypes.byref(ref), buf, size, ctypes.byref(count))
+            if rc == G.GHOSTTY_OUT_OF_SPACE:
+                size = max(count.value, size * 2)
+                continue
+            if rc != G.GHOSTTY_SUCCESS or not count.value:
+                return " "
+            return "".join(map(chr, buf[:count.value]))
 
     # -- the tracked mark, for `read reply` (D50) --
 

@@ -157,6 +157,17 @@ wheel_lines = 3
 # they read on every theme. The current match is the one `n` and `N` stand on.
 match_style = "underline"
 current_match_style = "reverse bold"
+# How the lines selected in the scroll view are marked (a Rich style string).
+selection_style = "reverse"
+
+[copy]
+# Copy from the scroll view: one OSC 52 write to the outer terminal, which puts the text on the operator's clipboard.
+# The terminal (and tmux: `set -g set-clipboard on`) must allow it. false: nothing is written, and `y` says so.
+osc52 = true
+# Most bytes of text (before base64) one copy sends. A selection over it is refused whole, never cut.
+max_bytes = 100000
+# A selected row that the session's output wrapped into the next selected row runs on into it, with no newline.
+join_wrapped = true
 
 [render]
 # 60: an echo waits at most one paint tick (16 ms) for the next frame; 30 left keystroke-to-screen

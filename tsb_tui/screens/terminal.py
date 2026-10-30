@@ -85,6 +85,7 @@ from ..term import (
 )
 from ..term import ghostty as G
 from ..term.search import SearchResult, reanchor, search
+from ..term.selection import Selection
 from ..theme import TermPalette
 from ..widgets.canvas import Canvas, Highlight
 from ..widgets.rail import (
@@ -193,7 +194,8 @@ SIDEBAR_HINT = "sidebar:"
 FLEET_VIEW_HINT = "fleet_view:"
 TARGETS_UNAVAILABLE = "the inventory is unavailable"
 PAN_HINT = "pan:"
-# the scroll view's own keys as status-row hints: `scroll:up`, `scroll:down`, `scroll:search`, `scroll:done`
+# the scroll view's own keys as status-row hints: `scroll:up`, `scroll:down`, `scroll:search`, `scroll:select`,
+# `scroll:copy`, `scroll:done`
 SCROLL_HINT = "scroll:"
 # What the scroll view says when it drops a key it does not use: nothing reaches the session while it is open.
 SCROLL_DROPPED_NOTE = "Esc to return to live, then type"
@@ -201,6 +203,10 @@ SEARCH_NONE_YET = "no search yet: / to search"
 SEARCH_NOT_OLDER = "no older match"
 SEARCH_NOT_NEWER = "no newer match"
 SEARCH_HISTORY_MOVED = "the history moved; searching from the view"
+SELECT_NOTHING = "nothing selected: v to select"
+SELECT_MOVED = "the history moved under the selection; select again"
+COPY_BLANK = "nothing to copy: the selection is blank"
+COPY_OFF = "copying is off (copy.osc52); use your terminal's own selection with the mouse off or Shift held"
 SCROLL_DROPPED = "scroll_view"  # the reason the event log gives for input dropped while the view is open
 # The wheel's two buttons in xterm's numbering, which the canvas reports as it has them.
 WHEEL_UP, WHEEL_DOWN = 4, 5
@@ -354,6 +360,10 @@ class TerminalScreen(Screen):
         self._search: SearchResult | None = None
         self._search_at: tuple[int, int] | None = None
         self._search_text = ""  # the text of that match's row, to find the row again once the engine drops rows
+        # The lines selected in the view, and the row a pressed button went down on while a drag may begin from it.
+        self._selection: Selection | None = None
+        self._drag_from: int | None = None
+        self._dragged = False
         self._chord: str | None = None  # the first character of a two-character key after the leader (`:` of `:q`)
         # The dialogs open over this screen, innermost last; each has `sync()` and `status_target()`.
         self.dialogs: list[Any] = []
@@ -1611,6 +1621,8 @@ class TerminalScreen(Screen):
             canvas.after_run("dump")
             slot.awaiting_dump = False
             self._sync_size(slot)
+            if self._scroll_mode and slot is self._front:
+                self._check_selection()
         else:
             canvas.after_run("output")
             self._sync_size(slot)
@@ -1618,6 +1630,7 @@ class TerminalScreen(Screen):
                 if canvas.backend.active_screen() == G.SCREEN_ALTERNATE:
                     self.close_scroll_view()  # a full-screen program has no scrollback, and wants its keys
                 else:
+                    self._check_selection()
                     self.refresh_status()  # the rows held, and so how far back the view is, changed
             if slot is not self._front and not slot.unseen:
                 slot.unseen = True
@@ -2287,6 +2300,8 @@ class TerminalScreen(Screen):
             # The canvas's mouse belongs to the view: the wheel moves it, and nothing is reported to the session.
             if event.button in (WHEEL_UP, WHEEL_DOWN) and event.action == G.MOUSE_ACTION_PRESS:
                 self._scroll_wheel(event.button == WHEEL_UP)
+            else:
+                self._scroll_pointer(event)
             return
         reported = False
         if not event.shift and cfg["mouse.canvas_clicks"] == "session_if_asked":
@@ -2442,20 +2457,32 @@ class TerminalScreen(Screen):
         self._scroll_mode = False
         self._scroll_notice = None
         self._search = self._search_at = None
+        self._selection = self._drag_from = None
         front = self._front
         if front is not None and not front.closed:
             front.canvas.clear_highlights()
             front.canvas.follow_paused = False
+            front.canvas.clear_selection()
             front.canvas.scroll_to_bottom()
         self.refresh_status()
 
     def _scroll_key(self, event: events.Key) -> None:
         if event.key == "escape":
-            self.close_scroll_view()
-        elif event.key in ("pageup", "pagedown"):
-            self._scroll_by(-1 if event.key == "pageup" else 1, pages=True)
-        elif event.key in ("up", "down"):
-            self._scroll_by(-1 if event.key == "up" else 1, rows=1)
+            if self._selection is not None:
+                self._clear_selection()
+            else:
+                self.close_scroll_view()
+        elif event.key in ("pageup", "pagedown", "up", "down"):
+            direction = -1 if event.key in ("pageup", "up") else 1
+            pages = event.key in ("pageup", "pagedown")
+            if self._selection is not None and self.canvas is not None:
+                self._move_selection(direction * (self.canvas.page_rows if pages else 1))
+            else:
+                self._scroll_by(direction, pages=pages, rows=1)
+        elif event.character == "v":
+            self._toggle_selection()
+        elif event.character == "y" or event.key == "enter":
+            self._copy()
         elif event.character == "/":
             self.do_search()
         elif event.character in ("n", "N"):
@@ -2569,6 +2596,141 @@ class TerminalScreen(Screen):
         canvas.set_highlights([Highlight(m.row, m.start, m.end, current if m.key == self._search_at else other)
                                for m in result.matches], result.generation)
 
+    # -- selecting and copying in the view --
+
+    def _toggle_selection(self) -> None:
+        """`v`: with no selection, start one on the current match's row when a match is shown, else on the first row on
+        view; with one, take it off."""
+        canvas = self.canvas
+        if canvas is None:
+            return
+        if self._selection is not None:
+            self._clear_selection()
+            return
+        shown = self._search is not None and self._search_at is not None \
+            and self._search.generation == self.backend.generation
+        row = self._search_at[0] if shown and self._search_at is not None \
+            else self.backend.scrollback_position().offset + canvas.view_y  # the window may be panned down the grid
+        self._begin_selection(row, row)
+        self._show_row(row)
+
+    def _begin_selection(self, anchor: int, cursor: int) -> None:
+        """Select rows `anchor`..`cursor`, in place of any selection there was, keeping the text they hold now."""
+        total = self.backend.scrollback_position().total
+        selection = Selection(min(max(anchor, 0), total - 1), min(max(cursor, 0), total - 1))
+        if not selection.fit(self.backend):
+            self._clear_selection(SELECT_MOVED)
+            return
+        self._selection = selection
+        self._paint_selection()
+
+    def _move_selection(self, rows: int) -> None:
+        """Move the selection's loose end `rows` rows (older is negative), with the view following it."""
+        selection = self._selection
+        if selection is None:
+            return
+        total = self.backend.scrollback_position().total
+        selection.cursor = min(max(selection.cursor + rows, 0), total - 1)
+        if not selection.fit(self.backend):
+            self._clear_selection(SELECT_MOVED)
+            return
+        self._paint_selection()
+        self._show_row(selection.cursor)
+
+    def _show_row(self, row: int) -> None:
+        """Scroll the view, and pan the window, the least that brings engine row `row` on screen."""
+        canvas = self.canvas
+        if canvas is None:
+            return
+        position = self.backend.scrollback_position()
+        if row < position.offset:
+            canvas.scroll_to_row(row)
+        elif row >= position.offset + position.length:
+            canvas.scroll_to_row(row - position.length + 1)
+        canvas.show_row(row - self.backend.scrollback_position().offset)
+        self._scroll_notice = None
+        self.refresh_status()
+
+    def _paint_selection(self) -> None:
+        selection, canvas = self._selection, self.canvas
+        if selection is None or canvas is None:
+            return
+        canvas.set_selection(selection.lo, selection.hi, Style.parse(self.app.cfg["scroll.selection_style"]))
+        self._scroll_notice = None
+        self.refresh_status()
+
+    def _clear_selection(self, note: str | None = None) -> None:
+        self._selection = self._drag_from = None
+        if self.canvas is not None:
+            self.canvas.clear_selection()
+        self._scroll_notice = note
+        self.refresh_status()
+
+    def _check_selection(self) -> None:
+        """Output arrived: if the selection's first or last row no longer holds the text it was selected with (the history
+        was trimmed or a row rewritten), the selection is cleared now, so the mark never sits on other text. Every row is
+        read again only at copy; this reads two."""
+        selection = self._selection
+        if selection is None:
+            return
+        for y in {selection.lo, selection.hi}:
+            if self.backend.row_texts(y, y)[0] != selection.rows.get(y):
+                self._clear_selection(SELECT_MOVED)
+                return
+
+    def _copy(self) -> None:
+        """`y` or Enter: send the selected lines to the operator's clipboard, and keep the selection. Nothing is sent when
+        copying is off, when the rows are not the text they were selected with, or when the text is over the limit."""
+        selection, cfg = self._selection, self.app.cfg
+        if selection is None:
+            self._say_in_view(SELECT_NOTHING)
+            return
+        if not cfg["copy.osc52"]:
+            self._say_in_view(COPY_OFF)
+            self._toast(COPY_OFF, "copy")  # the note is clipped by a narrow status row; the toast is read whole
+            return
+        limit = cfg["copy.max_bytes"]
+        state, text = selection.read_for_copy(self.backend, cfg["copy.join_wrapped"], limit)
+        if state == "moved":
+            self._clear_selection(SELECT_MOVED)
+            return
+        if state == "over":
+            self._say_in_view(f"too large to copy (over {limit} bytes; copy.max_bytes is {limit})")
+            return
+        if not text.strip():
+            self._say_in_view(COPY_BLANK)  # an empty OSC 52 write can clear the clipboard: nothing is sent
+            return
+        self.app.copy_out(text)
+        lines = text.count("\n") + 1
+        self._toast(f"Sent {lines} {'line' if lines == 1 else 'lines'} to your terminal's clipboard.", "copy")
+        self._scroll_notice = None
+        self.refresh_status()
+
+    def _scroll_pointer(self, event: Canvas.MouseReport) -> None:
+        """The pointer in the view, with the left button: a drag from one row to another selects the rows it covers, in
+        place of any selection, and releasing copies them. A press and release on one row does nothing. Every left-button
+        release ends the drag, but only an unshifted one copies; motion extends a drag only while the left button is
+        held."""
+        if event.action == G.MOUSE_ACTION_RELEASE and event.button == G.MOUSE_BUTTON_LEFT:
+            dragged, self._drag_from, self._dragged = self._dragged, None, False
+            if dragged and not event.shift and self._selection is not None:
+                self._copy()
+            return
+        if event.shift:
+            return  # the operator's own terminal's, as ever
+        row = self.backend.scrollback_position().offset + event.y
+        if event.action == G.MOUSE_ACTION_PRESS and event.button == G.MOUSE_BUTTON_LEFT:
+            self._drag_from, self._dragged = row, False
+        elif self._drag_from is None:
+            return
+        elif event.action == G.MOUSE_ACTION_MOTION and event.button == G.MOUSE_BUTTON_LEFT:
+            if not self._dragged:
+                if row != self._drag_from:
+                    self._dragged = True
+                    self._begin_selection(self._drag_from, row)
+            elif self._selection is not None and self._selection.cursor != row:
+                self._move_selection(row - self._selection.cursor)
+
     def _say_in_view(self, note: str) -> None:
         self._scroll_notice = note
         self.refresh_status()
@@ -2654,6 +2816,10 @@ class TerminalScreen(Screen):
                 self.close_scroll_view()
             elif move == "search":
                 self.do_search()
+            elif move == "select":
+                self._toggle_selection()
+            elif move == "copy":
+                self._copy()
             else:
                 self._scroll_by(-1 if move == "up" else 1, pages=True)
             return
@@ -2713,8 +2879,10 @@ class TerminalScreen(Screen):
     def _scroll_keys_target(self) -> KeysTarget:
         """The scroll view's own keys as hints, each a click, so a touch screen can scroll too."""
         click = SCROLL_HINT
+        select = Hint("y", "Copy", click + "copy") if self._selection is not None else Hint("v", "Select",
+                                                                                          click + "select")
         return KeysTarget("scroll", (Hint("PgUp", "Older", click + "up"), Hint("PgDn", "Newer", click + "down"),
-                                     Hint("/", "Search", click + "search"), Hint("Esc", "Live", click + "done")),
+                                     Hint("/", "Search", click + "search"), select, Hint("Esc", "Live", click + "done")),
                           self._scroll_note())
 
     def _pan_keys_target(self) -> KeysTarget:

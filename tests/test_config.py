@@ -247,6 +247,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "keys.leader_map.end", "keys.leader_map.event_log", "keys.leader_map.full_view", "keys.leader_map.keys",
         "keys.leader_map.pan", "keys.leader_map.quit", "motion.level", "mouse.canvas_clicks", "mouse.enabled",
         "mouse.tooltips", "view.pan_step", "scroll.wheel_lines", "scroll.match_style", "scroll.current_match_style",
+        "scroll.selection_style", "copy.osc52", "copy.max_bytes", "copy.join_wrapped",
         "gates.hostkey_tick", "glyphs.set", "gates.recording", "gates.recording_bar_s",
         "input.focus_reports", "input.guard",
         "keys.leader", "keys.leader_map.answer", "keys.leader_map.auto_size", "keys.leader_map.detach",
@@ -324,6 +325,34 @@ def test_the_search_styles_default_to_attributes_and_a_string_rich_cannot_parse_
         for refused in ("sparkly", "bold on"):
             with pytest.raises(config.ConfigError, match=key):
                 config.load(config_file=Path("/nonexistent"), environ={}, overrides={**base, key: refused})
+
+
+def test_the_selection_style_defaults_to_reverse_and_a_string_rich_cannot_parse_is_refused_naming_the_key() -> None:
+    """`scroll.selection_style` is the Rich style string the scroll view marks the selected lines with: reverse unless
+    set (an attribute, so it reads on every theme). A string Rich cannot parse is refused at load, naming the key."""
+    base = {"size.auto_request": "true"}
+    assert config.load(config_file=Path("/nonexistent"), environ={}, overrides=base)["scroll.selection_style"] == "reverse"
+    chosen = config.load(config_file=Path("/nonexistent"), environ={"TSB_TUI_SCROLL_SELECTION_STYLE": "bold underline"},
+                         overrides=base)
+    assert chosen["scroll.selection_style"] == "bold underline"
+    for refused in ("sparkly", "bold on"):
+        with pytest.raises(config.ConfigError, match="scroll.selection_style"):
+            config.load(config_file=Path("/nonexistent"), environ={},
+                        overrides={**base, "scroll.selection_style": refused})
+
+
+def test_the_copy_knobs_default_to_on_100000_bytes_and_joined_and_a_limit_below_one_is_refused_naming_the_key() -> None:
+    """`copy.osc52` (the clipboard write) and `copy.join_wrapped` are on unless set, `copy.max_bytes` is 100000 bytes of
+    text, and a limit that would refuse every copy (0, or less) is refused at load, naming the key."""
+    base = {"size.auto_request": "true"}
+    loaded = config.load(config_file=Path("/nonexistent"), environ={}, overrides=base)
+    assert loaded["copy.osc52"] is True and loaded["copy.join_wrapped"] is True and loaded["copy.max_bytes"] == 100000
+    environ = {"TSB_TUI_COPY_OSC52": "false", "TSB_TUI_COPY_JOIN_WRAPPED": "false", "TSB_TUI_COPY_MAX_BYTES": "4096"}
+    chosen = config.load(config_file=Path("/nonexistent"), environ=environ, overrides=base)
+    assert chosen["copy.osc52"] is False and chosen["copy.join_wrapped"] is False and chosen["copy.max_bytes"] == 4096
+    for refused in ("0", "-1"):
+        with pytest.raises(config.ConfigError, match="copy.max_bytes"):
+            config.load(config_file=Path("/nonexistent"), environ={}, overrides={**base, "copy.max_bytes": refused})
 
 
 # -- the REST timeout knob --

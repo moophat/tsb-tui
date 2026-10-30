@@ -60,12 +60,17 @@ FLEET_VIEW_KEYS = (
 PAN_KEYS = (("← → ↑ ↓", "move the window over the grid by `view.pan_step`"), ("Esc  ⏎", "stop panning"))
 SCROLL_KEYS = (
     ("PgUp  PgDn", "move the view one window up or down the output this client holds"),
-    ("↑ ↓", "move it one row"),
+    ("↑ ↓", "move it one row (with a selection, they and PgUp PgDn move its loose end, and the view follows)"),
     ("/", ("ask for text to find in the output this client holds, Enter to find the nearest older match from the top "
            "row on view (a literal string; a capital letter makes it case-sensitive), Esc to cancel")),
     ("n  N", "the next older, the next newer match; a match broken across a wrapped row is not found"),
+    ("v", ("start selecting whole lines at the top row on view (at the current match when one is shown); again to take "
+           "the selection off")),
+    ("y  ⏎", ("copy the selected lines to your terminal's clipboard (one OSC 52 write; the selection stays), "
+              "`copy.osc52`")),
     ("wheel", "move it `scroll.wheel_lines` rows; a wheel up opens it when the window shows the grid from its top"),
-    ("Esc", "back to the live screen; any other key is dropped; no typed key, paste, mouse or focus report reaches the session meanwhile"),
+    ("drag", "with the mouse on, select the lines it covers and copy them on release; Shift keeps your terminal's own"),
+    ("Esc", "clear the selection, then back to the live screen; any other key is dropped; no typed key, paste, mouse or focus report reaches the session meanwhile"),
 )
 DIALOG_SCOPES = {A.SCOPE_WHO: "In Who's here", A.SCOPE_SIZE: "In Size",
                   A.SCOPE_THEME: "In Theme picker"}

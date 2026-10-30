@@ -120,6 +120,9 @@ SCROLL_VIEWPORT_BOTTOM = 1
 SCROLL_VIEWPORT_DELTA = 2
 SCROLL_VIEWPORT_ROW = 3
 
+# ---- Row data (screen.h:264 GhosttyRowData) -----------------------------------------------------
+ROW_DATA_WRAP = 1  # the row is soft-wrapped into the next row
+
 # ---- Point tag (point.h:49 GhosttyPointTag) --------------------------------------------------
 POINT_ACTIVE = 0
 POINT_VIEWPORT = 1
@@ -777,6 +780,23 @@ class GhosttyLib:
             ctypes.POINTER(GhosttyPointCoordinate),
         ]
         L.ghostty_tracked_grid_ref_point.restype = ctypes.c_int
+        # grid_ref.h:124
+        L.ghostty_grid_ref_cell.argtypes = [ctypes.POINTER(GhosttyGridRef), ctypes.POINTER(ctypes.c_uint64)]
+        L.ghostty_grid_ref_cell.restype = ctypes.c_int
+        # grid_ref.h:137
+        L.ghostty_grid_ref_row.argtypes = [ctypes.POINTER(GhosttyGridRef), ctypes.POINTER(ctypes.c_uint64)]
+        L.ghostty_grid_ref_row.restype = ctypes.c_int
+        # grid_ref.h:162
+        L.ghostty_grid_ref_graphemes.argtypes = [
+            ctypes.POINTER(GhosttyGridRef),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.c_size_t,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        L.ghostty_grid_ref_graphemes.restype = ctypes.c_int
+        # screen.h:383. `row` is the packed GhosttyRow value.
+        L.ghostty_row_get.argtypes = [ctypes.c_uint64, ctypes.c_int, ctypes.c_void_p]
+        L.ghostty_row_get.restype = ctypes.c_int
         # render.h:601
         L.ghostty_render_state_new.argtypes = [
             ctypes.c_void_p,
@@ -1067,6 +1087,10 @@ _FUNCTION_NAMES: tuple[str, ...] = (
     "ghostty_tracked_grid_ref_free",
     "ghostty_tracked_grid_ref_has_value",
     "ghostty_tracked_grid_ref_point",
+    "ghostty_grid_ref_cell",
+    "ghostty_grid_ref_row",
+    "ghostty_grid_ref_graphemes",
+    "ghostty_row_get",
     "ghostty_render_state_new",
     "ghostty_render_state_free",
     "ghostty_render_state_update",

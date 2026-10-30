@@ -377,6 +377,14 @@ class TsbTuiApp(App):
             text, title, severity, float(self.cfg["toasts.seconds"]), markup=False))
         self._refresh_notifications()
 
+    # -- the operator's clipboard --
+
+    def copy_out(self, text: str) -> None:
+        """Write `text` to the outer terminal as one OSC 52 clipboard write: the only place this TUI writes to the
+        operator's clipboard. Only the operator's own key or drag calls it; nothing a session sends does, and the
+        engine's clipboard effects stay uninstalled. The terminal does not say whether it took the write."""
+        self.copy_to_clipboard(text)
+
     # -- operator alerts (DT14) --
 
     def start_alerts(self) -> None:

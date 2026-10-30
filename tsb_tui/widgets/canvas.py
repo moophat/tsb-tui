@@ -207,6 +207,9 @@ class Canvas(Widget):
         self._highlights: Sequence[Highlight] = ()
         self._highlight_rows: list[int] = []
         self._highlight_generation = 0
+        # The selected rows (first, last, style) of the engine's row space: whole rows, kept whatever the engine
+        # generation, since the screen decides when a selection no longer holds.
+        self._selection: tuple[int, int, Style] | None = None
         self._overlay: dict[int, list[tuple[int, int, Style]]] = {}
         # Counters the tests (and phase 10's benchmark) read: how many paints, which rows the last
         # paint rebuilt.
@@ -428,7 +431,18 @@ class Canvas(Widget):
             self._highlights = ()
             self._highlight_rows = []
             self._overlay = {}
+            self._pending = self._pending or self._selection is not None  # its cells are laid again at the next paint
             self.refresh()
+
+    def set_selection(self, first: int, last: int, style: Style) -> None:
+        """Mark the whole rows `first`..`last` of the engine's row space in `style`; the next paint puts it on them."""
+        self._selection = (first, last, style)
+        self._pending = True
+
+    def clear_selection(self) -> None:
+        if self._selection is not None:
+            self._selection = None
+            self._pending = True
 
     def _rebuild_overlay(self, origin: int) -> bool:
         """The marks on view as cells of this canvas's rows, given the engine row the viewport starts at. True when
@@ -436,6 +450,10 @@ class Canvas(Widget):
         if self._highlights and self._highlight_generation != self._backend.generation:
             self._highlights, self._highlight_rows = (), []
         overlay: dict[int, list[tuple[int, int, Style]]] = {}
+        if self._selection is not None:
+            first, last, style = self._selection
+            for grid_y in range(max(first - origin, 0), min(last - origin, len(self._rows) - 1) + 1):
+                overlay[grid_y] = [(0, self._backend.cols, style)]  # laid first, so a match's style goes over it
         if self._highlights:
             index = bisect_left(self._highlight_rows, origin)
             while index < len(self._highlights) and self._highlights[index].row < origin + len(self._rows):
@@ -484,7 +502,7 @@ class Canvas(Widget):
             self.lock_wait_ms += (time.perf_counter() - waiting) * 1000.0
             rows = backend.dirty_rows()
             cursor = backend.cursor()
-            origin = backend.scrollback_position().offset if self._highlights else 0
+            origin = backend.scrollback_position().offset if self._highlights or self._selection else 0
             backend.mark_clean()
         self._pending = False
         self.paint_count += 1
