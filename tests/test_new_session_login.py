@@ -19,6 +19,7 @@ import threading
 from stub_server import SlowChunkedApp, StubServer
 from textual.widgets import Button, Input, RadioButton, RadioSet, Static
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsbc import _serve
 from tsbc._serve import ServeApp
@@ -51,6 +52,22 @@ async def _open_dialog(app, pilot, wait_until, *, target: str | None, target_typ
     await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen) and app.screen.is_mounted
                      and bool(app.screen.query("#create-button")), "the New session dialog")
     return app.screen
+
+
+async def _gate_up(app, pilot, wait_until) -> None:
+    """A create that succeeds ends in the attach gate, which is pushed after the dialog goes and focuses its own widget
+    in `on_mount`. A test that ends before that has the app torn down mid-mount (issue 469), so a test that sees a
+    create succeed ends here: the gate is the active screen and its focus target (the host key tick when one is
+    shown, Attach otherwise) exists and holds the focus."""
+
+    def ready() -> bool:
+        gate = app.screen
+        if not (isinstance(gate, AttachConfirmScreen) and gate.is_mounted):
+            return False
+        target = gate.query("#hostkey-ack") or gate.query("#attach-button")
+        return bool(target) and app.focused is target.first()
+
+    await wait_until(pilot, ready, "the attach gate to be up and focused")
 
 
 def _type_login(dialog: NewSessionScreen, user: str = USER, password: str = PASSWORD) -> None:
@@ -99,7 +116,7 @@ def test_typed_login_is_sent_with_connection_new_and_cleared_after(serve, wait_u
             assert body["target_id"] == "normal" and body["connection"] == "new"
             assert body["login"] == {"user": USER, "auth": {"kind": "password", "password": PASSWORD}}, (
                 "no recording_acknowledged is sent while nothing is recorded: the operator was shown no warning")
-            await wait_until(pilot, lambda: app.screen is not dialog, "the dialog to go")
+            await _gate_up(app, pilot, wait_until)
             assert user_input.value == "" and password_input.value == ""
             for holder in (dialog, user_input, password_input):
                 assert not _attribute_holds(holder, PASSWORD), f"{type(holder).__name__} still holds the password"
@@ -203,7 +220,7 @@ def test_no_resolving_credential_focuses_the_username(serve, wait_until) -> None
             dialog.query_one("#create-button", Button).press()
             await wait_until(pilot, lambda: len(_creates(serve_app)) == 2, "the second create")
             assert _creates(serve_app)[1]["login"]["user"] == USER and _creates(serve_app)[1]["connection"] == "new"
-            await wait_until(pilot, lambda: app.screen is not dialog, "the dialog to go")
+            await _gate_up(app, pilot, wait_until)
 
     asyncio.run(check())
 
@@ -246,7 +263,7 @@ def test_the_recorded_login_warning_shows_when_me_says_so(serve, wait_until) -> 
             dialog.query_one("#create-button", Button).press()
             await wait_until(pilot, lambda: bool(_creates(serve_app)), "the create")
             assert _creates(serve_app)[-1]["login"]["recording_acknowledged"] is True
-            await wait_until(pilot, lambda: app.screen is not dialog, "the dialog to go")
+            await _gate_up(app, pilot, wait_until)
 
         quiet_app, quiet_url = serve(ServeApp(login_input=False))
         app = TsbTuiApp(quiet_url)
@@ -261,6 +278,7 @@ def test_the_recorded_login_warning_shows_when_me_says_so(serve, wait_until) -> 
             dialog.query_one("#create-button", Button).press()
             await wait_until(pilot, lambda: bool(_creates(quiet_app)), "the create")
             assert "recording_acknowledged" not in _creates(quiet_app)[-1]["login"]
+            await _gate_up(app, pilot, wait_until)
 
     asyncio.run(check())
 
@@ -310,6 +328,7 @@ def test_create_can_be_clicked_on_a_24_row_window_with_the_login_and_its_warning
             await pilot.click("#create-button")
             await wait_until(pilot, lambda: bool(_creates(serve_app)), "the create")
             assert _creates(serve_app)[-1]["login"]["user"] == USER
+            await _gate_up(app, pilot, wait_until)
 
     asyncio.run(check())
 
@@ -386,7 +405,7 @@ def test_the_create_after_a_failed_target_read_carries_the_typed_login(serve, wa
             body = _creates(serve_app)[-1]
             assert body["connection"] == "new"
             assert body.get("login") == {"user": USER, "auth": {"kind": "password", "password": PASSWORD}}, body
-            await wait_until(pilot, lambda: app.screen is not dialog, "the dialog to go")
+            await _gate_up(app, pilot, wait_until)
             assert not _attribute_holds(dialog, PASSWORD)
 
     asyncio.run(check())
