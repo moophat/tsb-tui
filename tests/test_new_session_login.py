@@ -23,6 +23,7 @@ from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsbc import _serve
 from tsbc._serve import ServeApp
+from vault_support import VaultServe
 from workspace_support import fixture_login
 
 USER = "fixture-account"
@@ -39,6 +40,18 @@ def _creates(serve_app) -> list[dict]:
 
 def _me_reads(serve_app) -> int:
     return len([1 for method, path, _body in serve_app.requests if (method, path) == ("GET", "/auth/me")])
+
+
+ACTIVITY = ("POST", "/auth/activity")
+
+
+def _core_calls(requests) -> list[tuple[str, str, object]]:
+    """The requests a "nothing reached the core" check counts: everything the TUI sends the core except the screen
+    lock's user-activity signal (phase 12 § G). That signal is fired by user input, at most once per served interval,
+    and is not part of any operation these tests are about, so a keypress inside a counted window can add it by timing.
+    A create, a target read, a `/auth/me`: all still count, so the check still fails when the operation under test is
+    sent. Takes the request log (`serve_app.requests`) or a slice of it, so a test can count only its own window."""
+    return [r for r in requests if (r[0], r[1]) != ACTIVITY]
 
 
 def _text(widget: Static) -> str:
@@ -159,15 +172,46 @@ def test_half_a_login_is_refused_before_any_call(serve, wait_until) -> None:
         async with app.run_test(size=(120, 40)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
             await wait_until(pilot, lambda: _me_reads(serve_app) == 1, "the read of /auth/me")
-            before = len(serve_app.requests)
+            before = len(_core_calls(serve_app.requests))
             for user, password in ((USER, ""), ("", PASSWORD)):
                 _type_login(dialog, user, password)
                 dialog.query_one("#create-button", Button).press()
                 await pilot.pause(0.05)
                 assert _text(dialog.query_one("#new-session-error", Static)) == HALF_LOGIN
                 assert not dialog.query_one("#create-button", Button).disabled
-                assert len(serve_app.requests) == before, "a half login reached the core"
+                assert len(_core_calls(serve_app.requests)) == before, "a half login reached the core"
             assert _creates(serve_app) == [] and isinstance(app.screen, NewSessionScreen)
+
+    asyncio.run(check())
+
+
+def test_the_activity_signal_in_a_counted_window_is_not_what_nothing_reached_the_core_counts(
+    serve, wait_until
+) -> None:
+    """The flake (#497) and the #498 Qodo finding: the screen lock's user-activity signal is fired by user input, so a
+    keypress inside a counted window can add it by timing. Here the served `activity_interval` is 0, so every keypress
+    sends one. The baseline is the raw index into the request log taken right before the press, so the window is only
+    what the press sends: over that window the activity signal must arrive (a keypress fired it), the "nothing reached
+    the core" check (`_core_calls` of the window) is empty because the signal is not an operation under test, and a
+    create inside the same window makes that check non-empty. A baseline taken from the filtered count, reading
+    cumulative history, would let an activity request from before the press satisfy the window."""
+
+    async def check() -> None:
+        serve_app, url = serve(VaultServe(locks={"activity_interval": 0, "screen_lock_after": 100000}))
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
+            start = len(serve_app.requests)       # the raw index right before the press: the window is what it sends
+            await pilot.press("tab")              # a real keypress: the activity signal fires on it
+            await wait_until(pilot, lambda: any((m, p) == ACTIVITY for m, p, _b in serve_app.requests[start:]),
+                             "the activity signal inside the window")
+            window = serve_app.requests[start:]
+            assert any((m, p) == ACTIVITY for m, p, _b in window), "the press sent no activity signal inside the window"
+            assert _core_calls(window) == [], "something other than the activity signal reached the core in the window"
+            _type_login(dialog)
+            dialog.query_one("#create-button", Button).press()
+            await wait_until(pilot, lambda: bool(_creates(serve_app)), "the create")
+            assert _core_calls(serve_app.requests[start:]) != [], "a create inside the window was not counted"
 
     asyncio.run(check())
 
