@@ -38,6 +38,7 @@ from ._transport import HttpError
 from .config import ConfigError
 from .model.alerts import Alert, AlertModel, AlertStreamer
 from .model.events import Event
+from .screen_lock import INPUT_EVENTS, ScreenLock
 from .term import AbiError, GhosttyLib, LibraryError, load
 from .theme import PALETTE_OUTER, TermPalette, build_theme, role_colours
 
@@ -242,11 +243,41 @@ class TsbTuiApp(App):
         # `_login_gen` so a sign-out that is still running never discards a login made after it began.
         self._sign_out_task: asyncio.Task[SignedOut] | None = None
         self._login_gen = 0
+        # The screen lock and the activity signal (phase 12 § F, § G): this instance's own, from the core's settings.
+        # `idle_clock` and `screen_lock_poll` are what a test replaces to move time without waiting for it.
+        self.idle_clock: Callable[[], float] = time.monotonic
+        self.screen_lock_poll = 0.5
+        self.screen_lock = ScreenLock(self)
 
     def get_theme_variable_defaults(self) -> dict[str, str]:
         """TT30: Textual's own defaults, updated with the role variables of the resolved config, so
         a stylesheet naming `$frame` parses before the TSB theme is active in `on_mount`."""
         return {**super().get_theme_variable_defaults(), **self._theme_variables}
+
+    async def on_event(self, event: events.Event) -> None:
+        """Every input from the user (a key, a paste, a click, a wheel turn) is the idle time starting again, and the
+        activity signal's trigger (`ScreenLock.note_input`)."""
+        if isinstance(event, INPUT_EVENTS):
+            self.screen_lock.note_input()
+        await super().on_event(event)
+
+    def push_screen(self, screen, callback=None, wait_for_dismiss=False, *, mode=None):  # type: ignore[no-untyped-def,override]
+        """While the lock screen is up a screen pushed by anything running in the background waits for the unlock: it
+        could otherwise cover the lock screen with session content."""
+        from .screens.lock import LockScreen
+
+        if self.screen_lock.locked and not isinstance(screen, LockScreen):
+            self.screen_lock.hold(screen, callback)
+            return None
+        return super().push_screen(screen, callback, wait_for_dismiss, mode=mode)
+
+    def pop_screen(self):  # type: ignore[no-untyped-def]
+        """Nothing under the lock screen takes it away: only the unlock does."""
+        if self.screen_lock.locked:
+            from textual.await_complete import AwaitComplete
+
+            return AwaitComplete.nothing()
+        return super().pop_screen()
 
     def tapped(self, session_id: str, kind: str, detail: Any = None) -> None:
         """Tell every tap that something changed for `session_id`. Runs on the UI thread, in the middle of
@@ -370,12 +401,19 @@ class TsbTuiApp(App):
         status row."""
         # Textual's `notify` only posts a message, so two toasts in a row could not see each other and the
         # cap would never bite: add to the collection here, as its own handler does.
+        if self.screen_lock.locked:
+            return      # nothing is drawn over the lock screen: a toast could carry a session's text
         live = [n for n in self._notifications if not n.has_expired]
         for old in live[: max(len(live) - self.cfg["toasts.max"] + 1, 0)]:
             self._unnotify(old, refresh=False)
         self._notifications.add(Notification(
             text, title, severity, float(self.cfg["toasts.seconds"]), markup=False))
         self._refresh_notifications()
+
+    def notify(self, message: str, **kwargs: Any) -> None:
+        if self.screen_lock.locked:
+            return      # as `toast`: nothing is drawn over the lock screen
+        super().notify(message, **kwargs)
 
     # -- the operator's clipboard --
 
@@ -604,6 +642,7 @@ class TsbTuiApp(App):
         if isinstance(self.screen, LoginScreen):
             return
         self.stop_alerts()
+        self.screen_lock.clear()      # the login ended: no lock, no settings, nothing held
         # Every screen above the base is removed first: `switch_screen` replaces only the top of the stack, so
         # a dialog on top (the end dialog) leaves the workspace mounted under the login page, and a mounted
         # TerminalScreen is what this app and drive count as logged in (`workspace()` scans the whole stack).

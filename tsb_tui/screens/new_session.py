@@ -17,6 +17,7 @@ from typing import Any, ClassVar
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.content import Content
 from textual.screen import Screen
 from textual.widgets import Button, Input, RadioButton, RadioSet, Select, Static
 from tsb_contract_client import ApiError
@@ -31,6 +32,16 @@ TERM = "xterm-256color"
 CONNECTION_CHOICE_REQUIRED = "connection_choice_required"
 # error.schema.json: no stored login resolves for this principal and target (Storage §10.1a); also app.py's.
 NO_RESOLVING_CREDENTIAL = "no_resolving_credential"
+# error.schema.json, from the vault release: the credential needs this login's unlock (ask the passphrase and repeat once), or
+# a user-unlocked org credential's storing administrator holds none (say so; the operator's passphrase cannot help).
+VAULT_LOCKED = "vault_locked"
+ORG_CREDENTIAL_LOCKED = "org_credential_locked"
+# error.schema.json, from the vault release: two or more stored credentials resolve, and the core picks none (Contract §12).
+# The body's `candidates` are each a credential_ref with its credential_layer; the operator's pick is sent back with the create.
+CREDENTIAL_CHOICE_REQUIRED = "credential_choice_required"
+LAYER_WORDS = {"personal": "yours", "org": "granted"}
+CHOICE_TITLE = "More than one saved login fits this target. Choose the one to connect with:"
+ORG_LOCKED_NOTE = "The administrator who stored it must unlock; your passphrase cannot help."
 
 # A telnet connection carries one session (DEFAULT 22): the worker refuses a reuse, so the dialog never asks one.
 TELNET = "telnet"
@@ -59,6 +70,25 @@ CREATE_SIZE_OFF = ("auto size is off, so there is no size to create this session
                    "(terminal-size §4); turn auto size on (--set size.auto_request=true, or ^\\ R) to create")
 
 
+def credential_candidates(detail: dict) -> list[tuple[str, str]] | None:
+    """The `candidates` of a `credential_choice_required` body as (reference, layer) pairs, in the order the core gave
+    them, or None when the list is missing or is not what error.schema.json allows (two to 64 entries, each an object with a
+    text `credential_ref` and a `credential_layer` this surface can name). Nothing is repaired or dropped: a list that cannot
+    be offered whole is offered not at all, because the choice is the operator's and a partial list is a guess."""
+    raw = detail.get("candidates")
+    if not isinstance(raw, list) or not 2 <= len(raw) <= 64:
+        return None
+    found: list[tuple[str, str]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            return None
+        ref, layer = entry.get("credential_ref"), entry.get("credential_layer")
+        if not isinstance(ref, str) or not ref or layer not in LAYER_WORDS:
+            return None
+        found.append((ref, layer))
+    return found
+
+
 def create_size(app: Any) -> tuple[int, int] | None:
     """The creator's size (terminal-size §4: session open carries it; size-control step 15), which is the
     canvas the window gives: the window minus the rail and the status row, as an explicit request asks for.
@@ -85,6 +115,15 @@ class NewSessionScreen(Screen):
         # `GET /auth/me`'s `recording.login_input`, read when the dialog opens: whether a login sent now would be
         # recorded. Absent, or unread (an error), is false; the core's own 409 is the backstop.
         self._recording_login = False
+        # The arguments of the create last sent, and whether this attempt already asked the passphrase: a create answered
+        # `vault_locked` unlocks and repeats once, never more (phase 12 § B). A create that carried a typed login is never
+        # kept (the dialog holds no copy of it, and the core never answers it `vault_locked`: a login resolves no credential).
+        # The credential choice the operator picked is part of what is repeated; the candidates on offer and the counter
+        # that keeps each offering's button ids its own (a removed button's id is free only once its removal is done).
+        self._last_create: tuple[str, str, str | None, tuple[str, str] | None] | None = None
+        self._unlock_tried = False
+        self._candidates: list[tuple[str, str]] = []
+        self._offers = 0
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-session-panel"):
@@ -101,6 +140,10 @@ class NewSessionScreen(Screen):
             # none preselected (error.schema.json: the broker never picks one itself).
             yield Select[str]([], id="connection-picker",
                              prompt="choose a connection to reuse", disabled=True)
+            # Filled on 409 credential_choice_required only (_offer_credential_choice): the core's candidates as plain
+            # text, none pressed, and a press is the pick.
+            yield Static(CHOICE_TITLE, id="credential-choice-title", markup=False)
+            yield RadioSet(id="credential-choice")
             # Shown for an ssh target only (`_show_type`): a telnet login is typed in the session.
             with Vertical(id="login-fields"):
                 yield Static(RECORDED_LOGIN_WARNING, id="login-recording-warning", markup=False)
@@ -113,11 +156,13 @@ class NewSessionScreen(Screen):
             yield Button("Cancel", id="cancel-button")
 
     def on_mount(self) -> None:
+        self._hide_credential_choice()
         self.query_one("#target-id", Input).focus()
         self._show_type()
         self.app.call_api(self.app.client.me, on_done=self._on_me, on_error=self._on_me_error)
 
     def _on_me(self, me: dict) -> None:
+        self.app.screen_lock.apply(me.get("locks"))      # the lock settings are re-read whenever the TUI reads /auth/me
         if self.app.screen is not self:
             return
         self._recording_login = (me.get("recording") or {}).get("login_input") is True
@@ -168,6 +213,9 @@ class NewSessionScreen(Screen):
         if event.radio_set.id == "connection-choice":
             reuse = event.pressed.id == "conn-reuse"
             self.query_one("#connection-id", Input).disabled = not reuse
+        elif event.radio_set.id == "credential-choice":
+            event.stop()
+            self._pick_credential(event.radio_set.pressed_index)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "create-button":
@@ -189,7 +237,9 @@ class NewSessionScreen(Screen):
             error.update(HALF_LOGIN)
             return
         error.update("")
+        self._hide_credential_choice()
         self._pending_target_id = target_id
+        self._unlock_tried = False
         self.query_one("#create-button", Button).disabled = True
         if target_id not in self._types:
             self._read_target(target_id)
@@ -280,15 +330,17 @@ class NewSessionScreen(Screen):
     def _create_size(self) -> tuple[int, int] | None:
         return create_size(self.app)
 
-    def _create(self, target_id: str, connection: str, connection_id: str | None, login: dict | None = None) -> None:
+    def _create(self, target_id: str, connection: str, connection_id: str | None, login: dict | None = None,
+                credential: tuple[str, str] | None = None) -> None:
         size = self._create_size()
         if size is None:
             self.query_one("#new-session-error", Static).update(CREATE_SIZE_OFF)
             self.query_one("#create-button", Button).disabled = False
             return
         cols, rows = size
+        self._last_create = (target_id, connection, connection_id, credential) if login is None else None
         self.app.call_api(
-            self.app.client.create_session, target_id, connection, TERM, cols, rows, connection_id, login,
+            self.app.client.create_session, target_id, connection, TERM, cols, rows, connection_id, login, credential,
             on_done=self._on_create_done, on_error=self._on_create_error,
         )
 
@@ -324,9 +376,75 @@ class NewSessionScreen(Screen):
         if isinstance(exc, ApiError) and exc.code == CONNECTION_CHOICE_REQUIRED:
             self._offer_connection_choice()
             return
+        if (isinstance(exc, ApiError) and exc.code == CREDENTIAL_CHOICE_REQUIRED
+                and self._offer_credential_choice(exc)):
+            return
+        if isinstance(exc, ApiError) and exc.code == VAULT_LOCKED and not self._unlock_tried:
+            self._unlock_tried = True
+            self.query_one("#create-button", Button).disabled = True
+            self.app.run_worker(self._unlock_then_repeat(), exclusive=False)
+            return
+        if isinstance(exc, ApiError) and exc.code == ORG_CREDENTIAL_LOCKED:
+            self.query_one("#new-session-error", Static).update(f"{exc.message}. {ORG_LOCKED_NOTE}")
+            return
         if isinstance(exc, ApiError):
             self.query_one("#new-session-error", Static).update(exc.message)
         self.app.notify_api_error(exc)
+
+    async def _unlock_then_repeat(self) -> None:
+        """The core answered the create `vault_locked`: ask the passphrase, unlock in untrusted mode and repeat the
+        create once with what was sent before (phase 12 § B)."""
+        from ..vault_flow import unlock
+
+        result = await unlock(self.app)
+        if not self.is_attached:
+            return
+        if result.status == "unlocked" and self._last_create is not None:
+            target_id, connection, connection_id, credential = self._last_create
+            self._create(target_id, connection, connection_id, None, credential)
+            return
+        self.query_one("#create-button", Button).disabled = False
+        self.query_one("#new-session-error", Static).update(
+            "The vault was not unlocked, so no session was created." if result.status == "cancelled"
+            else result.message)
+
+    def _hide_credential_choice(self) -> None:
+        self._candidates = []
+        for widget in self.query("#credential-choice-title, #credential-choice"):
+            widget.display = False
+
+    def _offer_credential_choice(self, exc: ApiError) -> bool:
+        """The core found two or more stored logins for this target and picked none (Contract §12): show them as text,
+        "yours" for the principal's own and "granted" for an org credential, press none for the operator and send nothing
+        until one is pressed. False when there is nothing to offer (a list that is missing or malformed, or a create
+        that carried a typed login, which the core never answers this way): the caller then shows the core's own message
+        as it does for any refusal. The list is shown in the order the core gave it."""
+        candidates = credential_candidates(exc.detail)
+        if candidates is None or self._last_create is None:
+            return False
+        self._candidates = candidates
+        self._offers += 1
+        choice = self.query_one("#credential-choice", RadioSet)
+        choice.remove_children()
+        choice.mount(*(
+            RadioButton(Content(f"{as_text(ref)} · {LAYER_WORDS[layer]}"), id=f"credential-{self._offers}-{index}")
+            for index, (ref, layer) in enumerate(candidates)))
+        self.query_one("#credential-choice-title", Static).display = True
+        choice.display = True
+        choice.focus()
+        return True
+
+    def _pick_credential(self, index: int | None) -> None:
+        """The operator pressed one candidate: repeat the create as it was, with that credential_ref and credential_layer."""
+        if index is None or not 0 <= index < len(self._candidates) or self._last_create is None:
+            return
+        target_id, connection, connection_id, _ = self._last_create
+        choice = self._candidates[index]
+        self._hide_credential_choice()
+        self.query_one("#new-session-error", Static).update("")
+        self.query_one("#create-button", Button).disabled = True
+        self._unlock_tried = False
+        self._create(target_id, connection, connection_id, None, choice)
 
     def _offer_connection_choice(self) -> None:
         """error.schema.json's own remedy for connection_choice_required: `GET /sessions` lists

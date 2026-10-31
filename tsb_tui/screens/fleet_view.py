@@ -66,6 +66,9 @@ CMD_OPEN_TARGET = "open_target"  # `⏎` on the Targets tab: New session on the 
 CMD_QUERY = "query"  # the Targets query was entered: `arg` is its text
 CMD_MORE_TARGETS = "more_targets"  # the selection reached the last row loaded: the next page, if there is one
 CMD_TAB_CHANGED = "tab_changed"  # the tab shown changed: `arg` is its name
+CMD_SAVE_LOGIN = "save_login"  # `l` on the Targets tab: save a login for the marked targets, else the selected one
+CMD_MARK = "mark"  # `space` on the Targets tab: mark or unmark the selected target
+CMD_MAP = "map_credential"  # `p` on the Targets tab: map one of my credentials to the marked targets, else the selected
 
 TAB_SESSIONS = "sessions"
 TAB_TARGETS = "targets"
@@ -228,8 +231,10 @@ def _target_columns(entries: Sequence[TargetEntry], width: int) -> list[tuple[st
     return _keep_columns(TARGET_COLUMNS, sizes, TARGET_DROP_ORDER, width)
 
 
-def _target_row(entry: TargetEntry, columns: list[tuple[str, int]], *, selected: bool, width: int) -> Line:
-    parts = [Part(SELECTED if selected else " ", "mark" if selected else "blank"), Part("  ", "blank")]
+def _target_row(entry: TargetEntry, columns: list[tuple[str, int]], *, selected: bool, width: int,
+                marked: bool = False) -> Line:
+    parts = [Part(SELECTED if selected else " ", "mark" if selected else "blank"),
+             Part("+ " if marked else "  ", "mark" if marked else "blank")]
     cells = _target_cells(entry)
     for index, (name, size) in enumerate(columns):
         if index:
@@ -335,7 +340,8 @@ def _joined(left: list[Part], right: list[Part], width: int) -> Line:
 
 def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str,
                      selected: tuple[str, str] | None, filter_text: str, editing: bool, show_ended: bool,
-                     group_by: str, details: bool, top: int, query_text: str = "") -> FleetLayout:
+                     group_by: str, details: bool, top: int, query_text: str = "",
+                     marked: frozenset[str] = frozenset()) -> FleetLayout:
     """The view's lines at `width` by `height`: the header (title, tabs and controls), then the body, which scrolls
     from line `top`; beside it the selected session's details when `details` is set and the view is wide enough."""
     head: list[Line] = []
@@ -370,8 +376,10 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
     row_at: dict[tuple[str, str], int] = {}
 
     if tab == TAB_TARGETS:
-        body.append(_text(f" {TARGETS_TITLE} · {model.targets_count}" if model.targets_count is not None
-                          else f" {TARGETS_TITLE}", "group", table_w))
+        title = f" {TARGETS_TITLE} · {model.targets_count}" if model.targets_count is not None else f" {TARGETS_TITLE}"
+        if marked:
+            title += f" · {len(marked)} marked"
+        body.append(_text(title, "group", table_w))
         if model.targets_note:
             body.append(_text("   " + model.targets_note, "warn", table_w))
         elif not model.targets:
@@ -390,7 +398,8 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                 key = (GROUP_TARGETS, entry.target_id)
                 row_at[key] = len(body)
                 rows.append(key)
-                body.append(partial(_target_row, entry, columns, selected=selected == key, width=table_w))
+                body.append(partial(_target_row, entry, columns, selected=selected == key, width=table_w,
+                                    marked=entry.target_id in marked))
     elif tab == TAB_ALERTS and model.alert_lines is not None:
         body.append(_text(" Active alerts · " + str(len(model.alert_lines)), "group", table_w))
         for text in model.alert_lines or ("No active alerts.",):
@@ -530,6 +539,8 @@ class FleetView(Widget):
         self._model = FleetViewModel((), (), config["sidebar.start_filter"], None, "")
         self.tab = TAB_SESSIONS
         self.selected: tuple[str, str] | None = None
+        # The targets marked with `space` on the Targets tab: the ones Save a login and Map act on (one batch call).
+        self.marked: set[str] = set()
         self.filter_text = ""
         self.query_text = ""  # the Targets tab's query as typed; `applied_query` is the one last entered
         self.applied_query = ""
@@ -602,7 +613,7 @@ class FleetView(Widget):
             visible, width=width, height=height, tab=self.tab, selected=self.selected,
             filter_text=self.filter_text, editing=self.editing, show_ended=self.show_ended,
             group_by=self._group_by, details=self.window_width >= self._details_from, top=self.scroll_top,
-            query_text=self.query_text)
+            query_text=self.query_text, marked=frozenset(self.marked))
 
     def _relayout(self) -> None:
         layout = self._build()
@@ -676,8 +687,28 @@ class FleetView(Widget):
         self.applied_query = ""
         self.editing = False
         self.selected = None
+        self.marked.clear()
         self.scroll_top = 0
         self._relayout()
+
+    def toggle_mark(self) -> None:
+        """Mark or unmark the selected target (Targets tab)."""
+        if self.tab == TAB_TARGETS and self.selected is not None:
+            self.marked ^= {self.selected[1]}
+            self._relayout()
+
+    def clear_marks(self) -> None:
+        self.marked.clear()
+        self._relayout()
+
+    def picked_targets(self) -> list[str]:
+        """The targets an action on the Targets tab concerns: every target marked (the ones in the rows loaded, in
+        the order listed, then the marks a query hid, sorted by id - `self.marked` is a set, so the order they were
+        marked is not kept), else the selected one."""
+        if not self.marked:
+            return [self.selected[1]] if self.tab == TAB_TARGETS and self.selected is not None else []
+        listed = [entry.target_id for entry in self._model.targets]
+        return [name for name in listed if name in self.marked] + sorted(self.marked.difference(listed))
 
     # -- text for a test and for the report --
 
@@ -800,6 +831,12 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_MODE))
         elif key == "e" and self.tab == TAB_SESSIONS:
             self.toggle_show_ended()
+        elif key == "space" and self.tab == TAB_TARGETS:
+            self.toggle_mark()
+        elif key == "l" and self.tab == TAB_TARGETS:
+            self.post_message(self.Command(CMD_SAVE_LOGIN))
+        elif key == "p" and self.tab == TAB_TARGETS:
+            self.post_message(self.Command(CMD_MAP))
         elif key == "enter" and self.tab == TAB_TARGETS and self.selected_session is not None:
             self.post_message(self.Command(CMD_OPEN_TARGET, self.selected_session))
         elif key == "enter" and sid is not None:
@@ -847,6 +884,7 @@ class FleetView(Widget):
         self._relayout()
 
 
-__all__ = ["CMD_ENDED", "CMD_MORE_TARGETS", "CMD_OPEN_TARGET", "CMD_QUERY", "CMD_TAB", "CMD_TAB_CHANGED",
+__all__ = ["CMD_ENDED", "CMD_MAP", "CMD_MARK", "CMD_MORE_TARGETS", "CMD_OPEN_TARGET", "CMD_QUERY", "CMD_SAVE_LOGIN", "CMD_TAB",
+           "CMD_TAB_CHANGED",
            "SEPARATOR", "FleetLayout", "FleetRow", "FleetView", "FleetViewModel", "TargetEntry", "fleet_view_lines",
            "visible_rows"]

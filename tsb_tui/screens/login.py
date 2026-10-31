@@ -64,6 +64,7 @@ class LoginScreen(Screen):
         # from ones GET /sessions lists for others (Contract §12: the choice is never guessed).
         self.app.username = principal["username"]
         self.app._login_gen += 1  # a login completed: a running sign-out checks this and leaves it alone
+        self.app.screen_lock.apply(principal.get("locks"))      # the core's resolved lock settings (screen-lock step 1)
         self.app.apply_saved_look(principal["username"])
         self.app.start_alerts()
         from .terminal import TerminalScreen

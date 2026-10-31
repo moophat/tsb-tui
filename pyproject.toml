@@ -12,6 +12,10 @@ description = "TSB tui — own manifest so this directory can leave by subtree s
 # "Install".
 dependencies = [
     "textual==8.2.8",
+    # The vault's untrusted-mode unlock (E4 phase 12): argon2id, and RFC 8265's OpaqueString profile for the passphrase's
+    # bytes. Each at an exact pin, the pins harness/requirements.txt carries; no other crypto library (import-lint).
+    "argon2-cffi==25.1.0",
+    "precis-i18n==1.1.2",
 ]
 
 [project.optional-dependencies]

@@ -139,9 +139,12 @@ from .chrome_dialogs import (
 )
 from .fleet_view import (
     CMD_ENDED,
+    CMD_MAP,
+    CMD_MARK,
     CMD_MORE_TARGETS,
     CMD_OPEN_TARGET,
     CMD_QUERY,
+    CMD_SAVE_LOGIN,
     CMD_TAB,
     CMD_TAB_CHANGED,
     TAB_ALERTS,
@@ -1172,6 +1175,10 @@ class TerminalScreen(Screen):
             self.run_worker(self.run_action_id("new_session"), exclusive=False)
         elif name == CMD_OPEN_TARGET:
             self._open_target(sid)
+        elif name == CMD_SAVE_LOGIN:
+            self._targets_to_vault(view, save=True)
+        elif name == CMD_MAP:
+            self._targets_to_vault(view, save=False)
         elif name == CMD_QUERY:
             self._run_query(arg or "")
         elif name == CMD_MORE_TARGETS:
@@ -1182,6 +1189,22 @@ class TerminalScreen(Screen):
             self.fleet.filter_mode = arg if arg in ("mine", "all") else (
                 "all" if self.fleet.filter_mode == "mine" else "mine")
             self._sync_fleet_widgets()
+
+    def _targets_to_vault(self, view: FleetView, *, save: bool) -> None:
+        """`l` and `p` on the Targets tab: Save a login for, or Map one of my credentials to, the targets marked with `space`
+        (else the selected one). The marks go once the screen reports it did something."""
+        from .credentials import MapScreen, SaveLoginScreen
+
+        picked = view.picked_targets()
+        if not picked:
+            self.app.notify("Select a target first.", title="not available", severity="warning", markup=False)
+            return
+
+        def done(finished: bool | None) -> None:
+            if finished:
+                view.clear_marks()
+
+        self.app.push_screen(SaveLoginScreen(picked) if save else MapScreen(targets=picked), done)
 
     # -- End session… (session-end-by-tsb step 1) --
 
@@ -1895,12 +1918,22 @@ class TerminalScreen(Screen):
         self._sync_fleet_widgets()
 
     def _show_end_dialog(self, slot: SessionSlot) -> None:
+        if self.app.screen_lock.locked:
+            # The lock refuses a pop, so the screens over the workspace cannot be cleared for the dialog now: it waits
+            # for the unlock and is shown after a re-check of the slot (it may have been closed, or left the front).
+            self.app.screen_lock.after_unlock(lambda: self._show_end_dialog_after_lock(slot))
+            return
         slot.ended_dialog_shown = True
         while self.app.screen is not self and len(self.app.screen_stack) > 1:
             self.app.pop_screen()
         self._toast(slot.ended.title, "session", "warning")
         self.app.push_screen(EndedScreen(self, slot.ended, self._target(slot)))
         self.refresh_status()
+
+    def _show_end_dialog_after_lock(self, slot: SessionSlot) -> None:
+        if (self.is_attached and self.app.workspace() is self and slot is self._front and not slot.closed
+                and slot.ended is not None and not slot.ended_dialog_shown):
+            self._show_end_dialog(slot)
 
     def _sync_size(self, slot: SessionSlot) -> None:
         """The grid has the session's size: from `attached`, `prefix` and `size`, never the window's (D3)."""
@@ -2424,6 +2457,20 @@ class TerminalScreen(Screen):
     def do_about(self) -> None:
         self.app.push_screen(TextScreen(self, "About tsb-tui", lambda: about_lines(self.app)))
 
+    def do_credentials(self) -> None:
+        from .credentials import CredentialsScreen
+
+        self.app.push_screen(CredentialsScreen())
+
+    def do_devices(self) -> None:
+        from .devices import DevicesScreen
+
+        self.app.push_screen(DevicesScreen())
+
+    def do_lock_now(self) -> None:
+        """Purge every vault unlock this user holds and lock this screen (cred §5.5; vault-lock step 6)."""
+        self.app.screen_lock.lock_now()
+
     async def do_quit(self) -> None:
         await self.app.action_quit()
 
@@ -2807,6 +2854,8 @@ class TerminalScreen(Screen):
             elif name == CMD_FILTER:
                 self.fleet_view.start_filter()
                 self.fleet_view.focus()
+            elif name == CMD_MARK:
+                self.fleet_view.toggle_mark()
             else:
                 self._fleet_view_command(name)
             return
@@ -2904,6 +2953,8 @@ class TerminalScreen(Screen):
         if view is not None and view.tab == TAB_TARGETS:
             return KeysTarget("targets", (
                 Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("/", "Query", click + CMD_FILTER),
+                Hint("Space", "Mark", click + CMD_MARK), Hint("l", "Save login…", click + CMD_SAVE_LOGIN),
+                Hint("p", "Map…", click + CMD_MAP),
                 Hint("Tab", "Next tab", click + CMD_TAB), Hint("Esc", "Back", click + CMD_CLOSE)))
         if self.compact:
             return KeysTarget("fleet view", (Hint("t", "Take back", click + CMD_TAKE_BACK),

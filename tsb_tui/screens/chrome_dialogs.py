@@ -53,6 +53,7 @@ FLEET_VIEW_KEYS = (
     ("t  w  x", "take back, who's here, end the selected session"),
     ("/", "filter"),
     ("m  e", "mine│joinable, show ended"),
+    ("space  l  p", "Targets tab: mark a target · save a login for the marked or selected · map a credential"),
     ("Tab", "the next tab"),
     ("Ctrl-Q", "quit; every session keeps running"),
     ("Esc", "back to the session"),

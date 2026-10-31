@@ -254,6 +254,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "keys.leader_map.fleet", "keys.leader_map.new_session", "keys.leader_map.next",
         "keys.leader_map.prev", "keys.leader_map.scroll", "keys.leader_map.size", "keys.leader_map.switch",
         "keys.leader_map.take_back", "keys.leader_map.theme", "keys.leader_map.who",
+        "keys.leader_map.credentials", "keys.leader_map.devices", "keys.leader_map.lock_now",
         "menu.open_on_leader_after_ms", "menu.search",
         "prompts.capture_unblocking", "prompts.input_guard_ms",
         "rail.chip_mark", "rail.chips", "rail.needs_you", "rail.needs_you_scope", "rail.phone", "rail.side",

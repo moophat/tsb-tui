@@ -19,9 +19,13 @@ from input_server import InputRecordingApp, attached, make_session, other_client
 from stub_server import create_owner_session
 from textual.command import CommandList, CommandPalette
 from textual.css.query import NoMatches
+from textual.widgets import Input
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen, TextScreen
+from tsb_tui.screens.credentials import CredentialsScreen
+from tsb_tui.screens.devices import DevicesScreen
+from tsb_tui.screens.lock import LockScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.prompts import AnswerScreen
 from tsb_tui.screens.size_dialog import SizeDialog
@@ -272,6 +276,17 @@ def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, w
                 reached.append("keys")
                 await text_dialog(A.BY_ID["about"].label, "About tsb-tui")
                 reached.append("about")
+                await dialog(CredentialsScreen, A.BY_ID["credentials"].label)
+                reached.append("credentials")
+                await dialog(DevicesScreen, A.BY_ID["devices"].label)
+                reached.append("devices")
+                await _click_menu_entry(rig, A.BY_ID["lock_now"].label)
+                await _settle(rig, lambda: isinstance(app.screen, LockScreen), "Lock now to cover the screen")
+                box = app.screen.query_one("#lock-password", Input)
+                await rig.app_call(setattr, box, "value", _serve.PASSWORD)
+                assert (await rig.cmd("press", keys=["enter"]))["ok"]
+                await _settle(rig, lambda: app.screen is screen, "the password to resume the screen")
+                reached.append("lock_now")
 
                 assert not screen.pump.state.holds_keyboard, "another client of the owner's holds the keyboard"
                 await _click_menu_entry(rig, A.BY_ID["take_back"].label)

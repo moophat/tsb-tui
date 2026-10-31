@@ -207,6 +207,19 @@ canvas of the session in front, and one status row. With no session open the sid
 * **End session…** (`^\ x`, the Menu, `x` on a sidebar or view row) asks once, naming the session, then sends
   `DELETE /sessions/{id}`; a login that is neither the owner nor an admin is refused by the core, and the TUI says so.
 * **Quit** (`^\ :q`, the Menu, `Ctrl-Q` in a full view) leaves every session running and prints which.
+* **The vault, in untrusted mode only** (E4): nothing about it is written on this host, the TUI never registers a device or
+  sends a challenge, and every passphrase prompt says that typed keys may be recorded when the TUI runs inside a TSB
+  session. A New session the core answers `vault_locked` asks the passphrase, unlocks and repeats once; an unset vault is
+  offered init, with the warning that a forgotten passphrase cannot be recovered. **Credentials…** (`^\ C`, the Menu)
+  lists your own references and kinds, saves a login (a username with a password, or an unencrypted key pasted into a masked
+  field or read once from a file of at most 16 KiB), maps credentials to targets and deletes them (which clears their
+  mappings); on the Targets tab `Space` marks targets, `l` saves a login for the marked or selected ones and `p` maps a
+  credential to them. **Devices…** (`^\ V`) lists your trusted devices and revokes one. The one function login-at-connect
+  calls to save a login is `tsb_tui.vault_flow.save_login`.
+* **The screen lock** covers every screen after the screen-lock time the core serves (`GET /auth/me`, never a local value)
+  with no input; the sessions stay attached and keep running behind it. The login password resumes it (checked by the core;
+  a wrong one leaves it locked). **Lock now** (`^\ L`, the Menu) purges your vault unlocks and locks this screen. While you
+  type, the TUI tells the core you are active, at most once per the interval the core serves.
 * **Knobs:** `glyphs.set` (`ascii` for a terminal without the glyphs), `view.chrome` (`compact` is the phone's),
   `rail.*`, `sidebar.*`, `watch.take_back_brings_to_front`, `fleet_view.*`, `mouse.*`, `view.pan_step`,
   `motion.level`.
