@@ -61,6 +61,7 @@ from ..model.fleet import (
     WHO_OTHER,
     Fleet,
     FleetPoller,
+    FleetScan,
     display_id,
     is_attachable,
     live_record,
@@ -111,6 +112,7 @@ from ..widgets.sidebar import (
     CMD_PICK,
     CMD_TAKE_BACK,
     CMD_WHOS_HERE,
+    RowTime,
     Sidebar,
     SidebarEntry,
     SidebarModel,
@@ -375,6 +377,11 @@ class TerminalScreen(Screen):
         self._leader_timer: Timer | None = None
         self.fleet: Fleet | None = None
         self.poller: FleetPoller | None = None
+        # The rail and the sidebar are rebuilt once per refresh of the screen: a trigger marks the model dirty and
+        # schedules the rebuild with the app's own after-refresh hook, so poll, alerts, focus and attach that land
+        # in one refresh run it once. `_sync_fleet_widgets` is the rebuild itself.
+        self._fleet_dirty = False
+        self._fleet_flush = False  # `call_after_refresh` answers True/False, not a Timer
         # The Targets tab's inventory, its query's refusal, whether a next page is on its way, and the timer that
         # reads it again while the tab is shown.
         self.targets = TargetsModel()
@@ -555,15 +562,25 @@ class TerminalScreen(Screen):
             return int(cfg["sidebar.width_wide"])
         return int(cfg["sidebar.width"])
 
+    def _rail_edge(self) -> bool:
+        """The one rule for the rail's width (design §2.6): a compact window with `rail.phone = edge` shows the
+        rail as one cell. `_layout_chrome` sets the widget's width from it, `_sync_fleet_widgets` gives the model
+        its `edge`."""
+        return self.compact and self.app.cfg["rail.phone"] == "edge"
+
     def _layout_chrome(self) -> None:
         """The rail and the sidebar take the width the window gives them. Nothing here asks for a size (D44)."""
         if self.sidebar is None or self.rail is None:
             return
         self.sidebar.set_window_width(self._window_width())
         self.sidebar.set_width(self._sidebar_width())
+        # The rail takes its width here, not when its model lands: a deferred rebuild must not leave the first
+        # layout with an unbounded rail, which squeezes the canvas to one column and puts that size in the
+        # `attach` frame (DT16). The same rule `_sync_fleet_widgets` gives the model.
+        self.rail.styles.width = 1 if self._rail_edge() else self.rail.rail_width
         if self.fleet_view is not None:
             self.fleet_view.set_window_width(self._window_width())
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
 
     # -- the sidebar --
 
@@ -585,6 +602,10 @@ class TerminalScreen(Screen):
         if refresh:
             self._refresh_fleet()
         if group is not None:
+            if self._fleet_dirty:
+                # The rows the sidebar has are from before the last poll; selecting from them picks a row that is
+                # gone. Run the pending rebuild first, so the group's first row is the current one.
+                self._sync_fleet_widgets()
             self.sidebar.select_group(group)
         if focus:
             self.sidebar.focus()
@@ -637,7 +658,7 @@ class TerminalScreen(Screen):
         self._targets_page = None
         view.set_window_width(self._window_width())
         view.display = True
-        self._sync_fleet_widgets()
+        self._sync_fleet_widgets()  # the model must be set before `set_tab` below: the tabs come from it
         self._refresh_fleet()
         if tab is not None:
             view.set_tab(tab)
@@ -698,7 +719,7 @@ class TerminalScreen(Screen):
             if record is not None and slot.pump is not None and slot.pump.state.note_record(record):
                 changed = True
                 self.app.tapped(slot.session_id, TAP_RECORD, record)
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
         if changed:
             self.refresh_status()
 
@@ -729,8 +750,27 @@ class TerminalScreen(Screen):
                 asks.add(slot.session_id)
         return stale, asks
 
+    def _mark_fleet_dirty(self) -> None:
+        """A trigger asks for the rail and the sidebar to be rebuilt: mark the model dirty and schedule one rebuild
+        with the app's own after-refresh hook, so triggers that land in one refresh of the screen run it once. A
+        caller that needs the models now (a test, a layout change) calls `_sync_fleet_widgets` directly."""
+        if self._unmounted:
+            return
+        self._fleet_dirty = True
+        if self._fleet_flush:
+            return
+        self._fleet_flush = self.call_after_refresh(self._flush_fleet_widgets)
+
+    def _flush_fleet_widgets(self) -> None:
+        self._fleet_flush = False
+        if self._fleet_dirty:
+            self._sync_fleet_widgets()
+
     def _sync_fleet_widgets(self) -> None:
-        """Rebuild the rail and the sidebar from the models: called on a poll, a frame, a switch, a tick."""
+        """Rebuild the rail and the sidebar from the models: the rebuild itself, run once per refresh by
+        `_flush_fleet_widgets`, and directly by a caller that needs the models now. It consumes the dirty mark,
+        so the next tick with unchanged records only moves the clocks."""
+        self._fleet_dirty = False
         if self._unmounted or self.fleet is None or self.rail is None or self.sidebar is None:
             return
         fleet = self.fleet
@@ -740,60 +780,65 @@ class TerminalScreen(Screen):
         stale, asks = self._attention()
         front_id = self._front.session_id if self._front is not None else None
         unseen = {slot.session_id for slot in self.slots if slot.unseen}
-        chips = fleet.chips(open_here=open_ids, front=front_id, unseen=unseen, question_for_me=asks,
+        scan = fleet.scan(open_here=open_ids, stale_with_me=stale, question_for_me=asks, live=live)
+        chips = fleet.chips(scan=scan, front=front_id, unseen=unseen, question_for_me=asks,
                             stale_with_me=stale, live=live)
-        needing = fleet.needs_you(open_here=open_ids, stale_with_me=stale, question_for_me=asks, live=live)
+        needing = scan.needs_you
         alerts = self.app.alerts
         self.rail.set_model(RailModel(
-            chips=tuple(chips), more=fleet.chip_count(open_here=open_ids, live=live) > MAX_CHIPS,
+            chips=tuple(chips), more=len(scan.chip_ids) > MAX_CHIPS,
             need_you=len(needing), alerts=alerts.count if alerts.allowed else None,
-            edge=self.compact and self.app.cfg["rail.phone"] == "edge",
+            edge=self._rail_edge(),
             names=tuple((chip.session_id, live[chip.session_id].get("target_id", chip.session_id))
                         for chip in chips if chip.session_id in live)))
         if self.sidebar_open:
-            self.sidebar.set_model(self._sidebar_model(live, chips, needing, stale, asks),
+            self.sidebar.set_model(self._sidebar_model(scan, live, chips, stale, asks),
                                    front_id=front_id)
         if self.view_open and self.fleet_view is not None:
             self.fleet_view.set_model(self._fleet_view_model(live, needing, stale, asks))
 
-    def _sidebar_model(self, live: dict[str, dict], chips: list, needing: list[dict], stale: set[str],
+    def _sidebar_model(self, scan: FleetScan, live: dict[str, dict], chips: list, stale: set[str],
                        asks: set[str]) -> SidebarModel:
+        """The sidebar's model: the filtered records as references, with what `fleet.scan` gave in its one pass —
+        the groups, the target counts and each record's two column fields. Nothing in it formats a record:
+        `record_entry` is what the view calls for a row it paints, so a rebuild of a long list builds about 28
+        entries, not one per record."""
         fleet = self.fleet
         assert fleet is not None
         me = self._me()
-        open_ids = [slot.session_id for slot in self.slots]
-        groups = fleet.groups(open_here=open_ids, stale_with_me=stale, question_for_me=asks, live=live)
+        groups = scan.groups
         numbers = {chip.session_id: chip.number for chip in chips}
-        needing_ids = {record["id"] for record in needing}
-        merged = {**fleet.records, **live}
+        needing_ids = {record["id"] for record in scan.needs_you}
         labels = fleet.display_ids(live)
-        by_target: dict[str, int] = {}
-        for record in merged.values():
-            by_target[record.get("target_id", "")] = by_target.get(record.get("target_id", ""), 0) + 1
-        now = self.app.wall_clock()
-        entries: list[tuple[str, tuple[SidebarEntry, ...]]] = []
-        total = 0
-        for name, records in groups.items():
-            built = tuple(self._entry(record, name, me, numbers, needing_ids, stale, asks, labels, by_target, now)
-                          for record in records)
-            entries.append((name, built))
-            total += len(built)
+        by_target = scan.by_target
+        columns = scan.columns
+
+        def fields_of(record: dict) -> tuple[str, str]:
+            return columns[record["id"]]
+
+        def search_of(record: dict) -> str:
+            target, login = fields_of(record)
+            return f"{target} {labels[record['id']]} {login} {record.get('owner') or ''}"
+
+        def entry_for(record: dict, group: str) -> SidebarEntry:
+            # The clock is read when the row is painted: a relayout after a tick that moved the painted clocks
+            # builds this row at the current clock, never at the clock the model was built at.
+            return self._entry(record, group, me, numbers, needing_ids, stale, asks, labels, by_target,
+                                self.app.wall_clock())
+
         alerts = self.app.alerts
         leader = A.leader_label(self.app.cfg["keys.leader"])
         letter = A.leader_keys(self.app.cfg.leader_overrides())["fleet"]
         return SidebarModel(
-            groups=tuple(entries), mode=fleet.filter_mode, alerts=alerts.count if alerts.allowed else None,
+            groups=tuple((name, tuple(records)) for name, records in groups.items()),
+            mode=fleet.filter_mode, alerts=alerts.count if alerts.allowed else None,
             leader_hint=f"{leader} {letter}", detail_for=self._details_for, buttons_for=self._buttons_for,
-            total=total)
+            total=sum(len(records) for records in groups.values()),
+            record_fields=fields_of, record_search=search_of, record_entry=entry_for)
 
-    def _entry(self, record: dict, group: str, me: str | None, numbers: dict[str, int], needing: set[str],
-               stale: set[str], asks: set[str], labels: Mapping[str, str], by_target: dict[str, int],
-               now: float) -> SidebarEntry:
-        sid = record["id"]
-        slot = self.slot_for(sid)
-        holder = record.get("control_holder")
-        login = "·" if holder is None else ("you" if holder.get("user") == me else str(holder.get("user")))
-        who = who_types(record, me, needs_you=sid in needing, asks_you=sid in asks)
+    def _time_state(self, record: dict, sid: str, stale: set[str], asks: set[str], now: float) -> RowTime:
+        """A row's time-bearing fields read from its record at `now`: why it needs you, the warning window's clock,
+        the time to the end, and the last output this TUI saw. The tick reads exactly this for the painted rows."""
         reason = countdown = None
         ends = parse_timestamp(record.get("ends_at"))
         left = None if ends is None else format_duration(ends.timestamp() - now)
@@ -806,22 +851,33 @@ class TerminalScreen(Screen):
         elif record.get("ending") and left is not None:
             reason, countdown = record.get("ends_by") or "ending", left
         out_age = None
+        slot = self.slot_for(sid)
         if slot is not None and slot is not self._front and slot.pump is not None:
             at = slot.pump.state.last_output_at
             if at is not None:
                 out_age = age_text(slot.pump.state.now() - at)
+        ended = record.get("state") in ("killed", "terminated")
+        return RowTime(reason=reason, countdown=countdown, remaining=None if ended else left,
+                       out_age=out_age, rec=bool((record.get("recording") or {}).get("active")))
+
+    def _entry(self, record: dict, group: str, me: str | None, numbers: dict[str, int], needing: set[str],
+               stale: set[str], asks: set[str], labels: Mapping[str, str], by_target: dict[str, int],
+               now: float) -> SidebarEntry:
+        sid = record["id"]
+        holder = record.get("control_holder")
+        login = "·" if holder is None else ("you" if holder.get("user") == me else str(holder.get("user")))
+        who = who_types(record, me, needs_you=sid in needing, asks_you=sid in asks)
+        time_state = self._time_state(record, sid, stale, asks, now)
         target = record.get("target_id", "")
         id_label = labels[sid] if by_target.get(target, 0) > 1 else None
-        ended = record.get("state") in ("killed", "terminated")
         short = labels[sid]
         words = f"{login} types" if who == WHO_OTHER else WHO_WORDS.get(who, "")
         tip = " · ".join(part for part in (f"{target} · {short}", words) if part)
         return SidebarEntry(
             session_id=sid, group=group, number=numbers.get(sid), who=who, target=target, id_label=id_label,
-            login=login, rec=bool((record.get("recording") or {}).get("active")),
-            front=self._front is not None and self._front.session_id == sid, reason=reason,
-            countdown=countdown, remaining=None if ended else left, out_age=out_age,
-            search=f"{target} {short} {login} {record.get('owner') or ''}", tip=tip)
+            login=login, rec=time_state.rec, front=self._front is not None and self._front.session_id == sid,
+            reason=time_state.reason, countdown=time_state.countdown, remaining=time_state.remaining,
+            out_age=time_state.out_age, search=f"{target} {short} {login} {record.get('owner') or ''}", tip=tip)
 
     def listed_sessions(self) -> list[dict]:
         """The records the fleet lists under the current filter, in the order the full view shows them: the sessions
@@ -1048,7 +1104,7 @@ class TerminalScreen(Screen):
         if self._unmounted:
             return
         if self.targets.apply(generation, query, page, append=more):
-            self._sync_fleet_widgets()
+            self._mark_fleet_dirty()
 
     def _targets_failed(self, generation: int, exc: Exception, more: bool, background: bool,
                         cursor: str | None) -> None:
@@ -1063,7 +1119,7 @@ class TerminalScreen(Screen):
             return
         if isinstance(exc, ApiError) and exc.code == "inventory_unavailable":
             if self.targets.mark_unavailable(generation):
-                self._sync_fleet_widgets()
+                self._mark_fleet_dirty()
         elif isinstance(exc, ApiError) and exc.code == "invalid_request":
             if self.targets.is_current(generation):
                 # The refusal is the broker's answer to this query only: the rows stay, the message goes in the
@@ -1071,7 +1127,7 @@ class TerminalScreen(Screen):
                 # that and not for the refused one.
                 self.targets.revert_to_shown()
                 self._targets_query_error = as_text(exc.message)
-                self._sync_fleet_widgets()
+                self._mark_fleet_dirty()
         elif not background or (isinstance(exc, ApiError) and exc.status == 401):
             self.app.notify_api_error(exc)
 
@@ -1082,16 +1138,16 @@ class TerminalScreen(Screen):
             query = parse_query(text)
         except QueryError as exc:
             self._targets_query_error = as_text(str(exc))
-            self._sync_fleet_widgets()
+            self._mark_fleet_dirty()
             return
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
         self._fetch_targets(query=query)
 
     def _targets_tab_changed(self) -> None:
         """The Targets tab was opened (read it now, then on `fleet_view.refresh_s`) or left (stop reading it)."""
         view = self.fleet_view
         self._stop_targets_timer()
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
         if view is None or not view.display or view.tab != TAB_TARGETS:
             return
         self._fetch_targets()
@@ -1188,7 +1244,7 @@ class TerminalScreen(Screen):
         elif name == CMD_MODE:
             self.fleet.filter_mode = arg if arg in ("mine", "all") else (
                 "all" if self.fleet.filter_mode == "mine" else "mine")
-            self._sync_fleet_widgets()
+            self._mark_fleet_dirty()
 
     def _targets_to_vault(self, view: FleetView, *, save: bool) -> None:
         """`l` and `p` on the Targets tab: Save a login for, or Map one of my credentials to, the targets marked with `space`
@@ -1273,7 +1329,7 @@ class TerminalScreen(Screen):
 
     def _alerts_changed(self) -> None:
         self._sync_alerts()
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
 
     # -- several sessions: open, bring to the front, switch --
 
@@ -1336,7 +1392,7 @@ class TerminalScreen(Screen):
             canvas.display = False
             # Never laid out, so no first resize starts the attach: it starts from the window now.
             self._start_attach(slot, *self.fit_size())
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
         return slot
 
     def _run_then(self, slot: SessionSlot, then: Callable[[SessionSlot], Any]) -> None:
@@ -1357,7 +1413,7 @@ class TerminalScreen(Screen):
         if self.view_open:
             self.close_fleet_view()  # a session came to the front: the operator wants to see it
         if slot is previous:
-            self._sync_fleet_widgets()
+            self._mark_fleet_dirty()
             return
         if previous is not None:
             previous.canvas.send_to_back()
@@ -1372,7 +1428,7 @@ class TerminalScreen(Screen):
         self._sync_dialogs()
         self._sync_alerts()
         self.refresh_status()
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
         if previous is not None and previous.ended is not None:
             self._close_slot(previous)  # an ended session's chip stays until you move on (D36)
         if slot.ended is not None and not slot.ended_dialog_shown:
@@ -1510,7 +1566,7 @@ class TerminalScreen(Screen):
         elif name == CMD_MODE:
             self.fleet.filter_mode = arg if arg in ("mine", "all") else (
                 "all" if self.fleet.filter_mode == "mine" else "mine")
-            self._sync_fleet_widgets()
+            self._mark_fleet_dirty()
         elif name == CMD_FULL_VIEW:
             self.open_fleet_view()
         elif name == CMD_END and sid is not None:
@@ -1607,7 +1663,7 @@ class TerminalScreen(Screen):
         if slot is self._front:
             self._sync_prompts()
             self.refresh_status()
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
         waiting, slot.after_attach = slot.after_attach, []
         for then in waiting:
             self._run_then(slot, then)
@@ -1657,7 +1713,7 @@ class TerminalScreen(Screen):
                     self.refresh_status()  # the rows held, and so how far back the view is, changed
             if slot is not self._front and not slot.unseen:
                 slot.unseen = True
-                self._sync_fleet_widgets()
+                self._mark_fleet_dirty()
         for reply in replies:
             # Await the write, so the reply leaves before the next frame is applied and DT4 (b) judges
             # it against the state as of the bytes that produced it (DT20).
@@ -1685,7 +1741,7 @@ class TerminalScreen(Screen):
             self.refresh_status()
         elif kind == "notice":
             slot.was_ending = state.ending
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
 
     # -- toasts: every state change says so once (D22); the status row keeps what persists --
 
@@ -1735,7 +1791,7 @@ class TerminalScreen(Screen):
                 self._toast("Reattached.", "session")
             self._sync_prompts()
             self.refresh_status()
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
 
     def _on_login_needed(self, slot: SessionSlot) -> None:
         """A 401 on the reattach path (DT13): the same rule as the first attach's 401 above, told through
@@ -1755,13 +1811,51 @@ class TerminalScreen(Screen):
             if attempt == 1:
                 self._toast("The connection was lost; reattaching. Esc stops.", "session", "warning")
             self.refresh_status()
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
 
     def _tick(self) -> None:
         """Once a second the row is read again: the countdown, the reattach wait and the recording text all move
-        with the clock, and so do the rail's and the sidebar's clocks."""
+        with the clock. The sidebar's clocks move by re-laying out the right-hand fields of the rows it paints;
+        its model is rebuilt only when the records changed since the last build. The full view formats every row
+        of its model, so while it is open its own model is rebuilt at the new clock."""
         self.refresh_status()
-        self._sync_fleet_widgets()
+        if self._fleet_dirty:
+            self._sync_fleet_widgets()
+            return
+        self._refresh_painted_clocks()
+        self._refresh_view_clocks()
+
+    def _refresh_view_clocks(self) -> None:
+        """The full view's clocks: its model formats every row it lists, so the only way to move them is to rebuild
+        that model at the new clock. Only while the view is open; a closed view is never rebuilt by a tick."""
+        if self._unmounted or self.fleet is None or self.fleet_view is None or not self.view_open:
+            return
+        self.fleet.set_own_user(self._me())
+        live = self._live()
+        stale, asks = self._attention()
+        open_ids = [slot.session_id for slot in self.slots]
+        scan = self.fleet.scan(open_here=open_ids, stale_with_me=stale, question_for_me=asks, live=live)
+        self.fleet_view.set_model(self._fleet_view_model(live, scan.needs_you, stale, asks))
+
+    def _refresh_painted_clocks(self) -> None:
+        """The clocks of the rows the sidebar paints, read from the records at the new `now`. No entry is built
+        and no model is rebuilt here: a tick changes rows with a clock, not 14,000 entries."""
+        sidebar = self.sidebar
+        if self._unmounted or sidebar is None or not self.sidebar_open or self.fleet is None:
+            return
+        rows = sidebar.view.rows
+        if not rows:
+            return
+        merged = {**self.fleet.records, **self._live()}
+        stale, asks = self._attention()
+        now = self.app.wall_clock()
+        times = {(group, sid): self._time_state(merged[sid], sid, stale, asks, now)
+                 for group, sid in rows if sid in merged}
+        if sidebar.refresh_times(times):
+            # A painted row's right-hand fields changed width (a clock that grew, a REC that no longer fits), so
+            # that row's login width is decided with them and only a rebuild paints it. The tick marks the model
+            # dirty; the coalesced rebuild runs at the next refresh of the screen.
+            self._mark_fleet_dirty()
 
     def _tell_keyboard_moved(self, slot: SessionSlot, state: AttachmentState) -> None:
         """A toast when the keyboard comes to this client or leaves it (D22; Frontend §9). The state
@@ -1885,7 +1979,7 @@ class TerminalScreen(Screen):
         self._sync_prompts()
         self._sync_dialogs()
         self.refresh_status()
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
 
     def ask_kill(self) -> None:
         def decided(kill: bool | None) -> None:
@@ -1915,7 +2009,7 @@ class TerminalScreen(Screen):
             self.close_scroll_view()
             self._sync_prompts()
             self._show_end_dialog(slot)
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
 
     def _show_end_dialog(self, slot: SessionSlot) -> None:
         if self.app.screen_lock.locked:
@@ -2076,7 +2170,7 @@ class TerminalScreen(Screen):
                 if self.app.cfg["sidebar.open_when_no_session"]:
                     self.open_sidebar()
                 self.refresh_status()
-        self._sync_fleet_widgets()
+        self._mark_fleet_dirty()
 
     def _leave(self, slot: SessionSlot | None, message: str, *, warn: bool = True, cancel: bool = True) -> None:
         """The session could not be kept (an attach that failed) or is being left: say so, and take it off

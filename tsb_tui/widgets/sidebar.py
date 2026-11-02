@@ -23,6 +23,7 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 from rich.segment import Segment
 from rich.style import Style
@@ -101,10 +102,31 @@ class SidebarEntry:
 
 
 @dataclass(frozen=True)
-class SidebarModel:
-    """What the sidebar shows. `alerts` is None for a login that is not a `broker.health` holder (DT14)."""
+class RowTime:
+    """A painted row's time-bearing fields, as the tick reads them from the record: enough to re-lay out the
+    row's right-hand fields without formatting the row again."""
 
-    groups: tuple[tuple[str, tuple[SidebarEntry, ...]], ...]
+    reason: str | None
+    countdown: str | None
+    remaining: str | None
+    out_age: str | None
+    rec: bool
+
+
+# What a row's right-hand fields are read from: a built entry, or the tick's `RowTime`.
+RowText = SidebarEntry | RowTime
+
+
+@dataclass(frozen=True)
+class SidebarModel:
+    """What the sidebar shows. `alerts` is None for a login that is not a `broker.health` holder (DT14).
+
+    A group's items are `SidebarEntry` objects, or the session records themselves: in the second shape the model
+    holds references and formats nothing, and the three callables below are what the view uses to filter, to size
+    the columns and to build an entry for a row it paints — so a rebuild over a long list never builds an entry for
+    a row that is not painted."""
+
+    groups: tuple[tuple[str, tuple[SidebarEntry | Mapping[str, Any], ...]], ...]
     mode: str  # "mine" | "all"
     alerts: int | None
     leader_hint: str  # `^\ f`, how the leader closes it
@@ -112,6 +134,9 @@ class SidebarModel:
     buttons_for: Callable[[str], tuple[str, ...]] | None = None
     # How many entries are in the model before the filter: the header says so when it hides some.
     total: int = 0
+    record_fields: Callable[[Mapping[str, Any]], tuple[str, str]] | None = None  # (target, login) of a record
+    record_search: Callable[[Mapping[str, Any]], str] | None = None  # the text the filter matches a record against
+    record_entry: Callable[[Mapping[str, Any], str], SidebarEntry] | None = None  # the entry for a painted row
 
 
 @dataclass(frozen=True)
@@ -129,6 +154,8 @@ class Line:
     session_id: str | None = None  # a row of a session: a click on it picks it
     group: str | None = None
     tip: str | None = None  # the row's tooltip, when no part of it has its own
+    # How many parts of a session row stand before its right-hand fields, so the tick can re-lay out just those.
+    prefix_len: int = 0
 
     @property
     def text(self) -> str:
@@ -140,6 +167,9 @@ class SidebarView:
     lines: tuple[Line, ...]
     rows: tuple[tuple[str, str], ...]  # the selectable rows: (group, session id), top to bottom
     hidden: int  # joinable rows left out for want of room (`┆ N more · full view ▸`)
+    # Where the selected session's detail block starts in `lines` and how long it is, so the tick can re-lay it.
+    detail_start: int | None = None
+    detail_len: int = 0
 
 
 def _fit(text: str, width: int) -> str:
@@ -161,7 +191,36 @@ def entry_matches(entry: SidebarEntry, needle: str) -> bool:
     return not needle or needle.lower() in entry.search.lower()
 
 
-def _time_field(entry: SidebarEntry, group: str, wide: bool) -> tuple[str, str] | None:
+def _item_id(item: SidebarEntry | Mapping[str, Any]) -> str:
+    return item.session_id if isinstance(item, SidebarEntry) else item["id"]
+
+
+def _entry_for(record: Mapping[str, Any], group: str, model: SidebarModel) -> SidebarEntry:
+    """The row for a record the view paints: the screen formats it, and only for a row that is shown."""
+    assert model.record_entry is not None, "the model holds records and names no way to build a row"
+    return model.record_entry(record, group)
+
+
+def _item_fields(item: SidebarEntry | Mapping[str, Any], model: SidebarModel) -> tuple[str, str]:
+    """(target, login) of a group's item, which is a built entry or the record itself."""
+    if isinstance(item, SidebarEntry):
+        return item.target, item.login
+    assert model.record_fields is not None, "the model holds records and names no way to read their columns"
+    return model.record_fields(item)
+
+
+def _matches(item: SidebarEntry | Mapping[str, Any], needle: str, model: SidebarModel) -> bool:
+    if not needle:
+        return True
+    if isinstance(item, SidebarEntry):
+        text = item.search
+    else:
+        assert model.record_search is not None, "the model holds records and names no filter text for them"
+        text = model.record_search(item)
+    return needle.lower() in text.lower()
+
+
+def _time_field(entry: RowText, group: str, wide: bool) -> tuple[str, str] | None:
     """The one clock a row shows: the warning window's, else the last output seen, else the time to the end.
     Narrow rows give it `•41s` and `▲ 4:12` (mockup S1); wide rows spell it (`out 41s`; `not answering 4:12` and
     `ends in 2d 23h` in Needs you, `▲ 4:12` in the groups below: mockup S3)."""
@@ -183,7 +242,7 @@ def _time_field(entry: SidebarEntry, group: str, wide: bool) -> tuple[str, str] 
     return None
 
 
-def _right_fields(entry: SidebarEntry, group: str, wide: bool, room: int) -> list[tuple[str, str]]:
+def _right_fields(entry: RowText, group: str, wide: bool, room: int) -> list[tuple[str, str]]:
     """What fits in `room` cells at the row's right edge, best first: the clock, then REC. A narrow row holds
     one of them (mockup S1); a wide row holds the clock and REC (S3)."""
     clock = _time_field(entry, group, wide)
@@ -195,8 +254,19 @@ def _right_fields(entry: SidebarEntry, group: str, wide: bool, room: int) -> lis
     return fields
 
 
-def _row_line(entry: SidebarEntry, group: str, *, width: int, target_w: int, login_w: int,
-              selected: bool, wide: bool) -> Line:
+def _tail_need(entry: RowText, group: str, wide: bool) -> int:
+    """The cells a row's right-hand fields (the clock, REC) take, as `_right_fields` lays them out when they fit."""
+    clock = _time_field(entry, group, wide)
+    size = len(clock[0]) if clock is not None else 0
+    if entry.rec:
+        size = size + 6 if clock is not None and wide else (size or 3)
+    return size
+
+
+def _row_prefix(entry: SidebarEntry, group: str, *, width: int, target_w: int, login_w: int,
+                selected: bool, wide: bool) -> tuple[Part, ...]:
+    """Everything a session row shows before its right-hand fields: the mark, the number and who glyph, the
+    target, the login. The login takes the row's free width after the clock and REC have had theirs."""
     mark = (SELECTED, "mark") if selected else (" ", "blank")
     who_role = _WHO_ROLES.get(entry.who, "who_none")
     number_role = "num_front" if entry.front else "num"
@@ -230,34 +300,63 @@ def _row_line(entry: SidebarEntry, group: str, *, width: int, target_w: int, log
         free = width - before - 1 - 1 - _tail_need(entry, group, wide)
         shown = max(login_w, min(len(entry.login), free))
         parts += [Part(" ", "blank"), Part(_fit(entry.login, shown), login_role), Part(" ", "blank")]
-    used = sum(len(part.text) for part in parts)
-    room = max(width - used - 1, 0)  # one cell of margin on the right
-    fields = _right_fields(entry, group, wide, room)
+    return tuple(parts)
+
+
+def _row_tail(used: int, fields: list[tuple[str, str]], width: int) -> list[Part]:
+    """The row's right-hand fields, right-aligned with one cell of margin (the clock, then REC)."""
+    room = max(width - used - 1, 0)
     tail = "   ".join(text for text, _ in fields)
-    parts.append(Part(" " * max(room - len(tail), 0), "blank"))
+    parts = [Part(" " * max(room - len(tail), 0), "blank")]
     for index, (text, role) in enumerate(fields):
         if index:
             parts.append(Part("   ", "blank"))
         parts.append(Part(text, role))
     parts.append(Part(" ", "blank"))
-    return Line(tuple(parts), entry.session_id, group, entry.tip or None)
+    return parts
 
 
-def _tail_need(entry: SidebarEntry, group: str, wide: bool) -> int:
-    """The cells a row's right-hand fields (the clock, REC) take, as `_right_fields` lays them out when they fit."""
-    clock = _time_field(entry, group, wide)
-    size = len(clock[0]) if clock is not None else 0
-    if entry.rec:
-        size = size + 6 if clock is not None and wide else (size or 3)
-    return size
+def _row_line(entry: SidebarEntry, group: str, *, width: int, target_w: int, login_w: int,
+              selected: bool, wide: bool) -> Line:
+    prefix = _row_prefix(entry, group, width=width, target_w=target_w, login_w=login_w,
+                         selected=selected, wide=wide)
+    used = sum(len(part.text) for part in prefix)
+    fields = _right_fields(entry, group, wide, max(width - used - 1, 0))
+    parts = [*prefix, *_row_tail(used, fields, width)]
+    return Line(tuple(parts), entry.session_id, group, entry.tip or None, len(prefix))
 
 
-def _columns(entries: Sequence[SidebarEntry]) -> tuple[int, int]:
-    """The widths of the target and login columns for these rows. The login column is a floor: a row whose own
-    right-hand fields leave it room shows a longer login whole (`_row_line`)."""
-    target_w = min(max((len(e.target) for e in entries), default=0), MAX_TARGET)
-    login_w = min(max((len(e.login) for e in entries), default=0), MAX_LOGIN)
+def _columns(entries: Sequence[SidebarEntry | Mapping[str, Any]], model: SidebarModel) -> tuple[int, int]:
+    """The widths of the target and login columns for these rows, read from each row's entry or record. The login
+    column is a floor: a row whose own right-hand fields leave it room shows a longer login whole (`_row_line`)."""
+    fields = [_item_fields(entry, model) for entry in entries]
+    target_w = min(max((len(target) for target, _ in fields), default=0), MAX_TARGET)
+    login_w = min(max((len(login) for _, login in fields), default=0), MAX_LOGIN)
     return target_w, login_w
+
+
+@dataclass(frozen=True)
+class Prepared:
+    """What one filter text gives the view: the filtered groups, the rows they list, the column widths the groups
+    below Needs you share, and Needs you's own. The widget keeps it for its current filter text, so a relayout
+    that does not change the filter reads lookups instead of every record."""
+
+    groups: tuple[tuple[str, tuple[SidebarEntry | Mapping[str, Any], ...]], ...]
+    rows: tuple[tuple[str, str], ...]
+    shared: tuple[int, int]
+    needs_you_columns: tuple[int, int]
+
+
+def _prepare(model: SidebarModel, needle: str) -> Prepared:
+    """The filter and the column widths for one filter text, in one pass over the model's items."""
+    groups = tuple((name, tuple(item for item in items if _matches(item, needle, model)))
+                   for name, items in model.groups)
+    rows = tuple((name, _item_id(item)) for name, items in groups for item in items)
+    shared = _columns([item for name, items in groups if name not in (GROUP_NEEDS_YOU,)
+                       for item in items], model)
+    needs_you_columns = _columns([item for name, items in groups if name == GROUP_NEEDS_YOU
+                                  for item in items], model)
+    return Prepared(groups, rows, shared, needs_you_columns)
 
 
 def _blank(width: int) -> Line:
@@ -272,9 +371,24 @@ def _wrapped(text: str, width: int) -> list[str]:
     return textwrap.wrap(text, width=max(width, 1)) or [""]
 
 
+def _detail_lines(model: SidebarModel, sid: str, width: int) -> list[Line]:
+    """The selected session's detail block: the hairline, its wrapped paragraphs, and its buttons. Built from
+    `model.detail_for`, which reads the clock, so the tick can rebuild the block at the new time."""
+    lines: list[Line] = [_text_line(SEPARATOR * width, "hairline", width)]
+    for index, paragraph in enumerate(model.detail_for(sid)):
+        for text in _wrapped(paragraph, width - 1):
+            lines.append(_text_line(text if index == 0 else " " + text, "text" if index == 0 else "muted", width))
+    buttons = model.buttons_for(sid) if model.buttons_for is not None else ()
+    if buttons:
+        row = [Part(f"[{b}] ", "button", f"detail:{b}", sid, b) for b in buttons]
+        row.append(Part(" " * max(width - sum(len(part.text) for part in row), 0), "blank"))
+        lines.append(Line(tuple(row)))
+    return lines
+
+
 def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tuple[str, str] | None,
                  filter_text: str, editing: bool, wide: bool, show_details: bool,
-                 hint_full_view: bool = True) -> SidebarView:
+                 hint_full_view: bool = True, prepared: Prepared | None = None) -> SidebarView:
     """The sidebar's lines at `width` cells (the hairline is the widget's) and `height` rows."""
     header: list[Line] = []
     close_tip = f"◂ close the sidebar · Esc, {model.leader_hint}"
@@ -318,46 +432,39 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
                                      CMD_ALERTS, tip=alerts_tip),)))
         footer.append(Line((Part(_fit(new_text, width), "text", CMD_NEW, tip=new_tip),)))
 
-    # The groups, filtered.
+    # The groups, filtered. A group's items are entries (a test's model) or the session records (the screen's),
+    # and an entry is built only for a row this view paints. The filter and the column widths come from `prepared`
+    # when the caller has them for this filter text, so a relayout of a long list reads lookups, not records.
     needle = filter_text.strip()
-    groups = [(name, tuple(e for e in entries if entry_matches(e, needle))) for name, entries in model.groups]
+    prep = prepared if prepared is not None else _prepare(model, needle)
+    groups = prep.groups
 
     details: list[Line] = []
-    rows: list[tuple[str, str]] = [(name, e.session_id) for name, entries in groups for e in entries]
+    rows: tuple[tuple[str, str], ...] = prep.rows
     chosen = selected if selected in rows else None
     if show_details and model.detail_for is not None and chosen is not None:
-        sid = chosen[1]
-        details.append(_text_line(SEPARATOR * width, "hairline", width))
-        for index, paragraph in enumerate(model.detail_for(sid)):
-            for text in _wrapped(paragraph, width - 1):
-                details.append(_text_line(text if index == 0 else " " + text, "text" if index == 0 else "muted",
-                                          width))
-        buttons = model.buttons_for(sid) if model.buttons_for is not None else ()
-        if buttons:
-            row = [Part(f"[{b}] ", "button", f"detail:{b}", sid, b) for b in buttons]
-            row.append(Part(" " * max(width - sum(len(part.text) for part in row), 0), "blank"))
-            details.append(Line(tuple(row)))
+        details = _detail_lines(model, chosen[1], width)
 
     fixed = len(header) + len(footer) + len(details)
     body: list[Line] = []
     hidden = 0
     shown_rows: list[tuple[str, str]] = []
     # Every group's heading costs a row; the last group (the long tail) is the one that gives way.
-    used = fixed + sum(1 + len(entries) for name, entries in groups)
+    used = fixed + sum(1 + len(items) for name, items in groups)
     spare = height - used
     # Needs you has its own columns; the groups below share theirs, so a session's login is in one column
     # wherever it is listed (mockups S1, S3). Only Yours and joinable shows an id, and only for the sessions that
     # share a target with another: the open ones are told apart by their number.
-    shared = _columns([e for name, entries in groups if name not in (GROUP_NEEDS_YOU,) for e in entries])
-    for name, entries in groups:
-        target_w, login_w = _columns(entries) if name == GROUP_NEEDS_YOU else shared
-        count = len(entries)
+    for name, items in groups:
+        target_w, login_w = prep.needs_you_columns if name == GROUP_NEEDS_YOU else prep.shared
+        count = len(items)
         body.append(_text_line(_title(name, count, width), "group", width))
-        keep = entries
+        keep = items
         if name == GROUP_MINE_AND_JOINABLE and spare < 0:
-            allowed = max(len(entries) + spare - 1, 0)  # one row for the `N more · full view ▸` line
-            keep, hidden = entries[:allowed], len(entries) - allowed
-        for entry in keep:
+            allowed = max(len(items) + spare - 1, 0)  # one row for the `N more · full view ▸` line
+            keep, hidden = items[:allowed], len(items) - allowed
+        for item in keep:
+            entry = item if isinstance(item, SidebarEntry) else _entry_for(item, name, model)
             is_selected = chosen == (name, entry.session_id)
             body.append(_row_line(entry, name, width=width, target_w=target_w, login_w=login_w,
                                   selected=is_selected, wide=wide))
@@ -367,12 +474,13 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
             body.append(Line((Part(" ", "blank"), Part(_fit(more, width - 1), "muted", CMD_FULL_VIEW,
                                                             tip="▦ Full fleet view · every session"))))
     lines = [*header, *body, *details, *footer]
+    detail_start = len(header) + len(body) if details else None
     # The sidebar is exactly as tall as the window it sits in: blank rows fill the gap, between the groups
     # and the footer, so the footer stays at the bottom.
     gap = height - len(lines)
     if gap > 0:
         lines = [*header, *body, *details, *(_blank(width) for _ in range(gap)), *footer]
-    return SidebarView(tuple(lines), tuple(shown_rows), hidden)
+    return SidebarView(tuple(lines), tuple(shown_rows), hidden, detail_start, len(details))
 
 
 class Sidebar(Widget):
@@ -412,6 +520,10 @@ class Sidebar(Widget):
         self.sidebar_width = int(config["sidebar.width"])  # the columns it takes, the hairline included
         self._view = SidebarView((), (), 0)
         self._front_id: str | None = None
+        # The filter and the column widths for the current filter text and model, reused by every relayout that
+        # changes neither (`_prepare`).
+        self._prepared: Prepared | None = None
+        self._prepared_for: tuple[str, SidebarModel] | None = None
 
     def _build_styles(self, roles: dict[str, str]) -> None:
         """The sidebar's style table from the role colours (TT14): every colour is a role, so a theme
@@ -488,11 +600,17 @@ class Sidebar(Widget):
         self._relayout()
 
     def _build(self) -> SidebarView:
+        """The view at the current width and filter. The filter, the rows and the column widths are computed once
+        per filter text and model (`_prepare`); a relayout that changes neither reuses them."""
+        needle = self.filter_text.strip()
+        if self._prepared_for is None or self._prepared_for[1] is not self._model or self._prepared_for[0] != needle:
+            self._prepared = _prepare(self._model, needle)
+            self._prepared_for = (needle, self._model)
         height = self.size.height or 40
         return sidebar_view(
             self._model, width=max(self.sidebar_width - 1, 1), height=height, selected=self.selected,
             filter_text=self.filter_text, editing=self.editing, wide=self.wide,
-            show_details=self.details_shown)
+            show_details=self.details_shown, prepared=self._prepared)
 
     def _relayout(self) -> None:
         view = self._build()
@@ -501,6 +619,64 @@ class Sidebar(Widget):
             view = self._build()
         self._view = view
         self.refresh()
+
+    def refresh_times(self, times: Mapping[tuple[str, str], RowTime]) -> bool:
+        """The tick's clocks: re-lay out the right-hand fields of the painted rows from their new time values, on
+        each row's own prefix. No entry is built for a row here, and nothing else about the row moves.
+
+        A row whose right-hand fields keep their width is re-laid on its stored prefix, which is what a full
+        rebuild paints. A row whose fields change width (a clock that grows, a REC that no longer fits) cannot be
+        re-laid: its login's width and its fields are decided together in `_row_prefix`, so that row is left as it
+        is and the return value says the model must be rebuilt. Returns whether any painted row needs that. The
+        selected session's detail block is recomputed at the same time by `_refresh_details`."""
+        if not times:
+            return False
+        width = max(self.sidebar_width - 1, 1)
+        wide = self.wide
+        lines = list(self._view.lines)
+        changed = False
+        needs_rebuild = False
+        for index, line in enumerate(lines):
+            key = (line.group, line.session_id)
+            if key not in times:
+                continue
+            prefix = line.parts[: line.prefix_len]
+            used = sum(len(part.text) for part in prefix)
+            fields = _right_fields(times[key], line.group, wide, max(width - used - 1, 0))
+            new_width = len("   ".join(text for text, _ in fields))
+            old_width = len("   ".join(part.text for part in line.parts[line.prefix_len:] if part.text.strip()))
+            if new_width != old_width:
+                needs_rebuild = True
+                continue
+            lines[index] = Line((*prefix, *_row_tail(used, fields, width)),
+                                 line.session_id, line.group, line.tip, line.prefix_len)
+            changed = True
+        if changed:
+            self._view = SidebarView(tuple(lines), self._view.rows, self._view.hidden,
+                                     self._view.detail_start, self._view.detail_len)
+            self.refresh()
+        details_rebuild = self._refresh_details(width)
+        return needs_rebuild or details_rebuild
+
+    def _refresh_details(self, width: int) -> bool:
+        """The selected session's detail block at the new clock, recomputed from the model with `detail_for`. A
+        block whose lines keep their count is replaced here; one that grew or shrank cannot be re-laid, so this
+        returns whether a rebuild is needed."""
+        view = self._view
+        start = view.detail_start
+        if start is None or not self.details_shown or self.selected is None or self._model.detail_for is None:
+            return False
+        new = _detail_lines(self._model, self.selected[1], width)
+        if len(new) != view.detail_len:
+            return True
+        block = view.lines[start:start + view.detail_len]
+        if new == block:
+            return False
+        lines = list(view.lines)
+        lines[start:start + view.detail_len] = new
+        self._view = SidebarView(tuple(lines), view.rows, view.hidden, start, len(new))
+        self.refresh()
+        return False
 
     def _default_selection(self, rows: list[tuple[str, str]]) -> tuple[str, str] | None:
         """The row of the session in front, in Open here; else the first row."""

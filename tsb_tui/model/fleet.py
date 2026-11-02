@@ -122,6 +122,20 @@ class Chip:
     mark: str
 
 
+@dataclass(frozen=True)
+class FleetScan:
+    """What one pass over the records gives the rail, the sidebar and the model build: the merged records, the
+    needs-you list, the groups in D42's order, the rail's chip ids, the count of records on each target, and each
+    record's two column fields (target, login). Every value is exactly what the separate scans give."""
+
+    merged: Mapping[str, dict[str, Any]]
+    needs_you: list[dict[str, Any]]
+    groups: dict[str, list[dict[str, Any]]]
+    chip_ids: list[str]
+    by_target: dict[str, int]
+    columns: dict[str, tuple[str, str]]
+
+
 def who_types(record: dict[str, Any], me: str | None, *, needs_you: bool = False,
               asks_you: bool = False) -> str:
     """Cell 2's glyph, by D41's priority: ended, unreachable, asks, needs-you, then who types."""
@@ -258,84 +272,113 @@ class Fleet:
 
     # -- derived views (D9, D42) --
 
+    def scan(self, *, open_here: Iterable[str] = (), stale_with_me: Iterable[str] = (),
+             question_for_me: Iterable[str] = (),
+             live: Mapping[str, dict[str, Any]] | None = None) -> FleetScan:
+        """The needs-you list, the groups, the rail's chip ids, the target counts and every record's column
+        fields, from one pass over the merged records. `needs_you`, `groups`, `chips` and `chip_count` all read
+        this, so a rebuild of a long fleet scans once, not five times."""
+        open_list = list(dict.fromkeys(open_here))
+        open_set = set(open_list)
+        merged = self._merged(live)
+        stale_set, ask_set = set(stale_with_me), set(question_for_me)
+        reasons = self.needs_reasons
+        me = self.own_user
+        in_view = self.filter_mode == "all"
+        needing: list[dict[str, Any]] = []
+        held_by_others: list[dict[str, Any]] = []
+        joinable: list[dict[str, Any]] = []
+        chip_held_ids: list[str] = []
+        by_target: dict[str, int] = {}
+        columns: dict[str, tuple[str, str]] = {}
+        for record in merged.values():
+            sid = record["id"]
+            target = record.get("target_id", "")
+            by_target[target] = by_target.get(target, 0) + 1
+            holder = record.get("control_holder")
+            columns[sid] = (target, "·" if holder is None else (
+                "you" if holder.get("user") == me else str(holder.get("user"))))
+            mine = record.get("owner") == me
+            is_open = sid in open_set
+            mine_or_open = mine or is_open
+            held = _held_by_other(record, me)
+            if mine and held and not is_open:
+                chip_held_ids.append(sid)
+            if mine_or_open and (("ending_window" in reasons and _ending(record))
+                                 or ("unreachable" in reasons and record.get("state") == "unreachable")
+                                 or ("stale_and_i_type" in reasons and sid in stale_set)
+                                 or ("question_for_me" in reasons and sid in ask_set)):
+                needing.append(record)
+            # The groups follow the filter (DT15): `all` lists what the core returned, `mine` what is mine or open
+            # here. Needs you keeps its own scope (D9), so it is tested against `mine_or_open`, not the view.
+            if (in_view or mine_or_open) and not is_open:
+                if mine and held:
+                    held_by_others.append(record)
+                else:
+                    joinable.append(record)
+        full: dict[str, list[dict[str, Any]]] = {
+            GROUP_NEEDS_YOU: needing,
+            GROUP_OPEN_HERE: [merged[sid] for sid in open_list if sid in merged],
+            GROUP_MINE_HELD_BY_OTHERS: held_by_others,
+            GROUP_MINE_AND_JOINABLE: joinable,
+        }
+        chip_ids: list[str] = []
+        for source in self.chip_sources:
+            if source == "open_here":
+                chip_ids.extend(sid for sid in open_list if sid in merged)
+            else:  # mine_held_by_others
+                chip_ids.extend(chip_held_ids)
+        return FleetScan(merged=merged, needs_you=needing,
+                         groups={name: full[name] for name in GROUP_ORDER if name in self.group_names},
+                         chip_ids=list(dict.fromkeys(chip_ids)), by_target=by_target, columns=columns)
+
     def needs_you(self, *, open_here: Iterable[str] = (), stale_with_me: Iterable[str] = (),
                   question_for_me: Iterable[str] = (),
-                  live: Mapping[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+                  live: Mapping[str, dict[str, Any]] | None = None,
+                  scan: FleetScan | None = None) -> list[dict[str, Any]]:
         """D9: sessions I own or have open here that are in a warning window, stale with me typing,
         asking me a question, or unreachable (the reasons `rail.needs_you` names). The record carries the
-        warning window and the unreachable state; stale and question come from the attachment state."""
-        open_set, stale_set, ask_set = set(open_here), set(stale_with_me), set(question_for_me)
-        reasons = self.needs_reasons
-        out = []
-        for record in self._merged(live).values():
-            if not self._is_mine_or_open(record, open_set):
-                continue
-            sid = record["id"]
-            if (("ending_window" in reasons and _ending(record))
-                    or ("unreachable" in reasons and record.get("state") == "unreachable")
-                    or ("stale_and_i_type" in reasons and sid in stale_set)
-                    or ("question_for_me" in reasons and sid in ask_set)):
-                out.append(record)
-        return out
+        warning window and the unreachable state; stale and question come from the attachment state.
+        `scan` is this pass over the records, when the caller has already run it."""
+        return (scan if scan is not None else self.scan(open_here=open_here, stale_with_me=stale_with_me,
+                                                        question_for_me=question_for_me, live=live)).needs_you
 
     def groups(self, *, open_here: Iterable[str] = (), stale_with_me: Iterable[str] = (),
                question_for_me: Iterable[str] = (),
-               live: Mapping[str, dict[str, Any]] | None = None) -> dict[str, list[dict[str, Any]]]:
+               live: Mapping[str, dict[str, Any]] | None = None,
+               scan: FleetScan | None = None) -> dict[str, list[dict[str, Any]]]:
         """The sidebar's groups in D42's order (the ones `sidebar.groups` names), over the visible records.
 
         Needs you is a highlight over the others, not a place a session moves to: a session open here that
         needs you is in both Needs you and Open here (mockups S1, S3). Open here keeps the order the sessions
         were opened in, which is their number on the rail. A session that is neither open here nor yours with
-        another login typing is in Yours and joinable, a needing one included."""
-        open_list = list(dict.fromkeys(open_here))
-        open_set = set(open_list)
-        merged = self._merged(live)
-        visible = self.visible(open_here=open_set, live=live)
-        full: dict[str, list[dict[str, Any]]] = {
-            GROUP_NEEDS_YOU: self.needs_you(open_here=open_set, stale_with_me=stale_with_me,
-                                            question_for_me=question_for_me, live=live),
-            GROUP_OPEN_HERE: [merged[sid] for sid in open_list if sid in merged],
-            GROUP_MINE_HELD_BY_OTHERS: [], GROUP_MINE_AND_JOINABLE: [],
-        }
-        for record in visible:
-            if record["id"] in open_set:
-                continue
-            if record.get("owner") == self.own_user and _held_by_other(record, self.own_user):
-                full[GROUP_MINE_HELD_BY_OTHERS].append(record)
-            else:
-                full[GROUP_MINE_AND_JOINABLE].append(record)
-        return {name: full[name] for name in GROUP_ORDER if name in self.group_names}
-
-    def _chip_ids(self, open_here: list[str], merged: Mapping[str, dict[str, Any]]) -> list[str]:
-        ids: list[str] = []
-        for source in self.chip_sources:
-            if source == "open_here":
-                ids.extend(sid for sid in open_here if sid in merged)
-            else:  # mine_held_by_others
-                ids.extend(sid for sid, record in merged.items() if sid not in open_here
-                           and record.get("owner") == self.own_user
-                           and _held_by_other(record, self.own_user))
-        return list(dict.fromkeys(ids))
+        another login typing is in Yours and joinable, a needing one included. `scan` is this pass over the
+        records, when the caller has already run it."""
+        return (scan if scan is not None else self.scan(open_here=open_here, stale_with_me=stale_with_me,
+                                                        question_for_me=question_for_me, live=live)).groups
 
     def chip_count(self, *, open_here: Iterable[str] = (),
-                   live: Mapping[str, dict[str, Any]] | None = None) -> int:
+                   live: Mapping[str, dict[str, Any]] | None = None,
+                   scan: FleetScan | None = None) -> int:
         """How many chips there would be without the cap of nine; more than nine end in `…` (D41)."""
-        return len(self._chip_ids(list(open_here), self._merged(live)))
+        return len((scan if scan is not None else self.scan(open_here=open_here, live=live)).chip_ids)
 
     def chips(self, *, open_here: Iterable[str] = (), front: str | None = None,
               unseen: Iterable[str] = (), question_for_me: Iterable[str] = (),
               stale_with_me: Iterable[str] = (),
-              live: Mapping[str, dict[str, Any]] | None = None) -> list[Chip]:
+              live: Mapping[str, dict[str, Any]] | None = None,
+              scan: FleetScan | None = None) -> list[Chip]:
         """D41: one chip per session open here (in the order they were opened) or owned by me and typed in by
-        another login, numbered from 1 and at most nine. The sources and the marks are the knobs'."""
-        open_list = list(dict.fromkeys(open_here))
+        another login, numbered from 1 and at most nine. The sources and the marks are the knobs'. `scan` is
+        this pass over the records, when the caller has already run it."""
         unseen_set = set(unseen)
-        merged = self._merged(live)
-        needing = {r["id"] for r in self.needs_you(
-            open_here=open_list, stale_with_me=stale_with_me, question_for_me=question_for_me, live=live)}
+        s = scan if scan is not None else self.scan(open_here=open_here, stale_with_me=stale_with_me,
+                                                    question_for_me=question_for_me, live=live)
+        merged = s.merged
+        needing = {r["id"] for r in s.needs_you}
         ask_set = set(question_for_me)
         chips: list[Chip] = []
-        for number, sid in enumerate(self._chip_ids(open_list, merged)[:MAX_CHIPS], start=1):
+        for number, sid in enumerate(s.chip_ids[:MAX_CHIPS], start=1):
             if "front" in self.chip_marks and sid == front:
                 mark = MARK_FRONT
             elif "unseen_output" in self.chip_marks and sid in unseen_set:
