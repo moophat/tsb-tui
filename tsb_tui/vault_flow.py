@@ -91,8 +91,15 @@ def failure_message(exc: Exception) -> str:
     return exc.message if isinstance(exc, ApiError) else str(exc)
 
 
-async def call(app: Any, func: Callable[..., Any], *args: Any) -> Any:
+class _LoginChanged(Exception):
+    """The save belongs to a TSB login that is no longer current."""
+
+
+async def call(app: Any, func: Callable[..., Any], *args: Any,
+               check_current: Callable[[], None] | None = None) -> Any:
     """A blocking client call off the UI thread, awaited. Raises what `App.call_api` would have handed to `on_error`."""
+    if check_current is not None:
+        check_current()
     future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
 
     def done(result: Any) -> None:
@@ -124,15 +131,16 @@ def _put_back(screen: Any, message: str) -> bool:
 
 # -- init and unlock --
 
-async def init_vault(app: Any, salt: dict | None = None) -> UnlockResult:
+async def init_vault(app: Any, salt: dict | None = None, *,
+                     check_current: Callable[[], None] | None = None) -> UnlockResult:
     """Offer init: the passphrase twice with cred §7.4's warning. Mint the salt if there is none, derive, send init. The
     login then holds an unlock (DEFAULT 35)."""
     try:
         if salt is None or not salt.get("user_salt"):
-            salt = await call(app, app.client.vault_mint_salt)
+            salt = await call(app, app.client.vault_mint_salt, check_current=check_current)
     except ApiError as exc:
         if exc.code == VAULT_EXISTS:
-            return await unlock(app)        # someone else sealed it first: it is an unlock now
+            return await unlock(app, check_current=check_current)        # someone else sealed it first: it is an unlock now
         _ended_login(app, exc)
         return UnlockResult("error", failure_message(exc))
     except (HttpError, OSError) as exc:
@@ -157,12 +165,12 @@ async def init_vault(app: Any, salt: dict | None = None) -> UnlockResult:
                 return UnlockResult("cancelled")
             screen.busy(UNLOCKING)
             try:
-                await call(app, app.client.vault_init, *halves)
+                await call(app, app.client.vault_init, *halves, check_current=check_current)
             except ApiError as exc:
                 halves = ("", "")
                 if exc.code == VAULT_EXISTS:
                     screen.close()
-                    return await unlock(app)
+                    return await unlock(app, check_current=check_current)
                 _ended_login(app, exc)
                 return UnlockResult("error", failure_message(exc))
             except (HttpError, OSError) as exc:
@@ -172,18 +180,19 @@ async def init_vault(app: Any, salt: dict | None = None) -> UnlockResult:
         screen.close()
 
 
-async def unlock(app: Any, salt: dict | None = None, *, why: str = "") -> UnlockResult:
+async def unlock(app: Any, salt: dict | None = None, *, why: str = "",
+                 check_current: Callable[[], None] | None = None) -> UnlockResult:
     """Unlock this login's vault in untrusted mode. `salt` is the answer of a salt read the caller already made."""
     try:
         if salt is None:
-            salt = await call(app, app.client.vault_salt)
+            salt = await call(app, app.client.vault_salt, check_current=check_current)
     except ApiError as exc:
         _ended_login(app, exc)
         return UnlockResult("error", failure_message(exc))
     except (HttpError, OSError) as exc:
         return UnlockResult("error", failure_message(exc))
     if not salt.get("initialized"):
-        return await init_vault(app, salt)
+        return await init_vault(app, salt, check_current=check_current)
     screen = PassphraseScreen(why)
     app.push_screen(screen)
     try:
@@ -204,7 +213,7 @@ async def unlock(app: Any, salt: dict | None = None, *, why: str = "") -> Unlock
                 return UnlockResult("cancelled")
             screen.busy(UNLOCKING)
             try:
-                await call(app, app.client.vault_unlock_untrusted, *halves)
+                await call(app, app.client.vault_unlock_untrusted, *halves, check_current=check_current)
             except ApiError as exc:
                 halves = ("", "")
                 if exc.code == UNLOCK_FAILED:
@@ -217,7 +226,7 @@ async def unlock(app: Any, salt: dict | None = None, *, why: str = "") -> Unlock
                     continue
                 if exc.code == VAULT_NOT_INITIALIZED:
                     screen.close()
-                    return await init_vault(app, None)
+                    return await init_vault(app, None, check_current=check_current)
                 _ended_login(app, exc)
                 return UnlockResult("error", failure_message(exc))
             except (HttpError, OSError) as exc:
@@ -227,14 +236,15 @@ async def unlock(app: Any, salt: dict | None = None, *, why: str = "") -> Unlock
         screen.close()
 
 
-async def with_unlock(app: Any, func: Callable[..., Any], *args: Any, salt: dict | None = None) -> Done:
+async def with_unlock(app: Any, func: Callable[..., Any], *args: Any, salt: dict | None = None,
+                      check_current: Callable[[], None] | None = None) -> Done:
     """Run a vault call that needs this login's unlock. Answered `vault_locked`: unlock, then repeat it once."""
     for attempt in (1, 2):
         try:
-            return Done("ok", await call(app, func, *args))
+            return Done("ok", await call(app, func, *args, check_current=check_current))
         except ApiError as exc:
             if exc.code == VAULT_LOCKED and attempt == 1:
-                result = await unlock(app, salt)
+                result = await unlock(app, salt, check_current=check_current)
                 if result.status == "cancelled":
                     return Done("cancelled")
                 if result.status != "unlocked":
@@ -277,40 +287,51 @@ async def save_login(app: Any, target: str | Sequence[str], username: str, *, pa
     `saved`, `cancelled` or `error`; a store the core refuses (a reference already in use, an encrypted key) is `error`
     with the core's message and nothing mapped. A failed mapping leaves the stored credential: `error` with `stored`
     true. The secret is a local of this call, never kept; callers drop theirs once it returns."""
-    targets = _targets(target)
-    secret, kind = (key, "key") if key else (password, "password")
-    if (problem := check_login(targets, username, secret, reference)) is not None:
-        return SaveOutcome("error", reference, message=problem)
+    client, generation = app.client, app._login_gen
+    was_stored = False
+
+    def check_current() -> None:
+        if app.client is not client or app._login_gen != generation:
+            raise _LoginChanged
+
     try:
-        salt = await call(app, app.client.vault_salt)
-    except ApiError as exc:
-        _ended_login(app, exc)
-        return SaveOutcome("error", reference, message=exc.message, error=exc)
-    except (HttpError, OSError) as exc:
-        return SaveOutcome("error", reference, message=str(exc), error=exc)
-    if not salt.get("initialized"):
-        opened = await init_vault(app, salt)
-        if opened.status == "cancelled":
-            return SaveOutcome("cancelled", reference, message="Not saved: the vault was not set up.")
-        if opened.status != "unlocked":
-            return SaveOutcome("error", reference, message=opened.message)
-    stored = await with_unlock(app, app.client.store_credential, reference, kind, username.strip(), secret,
-                               label or None, salt=salt)
-    secret = None
-    if stored.status == "cancelled":
-        return SaveOutcome("cancelled", reference, message="Not saved: the vault was not unlocked.")
-    if stored.status != "ok":
-        return SaveOutcome("error", reference, message=stored.message, error=stored.error)
-    try:
-        await call(app, app.client.map_profiles, {name: reference for name in targets})
-    except ApiError as exc:
-        _ended_login(app, exc)
-        return SaveOutcome("error", reference, stored=True, error=exc, message=(
-            f"The login was stored as {reference} but not mapped to {', '.join(targets)}: {exc.message}. "
-            f"Map or delete it from the credentials list."))
-    except (HttpError, OSError) as exc:
-        return SaveOutcome("error", reference, stored=True, error=exc, message=(
-            f"The login was stored as {reference} but not mapped to {', '.join(targets)}: {exc}. "
-            f"Map or delete it from the credentials list."))
-    return SaveOutcome("saved", reference, stored=True, mapped=True,
-                       message=f"Saved {reference} for {', '.join(targets)}.")
+        targets = _targets(target)
+        secret, kind = (key, "key") if key else (password, "password")
+        if (problem := check_login(targets, username, secret, reference)) is not None:
+            return SaveOutcome("error", reference, message=problem)
+        try:
+            salt = await call(app, client.vault_salt, check_current=check_current)
+        except ApiError as exc:
+            _ended_login(app, exc)
+            return SaveOutcome("error", reference, message=exc.message, error=exc)
+        except (HttpError, OSError) as exc:
+            return SaveOutcome("error", reference, message=str(exc), error=exc)
+        if not salt.get("initialized"):
+            opened = await init_vault(app, salt, check_current=check_current)
+            if opened.status == "cancelled":
+                return SaveOutcome("cancelled", reference, message="Not saved: the vault was not set up.")
+            if opened.status != "unlocked":
+                return SaveOutcome("error", reference, message=opened.message)
+        stored = await with_unlock(app, client.store_credential, reference, kind, username.strip(), secret,
+                                   label or None, salt=salt, check_current=check_current)
+        secret = None
+        if stored.status == "cancelled":
+            return SaveOutcome("cancelled", reference, message="Not saved: the vault was not unlocked.")
+        if stored.status != "ok":
+            return SaveOutcome("error", reference, message=stored.message, error=stored.error)
+        was_stored = True
+        try:
+            await call(app, client.map_profiles, {name: reference for name in targets}, check_current=check_current)
+        except ApiError as exc:
+            _ended_login(app, exc)
+            return SaveOutcome("error", reference, stored=True, error=exc, message=(
+                f"The login was stored as {reference} but not mapped to {', '.join(targets)}: {exc.message}. "
+                f"Map or delete it from the credentials list."))
+        except (HttpError, OSError) as exc:
+            return SaveOutcome("error", reference, stored=True, error=exc, message=(
+                f"The login was stored as {reference} but not mapped to {', '.join(targets)}: {exc}. "
+                f"Map or delete it from the credentials list."))
+        return SaveOutcome("saved", reference, stored=True, mapped=True,
+                           message=f"Saved {reference} for {', '.join(targets)}.")
+    except _LoginChanged:
+        return SaveOutcome("cancelled", reference, stored=was_stored, message="Not saved: your TSB login changed.")

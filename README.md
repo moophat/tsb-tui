@@ -88,6 +88,18 @@ rebound with `[keys.leader_map]` in the config file, by action name.
 
 ## tsb-tui drive: an agent, or the harness, uses the TUI as a person does
 
+For an SSH target, New session offers the stored login, username/password fields, or **Type the login in the terminal**.
+The last opens a pane before creating anything: TSB asks `login as:`, confirms a first-use host key, then shows the
+device's own questions as plain text inside a frame marked **device login**. A password round uses TSB's own
+`Password:` outside that frame. Esc cancels. Recording login inputs requires consent before the user name is asked.
+On success the same socket becomes the session; its recording gate still precedes all session input.
+
+**Remember** is off by default. It saves a successful password-only login into the personal vault and maps the target
+to it, through the existing vault save flow. A keyboard-interactive question removes the offer and drops any candidate;
+codes are never saved. The screen lock hides the questions and blocks answers, while authentication continues. A result
+and any save wait for the password re-check; sign-out drops the candidate. The session menu also offers **New session on
+this connection**, which explicitly reuses its connection without another login. That entry has no shortcut.
+
     tsb-tui drive --guide                       # print the guide for agents; needs no broker
     tsb-tui drive --profile drive --broker https://<host> --user <login> --password-file <file>
     tsb-tui drive --profile harness --broker https://<host> --script steps.jsonl

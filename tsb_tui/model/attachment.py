@@ -563,10 +563,14 @@ class AttachmentPump:
 
     # -- lifecycle --
 
-    async def start(self) -> None:
+    async def start(self, attachment: AsyncAttachment | None = None) -> None:
         """Attach and begin the reader and processor. Raises `AttachRefused`/`ApiError` for a
         first-attach refusal, exactly as `Client.async_attach` does."""
-        await self._attach()
+        if attachment is None:
+            await self._attach()
+        else:
+            self.attach_attempts += 1
+            self._apply_attached(attachment)
         self._process_task = asyncio.create_task(self._process_loop())
         self._task = asyncio.create_task(self._read_loop())
 
@@ -610,6 +614,9 @@ class AttachmentPump:
     async def _attach(self) -> None:
         self.attach_attempts += 1
         att = await self._client.async_attach(self.session_id, cols=self._cols, rows=self._rows)
+        self._apply_attached(att)
+
+    def _apply_attached(self, att: AsyncAttachment) -> None:
         self._att = att
         self._expect_dump = False
         # `async_attach` consumes the `attached` frame while opening, so recv_message never yields it:

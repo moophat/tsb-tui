@@ -175,6 +175,9 @@ class TsbTuiApp(App):
     #login-fields, #login-row {
         height: auto;
     }
+    #new-session-panel {
+        padding: 0 2;
+    }
     #login-row Input {
         width: 1fr;
     }

@@ -195,6 +195,7 @@ KNOB_TYPES: dict[str, type] = {
     "event_log.lines": int,
     "drive.default_cols": int,
     "drive.default_rows": int,
+    "drive.answer_timeout_ms": int,
     "drive.wait_timeout_ms": int,
     "drive.wait_timeout_max_ms": int,
     "drive.settled_ms": int,
@@ -313,6 +314,7 @@ KNOB_OWNERS: dict[str, int] = {
     "event_log.lines": 2,
     "drive.default_cols": 9,
     "drive.default_rows": 9,
+    "drive.answer_timeout_ms": 9,
     "drive.wait_timeout_ms": 9,
     "drive.wait_timeout_max_ms": 9,
     "drive.settled_ms": 9,
@@ -869,7 +871,8 @@ def _check_drive_knobs(values: Mapping[str, Any]) -> None:
     may give, and sizes and limits that mean something."""
     _names_from(values, "drive.events", EVENT_NAMES)
     _one_of(values, "drive.output_events", OUTPUT_MODES)
-    for key in ("drive.default_cols", "drive.default_rows", "drive.wait_timeout_max_ms", "drive.reply_max_lines"):
+    for key in ("drive.default_cols", "drive.default_rows", "drive.wait_timeout_max_ms", "drive.reply_max_lines",
+                "drive.answer_timeout_ms"):
         if values[key] < 1:
             raise ConfigError(f"{key} = {values[key]}: expected at least 1")
     for key in ("drive.wait_timeout_ms", "drive.settled_ms"):

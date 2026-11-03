@@ -41,6 +41,12 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 - **A command:** `{"id": 7, "op": "type", "session": "s.3d81e0", "text": "show version\r"}`. `id` is yours and comes back on the answer. `session` defaults to the session in front. Blank lines and lines starting with `#` are skipped.
 - **An answer:** `{"id": 7, "ok": true, ...}`, or `{"id": 7, "ok": false, "error": "<code>", "why": "<plain words>", ...}`.
 - **An event:** `{"ev": "<name>", "session": "s.…", ...}`. Events arrive at any time, between answers.
+- A device login has no session yet: its events use `device_login` instead. `device_login_hostkey` carries `kind`
+  and `fingerprint`; `device_login_prompt` carries `method` and the device's plain strings, `echo`, `attempt` and
+  `prompt_id` when a round takes answers. Banners and empty rounds take no answer. `device_login_result` carries
+  `outcome`; on `connected` it also carries the ordinary attach answer's fields. A recorded session emits `gate`
+  before that result. An unknown host-key kind or prompt method is cancelled and reported as an error result
+  saying drive is too old. `request_refused` reports a refused answer without ending the pending prompt.
 - Commands are taken one at a time, in the order you send them. A `wait` holds the ones behind it until it answers.
 - Everything drive writes is plain ASCII JSON.
 
@@ -80,6 +86,9 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 | `snapshot` | `format`: `text` (default) or `svg` | `text` or `svg`: the whole UI, as a person would see it |
 | `click`, `press` | `label`; `keys` | `click` presses a visible control by its label (not available while the mouse is off, as in the `drive` profile); `press` sends Textual key names, for example `["ctrl+backslash", "w"]` (for tests of the UI itself) |
 | `resize` | `size` (`"100x30"`) or `cols` and `rows` | `size`: the headless window changed |
+| `login_hostkey` | `device_login`, `accept` | — Answers a pending first-use host-key question after you check its fingerprint out of band |
+| `login_answer` | `device_login`, `prompt_id`, `answers_from` (`"stdin"`) or `answers_file` | — One stdin line per prompt, read raw and never in the transcript; `answers_file` names a pipe (`/dev/fd/N`), never a regular file or a device |
+| `login_cancel` | `device_login` | — Cancels the device login |
 | `quit` | — | — Every session keeps running |
 
 `hand` and `hand_back` name a client by its `client_id`, or by its login when that login has one client here (`choose_client` lists them when it has several). Both are the Who's here buttons, so they are refused when the button would be grey: only the keyboard holder or the owner may hand it over.
@@ -87,6 +96,24 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 **Key names** for `keys`: `enter`, `tab`, `escape`, `backspace`, `delete`, `insert`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `f1` to `f25`, `ctrl+<letter>`, `alt+<key>`, `shift+<key>`. They are encoded for the session's modes (an arrow is a different byte string once a program asks for application cursor keys). An unknown name is refused with `unknown_key`, and nothing is sent; use `type` for text.
 
 ## 6. Reading the screen
+
+To type the device's own SSH login, use `new` with `login_mode: "prompt"`, `login_user` and the target. As with any
+`new`, `size.auto_request` must be on. When TSB records logins, pass `recording_acknowledged: true` after considering
+that the user name, device prompts and every answer will be recorded; otherwise the create is refused with
+`login_recording_not_acknowledged` and opens nothing. The immediate answer is `{"device_login":"…"}`, followed by
+the device-login events above. There is no Remember offer under drive.
+
+- `login_hostkey {device_login, accept}` answers a first-use key question after checking its fingerprint out of band.
+- `login_answer {device_login, prompt_id, answers_from:"stdin"}` consumes one raw stdin line per prompt. These lines
+  are never echoed or written to the transcript, and this stdin door is refused in `--script` mode. Empty lines send
+  empty answers; spaces are preserved. Alternatively, `answers_file` names a pipe such as `/dev/fd/N`, one line per
+  answer. Each pipe line has a `drive.answer_timeout_ms` deadline (30000 ms by default). If the answers do not
+  arrive in time, the command returns `bad_request` and sends no answer round. Regular files and devices are refused. `answers` in a command is refused and redacted from the transcript.
+- `login_cancel {device_login}` cancels a pending login.
+
+The look rule gates `type` and `keys` only; it does not gate these three login commands. The attached TUI's screen lock
+does not block a headless login. After `connected`, the ordinary session input and recording gates apply. On a lost socket, a session may have
+opened: refresh `sessions` before deciding whether to start again.
 
 Every read is made in your own client, from what it already received. TSB itself never serves screen content.
 

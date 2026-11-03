@@ -223,11 +223,12 @@ lines = 2000
 [drive]
 default_cols = 120
 default_rows = 40
+answer_timeout_ms = 30000
 wait_timeout_ms = 30000
 wait_timeout_max_ms = 600000
 settled_ms = 800
 reply_max_lines = 5000
-events = ["gate", "token", "input_refused", "clients", "stale", "notice", "size", "ended", "removed", "detached"]
+events = ["gate", "token", "input_refused", "clients", "stale", "notice", "size", "ended", "removed", "detached", "device_login_hostkey", "device_login_prompt", "device_login_result", "request_refused"]
 output_events = "off"
 switch_on_action = true
 

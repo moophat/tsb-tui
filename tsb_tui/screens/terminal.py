@@ -303,6 +303,11 @@ class SessionSlot:
     mark_input: bool = False
     # Why this session was left, when it was (an attach that failed, a detach): the sentence the operator was told.
     left: str | None = None
+    device_login: Any = None
+    device_gate: bool = False
+    device_size_pending: bool = False
+    login_status: str = ""
+    login_status_until: float = 0.0
 
     @property
     def target(self) -> str:
@@ -1371,13 +1376,15 @@ class TerminalScreen(Screen):
         return True
 
     def _add_slot(self, session: dict, *, recording_bar: bool = False,
-                  then: Callable[[SessionSlot], Any] | None = None, front: bool = True) -> SessionSlot:
+                  then: Callable[[SessionSlot], Any] | None = None, front: bool = True,
+                  defer_attach: bool = False) -> SessionSlot:
         cfg = self.app.cfg
         # The grid starts at a placeholder size; `attached` gives it the session's.
         backend = VTBackend(self.app.engine, 80, 24, scrollback_bytes=cfg["term.scrollback_bytes"])
         canvas = Canvas(backend, self.app.palette, cfg)
         canvas.in_front = False
         slot = SessionSlot(session["id"], canvas, record=dict(session), recording_bar=recording_bar)
+        slot.attach_started = defer_attach
         # The engine's answers to the session's queries leave through the one input path (DT3, DT4 b), for
         # this session's attachment and no other.
         backend.set_reply_callback(functools.partial(self._on_reply, slot))
@@ -1394,6 +1401,40 @@ class TerminalScreen(Screen):
             self._start_attach(slot, *self.fit_size())
         self._mark_fleet_dirty()
         return slot
+
+    def open_device_login(self, target: str, term: str, size: tuple[int, int], **kwargs: Any) -> Any:
+        from uuid import uuid4
+
+        from .device_login import DeviceLoginPane
+
+        if self._refuse_while_signing_out():
+            return None
+        slot = self._add_slot({"id": f"pending-{uuid4().hex}", "target_id": target,
+                               "state": "live", "owner": self.app.username}, defer_attach=True)
+        pane = DeviceLoginPane(self, slot, target, term, size, **kwargs)
+        slot.device_login = pane
+        slot.device_gate = True
+        self.query_one("#canvases").mount(pane)
+        return pane
+
+    def adopt_device_attachment(self, slot: SessionSlot, attachment: Any) -> None:
+        if slot.closed:
+            self._spawn(attachment.close())
+            return
+        slot.session_id = attachment.session["id"]
+        slot.record = dict(attachment.session)
+        slot.worker = self.run_worker(self._attach_and_pump(slot, *self.fit_size(), attachment=attachment),
+                                      exclusive=False)
+        self._mark_fleet_dirty()
+
+    def request_device_size(self, slot: SessionSlot) -> None:
+        slot.device_size_pending = True
+        if slot.pump is not None and slot.pump.state.dump_seen:
+            slot.device_size_pending = False
+            state = slot.pump.state
+            size = self.fit_size()
+            if state.holds_keyboard and size != state.size_in_effect:
+                self._spawn(slot.pump.resize(*size))
 
     def _run_then(self, slot: SessionSlot, then: Callable[[SessionSlot], Any]) -> None:
         """Run `then` once this session has attached: now, or when its `attached` frame has been applied."""
@@ -1418,12 +1459,20 @@ class TerminalScreen(Screen):
         if previous is not None:
             previous.canvas.send_to_back()
             previous.canvas.display = False
+            if previous.device_login is not None:
+                previous.device_login.display = False
+                focused = self.focused
+                if focused is not None and previous.device_login in focused.ancestors_with_self:
+                    self.set_focus(None)  # a hidden pane gives up the keys held in its widgets
         self._front = slot
         slot.unseen = False
         slot.canvas.display = True
         slot.canvas.bring_to_front()
         if self._sidebar_has_keys():
             self.set_focus(None)  # a session came to the front: the keys go to it, and the sidebar stays as it is
+        if slot.device_login is not None and slot.device_gate:
+            slot.device_login.display = True  # the overlay shows over the canvas; a pane has no bring_to_front
+            slot.device_login.take_front_focus()  # a login in front takes the keys its answers need
         self._sync_prompts()
         self._sync_dialogs()
         self._sync_alerts()
@@ -1605,7 +1654,7 @@ class TerminalScreen(Screen):
         slot.attach_started = True
         slot.worker = self.run_worker(self._attach_and_pump(slot, cols, rows), exclusive=False)
 
-    async def _attach_and_pump(self, slot: SessionSlot, cols: int, rows: int) -> None:
+    async def _attach_and_pump(self, slot: SessionSlot, cols: int, rows: int, *, attachment: Any = None) -> None:
         cfg = self.app.cfg
         pump = AttachmentPump(
             self.app.client, slot.session_id, sink=functools.partial(self._sink, slot),
@@ -1623,7 +1672,7 @@ class TerminalScreen(Screen):
         slot.pump = pump
         try:
             try:
-                await pump.start()
+                await pump.start(attachment)
             except AttachRefused as exc:
                 self._leave(slot, f"attach refused: {exc.reason or 'close ' + str(exc.code)}", cancel=False)
                 return
@@ -1700,6 +1749,8 @@ class TerminalScreen(Screen):
             canvas.after_run("dump")
             slot.awaiting_dump = False
             self._sync_size(slot)
+            if slot.device_size_pending and not slot.device_gate:
+                self.request_device_size(slot)
             if self._scroll_mode and slot is self._front:
                 self._check_selection()
         else:
@@ -2084,6 +2135,8 @@ class TerminalScreen(Screen):
             # dropped, never sent to the session now in front (§4: bringing one forward asks nothing).
             return
         pump = slot.pump
+        if slot.device_gate:
+            return
         if self._unmounted or pump is None or pump.state.closed or not pump.state.holds_keyboard:
             return
         cols, rows = self.fit_size()
@@ -2141,6 +2194,9 @@ class TerminalScreen(Screen):
         if slot is self._front:
             self.close_scroll_view()
         slot.closed = True
+        if slot.device_login is not None:
+            slot.device_login.dispose()
+            slot.device_login.remove()
         if cancel and slot.worker is not None:
             slot.worker.cancel()
         if slot.pump is not None:
@@ -2219,6 +2275,8 @@ class TerminalScreen(Screen):
         slot = slot or self._front
         pump = slot.pump if slot is not None else None
         if not data or pump is None or self._unmounted or slot.closed:
+            return False
+        if slot.device_gate:
             return False
         state = pump.state
         if state.client_id is None or state.closed:
@@ -2474,9 +2532,11 @@ class TerminalScreen(Screen):
     # -- actions: the one table, run from a key, a click or the Menu --
 
     def facts(self, selected: str | None = None) -> A.Facts:
-        return A.Facts(self.pump.state if self.pump is not None else None, selected,
-                       open_sessions=len(self.slots), under_drive=self.app.under_drive,
-                       alternate_screen=self.canvas is not None and self.backend.active_screen() == G.SCREEN_ALTERNATE)
+        state = self.pump.state if self.pump is not None else None
+        row = self.targets.row(state.session.get("target_id")) if state is not None else None
+        return A.Facts(state, selected, open_sessions=len(self.slots), under_drive=self.app.under_drive,
+                       alternate_screen=self.canvas is not None and self.backend.active_screen() == G.SCREEN_ALTERNATE,
+                       target_type=row.type if row is not None else None)
 
     async def run_action_id(self, action_id: str) -> None:
         """Run one session action, or say why it is not available now. Every action of the table
@@ -2520,6 +2580,48 @@ class TerminalScreen(Screen):
         """New session on the target of the session in front, else the one `--target` named. Every session open here
         stays open: the dialog is over the workspace."""
         self._new_session_dialog(self._target() if self._front is not None else self.app.initial_target)
+
+    async def do_new_on_connection(self) -> None:
+        from ..vault_flow import call
+        from .new_session import CREATE_SIZE_OFF, TERM, NewSessionScreen, create_size
+
+        if self._refuse_while_signing_out() or self._front is None or self._front.pump is None:
+            return
+        size = create_size(self.app)
+        if size is None:
+            self.app.notify(CREATE_SIZE_OFF, markup=False)
+            return
+        session = self._front.pump.state.session
+        if self.facts().target_type == "telnet":  # stale: a telnet connection carries one session, nothing to reuse
+            return
+        try:
+            created = await call(self.app, self.app.client.create_session, session["target_id"], "reuse", TERM,
+                                 *size, session["connection_id"])
+        except ApiError as exc:
+            if exc.status == 401:
+                self.app.notify_api_error(exc)
+            else:
+                self.app.push_screen(NewSessionScreen(session["target_id"], session.get("target_type"),
+                                                      refusal=exc.message))
+            return
+        except (HttpError, OSError) as exc:
+            self.app.notify_api_error(exc)
+            return
+        self.open_session(created["session"], created.get("hostkey"))
+
+    def set_login_status(self, slot: SessionSlot, message: str) -> None:
+        slot.login_status = message
+        slot.login_status_until = self.app.wall_clock() + self.app.cfg["toasts.seconds"]
+        until = slot.login_status_until
+
+        def clear():
+            if slot.login_status_until == until:
+                slot.login_status = ""
+                slot.login_status_until = 0.0
+                self.refresh_status()
+
+        self.set_timer(self.app.cfg["toasts.seconds"], clear)
+        self.refresh_status()
 
     def _new_session_dialog(self, target: str | None, target_type: str | None = None) -> None:
         from .new_session import NewSessionScreen
@@ -3092,7 +3194,8 @@ class TerminalScreen(Screen):
             ended=self._ended_status(state), reattach=self._reattach_status(state),
             reattach_stopped=state is not None and state.reattach_stopped,
             chrome=cfg["view.chrome"], glyph_set=glyphs.check(cfg["glyphs.set"]),
-            open_sessions=len(self.slots))
+            open_sessions=len(self.slots), login_status=(front.login_status if front is not None and (front.device_gate
+                           or self.app.wall_clock() < front.login_status_until) else ""))
 
     def _recording_text(self, slot: SessionSlot | None, state: AttachmentState | None) -> str | None:
         if slot is None or state is None or not slot.bar_until or self.app.wall_clock() >= slot.bar_until:

@@ -398,6 +398,9 @@ class SlowChunkedApp:
             ws.send_close(self.attach_close_code_after_first, "stub refusal")
             return
         session = self.sessions[frame["session_id"]]
+        self._attached_socket(ws, session)
+
+    def _attached_socket(self, ws: ServerWS, session: dict, *, device_login=False) -> None:
         session["state"] = "live"
         session["control_holder"] = ({"client_id": "stub-client-1", "user": "fixture-user"}
                                      if self.holder_is_client
@@ -405,6 +408,12 @@ class SlowChunkedApp:
         ws.send_text(json.dumps({
             "t": "attached", "v": 1, "session": session, "client_id": "stub-client-1",
         }))
+        if device_login:
+            ws.send_text(json.dumps({"t": "prefix", "v": 1, "through_seq": 0,
+                                     "cols": session["cols"], "rows": session["rows"]}))
+            ws.send_binary(b"\x1b[2J\x1b[H")
+            ws.send_text(json.dumps({"t": "clients", "v": 1, "clients": [
+                {"client_id": "stub-client-1", "user": "fixture-user", "may_control": True}]}))
 
         for extra in self.after_attach_frames:
             ws.send_text(json.dumps(extra))
@@ -479,6 +488,135 @@ class SlowChunkedApp:
                     self.resizes.append((text_frame["cols"], text_frame["rows"]))
                 for reply in self.respond_to.get(text_frame.get("t"), ()):
                     ws.send_text(json.dumps(reply))
+
+
+class DeviceLoginApp(SlowChunkedApp):
+    """Scripted C2 rounds, with a 202 which creates no session. Never retains an answer."""
+
+    def __init__(self, *, rounds, outcome="connected", hostkey=False, login_input=False,
+                 hostkey_kind="first_use", drop=False, drop_after_connected=False, **kwargs):
+        super().__init__(max_chunks=0, hostkey_on_create=False, **kwargs)
+        self.rounds = rounds
+        self.outcome = outcome
+        self.ask_hostkey = hostkey
+        self.hostkey_kind = hostkey_kind
+        self.login_input = login_input
+        self.drop_login = drop
+        self.drop_after_connected = drop_after_connected
+        self.pending = {}
+        self.login_frames = []
+        self.login_sockets = 0
+        self.finish_gate = threading.Event()
+        self.finish_gate.set()
+        self.me_reads = 0
+
+    def http(self, method, path, headers, body):
+        if (method, path) == ("GET", "/auth/me"):
+            self.me_reads += 1
+            return 200, [], {"username": "fixture-user", "recording": {"login_input": self.login_input}}
+        if (method, path) == ("POST", "/sessions") and (body.get("login") or {}).get("auth") == {"kind": "prompt"}:
+            self.creates.append(body)
+            if self.create_error:
+                status, code, message = self.create_error
+                return status, [], {"error": {"code": code, "message": message}}
+            if self.login_input and not body["login"].get("recording_acknowledged"):
+                return 409, [], {"error": {"code": "login_recording_not_acknowledged", "message": "Login is recorded"}}
+            if self.create_gate is not None:
+                self.create_started.set()
+                if not self.create_gate.wait(timeout=10):
+                    return 503, [], {"error": {"code": "gate_timeout",
+                                               "message": "the create gate was never released"}}
+            dlid = f"device-login-{len(self.pending) + 1}"
+            ticket = FIXTURE_TICKET + dlid
+            self.pending[dlid] = (ticket, body)
+            return 202, [], {"device_login_id": dlid, "ticket": ticket, "expires_in": 30}
+        return super().http(method, path, headers, body)
+
+    def _websocket(self, path, ws):
+        import hashlib
+
+        frame = json.loads(ws.recv().data)
+        if frame.get("t") != "device_login_attach":
+            # Ordinary attaches remain available for Phase A and reuse checks.
+            self.attaches += 1
+            self._attached_socket(ws, self.sessions[frame["session_id"]])
+            return
+        self.login_sockets += 1
+        pending = self.pending.pop(frame["device_login_id"], None)
+        if pending is None or pending[0] != frame["ticket"]:
+            ws.send_close(4001)
+            return
+        body = pending[1]
+
+        def result(outcome):
+            ws.send_text(json.dumps({"t": "device_login_result", "v": 1, "outcome": outcome}))
+            if outcome != "connected":
+                ws.send_close(4016)
+
+        def receive(expected, prompt=None):
+            while True:
+                message = ws.recv()
+                if message.kind == "close":
+                    return False
+                if message.kind == "ping":
+                    ws.send(wf.OP_PONG, message.data)
+                    continue
+                if message.kind != "text":
+                    continue
+                got = json.loads(message.data)
+                t = got.get("t")
+                kept = {k: v for k, v in got.items() if k != "answers"}
+                if "answers" in got:
+                    kept["answer_sizes"] = [len(s.encode()) for s in got["answers"]]
+                    kept["answer_digests"] = [hashlib.sha256(s.encode()).hexdigest() for s in got["answers"]]
+                self.login_frames.append(kept)
+                if t == "device_login_cancel":
+                    result("cancelled")
+                    return False
+                reason = None
+                if t != expected or (prompt and got.get("prompt_id") != prompt["prompt_id"]):
+                    reason = "not_pending"
+                elif prompt:
+                    answers = got.get("answers", [])
+                    count = 1 if prompt["method"] == "password" else len(prompt["prompts"])
+                    if len(answers) != count or any(len(s.encode()) > 1024 for s in answers):
+                        reason = "invalid"
+                if reason:
+                    ws.send_text(json.dumps({"t": "request_refused", "v": 1, "request": t, "reason": reason}))
+                    continue
+                if expected == "device_login_hostkey_answer" and not got["accept"]:
+                    result("hostkey_refused")
+                    return False
+                return True
+
+        if self.ask_hostkey:
+            ws.send_text(json.dumps({"t": "device_login_hostkey", "v": 1, "kind": self.hostkey_kind,
+                                     "fingerprint": HOSTKEY["fingerprint"]}))
+            if not receive("device_login_hostkey_answer"):
+                return
+        for prompt in self.rounds:
+            ws.send_text(json.dumps(prompt))
+            if (("prompt_id" in prompt or prompt["method"] not in ("banner", "keyboard-interactive"))
+                    and not receive("device_login_answer", prompt if "prompt_id" in prompt else None)):
+                return
+        # Polling the gate also reads cancellation, so a locked test can end without leaving a thread behind.
+        if not self.finish_gate.is_set():
+            while not self.finish_gate.wait(0.01):
+                if ws.closed:
+                    return
+        if self.drop_login:
+            ws.drop()
+            return
+        result(self.outcome)
+        if self.outcome == "connected":
+            status, _, created = super().http("POST", "/sessions", {}, {k: v for k, v in body.items() if k != "login"})
+            self.creates.pop()  # the synthetic open is not another client request
+            assert status == 201
+            if self.drop_after_connected:
+                # The core accepted the login and opened the session, then the link was lost before `attached`.
+                ws.send_close(1006)
+                return
+            self._attached_socket(ws, created["session"], device_login=True)
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):

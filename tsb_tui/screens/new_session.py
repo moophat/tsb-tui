@@ -8,7 +8,8 @@ creation time only would miss that case.
 
 An ssh target's dialog also takes a login for this one connection (login-at-connect phase A, rulings A13 and 15:36 (6)):
 Username and Password, both empty meaning "use what TSB holds". What is typed goes to the core in the create's `login`
-and nowhere else: the dialog keeps no copy, and clears both fields whatever the answer."""
+and nowhere else unless Remember was chosen: the completion holds the submitted login for that save,
+and the dialog clears both fields whatever the answer."""
 
 from __future__ import annotations
 
@@ -19,7 +20,15 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.content import Content
 from textual.screen import Screen
-from textual.widgets import Button, Input, RadioButton, RadioSet, Select, Static
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Input,
+    RadioButton,
+    RadioSet,
+    Select,
+    Static,
+)
 from tsb_contract_client import ApiError
 
 from .._transport import HttpError
@@ -99,9 +108,16 @@ def create_size(app: Any) -> tuple[int, int] | None:
 
 
 class NewSessionScreen(Screen):
+    DEFAULT_CSS = """
+    NewSessionScreen #new-session-panel { height: auto; max-height: 100%; }
+    NewSessionScreen #create-button, NewSessionScreen #cancel-button, NewSessionScreen #device-login-start {
+        height: 1; min-height: 1; border: none; margin: 0; padding: 0 1;
+    }
+    NewSessionScreen #login-remember { height: 1; border: none; padding: 0; }
+    """
     BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
 
-    def __init__(self, target: str | None = None, target_type: str | None = None) -> None:
+    def __init__(self, target: str | None = None, target_type: str | None = None, *, refusal: str = "") -> None:
         super().__init__()
         self._initial_target = target or ""
         # The type of each target id this dialog knows: the one it was opened on (the Targets tab knows it), and
@@ -124,6 +140,8 @@ class NewSessionScreen(Screen):
         self._unlock_tried = False
         self._candidates: list[tuple[str, str]] = []
         self._offers = 0
+        self.me_ready = False
+        self._refusal = refusal
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-session-panel"):
@@ -151,11 +169,14 @@ class NewSessionScreen(Screen):
                 with Horizontal(id="login-row"):
                     yield Input(placeholder="username", id="login-user")
                     yield Input(placeholder="password", password=True, id="login-password")
-            yield Static("", id="new-session-error", markup=False)
-            yield Button("Create session", id="create-button", variant="primary")
+                yield Checkbox("Remember", id="login-remember")
+            yield Button("Type the login in the terminal", id="device-login-start")
+            yield Static(self._refusal, id="new-session-error", markup=False)
+            yield Button("New connection" if self._refusal else "Create session", id="create-button", variant="primary")
             yield Button("Cancel", id="cancel-button")
 
     def on_mount(self) -> None:
+        self._login_inputs = tuple(self.query("#login-user, #login-password"))
         self._hide_credential_choice()
         self.query_one("#target-id", Input).focus()
         self._show_type()
@@ -166,6 +187,7 @@ class NewSessionScreen(Screen):
         if self.app.screen is not self:
             return
         self._recording_login = (me.get("recording") or {}).get("login_input") is True
+        self.me_ready = True
         self._show_type()
 
     def _on_me_error(self, exc: ApiError | HttpError | OSError) -> None:
@@ -173,6 +195,7 @@ class NewSessionScreen(Screen):
         # such. Only a 401 is the operator's to be told, and routes to Login.
         if isinstance(exc, ApiError) and exc.status == 401:
             self.app.notify_api_error(exc)
+        self.me_ready = True
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id in ("target-id", "login-user", "login-password"):
@@ -184,8 +207,12 @@ class NewSessionScreen(Screen):
     def _clear_login(self) -> None:
         """Both fields empty, and the dialog holds no other copy: the values live in the two inputs and in the one call
         that sends them. `query`, not `query_one`: the dialog may already have been taken away by a 401."""
-        for box in self.query("#login-user, #login-password"):
+        for box in getattr(self, "_login_inputs", self.query("#login-user, #login-password")):
             box.value = ""
+
+    def on_unmount(self) -> None:
+        self._clear_login()
+        self._login_inputs = ()
 
     def _is_telnet(self, target_id: str) -> bool:
         return self._types.get(target_id) == TELNET
@@ -200,6 +227,8 @@ class NewSessionScreen(Screen):
         telnet = self._is_telnet(target_id)
         typed = not telnet and self._typed_login()
         self.query_one("#login-fields").display = not telnet
+        self.query_one("#device-login-start").display = (
+            target_type == "ssh" and getattr(self.app, "device_login_unavailable", None) is not self.app.client)
         self.query_one("#login-recording-warning", Static).display = typed and self._recording_login
         reuse = self.query_one("#conn-reuse", RadioButton)
         reuse.disabled = telnet or typed
@@ -222,6 +251,17 @@ class NewSessionScreen(Screen):
             self._attempt_create()
         elif event.button.id == "cancel-button":
             self.action_cancel()
+        elif event.button.id == "device-login-start":
+            if not self.me_ready or self.app.screen_lock.locked:
+                return
+            target = self.query_one("#target-id", Input).value.strip()
+            size = self._create_size()
+            if self._types.get(target) != "ssh" or size is None:
+                self.query_one("#new-session-error", Static).update(CREATE_SIZE_OFF)
+                return
+            self._clear_login()
+            self.app.pop_screen()
+            self.app.workspace().open_device_login(target, TERM, size, recording_login=self._recording_login)
 
     def action_cancel(self) -> None:
         """Back to the workspace: every session open there is as it was."""
@@ -339,14 +379,51 @@ class NewSessionScreen(Screen):
             return
         cols, rows = size
         self._last_create = (target_id, connection, connection_id, credential) if login is None else None
+        remember = self.query_one("#login-remember", Checkbox).value
         self.app.call_api(
             self.app.client.create_session, target_id, connection, TERM, cols, rows, connection_id, login, credential,
-            on_done=self._on_create_done, on_error=self._on_create_error,
+            on_done=lambda created: self._on_create_done(created, login if remember else None),
+            on_error=self._on_create_error,
         )
 
-    def _on_create_done(self, created: dict) -> None:
-        from .attach_confirm import open_attach
+    def _on_create_done(self, created: dict, login: dict | None = None) -> None:
+        if self.app.screen_lock.locked:
+            self.app.screen_lock.after_unlock(lambda: self._on_create_done(created, login))
+            return
+        if self.app.screen is self and login is not None:
+            self.app.run_worker(self._save_created(
+                created, login["user"], login["auth"]["password"]), exclusive=False)
+            return
+        self._finish_create_done(created)
 
+    async def _save_created(self, created: dict, user: str, password: str) -> None:
+        from .. import vault_flow
+        from .device_login import proposed_reference, save_message
+
+        app = self.app
+        workspace = app.workspace()
+        client, generation = app.client, app._login_gen
+        target = created["session"]["target_id"]
+        message = ""
+
+        def show_saved(slot):
+            if message and app.workspace() is workspace and app.client is client and app._login_gen == generation:
+                workspace.set_login_status(slot, message)
+
+        try:
+            saving = vault_flow.save_login(app, target, user, password=password,
+                                           reference=proposed_reference(target, user))
+            self._finish_create_done(created, then=show_saved)
+            outcome = await saving
+            message = save_message(outcome, target)
+            if app.workspace() is workspace and workspace is not None:
+                slot = workspace.slot_for(created["session"]["id"])
+                if slot is not None:
+                    show_saved(slot)
+        finally:
+            password = ""
+
+    def _finish_create_done(self, created: dict, *, then=None) -> None:
         self._clear_login()
         # A completion that arrives after its dialog has gone — a 401 routed to Login while the request was in
         # flight (`notify_api_error` → `_to_login`, which pops to the base) — is discarded: nothing is popped, so
@@ -358,7 +435,7 @@ class NewSessionScreen(Screen):
             return
         # The dialog goes first, then the new session opens in the workspace under it, beside the others.
         self.app.pop_screen()
-        open_attach(self.app, created["session"], created.get("hostkey"))
+        self.app.workspace().open_session(created["session"], created.get("hostkey"), then=then)
 
     def _on_create_error(self, exc: ApiError | HttpError | OSError) -> None:
         # Local widget updates first: `notify_api_error` may switch this screen away (a 401

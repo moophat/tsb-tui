@@ -461,6 +461,13 @@ class Transcript:
 
     def inbound(self, line: str) -> None:
         if self.record is not None:
+            try:
+                command = json.loads(line)
+            except ValueError:
+                command = None
+            if isinstance(command, dict) and command.get("op") == "login_answer" and "answers" in command:
+                command["answers"] = "<refused>"
+                line = json.dumps(command, separators=(",", ":"))
             self.record.write(f"> {line}\n")
             self.record.flush()
 

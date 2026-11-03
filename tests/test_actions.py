@@ -52,8 +52,9 @@ def _viewer() -> AttachmentState:
 
 # The actions that have no key after the leader: the Menu itself, and the entries of Settings and help whose key the
 # design does not name (mockup F3 prints `^\\ ?` for All keys and `:q` for Quit only). Sign out is Menu-only:
-# a costly slip must never be one keystroke away.
-MENU_ONLY = frozenset({"settings", "about", "sign_out"})
+# a costly slip must never be one keystroke away. New session on this connection is menu-only too: it lives in the
+# session menu.
+MENU_ONLY = frozenset({"settings", "about", "sign_out", "new_on_connection"})
 
 
 def test_every_action_has_a_label_a_description_a_group_and_a_key() -> None:
@@ -307,6 +308,15 @@ def test_detach_is_offered_only_while_a_session_is_open_here() -> None:
     """With nothing open there is nothing to detach: the Menu names that, and the status row offers no Detach."""
     assert A.blocked("detach", A.Facts(None, open_sessions=0)) == "no session is open here"
     assert A.blocked("detach", A.Facts(None, open_sessions=1)) is None
+
+
+def test_new_on_connection_is_not_offered_on_a_telnet_session() -> None:
+    """A telnet connection carries one session (session model §5), so there is nothing to reuse: the action is
+    shown unavailable with that reason; on an ssh supplied-login connection it stays available."""
+    state = _owner_holds()
+    assert A.blocked("new_on_connection", A.Facts(state, target_type="ssh")) is None
+    reason = A.blocked("new_on_connection", A.Facts(state, target_type="telnet"))
+    assert reason is not None and "one session" in reason
 
 
 def test_the_new_actions_have_their_own_letters_after_the_leader() -> None:

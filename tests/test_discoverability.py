@@ -22,6 +22,7 @@ from textual.css.query import NoMatches
 from textual.widgets import Input
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
+from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen, TextScreen
 from tsb_tui.screens.credentials import CredentialsScreen
 from tsb_tui.screens.devices import DevicesScreen
@@ -256,6 +257,8 @@ def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, w
                 reached.append("full_view")
                 await dialog(NewSessionScreen, A.BY_ID["new_session"].label)
                 reached.append("new_session")
+                await dialog(AttachConfirmScreen, A.BY_ID["new_on_connection"].label)
+                reached.append("new_on_connection")
                 await _click_menu_entry(rig, A.BY_ID["switch"].label)
                 await _settle(rig, lambda: screen.sidebar_open, "the sidebar to open for Switch to…")
                 screen.close_sidebar()

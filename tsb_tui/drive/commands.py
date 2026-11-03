@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import os
+import select
 import stat
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -45,7 +48,8 @@ if TYPE_CHECKING:
 
 # Every op, in the order the guide lists them.
 OPS = ("login", "sessions", "targets", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "ask_to_type",
-       "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize", "quit")
+       "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize", "quit",
+       "login_hostkey", "login_answer", "login_cancel")
 READS = ("screen", "reply", "history", "who")
 
 ASK_TO_TYPE_WHY = ("TSB has no way to ask for the keyboard yet; ask the owner another way, then wait for "
@@ -66,6 +70,48 @@ class DriveError(Exception):
 
 
 PASSWORD_MAX = 1024  # bytes: the longest password a password_file may hold
+
+
+def answer_line(line: str) -> str:
+    return line[:-1].removesuffix("\r") if line.endswith("\n") else line
+
+
+def read_answer_pipe(path: str, count: int, timeout: float = 30.0) -> list[str]:
+    """Read bounded answer lines from a nonblocking pipe, each against a deadline."""
+    fd = None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        if not stat.S_ISFIFO(os.fstat(fd).st_mode):
+            raise DriveError("bad_request", "answers_file must name a pipe")
+        answers = []
+        for _ in range(count):
+            deadline = time.monotonic() + timeout
+            line = bytearray()
+            while len(line) < 1027:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([fd], [], [], max(0, remaining))[0]:
+                    raise DriveError("bad_request", "the answers did not arrive before the pipe deadline")
+                try:
+                    chunk = os.read(fd, 1)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    if not line:
+                        raise DriveError("bad_request", "the pipe ended before every answer line")
+                    break
+                line.extend(chunk)
+                if chunk == b"\n":
+                    break
+            value = answer_line(line.decode("utf-8"))
+            if len(value.encode()) > 1024:
+                raise DriveError("bad_request", "an answer exceeds 1024 bytes")
+            answers.append(value)
+        return answers
+    except (OSError, UnicodeError):
+        raise DriveError("bad_request", "the answer pipe could not be read as UTF-8") from None
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 
 def read_password_file(path: str) -> str:
@@ -228,6 +274,7 @@ class Commands:
         # A session whose create answered with a first-use host key: its gate stays up, and a later `attach` opens
         # it with this fingerprint rather than a gate that would let Attach through unticked.
         self._pending_hostkeys: dict[str, dict[str, Any]] = {}
+        self._device_logins: dict[str, Any] = {}
 
     async def run(self, cmd: dict[str, Any]) -> dict[str, Any]:
         op = cmd.get("op")
@@ -380,6 +427,10 @@ class Commands:
         for among them (`login_recording_not_acknowledged`), is passed on as it is, never answered for the agent."""
         from ..screens.attach_confirm import AttachConfirmScreen
 
+        if cmd.get("login_mode") == "prompt":
+            return await self._new_device_login(cmd)
+        if "login_mode" in cmd:
+            raise DriveError("bad_request", 'login_mode: expected "prompt"')
         login = await self._supplied_login(cmd)
         target = _field(cmd, "target", str)
         screen = self._screen()
@@ -410,6 +461,104 @@ class Commands:
                              fingerprint=as_text(hostkey.get("fingerprint")))
         await self.d.pass_gate(sid, AttachConfirmScreen)
         return await self._attached_answer(screen, sid)
+
+    async def _new_device_login(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        if any(k in cmd for k in ("password", "password_file", "password_from", "remember")):
+            raise DriveError("bad_request", "prompt mode takes no password source or Remember")
+        target = _field(cmd, "target", str)
+        user = _field(cmd, "login_user", str)
+        if not 1 <= len(user) <= 256:
+            raise DriveError("bad_request", "login_user: expected 1 to 256 characters")
+        acknowledged = cmd.get("recording_acknowledged", False)
+        if not isinstance(acknowledged, bool):
+            raise DriveError("bad_request", "recording_acknowledged: expected bool")
+        screen = self._screen()
+        await self.d.workspace_ready(screen)
+        size = create_size(self.d.app)
+        if size is None:
+            raise DriveError("not_available", CREATE_SIZE_OFF)
+        try:
+            record = await asyncio.to_thread(self.d.app.client.get_target, target)
+            if record.get("type") != "ssh":
+                raise DriveError("bad_request", "device login requires an SSH target")
+            call = functools.partial(self.d.app.client.create_device_login, target, user, TERM, *size,
+                                     recording_acknowledged=acknowledged)
+            pending = await asyncio.to_thread(call)
+        except ApiError as exc:
+            if exc.status in (422, 503):
+                self.d.app.device_login_unavailable = self.d.app.client
+            if exc.status == 401:
+                self.d.app.notify_api_error(exc)
+            raise DriveError(exc.code, exc.message, target=target) from None
+        except (HttpError, OSError):
+            raise DriveError("request_failed", "The device login could not be started.") from None
+        # Mounting starts the socket on the next UI turn, after this command has answered with its id.
+        pane = screen.open_device_login(target, TERM, size, user=user, pending=pending,
+                                       emit=self.d.emit_event,
+                                       connected_answer=functools.partial(self._attached_answer, screen))
+        self._device_logins[pending["device_login_id"]] = pane
+        return {"device_login": pending["device_login_id"]}
+
+    def _device_login(self, cmd: dict[str, Any]) -> Any:
+        self._screen()
+        ident = _field(cmd, "device_login", str)
+        pane = self._device_logins.get(ident)
+        if pane is None or not pane._live():
+            raise DriveError("bad_request", "no such device login in this TSB login")
+        return pane
+
+    async def op_login_hostkey(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        pane = self._device_login(cmd)
+        accept = cmd.get("accept")
+        if not isinstance(accept, bool):
+            raise DriveError("bad_request", "accept: expected bool")
+        if not pane.hostkey_pending:
+            raise DriveError("not_available", "No host-key question is pending.")
+        await pane.answer_hostkey(accept)
+        return {}
+
+    async def op_login_cancel(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        pane = self._device_login(cmd)
+        if pane.connected:
+            raise DriveError("not_available", "the login already connected; its session lives on")
+        await pane.cancel()
+        return {}
+
+    async def op_login_answer(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        pane = self._device_login(cmd)
+        prompt = pane.prompt
+        if prompt is None or "prompt_id" not in prompt or pane.connected or pane.ended:
+            raise DriveError("not_available", "No device question is pending.")
+        count = 1 if prompt["method"] == "password" else len(prompt["prompts"])
+        source = cmd.get("answers_from")
+        answers = None
+        if source == "stdin" and not self.d.script:
+            answers = []
+            for _ in range(count):
+                line = await self.d.take_stdin_line()
+                if line is None:
+                    raise DriveError("bad_request", "stdin ended before every answer line")
+                answers.append(answer_line(line))
+        if "answers" in cmd:
+            raise DriveError("bad_request", "answers never go in a command: use stdin or a pipe")
+        if source is not None and source != "stdin":
+            raise DriveError("bad_request", 'answers_from: expected "stdin"')
+        if source == "stdin" and self.d.script:
+            raise DriveError("bad_request", "answers_from: stdin is refused in --script mode")
+        path = _field(cmd, "answers_file", str, required=False)
+        if (source is None) == (path is None):
+            raise DriveError("bad_request", "give one answer source: answers_from or answers_file")
+        prompt_id = _field(cmd, "prompt_id", int)
+        if answers is None:
+            answers = await asyncio.to_thread(read_answer_pipe, path, count,
+                                              self.d.app.cfg["drive.answer_timeout_ms"] / 1000)
+        if any(len(s.encode("utf-8")) > 1024 for s in answers):
+            raise DriveError("bad_request", "an answer exceeds 1024 bytes")
+        try:
+            await pane.send_answers(answers, prompt_id)
+        finally:
+            answers.clear()
+        return {}
 
     async def op_attach(self, cmd: dict[str, Any]) -> dict[str, Any]:
         from ..screens.attach_confirm import AttachConfirmScreen

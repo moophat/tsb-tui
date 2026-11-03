@@ -325,8 +325,8 @@ def test_a_create_that_completes_after_the_login_is_gone_is_discarded(wait_until
                 dialog = await open_new_session(app, pilot, auto_size=True)
                 original = dialog._on_create_done
 
-                def spy(created: dict) -> None:
-                    original(created)
+                def spy(created: dict, login: dict | None = None) -> None:
+                    original(created, login)
                     done.set()
 
                 dialog._on_create_done = spy

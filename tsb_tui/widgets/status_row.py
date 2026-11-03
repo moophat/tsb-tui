@@ -146,6 +146,7 @@ class StatusInputs:
     chrome: str = "auto"  # `view.chrome`
     glyph_set: str = glyphs.UNICODE  # `glyphs.set`
     open_sessions: int = 1  # sessions open here: Detach is offered only while one is
+    login_status: str = ""
 
 
 @dataclass(frozen=True)
@@ -294,6 +295,8 @@ Left = list[Piece] | list[Item]  # the words before the hints: fixed pieces, or 
 
 def _left(inputs: StatusInputs, compact: bool) -> Left:
     state = inputs.state
+    if inputs.login_status:
+        return [Piece(inputs.login_status, "text")]
     if inputs.target is not None and inputs.keys_indicator:
         note = f" · {inputs.target.note}" if inputs.target.note else ""
         return [Piece(f"keys → {inputs.target.name}{note}", "keys")]

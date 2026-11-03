@@ -25,7 +25,8 @@ from ..model.events import (
 )
 
 # The events `drive.events` may name, and the values `drive.output_events` may hold.
-EVENT_NAMES = ("gate", "token", "input_refused", "clients", "stale", "notice", "size", "ended", "removed", "detached")
+EVENT_NAMES = ("gate", "token", "input_refused", "clients", "stale", "notice", "size", "ended", "removed", "detached",
+               "device_login_hostkey", "device_login_prompt", "device_login_result", "request_refused")
 OUTPUT_MODES = ("off", "counts")
 # At most one `output` count a second per session (D53).
 OUTPUT_PERIOD_S = 1.0

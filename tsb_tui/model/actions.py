@@ -62,6 +62,7 @@ class Facts:
     open_sessions: int = 1
     under_drive: bool = False
     alternate_screen: bool = False  # the session in front is on its alternate screen (no scrollback there)
+    target_type: str | None = None  # the type of the session in front's target, as the inventory knows it
 
 
 Blocked = Callable[[Facts], "str | None"]
@@ -89,6 +90,16 @@ def _attached(facts: Facts) -> str | None:
 
 
 def _always(facts: Facts) -> str | None:
+    return None
+
+
+def _reuse_blocked(facts: Facts) -> str | None:
+    """"New session on this connection" reuses a supplied-login connection; a telnet connection carries
+    one session (session model §5), so there is nothing to reuse."""
+    if (why := _attached(facts)) is not None:
+        return why
+    if facts.target_type == "telnet":
+        return "a telnet connection carries one session; there is nothing to reuse"
     return None
 
 
@@ -246,6 +257,8 @@ ACTIONS: tuple[Action, ...] = (
            GROUP_FLEET, SCOPE_SESSION, "Take back", _take_back_blocked),
     Action("new_session", "New session…", "on a target you can open", "c", GROUP_FLEET, SCOPE_SESSION,
            None, _always),
+    Action("new_on_connection", "New session on this connection", "reuse this session's authentication", None,
+           GROUP_SESSION, SCOPE_SESSION, None, _reuse_blocked),
     Action("switch", "Switch to…", "pick a session from the fleet sidebar, or its number after the leader", "s",
            GROUP_FLEET, SCOPE_SESSION, None, _always),
     Action("next", "Next open session", "the next session open here", "n", GROUP_FLEET, SCOPE_SESSION, None,
