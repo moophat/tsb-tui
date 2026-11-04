@@ -204,6 +204,7 @@ PAN_HINT = "pan:"
 SCROLL_HINT = "scroll:"
 # What the scroll view says when it drops a key it does not use: nothing reaches the session while it is open.
 SCROLL_DROPPED_NOTE = "Esc to return to live, then type"
+RECONNECT_DROPPED_NOTE = "Not sent: reconnecting to TSB. Type it again once the session is back."
 SEARCH_NONE_YET = "no search yet: / to search"
 SEARCH_NOT_OLDER = "no older match"
 SEARCH_NOT_NEWER = "no newer match"
@@ -1838,6 +1839,8 @@ class TerminalScreen(Screen):
             return
         slot.was_ending = state.ending
         if slot is self._front:
+            if self._scroll_notice == RECONNECT_DROPPED_NOTE:
+                self._scroll_notice = None
             if isinstance(attempt, int) and attempt > 1:
                 self._toast("Reattached.", "session")
             self._sync_prompts()
@@ -2280,6 +2283,7 @@ class TerminalScreen(Screen):
             return False
         state = pump.state
         if state.client_id is None or state.closed:
+            self._drop_unattached_input(source, data, state, "not_attached")
             return False  # not attached (yet, or any more): there is no one to send to
         if self._scroll_mode and slot is self._front and source != SOURCE_REPLY:
             # The viewport is scrolled: no key, paste, mouse or focus report leaves for the session until the view is
@@ -2313,6 +2317,7 @@ class TerminalScreen(Screen):
         try:
             await pump.send(data)
         except ConnectionClosed:
+            self._drop_unattached_input(source, data, state, "connection_closed")
             return False  # the pump's read loop sees the close and handles it
         if source in _TYPED and state.refusal_active and state.refusal_at is not None and (
                 state.now() - state.refusal_at >= self.app.cfg["toasts.seconds"]):
@@ -2322,6 +2327,14 @@ class TerminalScreen(Screen):
             if slot is self._front:
                 self.refresh_status()
         return True
+
+    def _drop_unattached_input(self, source: str, data: bytes, state: AttachmentState, reason: str) -> None:
+        if source not in _TYPED:
+            return
+        self.dropped_inputs += 1
+        state.log.add(KIND_INPUT_DROPPED, time.monotonic(), source=source, bytes=len(data), reason=reason)
+        self._scroll_notice = RECONNECT_DROPPED_NOTE
+        self.refresh_status()
 
     def _derived_input_blocked(self, slot: SessionSlot, state: AttachmentState) -> str | None:
         """Why derived input may not go out now (DT4 b), or None when it may. Not the guard's business:
@@ -3190,6 +3203,7 @@ class TerminalScreen(Screen):
             leader_keys=A.leader_keys(cfg.leader_overrides()),
             hint_priority=cfg["status.hint_priority"], keys_indicator=cfg["status.keys_indicator"],
             target=self._keys_target(), attaching=front is not None and state is None,
+            input_notice=self._scroll_notice if self._scroll_notice == RECONNECT_DROPPED_NOTE else "",
             now=self.app.wall_clock(), recording_bar=self._recording_text(front, state),
             ended=self._ended_status(state), reattach=self._reattach_status(state),
             reattach_stopped=state is not None and state.reattach_stopped,
