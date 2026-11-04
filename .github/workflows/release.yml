@@ -1,0 +1,154 @@
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    runs-on: [self-hosted, tsb-tui-ci]
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Require an annotated version tag on main
+        id: tag_check
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo '::error::release tag must match vX.Y.Z'; exit 1;
+          }
+          [[ "$(git cat-file -t "refs/tags/$RELEASE_TAG")" == tag ]] || {
+            echo '::error::release tag must be annotated'; exit 1;
+          }
+          git fetch origin +refs/heads/main:refs/remotes/origin/main
+          commit="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          git merge-base --is-ancestor "$commit" origin/main || {
+            echo '::error::tagged commit must be an ancestor of origin/main'; exit 1;
+          }
+          [[ "$(git rev-parse HEAD)" == "$commit" ]] || {
+            echo '::error::checkout must match the tagged commit'; exit 1;
+          }
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Build the Python CI image
+        run: docker build --file .github/ci/py.Dockerfile --tag ci-tui-py .
+
+      # tsb-program is private. The read-only deploy key is written to a directory removed on exit,
+      # GitHub's published ed25519 host key is pinned (never ssh-keyscan), and the https remote is
+      # rewritten to ssh. A pull request controls every file in its own checkout (the Makefile,
+      # tools/, the scripts), so this step runs only the git commands written below, nothing from the
+      # checkout, and the key is deleted before the next step starts.
+      - name: program/ fetched at the pinned commit
+        env:
+          PROGRAM_DEPLOY_KEY: ${{ secrets.PROGRAM_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$PROGRAM_DEPLOY_KEY" ] || { echo "::error::secret PROGRAM_DEPLOY_KEY is empty or missing: no other way of fetching tsb-program"; exit 1; }
+          keydir="$(mktemp -d "$RUNNER_TEMP/program-key.XXXXXX")"
+          trap 'rm -rf "$keydir"' EXIT
+          umask 077
+          printf '%s\n' "$PROGRAM_DEPLOY_KEY" > "$keydir/id"
+          # https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$keydir/known_hosts"
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work -v "$keydir:/ssh:ro" \
+            -e GIT_SSH_COMMAND='ssh -i /ssh/id -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts' \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0='url.git@github.com:moophat/.insteadOf' \
+            -e GIT_CONFIG_VALUE_0='https://github.com/moophat/' \
+            ci-tui-py bash -euo pipefail -c '
+              sha="$(git rev-parse :program)"
+              mkdir -p program
+              find program -mindepth 1 -delete
+              rm -rf "$(git rev-parse --git-dir)/modules/contract"
+              git submodule init program
+              git clone --filter=blob:none --no-checkout --sparse https://github.com/moophat/tsb-program.git program
+              git -C program sparse-checkout set --cone srs contract
+              git -C program checkout --detach "$sha"
+              git -C program fetch origin +refs/heads/main:refs/remotes/origin/main --tags
+              git submodule absorbgitdirs program
+            '
+          rm -rf "$keydir"
+
+      # Project code only runs after the deploy key has been removed.
+      - name: Initialize and check the program pin
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            ci-tui-py bash -euo pipefail -c 'make contract-init && make contract-check CONTRACT_MAIN_REF=origin/main'
+
+      - name: Stamp the version and build the wheel offline
+        run: |
+          set -euo pipefail
+          docker run --rm -i --network none \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work -e RELEASE_TAG \
+            -e PIP_NO_INDEX=1 -e PIP_DISABLE_PIP_VERSION_CHECK=1 \
+            ci-tui-py bash -euo pipefail <<'BUILD'
+          python - <<'PYTHON'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          path = Path("pyproject.toml")
+          source = path.read_text()
+          if tomllib.loads(source)["project"]["version"] != "0.0.0" or source.count('version = "0.0.0"') != 1:
+              raise SystemExit("release source must declare version 0.0.0 exactly once")
+          path.write_text(source.replace('version = "0.0.0"', f'version = "{os.environ["RELEASE_TAG"][1:]}"'))
+          PYTHON
+          rm -rf dist build tsb_tui.egg-info
+          pip wheel --no-deps --no-build-isolation -w dist .
+          cd dist
+          set -- *.whl
+          [[ "$#" == 1 && -f "$1" ]] || { echo 'expected exactly one wheel'; exit 1; }
+          sha256sum "$1" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          BUILD
+
+      - name: Publish the wheel and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_COMMIT: ${{ steps.tag_check.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" == "$BUILD_COMMIT" ]] || {
+            echo '::error::release tag moved since the wheel was built'; exit 1;
+          }
+          if gh release view "$RELEASE_TAG" >/dev/null; then
+            gh release upload "$RELEASE_TAG" --clobber dist/*.whl dist/SHA256SUMS
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes '' \
+              dist/*.whl dist/SHA256SUMS
+          fi
+          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          wheel_name="$(basename dist/*.whl)"
+          grep -Fxq -- "$wheel_name" <<< "$assets" || {
+            echo '::error::release wheel asset is missing'; exit 1;
+          }
+          grep -Fxq -- SHA256SUMS <<< "$assets" || {
+            echo '::error::release SHA256SUMS asset is missing'; exit 1;
+          }
