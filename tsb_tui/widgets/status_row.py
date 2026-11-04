@@ -147,6 +147,7 @@ class StatusInputs:
     glyph_set: str = glyphs.UNICODE  # `glyphs.set`
     open_sessions: int = 1  # sessions open here: Detach is offered only while one is
     login_status: str = ""
+    input_notice: str = ""
 
 
 @dataclass(frozen=True)
@@ -466,6 +467,8 @@ def build_pieces(inputs: StatusInputs, width: int) -> list[Piece]:
     compact = is_compact(inputs.chrome, width)
     special = _special(inputs)
     left = special[0] if special is not None else _left(inputs, compact)
+    if inputs.input_notice:
+        left = [Piece(inputs.input_notice, "warn")]
     if special is not None:
         hints = special[1]
         drop_order = [name for name, _ in hints[:-1]]

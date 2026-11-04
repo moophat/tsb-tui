@@ -43,6 +43,7 @@ from typing import Any
 
 from tsb_contract_client import ApiError, AsyncAttachment, AttachRefused
 
+from .._transport import ConnectionClosed
 from .events import (
     KIND_ATTACHED,
     KIND_CLIENTS,
@@ -859,8 +860,9 @@ class AttachmentPump:
     # -- sends (never read) --
 
     async def send(self, data: bytes) -> None:
-        if self._att is not None and not self._att.closed:
-            await self._att.send(data)
+        if self._att is None or self._att.closed:
+            raise ConnectionClosed()
+        await self._att.send(data)
 
     async def resize(self, cols: int, rows: int, timeout: float = 0) -> None:
         """Send a size request. `timeout=0` means never read (DT17): the answer arrives through the
