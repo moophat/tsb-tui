@@ -606,7 +606,10 @@ def test_a_poll_of_n_sessions_builds_the_display_ids_once_and_never_rescans_the_
             assert len(records) == count + 1
             screen.fleet.generation += 1
             screen._apply_poll(screen.fleet.generation, records)
-            await pilot.pause(0.1)
+            # The display-id map is built when the layout renders after the poll; wait on that condition with a
+            # bound sized for a loaded CI node, not a fixed pause.
+            await wait_until(pilot, lambda: calls["map"] >= 1, "the display-id map to be built", 30.0)
+            await pilot.pause(0.1)  # the same window as before for a second build to show, which the test refuses
             return calls
 
     for count in (100, 500):

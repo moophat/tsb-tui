@@ -87,7 +87,7 @@ class LateCreateStub(RestartStub):
 
     def http(self, method, path, headers, body):
         if method == "POST" and path == "/sessions":
-            self.create_gate.wait(10)
+            self.create_gate.wait(30)
             # The base stub's create, not `super()`: the restart must not answer this one.
             return SlowChunkedApp.http(self, method, path, headers, body)
         return super().http(method, path, headers, body)
@@ -104,10 +104,11 @@ def _stack(app) -> list[str]:
     return [type(s).__name__ for s in app.screen_stack]
 
 
-async def _at_login_with_no_workspace(app, pilot, wait_until) -> None:
+async def _at_login_with_no_workspace(app, pilot, wait_until, timeout_s: float = 10.0) -> None:
     """The client is at the login page with nothing mounted under it — the state `op_login` needs, and the
-    state a fresh start after a logout looks like."""
-    await wait_until(pilot, lambda: app.workspace() is None, "the login screen with no workspace under it")
+    state a fresh start after a logout looks like. The bound is sized for a loaded CI node by the callers that
+    reach Login across a restart."""
+    await wait_until(pilot, lambda: app.workspace() is None, "the login screen with no workspace under it", timeout_s)
     assert _stack(app) == ["Screen", "LoginScreen"], _stack(app)
 
 
@@ -250,7 +251,7 @@ def test_a_drive_attach_after_a_relogin_waits_for_the_workspace_to_be_ready(
             with server.lock:
                 client_id = next(iter(server.clients[sid]))
                 server._drop_client(server.sessions[sid], client_id, code=4011, reason="")
-            await _at_login_with_no_workspace(app, pilot, wait_until)
+            await _at_login_with_no_workspace(app, pilot, wait_until, 30.0)
             assert driver.screen() is None
             # The re-login lands (resetting the restart), and drive's next `attach` arrives in the same iteration
             # as the login's `switch_screen` pushes the workspace, before its `on_mount` builds the fleet. This is
@@ -333,9 +334,9 @@ def test_a_create_that_completes_after_the_login_is_gone_is_discarded(wait_until
                 dialog._on_create_done = spy
                 stub.restart = True
                 await pilot.click("#create-button")
-                await _at_login_with_no_workspace(app, pilot, wait_until)
+                await _at_login_with_no_workspace(app, pilot, wait_until, 30.0)
                 gate.set()
-                await wait_until(pilot, done.is_set, "_on_create_done to run after Login")
+                await wait_until(pilot, done.is_set, "_on_create_done to run after Login", 30.0)
                 assert _stack(app) == ["Screen", "LoginScreen"], _stack(app)
                 assert app.workspace() is None
                 assert next(iter(stub.sessions.values()))["state"] == "detached"

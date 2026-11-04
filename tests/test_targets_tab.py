@@ -266,14 +266,22 @@ def test_the_table_loses_columns_in_a_stated_order_and_keeps_name_and_type(serve
     async def check() -> None:
         _app, url = serve()
         app = TsbTuiApp(url)
+        headers = ("NAME", "TYPE", "GROUP", "TAGS", "SOURCE", "SESSIONS", "YOU CAN")
         async with app.run_test(size=(120, 36)) as pilot:
             _screen, view = await _open_targets(app, pilot, wait_until)
+            # The header row lays out after the rows are listed; read the columns only once it is laid out, so a
+            # not-yet-laid-out header cannot drop a column the test then reads as missing.
+            await wait_until(pilot, lambda: all(h in view.text for h in headers),
+                             "the table's header row laid out", 30.0)
             wide = view.text
             for header in ("NAME", "TYPE", "GROUP", "TAGS", "SOURCE", "SESSIONS", "YOU CAN"):
                 assert header in wide, header
         async with TsbTuiApp(url).run_test(size=(44, 30)) as pilot:
             narrow_app = pilot.app
             _screen, view = await _open_targets(narrow_app, pilot, wait_until)
+            # In the narrow view the header row lays out with NAME and TYPE kept; read once it is laid out.
+            await wait_until(pilot, lambda: "NAME" in view.text and "TYPE" in view.text,
+                             "the narrow table's header row laid out", 30.0)
             text = view.text
             assert "NAME" in text and "TYPE" in text
             assert "SOURCE" not in text and "YOU CAN" not in text and "TAGS" not in text

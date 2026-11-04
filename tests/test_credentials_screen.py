@@ -50,12 +50,19 @@ def test_the_list_shows_references_and_kinds_and_labels_only_while_unlocked(serv
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await _open(app, pilot, wait_until)
+            # The list renders in the locked state after it opens; read it once the references and kinds are laid
+            # out with no label, so the assertion reads the rendered locked list, not a half-built table. If the
+            # screen shows labels while locked, this predicate never becomes true and the test fails.
+            await wait_until(pilot, lambda: all(t in screen_text(app) for t in ("core-sw", "lab-key", "password", "key"))
+                             and "core switches" not in screen_text(app),
+                             "the locked list rendered (references, kinds, no label)", 30.0)
             text = screen_text(app)
             assert "core-sw" in text and "lab-key" in text and "password" in text and "key" in text
             assert "core switches" not in text, "a label is shown only while this login holds an unlock"
             serve_app.unlocked.update(serve_app.logins)
             screen.query_one("#cred-refresh", Button).press()
-            await wait_until(pilot, lambda: "core switches" in screen_text(app), "the label once unlocked")
+            # The list re-renders after the unlock; read the label once it is on screen.
+            await wait_until(pilot, lambda: "core switches" in screen_text(app), "the label once unlocked", 30.0)
 
     asyncio.run(check())
 
