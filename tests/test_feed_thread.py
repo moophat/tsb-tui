@@ -45,11 +45,12 @@ import pytest
 from input_server import InputRecordingApp, flushed
 from stub_server import create_owner_session, emit_live_output, record_output
 from test_term_engine import _decode, _replay
+from tsbc import _serve
+from tsbc import _wsframe as wf
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.terminal import TerminalScreen
 from tsb_tui.term import VTBackend, load
-from tsbc import _serve
-from tsbc import _wsframe as wf
 
 CURSOR_REPORT = re.compile(rb"\x1b\[\d+;\d+R")
 OPEN = (80, 24)
@@ -274,10 +275,11 @@ def test_the_read_ahead_bound_holds_and_the_reader_resumes(serve, gate, wait_unt
 
 
 def _lib() -> object:
+    from conftest import TERM_SO
+
     from tsb_tui.term import load as _load
 
-    return _load(Path(__file__).resolve().parents[2] / "vt" / "third_party" / "libghostty-vt"
-                 / "lib" / "libghostty-vt.so")
+    return _load(TERM_SO)
 
 
 def test_order_is_kept_across_a_size_frame_and_a_prefix_with_its_dump(

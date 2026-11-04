@@ -23,10 +23,11 @@ from stub_server import create_owner_session, record_output, resize_requests
 from textual.screen import ModalScreen
 from textual.widgets import Label
 from tsb_contract_client import Client
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.terminal import TerminalScreen
 from tsb_tui.widgets.status_row import StatusRow
-from tsbc import _serve
 
 AUTO_ON = {"TSB_TUI_SIZE_AUTO_REQUEST": "true", "TSB_TUI_SIZE_DEBOUNCE_MS": "60"}
 # The fixture server's target size bounds (C2 decision 8): a request below this clamps up to it.

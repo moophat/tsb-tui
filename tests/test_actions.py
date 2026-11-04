@@ -16,6 +16,7 @@ from model_frames import (
     state_of,
     token_frame,
 )
+
 from tsb_tui.model import actions as A
 from tsb_tui.model.attachment import AttachmentState
 from tsb_tui.screens.terminal import TerminalScreen

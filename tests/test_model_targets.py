@@ -12,6 +12,7 @@ from __future__ import annotations
 import unicodedata
 
 import pytest
+
 from tsb_tui.model.targets import (
     PAGE_LIMIT,
     Query,

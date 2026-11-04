@@ -21,6 +21,8 @@ from input_server import InputRecordingApp, flushed
 from prompt_support import open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
 from textual import events
+from workspace_support import fixture_login, named_sessions, open_here
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.terminal import (
     KIND_INPUT_DROPPED,
@@ -29,7 +31,6 @@ from tsb_tui.screens.terminal import (
     TerminalScreen,
 )
 from tsb_tui.widgets.status_row import StatusRow
-from workspace_support import fixture_login, named_sessions, open_here
 
 LEADER = "ctrl+backslash"
 MOUSE_ON = b"\x1b[?1000h\x1b[?1006h"  # normal tracking, SGR coordinates

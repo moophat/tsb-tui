@@ -1,0 +1,8 @@
+# Shared by CI (gitleaks 8.24.3) and the local pre-commit hook (8.30.0).
+# No allowlist: no extracted TUI finding needs an exception. If one ever does, add a single [allowlist] table
+# (never [[allowlists]], which 8.24.3 ignores) pinning the exact secret fragment in `regexes`, never a path; gitleaks
+# 8.30.0 refuses an [allowlist] with no check in it, so the table exists only with a pin.
+title = "tsb-tui"
+
+[extend]
+useDefault = true

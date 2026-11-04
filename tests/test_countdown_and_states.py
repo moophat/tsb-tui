@@ -22,6 +22,7 @@ from prompt_support import (
     validated,
 )
 from stub_server import SlowChunkedApp, StubServer
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.terminal import TerminalScreen
 

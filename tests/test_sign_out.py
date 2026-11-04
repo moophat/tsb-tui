@@ -17,11 +17,12 @@ import pytest
 from input_server import make_session
 from signout_support import HeldRequestApp, LogoutProbeApp
 from tsb_contract_client import ApiError
+from tsbc import _serve
+from workspace_support import fixture_login, open_here
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.login import LoginScreen
-from tsbc import _serve
-from workspace_support import fixture_login, open_here
 
 SIGNED_OUT = "Signed out. Your sessions keep running."
 

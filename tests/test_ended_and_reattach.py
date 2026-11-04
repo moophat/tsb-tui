@@ -17,6 +17,7 @@ import asyncio
 import pytest
 from prompt_support import click_laid_out, open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.prompts import EndedScreen

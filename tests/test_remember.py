@@ -8,6 +8,7 @@ from device_login_support import answer, code, opened, password, start
 
 def _save_spy(monkeypatch, *, collision=False):
     from tsb_contract_client import ApiError
+
     from tsb_tui import vault_flow
     calls = []
 

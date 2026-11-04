@@ -17,18 +17,19 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-import tsb_tui.screens.terminal as terminal_screen
 from drive_support import Rig
 from input_server import make_session
 from tsb_contract_client import Client
-from tsb_tui.model.fleet import GROUP_NEEDS_YOU, GROUP_OPEN_HERE, Fleet
 from tsbc import _serve
 from tsbc.schema import Registry
 
-CONTRACT = Path(__file__).resolve().parents[2] / "program" / "contract"
+import tsb_tui.screens.terminal as terminal_screen
+from tsb_tui.model.fleet import GROUP_NEEDS_YOU, GROUP_OPEN_HERE, Fleet
+
+CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
 REGISTRY = Registry.from_tree(CONTRACT)
 BASE = json.loads((CONTRACT / "fixtures" / "C1" / "session-record-shape-v0.3.json")
                   .read_text(encoding="utf-8"))["case"]["instances"][0]["doc"]
@@ -61,7 +62,7 @@ def make_records(n: int, **changes) -> list[dict]:
 
 
 def utc_stamp(when: float) -> str:
-    return datetime.fromtimestamp(when, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.fromtimestamp(when, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class FakeSessionsClient(Client):

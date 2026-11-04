@@ -1,0 +1,30 @@
+# Pre-commit hooks — the SVTECH org standard (gitleaks, matching svtechnmaa/mcp-openstack-vnp)
+# plus this repo's environment-leak warning. Install once per checkout:
+#
+#     pip install pre-commit && pre-commit install
+#
+# gitleaks: `gitleaks git --pre-commit --redact --staged` reads only what you are about to commit
+# and never walks history. It BLOCKS on a secret. CI backstop: .github/workflows/secrets.yml. Both
+# read the same .gitleaks.toml, so there is one allowlist to maintain.
+#
+# no-environment-leak: .github/scripts/leak-check.sh --staged --warn. It WARNS — prints the
+# offending staged lines and lets the commit through — because a blocking hook gets bypassed with
+# --no-verify the first time it is inconvenient, while the required test job, through `make lint`,
+# fails the PR. One script, one pattern, two callers.
+#
+# Both hooks are local and opt-in, so neither can be the only control — a machine that never ran
+# `pre-commit install` silently skips them. The CI jobs are the backstops that cannot be skipped.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: no-environment-leak
+        name: Warn on environment detail in staged changes (CI fails the PR)
+        entry: bash .github/scripts/leak-check.sh --staged --warn
+        language: system
+        pass_filenames: false
+        always_run: true
+        verbose: true

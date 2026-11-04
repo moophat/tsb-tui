@@ -14,11 +14,12 @@ from __future__ import annotations
 import asyncio
 
 from stub_server import HOSTKEY, RECORDING, SlowChunkedApp, StubServer
+from workspace_support import login, open_new_session, pick_in_sidebar
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.terminal import TerminalScreen
-from workspace_support import login, open_new_session, pick_in_sidebar
 
 TARGET_ID = "stub-target"
 

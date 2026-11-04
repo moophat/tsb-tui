@@ -4,7 +4,7 @@ contract's schema (DT6), and the clock."""
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from tsb_tui.app import TsbTuiApp
@@ -17,7 +17,7 @@ NOW = 1_800_000_000.0
 
 def iso(epoch: float) -> str:
     """A contract timestamp (UTC, `Z`) for an epoch second."""
-    return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.fromtimestamp(epoch, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def notice(ends_in_s: float, ends_by: str, ending: bool = True, session_id: str = "stub-session-1") -> dict:
@@ -54,7 +54,7 @@ async def click_laid_out(pilot, wait_until: Callable, selector: str) -> None:
     await pilot.click(selector)
 
 
-_CONTRACT = Path(__file__).resolve().parents[2] / "program" / "contract"
+_CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
 
 
 def validated(frame: dict) -> dict:

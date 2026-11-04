@@ -27,15 +27,16 @@ from test_screen_lock import (
 )
 from test_vault_unlock import _answer, _prompt
 from textual.widgets import Static
+from tsbc import _serve
+from vault_support import CHAIN, flat
+from workspace_support import fixture_login, login
+
 from tsb_tui import vault_flow
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.lock import LockScreen
 from tsb_tui.screens.login import LoginScreen
 from tsb_tui.screens.prompts import EndedScreen
 from tsb_tui.screens.vault_prompts import PassphraseScreen
-from tsbc import _serve
-from vault_support import CHAIN, flat
-from workspace_support import fixture_login, login
 
 
 class LateAnswerServe(RecordingVaultServe):

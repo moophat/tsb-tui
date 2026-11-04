@@ -20,6 +20,7 @@ from test_term_engine import (  # noqa: F401  (shared golden decoder)
     _decode,
     _replay,
 )
+
 from tsb_tui.term import VTBackend, load
 from tsb_tui.term import ghostty as G
 

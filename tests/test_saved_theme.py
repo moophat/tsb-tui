@@ -29,12 +29,13 @@ from test_theme_picker import (
     _rect_fills,
     _user_dir,
 )
+from tsbc import _serve
+from workspace_support import fixture_login, login
+
 from tsb_tui import saved_theme
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.config import load
 from tsb_tui.screens.login import LoginScreen
-from tsbc import _serve
-from workspace_support import fixture_login, login
 
 
 def _state() -> Path:

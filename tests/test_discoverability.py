@@ -20,6 +20,9 @@ from stub_server import create_owner_session
 from textual.command import CommandList, CommandPalette
 from textual.css.query import NoMatches
 from textual.widgets import Input
+from tsbc import _serve
+from workspace_support import rail_row
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
@@ -33,8 +36,6 @@ from tsb_tui.screens.size_dialog import SizeDialog
 from tsb_tui.screens.whos_here import WhosHereScreen
 from tsb_tui.widgets.rail import ACT_FLEET, ACT_MENU, Rail
 from tsb_tui.widgets.status_row import StatusRow
-from tsbc import _serve
-from workspace_support import rail_row
 
 SIZES = ((65, 30), (120, 40), (200, 60))
 PROMPT_ID = "d" * 32

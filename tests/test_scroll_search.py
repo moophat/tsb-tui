@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 from rich.cells import cell_len
 from test_scroll_view import GRID_ROWS, _scene
+
 from tsb_tui.term import VTBackend, load
 from tsb_tui.widgets.status_row import StatusRow
 

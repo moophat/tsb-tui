@@ -11,11 +11,12 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
-from tsb_tui.model.attachment import AttachmentState
 from tsbc.fixtures import load_fixtures
 from tsbc.schema import Registry
 
-CONTRACT = Path(__file__).resolve().parents[2] / "program" / "contract"
+from tsb_tui.model.attachment import AttachmentState
+
+CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
 WS_FRAMES = "schemas/ws-frames.schema.json"
 REGISTRY = Registry.from_tree(CONTRACT)
 

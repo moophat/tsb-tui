@@ -14,8 +14,6 @@ from __future__ import annotations
 import asyncio
 
 from input_server import InputRecordingApp, other_client
-from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsbc import _serve
 from workspace_support import (
     fixture_login,
@@ -23,6 +21,9 @@ from workspace_support import (
     open_here,
     select_in_sidebar,
 )
+
+from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 
 
 def _handoffs(serve_app) -> list[dict]:

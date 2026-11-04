@@ -17,11 +17,12 @@ import re
 from input_server import InputRecordingApp, attached, make_session, other_client
 from stub_server import record_output
 from textual.widgets import Button, DataTable, Static
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.prompts import EndedScreen
 from tsb_tui.screens.terminal import TerminalScreen
 from tsb_tui.screens.whos_here import ConfirmRemoveScreen, WhosHereScreen
-from tsbc import _serve
 
 TWO = "two-client"
 DSR = b"\x1b[6n"

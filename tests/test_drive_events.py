@@ -13,10 +13,11 @@ import json
 
 from drive_support import Rig
 from input_server import InputRecordingApp, make_session
+from tsbc import _serve
+
 from tsb_tui.drive import events as drive_events
 from tsb_tui.model.attachment import AttachmentState
 from tsb_tui.model.events import EventLog
-from tsbc import _serve
 
 ME = {"client_id": "client-1", "user": "ci-agent"}
 OWNER = {"client_id": "client-2", "user": "tu"}
@@ -269,8 +270,9 @@ def test_a_stale_choice_is_answered_by_number_only_by_the_holder_with_the_prompt
 def test_a_persons_typing_does_not_mark_the_grid(serve, wait_until) -> None:
     """`read reply` needs the grid marked at each typed input, and only drive asks for it: a person's TUI pays nothing
     on the typing path (design §3.4 test 4: keystroke to screen p95 under 50 ms)."""
-    from tsb_tui.app import TsbTuiApp
     from workspace_support import fixture_login, open_here
+
+    from tsb_tui.app import TsbTuiApp
 
     async def check() -> None:
         serve_app, url = serve(InputRecordingApp())

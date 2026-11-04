@@ -27,11 +27,12 @@ from typing import Any
 from stub_server import SlowChunkedApp
 from stub_server import StubServer as StubHttpServer
 from tsb_contract_client import Client
-from tsb_tui.model.alerts import Alert, AlertModel, AlertStreamer
 from tsbc import _serve
 from tsbc._serve import ServeApp, StubServer
 
-CONTRACT = Path(__file__).resolve().parents[2] / "program" / "contract"
+from tsb_tui.model.alerts import Alert, AlertModel, AlertStreamer
+
+CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
 FIXTURE = json.loads((CONTRACT / "fixtures" / "C1" / "alerts-stream.json")
                      .read_text(encoding="utf-8"))
 

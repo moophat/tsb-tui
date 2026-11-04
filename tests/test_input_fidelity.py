@@ -24,12 +24,13 @@ from input_server import InputRecordingApp, attached, make_session
 from stub_server import create_owner_session
 from textual import _parser
 from textual._xterm_parser import XTermParser
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.terminal import _key_name
 from tsb_tui.term import VTBackend, load
 from tsb_tui.term.keys import encode_key
-from tsbc import _serve
 
 LEADER = "ctrl+backslash"
 

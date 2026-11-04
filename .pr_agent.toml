@@ -1,0 +1,7 @@
+# Qodo reads this from the default branch only. Docs-only PRs skip the review and merge on green CI
+# (Tu, 2026-09-30, tsb-program decision 5.26: Qodo's quota is spent on code, not on notes). A PR is
+# told apart by its source branch: plan/, chore/ledger, docs/ and research/ branches carry plans,
+# ledgers and notes only. (A path rule would be neater, but `allow_only_specific_folders` is
+# implemented for Bitbucket only; the GitHub app ignores it.)
+[config]
+ignore_pr_source_branches = ["^plan/", "^chore/ledger", "^docs/", "^research/"]

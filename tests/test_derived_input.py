@@ -41,10 +41,11 @@ from stub_server import create_owner_session
 from textual import events
 from textual.screen import ModalScreen
 from textual.widgets import Label
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.terminal import KIND_INPUT_DROPPED
 from tsb_tui.widgets.canvas import Canvas
-from tsbc import _serve
 
 MOUSE_ON = b"\x1b[?1000h\x1b[?1006h"  # normal tracking, SGR coordinates
 FOCUS_ON = b"\x1b[?1004h"

@@ -19,13 +19,14 @@ from stub_server import create_owner_session
 from textual.command import CommandList, CommandPalette, SearchIcon
 from textual.content import Content
 from textual.css.query import NoMatches
+from tsbc import _serve
+
 from tsb_tui.app import MenuProvider, TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.size_dialog import SizeDialog
 from tsb_tui.screens.terminal import TerminalScreen
 from tsb_tui.screens.whos_here import WhosHereScreen
 from tsb_tui.widgets.status_row import StatusRow
-from tsbc import _serve
 
 LEADER = "ctrl+backslash"
 # The pinned environment (conftest) holds the Menu's timer at 10 s, so `^\ <letter>` never races it;

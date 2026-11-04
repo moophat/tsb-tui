@@ -9,6 +9,7 @@ place that must be readable, and a mapping that changed a glyph's width would sl
 from __future__ import annotations
 
 import pytest
+
 from tsb_tui import glyphs
 
 UNICODE_LINE = ["≡", "▦", "▸", "◂", "▴", "●", "◆", "·", "▲", "?", "◌", "✕", "◐", "•", "┄", "┆"]

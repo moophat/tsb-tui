@@ -17,6 +17,14 @@ from pathlib import Path
 import tsb_contract_client
 from conftest import REPO_ROOT
 from input_server import InputRecordingApp
+from tsbc import _serve
+from workspace_support import (
+    fixture_login,
+    named_sessions,
+    open_here,
+    select_in_sidebar,
+)
+
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
@@ -28,16 +36,9 @@ from tsb_tui.screens.chrome_dialogs import (
     keys_lines,
     settings_lines,
 )
-from tsbc import _serve
-from workspace_support import (
-    fixture_login,
-    named_sessions,
-    open_here,
-    select_in_sidebar,
-)
 
 LEADER = "ctrl+backslash"
-PIN = REPO_ROOT / "vt" / "third_party" / "libghostty-vt" / "PIN"
+PIN = REPO_ROOT / "vendor" / "libghostty-vt" / "PIN"
 
 
 def _pinned_commit() -> str:

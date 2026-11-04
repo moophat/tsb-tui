@@ -20,11 +20,12 @@ from pathlib import Path
 
 from input_server import InputRecordingApp, attached
 from stub_server import create_owner_session
+from tsbc import _serve
+from workspace_support import fixture_login, open_new_session
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.login import LoginScreen
 from tsb_tui.screens.new_session import NewSessionScreen
-from tsbc import _serve
-from workspace_support import fixture_login, open_new_session
 
 TESTS = Path(__file__).resolve().parent
 SOURCE = TESTS.parent / "tsb_tui"

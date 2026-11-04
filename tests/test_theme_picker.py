@@ -25,6 +25,8 @@ from stub_server import record_output
 from test_discoverability import _settle
 from textual.command import CommandList, CommandPalette
 from textual.widgets import Static
+from tsbc import _serve
+
 from tsb_tui import theme as tsb_theme
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
@@ -36,7 +38,6 @@ from tsb_tui.screens.theme_picker import (
 )
 from tsb_tui.theme_files import packaged_dir, parse_scheme, parse_theme
 from tsb_tui.widgets.status_row import StatusRow
-from tsbc import _serve
 
 TERRACOTTA_SURFACE = parse_theme(packaged_dir("themes") / "terracotta.toml").roles["surface"]
 TSB_BACKGROUND = parse_scheme(packaged_dir("schemes") / "tsb-default.json").background

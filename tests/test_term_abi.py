@@ -19,19 +19,22 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import os
 import re
 from pathlib import Path
 
 import pytest
+
 from tsb_tui.term import ghostty as G
 
 PIN_COMMIT = "34f39002c6e3974b54e6a6d400bd83777c5ea558"
 
 # Read-only frozen inputs: the vendored headers this binding declares against, and the pin file.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_HEADERS = _REPO_ROOT / "vt" / "third_party" / "libghostty-vt" / "include"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_HEADERS = _REPO_ROOT / "vendor" / "libghostty-vt" / "include"
 _PIN = _HEADERS.parent / "PIN"
-_TERM_SO = _HEADERS.parent / "lib" / "libghostty-vt.so"
+_TERM_SO = Path(os.environ["TSB_TUI_TERM_LIBRARY"]) if "TSB_TUI_TERM_LIBRARY" in os.environ else (
+    _HEADERS.parent / "libghostty-vt.so")
 
 
 def _pin_value(key: str) -> str:

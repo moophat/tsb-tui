@@ -15,6 +15,9 @@ import asyncio
 import pytest
 from input_server import InputRecordingApp, other_client
 from stub_server import resize_requests
+from tsbc import _serve
+from workspace_support import fixture_login, named_sessions, open_here, pick_in_sidebar
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model.fleet import (
     GROUP_MINE_AND_JOINABLE,
@@ -29,8 +32,6 @@ from tsb_tui.widgets.sidebar import (
     SidebarModel,
     sidebar_view,
 )
-from tsbc import _serve
-from workspace_support import fixture_login, named_sessions, open_here, pick_in_sidebar
 
 LEADER = "ctrl+backslash"
 

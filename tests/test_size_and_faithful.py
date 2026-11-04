@@ -29,10 +29,11 @@ from stub_server import (
     resize_requests,
 )
 from test_term_engine import GOLDENS, _decode, _replay
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.terminal import TerminalScreen
 from tsb_tui.term import VTBackend, load
-from tsbc import _serve
 
 GOLDEN_NAMES = sorted(p.stem for p in GOLDENS.glob("golden-*.bin"))
 OPEN = (80, 24)  # every golden is opened at 80x24 (their fixtures' `open`)

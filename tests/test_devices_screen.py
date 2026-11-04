@@ -12,11 +12,12 @@ from __future__ import annotations
 import asyncio
 
 from textual.widgets import Button, DataTable
-from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.devices import DevicesScreen
 from tsbc import _serve
 from vault_support import DEVICE_A, DEVICE_B, VaultServe, flat
 from workspace_support import fixture_login
+
+from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.devices import DevicesScreen
 
 
 async def _open(app, pilot, wait_until) -> DevicesScreen:

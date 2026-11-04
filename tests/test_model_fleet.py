@@ -23,6 +23,7 @@ from typing import Any
 
 from fleet_support import derived as _derived
 from fleet_support import fixture_records as _records
+
 from tsb_tui.model.fleet import (
     Chip,
     Fleet,
@@ -437,6 +438,7 @@ def test_a_live_record_reads_this_clients_own_frames_over_the_polled_one() -> No
     keyboard, the warning window, an end, an unreachable worker. A poll up to five seconds old must never
     decide who types in a session whose `token` frame this client has already seen."""
     from model_frames import state_of, token_frame
+
     from tsb_tui.model.fleet import live_record
 
     state = state_of(me=("client-me", ME), owner=ME, holder=("client-me", ME),
@@ -558,11 +560,12 @@ def test_a_poll_of_n_sessions_builds_the_display_ids_once_and_never_rescans_the_
     import asyncio
 
     from input_server import InputRecordingApp
+    from tsbc import _serve
+    from workspace_support import fixture_login
+
     from tsb_tui.app import TsbTuiApp
     from tsb_tui.model import fleet as fleet_mod
     from tsb_tui.screens import terminal as terminal_mod
-    from tsbc import _serve
-    from workspace_support import fixture_login
 
     async def apply_poll_of(count: int) -> dict[str, int]:
         serve_app, url = serve(InputRecordingApp())

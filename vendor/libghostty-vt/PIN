@@ -1,0 +1,110 @@
+# Provenance of the vendored libghostty-vt. One "key: value" per line; "#" starts a comment.
+# Written by hand from upstream sources. Every empty value below is filled from the integration node's
+# tarball and nothing else; a pin bump rewrites this file together with build.sh and licenses/.
+
+upstream_url: https://github.com/ghostty-org/ghostty
+upstream_commit: 34f39002c6e3974b54e6a6d400bd83777c5ea558
+upstream_version: 1.3.2-dev
+binding_url: https://github.com/mitchellh/go-libghostty
+binding_commit: 8812ad0e0f796d35ed30eb9738d5feaf279c05f7
+binding_ghostty_commit: 34f39002c6e3974b54e6a6d400bd83777c5ea558
+binding_go_directive: 1.26.0
+
+zig_version: 0.16.0
+zig_url: https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
+zig_sha256: 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
+
+build_image: golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c
+build_workdir: /build
+build_command: taskset -c <first allowed cpu> zig build -j1 -Demit-lib-vt -Doptimize=ReleaseFast -Dtarget=x86_64-linux-gnu -Dversion-string=1.3.2-dev+34f3900 --prefix /build/prefix
+build_cpus: 1 (Zig's thread pool and Io concurrency follow the CPUs the process may use; see README.md, "Why the build runs on one CPU")
+build_target: x86_64-linux-gnu
+build_optimize: ReleaseFast
+build_simd: default (true; -Dsimd is not passed)
+build_host_role: integration-node
+build_script: vt/third_party/libghostty-vt/build.sh
+build_archive_step: members renamed to their basenames; every /zig-(local|global)/o/<32 hex> in a member overwritten with zeros (same length); re-archived sorted with "zig ar rcsD" (README.md, "Why the archive is normalised")
+pin_written: 2026-10-11
+
+build_shared_object_step: the same zig build installs lib/libghostty-vt.so.<version> (build.zig:131-143, GhosttyLibVt.initShared); the one regular file is staged as lib/libghostty-vt.so; every /zig-(local|global)/o/<32 hex> in it is overwritten with zeros (same length) and a GNU build-id, if present, is recomputed over the normalised bytes (README.md, "The shared object")
+
+# The shared object (lib/libghostty-vt.so), for the TUI's ctypes binding. Filled from the integration node's tarball:
+# so_sha256 equals the sha256 on the "file: lib/libghostty-vt.so" line once that line exists; so_glibc_floor is the
+# highest GLIBC_x.y that build.sh prints ("shared object glibc floor"); so_needed is its DT_NEEDED list.
+so_soname: libghostty-vt.so.0
+so_sha256: 9393a23d5bd3634875386c6f71a380277d6ced76a4040a8b32fcec0097ffefaa
+so_glibc_floor: GLIBC_2.29
+so_needed: libm.so.6 libc.so.6 librt.so.1
+
+# Components compiled into lib/libghostty-vt.a (licences under licenses/, listed in licenses/INDEX).
+component_ghostty: 34f39002c6e3974b54e6a6d400bd83777c5ea558 MIT
+component_simdutf: 9.0.0 MIT OR Apache-2.0 (pkg/simdutf/vendor in the ghostty tree; its build.zig.zon says 5.2.8, the source says 9.0.0)
+component_highway: 66486a10623fa0d72fe91260f96c892e41aceb06 Apache-2.0 OR BSD-3-Clause
+component_wuffs: 7411f488fe2e2c205c3d3b3d28638b7356522930 MIT OR Apache-2.0 (google/wuffs b22c03837fd4d0ef4d92b37cbff3d727d20d38c6)
+component_uucode: 9d55524551411b493cca41ca06363625d90aff1e MIT
+component_zig: 0.16.0 MIT (compiler_rt and the std code in the library's own object)
+# Fetched by the build but not in the archive, so not bundled: iterm2_themes, pixels, zlib, aro, translate_c (README.md).
+# From the node diagnose run: the archive has 12 members and exports 205 ghostty_ symbols; the .pc says Version 0.1.0-dev.
+pc_version: 0.1.0-dev
+
+# Filled by the node rebuild. tarball_sha256 is the sha256 of the tarball both node runs produced.
+build_date: 2026-10-11 (the day the tarball was unpacked here; the archive carries no build time)
+tarball_name: libghostty-vt-34f39002c6e3974b54e6a6d400bd83777c5ea558-x86_64-linux-gnu.tar
+tarball_sha256: a6445347c9c0f94e7432ac36bb331e8941adf3bbd931a52c2c9c5064cc5c6778
+tarball_size: 29870080
+
+# Every file the tarball unpacks to, one line each: "file: <path> <sha256> <size>". Filled by the node rebuild.
+file: include/ghostty/vt.h 014813d7dba136ae6faecb515d23e7d7dc675672094174f91e2d84ab2bb55732 6967
+file: include/ghostty/vt/allocator.h 77ab59b7be308454ca31fedd203bc43c219869e2ef869a8001549958906b4fd1 11408
+file: include/ghostty/vt/build_info.h 535e44c29b5fd9c8df172605f58616df735432f7786ca24e3cc58d7cb3ba8361 3354
+file: include/ghostty/vt/color.h 73e0db10e4b324122be1a8a46bb6619fe5ab264bf6713543336c3e5deb7035f3 14598
+file: include/ghostty/vt/color_scheme.h eab0dc56e057dfc03334cba109da6e7ae118513cb2be9dc4f3b0bffc7bdad465 2174
+file: include/ghostty/vt/device.h 79c61cd5d54fc15c60d0ce87c69adf89c85b7b748b912c41b91230979f4319fe 4679
+file: include/ghostty/vt/focus.h ddc28ead578ca9f683a4140420807ec9988a45f669d719e28cdf840913ea56b4 2044
+file: include/ghostty/vt/formatter.h 9945b7aff284597d8801eb9201abc95609b3cf71360e14f2db6b8a527838a8cd 7555
+file: include/ghostty/vt/grid_ref.h 80cc49f02d63025605d605c86f1207638ad9534ce74e9a14766299e0518d4987 8028
+file: include/ghostty/vt/grid_ref_tracked.h 78c65cf69c1a6ee439849175221084366ca4392455503cc44e93cfdf9ddbc021 4766
+file: include/ghostty/vt/io.h 2d79995aadc23ce175b519e3ff401ca20664da9068177aac117e0b490f45daee 4950
+file: include/ghostty/vt/key.h 2de93a84da8e9c1c1f6ac8d1d281ba054869225858a5d88ec8ec5f0d091b5eac 2228
+file: include/ghostty/vt/key/encoder.h 6963a275e2ba154a647382c462c416840dcdc2beb6d59aa200d80f37f9a5e196 9149
+file: include/ghostty/vt/key/event.h 0eb11bfab67b887f4b409557b396a5da6ea17e9e62d92b97a38e723b46db635d 13432
+file: include/ghostty/vt/kitty_graphics.h a7e1f37191684e66835b54339fe714b14eaa882b5c1d3459fb6fc8b4a32ec8eb 31132
+file: include/ghostty/vt/modes.h bd40aa01f76e4351e09a1825693b27c1e4a53539411968432fc3e59e0f890f66 8388
+file: include/ghostty/vt/mouse.h 271fc3af121eb323f28d3e467b6d9cde1075b3ac3c400f7e25cc05dd5af03663 3777
+file: include/ghostty/vt/mouse/encoder.h 2e409c50fcd06806dd1a86cf66751ff35362c65e14ff588e2592e8a09141c017 6226
+file: include/ghostty/vt/mouse/event.h 68f14cd03109919cb8da36b17f70670334a3369af5c685496118c913c3049abf 4923
+file: include/ghostty/vt/osc.h 7b2e51bc75619d656c6e9b4328b5bd31bad13f6e40d197665f96bc93b3504b5f 14907
+file: include/ghostty/vt/paste.h 5bfeb6733f29bd00bdccad100c3ccc9f959eff6dc35db5080fcb70af2d55d85d 9965
+file: include/ghostty/vt/point.h 1ed7b2cda14904814727b93d406f39284e8392af706f938cf0fa1dbeaa42e774 1729
+file: include/ghostty/vt/render.h 9918257a2862fa1fce3e4e22a63da70a98a0883ffb6894a3094057d8721aa2a2 42902
+file: include/ghostty/vt/screen.h d9a3ab36f8410184fd0af4a20de1c1d3a0f09e8bd28ec2de89cb243dbd008fa3 11336
+file: include/ghostty/vt/search.h 0a7ff9bd9079f351ff2d255f8d60d33638a5ebc79c1c8076b47b332b47e40c21 19650
+file: include/ghostty/vt/selection.h 839b495f8e24ed678fd71b6eeb75a7cebd9d634334a3303ec31d05d468f2c520 43415
+file: include/ghostty/vt/sgr.h 8292084973e64ce61555c6721591411dba9cf968ea9ae2d9820b4f6c381f1ce5 10743
+file: include/ghostty/vt/size_report.h a86cd1b0e5cf2307411030646285e5f2dcb1e6ca26e938cb6d578b16301e94a7 2994
+file: include/ghostty/vt/snapshot.h da28242bd1cebfa2e313cbbaee160c06573c7990119c8e021b4433d9b3d90b40 24723
+file: include/ghostty/vt/style.h ebb50a1821952dd954dd51d5897f9881c6927abd73b909e2e2f1deb3a52f31a9 2987
+file: include/ghostty/vt/sys.h 8f83a9f4e7132d917559b3ceb9dc8145c318e2ce419c2948cbab7cc6faafd69b 9771
+file: include/ghostty/vt/terminal.h 09a5f36eae386709ea67104255fa1ebf2709bacd0ca5e2eab756d3df1d587123 123342
+file: include/ghostty/vt/types.h 6c30315aa292971c5863b90ace46d241682f8baac2fe9244acb785b0c883020e 12864
+file: include/ghostty/vt/unicode.h d5533c9abcebc9284033eb9c6acc0ed707a3a68a98f0d2e3d8c9b28a2beae796 6358
+file: include/ghostty/vt/wasm.h 0136093c504af9fb2a33b7e50a70cb6b4cee0c2375beed3d73b579c092195fee 5680
+file: lib/libghostty-vt.a a3cdcbc536a3be668621cb524971535eceb7647ab42025d3ba0a2b3ffa069663 18697658
+file: lib/libghostty-vt.so 9393a23d5bd3634875386c6f71a380277d6ced76a4040a8b32fcec0097ffefaa 10543744
+file: licenses/INDEX 6543c23c6f5c8514ed9c2e35483e3916df6904fe5b3f13e5bb0e306ac7297922 911
+file: licenses/ghostty/LICENSE 386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1 1097
+file: licenses/highway/LICENSE 43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1 11356
+file: licenses/highway/LICENSE-BSD3 d25e82e26acd42ca3ccc9993622631163425b869b9e16284226d534cff6470f2 1515
+file: licenses/simdutf/LICENSE-APACHE 3d34610fc6b5e1b0bfe4e2f36171c2d62c28ef05cb8d704f5a0073be41a43b3d 11330
+file: licenses/simdutf/LICENSE-MIT fc8dbc04e03ad4efc08a647ffe7f995b811a95bc04c0e85a56d5277c6593fa5f 1059
+file: licenses/uucode/LICENSE.md 312e901e142be2477b4ca859e9311f9e3f80d33372991759b7921c1893605f33 1298
+file: licenses/uucode/LICENSE_Bjoern_Hoehrmann de219cece932aad5a817bf763393d8d149d378a15d2ad5320e3331eac07626dd 1140
+file: licenses/uucode/LICENSE_unicode 1eda5a3b026870c737b22e8bcd4954338612c790db688242e003f41a4fa95175 2032
+file: licenses/wuffs/LICENSE f8ac2c75e7f629a87565c80d61ff9fe5aa15cdea0bda997d52a4dc13fdbd19cb 11372
+file: licenses/wuffs/LICENSE-APACHE 0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594 10174
+file: licenses/wuffs/LICENSE-MIT bb811a4b485eac3caeb8bdc58bbafb355fbcb6116010a7ea9179e5c70b0bc878 1057
+file: licenses/zig/LICENSE 5c537d6853e005298a285d508cff9ac7192cea23576c840d485b2b586a7ff177 1080
+file: licenses/zig/NOTICE a9080173506069a0a668f08e8d91affe9deb26852434a8f8d4253e371af4667f 981
+file: licenses/zig/llvm-LICENSE.TXT b5efebcaca80879234098e52d1725e6d9eb8fb96a19fce625d39184b705f7b6d 16706
+file: licenses/zig/musl-COPYRIGHT f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af 6204
+file: share/pkgconfig/libghostty-vt-static.pc 5ed478228f7b7e3785faf1f637b3449c32fb13df47a00b1e0ea1d9aabcc597cc 297

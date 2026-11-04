@@ -18,12 +18,13 @@ import asyncio
 
 from test_vault_unlock import _answer, _prompt
 from textual.widgets import Button, DataTable, Input, Select
-from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.credentials import CredentialsScreen, MapScreen, SaveLoginScreen
-from tsb_tui.screens.fleet_view import TAB_TARGETS
 from tsbc import _serve
 from vault_support import CHAIN, RECORDING_LINE, VaultServe, flat
 from workspace_support import fixture_login
+
+from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.credentials import CredentialsScreen, MapScreen, SaveLoginScreen
+from tsb_tui.screens.fleet_view import TAB_TARGETS
 
 HOSTILE_LABEL = "[bold red]lab[/bold red] \x1b[31mred\x1b[0m [link=https://x.invalid]click[/link]"
 

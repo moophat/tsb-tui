@@ -9,7 +9,7 @@ from pathlib import Path
 
 from tsbc.schema import Registry
 
-CONTRACT = Path(__file__).resolve().parents[2] / "program" / "contract"
+CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
 REGISTRY = Registry.from_tree(CONTRACT)
 FIXTURE = json.loads((CONTRACT / "fixtures" / "C1" / "session-record-shape-v0.3.json")
                      .read_text(encoding="utf-8"))

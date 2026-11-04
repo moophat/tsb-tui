@@ -14,9 +14,10 @@ import asyncio
 import unicodedata
 
 from drive_support import Rig
-from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsbc import _serve
 from tsbc._serve import ServeApp
+
+from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 
 # A drive profile sends no size request on its own (D53), so a create, which carries the creator's size, needs auto size
 # turned on explicitly, as the dialog does.

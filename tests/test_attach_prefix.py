@@ -27,10 +27,11 @@ from stub_server import (
     record_output,
 )
 from stub_server import StubServer as StubHttpServer
-from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.terminal import TerminalScreen
 from tsbc import _serve
 from tsbc._serve import ALT_SCREEN_DUMP, ServeApp
+
+from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.terminal import TerminalScreen
 
 
 def test_the_alternate_screen_shows_at_once_and_leaving_it_restores_the_primary(

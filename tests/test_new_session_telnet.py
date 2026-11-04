@@ -16,11 +16,12 @@ import threading
 from stub_server import SlowChunkedApp, StubServer
 from textual.widgets import Button, Input, RadioButton, Static
 from tsb_contract_client import Client
+from tsbc import _serve
+from workspace_support import fixture_login, login, open_new_session
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.new_session import NewSessionScreen
-from tsbc import _serve
-from workspace_support import fixture_login, login, open_new_session
 
 
 def _creates(serve_app) -> list[dict]:

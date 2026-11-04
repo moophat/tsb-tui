@@ -16,9 +16,9 @@ from __future__ import annotations
 import fnmatch
 import json
 import re
+import tomllib
 from pathlib import Path
 
-import tomllib
 from tsb_tui.theme_files import parse_scheme
 
 TUI_DIR = Path(__file__).resolve().parents[1]

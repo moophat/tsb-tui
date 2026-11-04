@@ -19,6 +19,8 @@ from model_frames import validated as validated_frame
 from stub_server import create_owner_session, record_output
 from textual import events
 from textual.command import CommandPalette
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen
@@ -31,7 +33,6 @@ from tsb_tui.widgets.status_row import (
     StatusRow,
     build_pieces,
 )
-from tsbc import _serve
 
 ME, ME_USER = "client-me", "fixture-user"
 PEER, PEER_USER = "client-peer", "fixture-peer"

@@ -21,12 +21,13 @@ from input_server import (
 )
 from prompt_support import NOW, click_laid_out, iso, open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens import prompts
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.prompts import StalePanel
 from tsb_tui.screens.terminal import TerminalScreen
-from tsbc import _serve
 
 STALE = "stale-pending"
 CHOICES = ("wiggle", "ctrl_l", "continue", "fresh_session")

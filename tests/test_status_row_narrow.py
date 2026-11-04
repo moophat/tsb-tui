@@ -26,6 +26,7 @@ from test_status_row import (
     VIEWER_USER,
     _inputs,
 )
+
 from tsb_tui.widgets.status_row import ReattachStatus, build_pieces
 
 SESSION = "rtr-core-01"

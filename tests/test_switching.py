@@ -19,14 +19,15 @@ from pathlib import Path
 import pytest
 from input_server import InputRecordingApp, other_client
 from textual.app import App
+from tsbc import _serve
+from workspace_support import fixture_login, named_sessions, open_here
+
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.term import VTBackend, load
 from tsb_tui.theme import TermPalette
 from tsb_tui.theme_files import SchemeError, find_scheme, parse_scheme, parse_theme
 from tsb_tui.widgets.canvas import Canvas
-from tsbc import _serve
-from workspace_support import fixture_login, named_sessions, open_here
 
 SCHEME_DIR = Path(__file__).resolve().parents[1] / "tsb_tui" / "schemes"
 THEME_DIR = Path(__file__).resolve().parents[1] / "tsb_tui" / "themes"

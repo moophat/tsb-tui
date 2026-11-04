@@ -30,15 +30,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tsb_tui.model.attachment import (
-    AttachmentState,
-)
 from tsbc import _http, _serve, _ws
 from tsbc._serve import ServeApp, StubServer
 from tsbc.fixtures import load_fixtures
 from tsbc.schema import Registry
 
-CONTRACT = Path(__file__).resolve().parents[2] / "program" / "contract"
+from tsb_tui.model.attachment import (
+    AttachmentState,
+)
+
+CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
 WS_FRAMES = "schemas/ws-frames.schema.json"
 REGISTRY = Registry.from_tree(CONTRACT)
 
@@ -1144,6 +1145,7 @@ def test_a_real_attachment_teaches_the_state_its_client_and_holder() -> None:
     from stub_server import SlowChunkedApp
     from stub_server import StubServer as StubHttpServer
     from tsb_contract_client import Client
+
     from tsb_tui.model.attachment import AttachmentPump
 
     async def go(url: str) -> AttachmentPump:

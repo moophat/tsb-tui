@@ -25,6 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from tsb_tui.term import (
     UnknownKey,
     VTBackend,

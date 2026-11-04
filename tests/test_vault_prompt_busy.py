@@ -16,10 +16,11 @@ import threading
 
 from test_vault_unlock import _answer, _prompt
 from textual.widgets import Button
-from tsb_tui import vault_crypto, vault_flow
-from tsb_tui.app import TsbTuiApp
 from vault_support import CHAIN, VaultServe
 from workspace_support import fixture_login
+
+from tsb_tui import vault_crypto, vault_flow
+from tsb_tui.app import TsbTuiApp
 
 
 def _gated_derivation(monkeypatch) -> tuple[threading.Event, threading.Event]:

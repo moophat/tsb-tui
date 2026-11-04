@@ -12,6 +12,7 @@ from device_login_support import answer, opened, start
 from test_remember import _save_spy
 from textual.widgets import Input
 from tsb_contract_client import AsyncDeviceLogin
+
 from tsb_tui import vault_flow
 
 

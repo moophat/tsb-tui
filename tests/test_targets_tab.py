@@ -16,13 +16,14 @@ import unicodedata
 
 from textual.widgets import Button, RadioButton, Static
 from tsb_contract_client import ApiError
+from tsbc import _serve
+from tsbc._serve import ServeApp
+from workspace_support import fixture_login
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.fleet_view import TAB_TARGETS, FleetView
 from tsb_tui.screens.new_session import NewSessionScreen
-from tsbc import _serve
-from tsbc._serve import ServeApp
-from workspace_support import fixture_login
 
 
 class _ScriptedTargets:

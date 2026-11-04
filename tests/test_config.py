@@ -17,14 +17,15 @@ Why these matter (Rule 9):
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
-import tomllib
 from stub_server import SlowChunkedApp, StubServer
 from test_smoke import _set_creds
 from tsb_contract_client import ApiError
+
 from tsb_tui import config, smoke
 
 LEADER_MAP = "keys.leader_map."

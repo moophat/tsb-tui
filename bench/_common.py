@@ -30,18 +30,19 @@ from typing import Any, Self
 # `tests/conftest.py` does for the tests.
 _HERE = Path(__file__).resolve().parent
 TUI_DIR = _HERE.parent
-REPO_ROOT = TUI_DIR.parent
+REPO_ROOT = TUI_DIR
 CONTRACT_DIR = REPO_ROOT / "program" / "contract"
 for _entry in (TUI_DIR, CONTRACT_DIR, CONTRACT_DIR / "client"):
     if _entry.is_dir() and str(_entry) not in sys.path:
         sys.path.insert(0, str(_entry))
 
-from tsb_tui import config
-from tsb_tui.app import TsbTuiApp
 from tsbc import _serve
 from tsbc import _wsframe as wf
 
-DEFAULT_LIBRARY = REPO_ROOT / "vt" / "third_party" / "libghostty-vt" / "lib" / "libghostty-vt.so"
+from tsb_tui import config
+from tsb_tui.app import TsbTuiApp
+
+DEFAULT_LIBRARY = REPO_ROOT / "vendor" / "libghostty-vt" / "libghostty-vt.so"
 CHUNK_BYTES = 8192
 # Letters the generated streams never contain: a keystroke's echo is told from the stream by its letter.
 MARKERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
