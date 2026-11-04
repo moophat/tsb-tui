@@ -297,6 +297,7 @@ class SessionSlot:
     refusals_seen: int = 0
     was_ending: bool = False
     keys_not_sent: bool = False  # typed keys the guard held back since the keyboard last moved
+    input_notice: str = ""  # typed input dropped while this attachment was unavailable; cleared on attach
     unseen: bool = False  # output arrived while it was not in front (the chip's `•`)
     after_attach: list[Callable[[SessionSlot], Any]] = field(default_factory=list)
     # `tsb-tui drive`'s `read reply` is the text since this client's last input here: while set, each typed input marks
@@ -1838,9 +1839,8 @@ class TerminalScreen(Screen):
         if self._unmounted or slot.closed:
             return
         slot.was_ending = state.ending
+        slot.input_notice = ""
         if slot is self._front:
-            if self._scroll_notice == RECONNECT_DROPPED_NOTE:
-                self._scroll_notice = None
             if isinstance(attempt, int) and attempt > 1:
                 self._toast("Reattached.", "session")
             self._sync_prompts()
@@ -2283,7 +2283,7 @@ class TerminalScreen(Screen):
             return False
         state = pump.state
         if state.client_id is None or state.closed:
-            self._drop_unattached_input(source, data, state, "not_attached")
+            self._drop_unattached_input(source, data, slot, "not_attached")
             return False  # not attached (yet, or any more): there is no one to send to
         if self._scroll_mode and slot is self._front and source != SOURCE_REPLY:
             # The viewport is scrolled: no key, paste, mouse or focus report leaves for the session until the view is
@@ -2317,7 +2317,7 @@ class TerminalScreen(Screen):
         try:
             await pump.send(data)
         except ConnectionClosed:
-            self._drop_unattached_input(source, data, state, "connection_closed")
+            self._drop_unattached_input(source, data, slot, "connection_closed")
             return False  # the pump's read loop sees the close and handles it
         if source in _TYPED and state.refusal_active and state.refusal_at is not None and (
                 state.now() - state.refusal_at >= self.app.cfg["toasts.seconds"]):
@@ -2328,13 +2328,14 @@ class TerminalScreen(Screen):
                 self.refresh_status()
         return True
 
-    def _drop_unattached_input(self, source: str, data: bytes, state: AttachmentState, reason: str) -> None:
+    def _drop_unattached_input(self, source: str, data: bytes, slot: SessionSlot, reason: str) -> None:
         if source not in _TYPED:
             return
         self.dropped_inputs += 1
-        state.log.add(KIND_INPUT_DROPPED, time.monotonic(), source=source, bytes=len(data), reason=reason)
-        self._scroll_notice = RECONNECT_DROPPED_NOTE
-        self.refresh_status()
+        slot.pump.state.log.add(KIND_INPUT_DROPPED, time.monotonic(), source=source, bytes=len(data), reason=reason)
+        slot.input_notice = RECONNECT_DROPPED_NOTE
+        if slot is self._front:
+            self.refresh_status()
 
     def _derived_input_blocked(self, slot: SessionSlot, state: AttachmentState) -> str | None:
         """Why derived input may not go out now (DT4 b), or None when it may. Not the guard's business:
@@ -2443,6 +2444,8 @@ class TerminalScreen(Screen):
                 await self.run_action_id("new_session")
             elif event.character == "n" and not self.dialogs:
                 await self.run_action_id("next")
+            else:
+                await self._send_key(event)
             return
         if self.stale_active():
             # Only a digit that names a choice is taken, and only after the guard (F7, D23): a keystroke
@@ -3203,7 +3206,9 @@ class TerminalScreen(Screen):
             leader_keys=A.leader_keys(cfg.leader_overrides()),
             hint_priority=cfg["status.hint_priority"], keys_indicator=cfg["status.keys_indicator"],
             target=self._keys_target(), attaching=front is not None and state is None,
-            input_notice=self._scroll_notice if self._scroll_notice == RECONNECT_DROPPED_NOTE else "",
+            input_notice=(front.input_notice if front is not None and state is not None
+                          and state.reattach is not None and not state.reattach_stopped
+                          and front.ended is None else ""),
             now=self.app.wall_clock(), recording_bar=self._recording_text(front, state),
             ended=self._ended_status(state), reattach=self._reattach_status(state),
             reattach_stopped=state is not None and state.reattach_stopped,

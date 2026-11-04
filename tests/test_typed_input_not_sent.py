@@ -42,6 +42,8 @@ def test_typed_key_is_counted_logged_and_shown_then_never_replayed(
                 pump.state.apply_close(None)
             else:
                 pump.state.client_id = None
+            # The reconnect warning is visible only during an active retry.
+            pump.state.reattach = {"attempt": 1, "due": pump.state.now() + 60, "cause": "detached"}
             before = screen.dropped_inputs
             if source == "key":
                 await pilot.press("x")
@@ -82,6 +84,7 @@ def test_derived_input_remains_silent(serve, wait_until, monkeypatch, source, fa
                 monkeypatch.setattr(screen.pump, "send", AsyncMock(side_effect=ConnectionClosed()))
             assert not await screen.send_input(source, b"derived")
             assert screen._scroll_notice is None
+            assert screen.front.input_notice == ""
             assert NOTE not in screen.status.text
             await flushed(pilot, screen, server, wait_until)
             assert server.received(client_id) == []
@@ -164,5 +167,98 @@ def test_a_real_reattach_clears_the_note_and_does_not_replay_gap_input(serve, wa
                 assert server.received(pump.state.client_id) == [b"y"]
             finally:
                 release.set()
+
+    asyncio.run(check())
+
+
+def _reconnecting(state) -> None:
+    """Hold the model at the pump's backoff state without changing a live fixture socket."""
+    state.apply_close(4011)
+    state.reattach = {"attempt": 1, "due": state.now() + 60, "cause": "detached"}
+
+
+@pytest.mark.parametrize("action", ["healthy", "return", "background_attach", "scroll"])
+def test_reconnect_warning_belongs_to_its_slot(serve, wait_until, action) -> None:
+    async def check() -> None:
+        server, url = serve(InputRecordingApp())
+        sid = make_session(url)
+        healthy_sid = make_session(url)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 30)) as pilot:
+            app.client.login(_serve.USER, _serve.PASSWORD)
+            screen = await attached(pilot, app, sid, wait_until)
+            down = screen.front
+            healthy = screen._add_slot(app.client.session(healthy_sid), front=False)
+            await wait_until(pilot, lambda: healthy.pump is not None and healthy.pump.state.dump_seen,
+                             "the background healthy session to attach")
+            _reconnecting(down.pump.state)
+            await pilot.press("x")
+            assert NOTE in screen.status.text
+            if action == "scroll":
+                screen.do_scroll()
+                assert NOTE in screen.status.text
+                screen._drop_while_scrolled("key", 1)
+                assert NOTE in screen.status.text, "a scroll notice must not overwrite the reconnect warning"
+                screen.close_scroll_view()
+                assert NOTE in screen.status.text
+            else:
+                if action == "return":
+                    screen.do_scroll()  # switching closes this view, which must not clear a session warning
+                screen.show_front(healthy)
+                if action == "healthy":
+                    assert NOTE not in screen.status.text, "a healthy session must not inherit the warning"
+                elif action == "return":
+                    screen.show_front(down)
+                    assert down.pump.state.closed
+                    assert NOTE in screen.status.text
+                else:
+                    down.pump._apply_attached(down.pump._att)
+                    screen.show_front(down)
+                    assert NOTE not in screen.status.text
+                    assert down.input_notice == "", "background attach must clear the owning slot's warning"
+            await flushed(pilot, screen, server, wait_until)
+            assert server.received(down.pump.state.client_id) == []
+            assert server.received(healthy.pump.state.client_id) == []
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("final_state", ["ended", "stopped"])
+def test_input_after_reconnecting_is_over_preserves_status_and_counts_drop(serve, wait_until, final_state) -> None:
+    from tsb_tui.screens.prompts import ended_view
+
+    async def check() -> None:
+        server, url = serve(InputRecordingApp())
+        sid = make_session(url)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 30)) as pilot:
+            app.client.login(_serve.USER, _serve.PASSWORD)
+            screen = await attached(pilot, app, sid, wait_until)
+            slot = screen.front
+            state = slot.pump.state
+            client_id = state.client_id
+            # Start with a warning already present: stopping/ending must hide it without another attach.
+            _reconnecting(state)
+            await pilot.press("x")
+            assert NOTE in screen.status.text
+            if final_state == "ended":
+                state.apply_close(4010)
+                slot.ended = ended_view(state, slot.target)
+                slot.ended_dialog_shown = True  # exercise keys on the workspace after the dialog is dismissed
+            else:
+                state.apply_close(4011)
+                state.reattach_stopped = True
+            screen.refresh_status()
+            before_text = screen.status.text
+            assert ("ended" if final_state == "ended" else "not reattaching") in before_text
+            before = screen.dropped_inputs
+            await pilot.press("z")
+            assert screen.status.text == before_text
+            assert NOTE not in screen.status.text
+            assert screen.dropped_inputs == before + 1
+            event = state.log.of_kind(KIND_INPUT_DROPPED)[-1]
+            assert event.detail == {"source": "key", "bytes": 1, "reason": "not_attached"}
+            await flushed(pilot, screen, server, wait_until)
+            assert server.received(client_id) == []
 
     asyncio.run(check())
