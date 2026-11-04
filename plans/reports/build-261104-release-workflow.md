@@ -17,7 +17,39 @@ Status: DONE_WITH_CONCERNS — implementation and available local checks pass; a
 No implementation work remains within the authorized scope. No further design gap was identified.
 The previous missing-reference and backend-provisioning blockers are resolved by the operator's follow-ups.
 
-## Changes
+## PR #2 review fixes — ruling 22:43
+
+**AI-Model:** codex. Starting HEAD for these uncommitted fixes: f338b92; clean tree.
+
+- [x] Save the initially validated tagged commit as a step output.
+- [x] Immediately before publishing, force-fetch the exact tag ref from origin and compare its peeled
+  commit with that saved build commit. A missing tag, failed fetch, invalid commit or changed commit
+  fails before either release mutation command runs.
+- [x] If `gh release view` finds the release, use `gh release upload --clobber` for the wheel and
+  SHA256SUMS; otherwise retain `gh release create --verify-tag`.
+- [x] After either path, list release asset names through `gh release view --json assets` and
+  require exact matches for the built wheel basename and SHA256SUMS. Upload/create/list failures
+  and either missing asset fail the job.
+- [x] YAML parsing, `bash -n` on every run block, whitespace check and make lint pass.
+
+Latest lint output (exit 0):
+
+```text
+All checks passed!
+============================== 51 passed in 4.29s ==============================
+import-lint: clean (./ 164 files)
+docs_branch_guard: no event, not pull_request — no-op
+clean: no node addresses, dev hostnames, secret paths, or workstation/mount paths
+engine-check: shared object and all headers verified; object matches PIN
+```
+
+No skipped tests. Actionlint remains unavailable. The workflow and GitHub publish paths were not
+executed locally. The standalone docs guard was a no-op outside a PR event; its unit tests ran.
+Temporary test files were confined to this clone and removed afterward. Only release.yml and this
+report changed for this follow-up. No commit, push, tag or Git configuration change was made.
+No further design gap was identified; no work remains within this review-fix scope.
+
+## Original implementation
 
 `.github/workflows/release.yml` triggers on pushed `v*.*.*` tags, on `[self-hosted, tsb-tui-ci]`.
 Checkout uses `fetch-depth: 0` and `fetch-tags: true`. Before building or fetching the program, the job:

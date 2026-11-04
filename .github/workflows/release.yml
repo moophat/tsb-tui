@@ -30,6 +30,7 @@ jobs:
           fetch-tags: true
 
       - name: Require an annotated version tag on main
+        id: tag_check
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
@@ -46,6 +47,7 @@ jobs:
           [[ "$(git rev-parse HEAD)" == "$commit" ]] || {
             echo '::error::checkout must match the tagged commit'; exit 1;
           }
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
 
       - name: Build the Python CI image
         run: docker build --file .github/ci/py.Dockerfile --tag ci-tui-py .
@@ -129,7 +131,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          BUILD_COMMIT: ${{ steps.tag_check.outputs.commit }}
         run: |
           set -euo pipefail
-          gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes '' \
-            dist/*.whl dist/SHA256SUMS
+          git fetch --no-tags origin "+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" == "$BUILD_COMMIT" ]] || {
+            echo '::error::release tag moved since the wheel was built'; exit 1;
+          }
+          if gh release view "$RELEASE_TAG" >/dev/null; then
+            gh release upload "$RELEASE_TAG" --clobber dist/*.whl dist/SHA256SUMS
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes '' \
+              dist/*.whl dist/SHA256SUMS
+          fi
+          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          wheel_name="$(basename dist/*.whl)"
+          grep -Fxq -- "$wheel_name" <<< "$assets" || {
+            echo '::error::release wheel asset is missing'; exit 1;
+          }
+          grep -Fxq -- SHA256SUMS <<< "$assets" || {
+            echo '::error::release SHA256SUMS asset is missing'; exit 1;
+          }
