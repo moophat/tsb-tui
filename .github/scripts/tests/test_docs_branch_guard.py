@@ -98,6 +98,20 @@ class DocsBranchGuard(unittest.TestCase):
         proc = self._run(event="pull_request", head_ref="plan/my-plan")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def test_docs_branch_with_workflow_markdown_passes(self):
+        self._commit({".aiworkflow/notes.md": "notes\n"})
+        proc = self._run(event="pull_request", head_ref="docs/workflow")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_docs_branch_with_non_markdown_workflow_files_fails(self):
+        for path in (".aiworkflow/rotate-work-tracker.py", ".aiworkflow/helper.py", ".aiworkflow/queue.txt"):
+            with self.subTest(path=path):
+                work = self._fresh_repo()
+                self._commit({path: "code\n"}, work=work)
+                proc = self._run(event="pull_request", head_ref="docs/workflow", work=work)
+                self.assertEqual(proc.returncode, 1)
+                self.assertIn(path, proc.stderr)
+
     def test_docs_branch_touching_code_fails_naming_the_file(self):
         # Why it matters: a branch Qodo never reviews (by name alone) must not be able to slip a
         # real code change through on green CI just by living on a plan/ branch. Each path gets its
@@ -162,7 +176,7 @@ class DocsBranchGuard(unittest.TestCase):
         self.assertIn("failing closed", proc.stderr)
 
     def test_docs_directory_is_allowed_but_research_code_is_not(self):
-        self._commit({"docs/guide.txt": "notes\n", ".aiworkflow/queue.txt": "notes\n"})
+        self._commit({"docs/guide.txt": "notes\n", ".aiworkflow/queue.md": "notes\n"})
         proc = self._run(event="pull_request", head_ref="docs/guide")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self._commit({"research/code.py": "value = 1\n"})

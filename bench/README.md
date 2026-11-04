@@ -1,4 +1,4 @@
-# tui/bench — the TUI's benchmarks
+# bench — the TUI's benchmarks
 
 Three scripts that measure what the design's acceptance tests 4 and 6 (§3.4) ask for. They are run by the orchestrator on
 the integration node, with no post-merge loop running, and never on a shared workstation: none is a rig (there is no
@@ -12,20 +12,21 @@ firehose on a loaded machine measures the machine. They import only the stdlib, 
 * the `tsb-tui` venv (Textual 8.2.8) and `program/` populated at the pinned release (`make contract-init`), run from the
   repository root;
 * the engine, `libghostty-vt.so`, from the same build the deploy installs: `--library <path>` (the default is the
-  repository's `vt/third_party/libghostty-vt/lib/libghostty-vt.so`, the build step's output).
+  repository's `vendor/libghostty-vt/libghostty-vt.so`). For another build, set `TSB_TUI_TERM_LIBRARY`
+  and pass `--library "$TSB_TUI_TERM_LIBRARY"` explicitly.
 
 ## The commands
 
 Each runs under `systemd-run` so it is a unit of its own that ends with its script (placeholders in angle brackets):
 
     systemd-run --wait --collect --pipe -p WorkingDirectory=<repo> \
-        <venv>/bin/python tui/bench/engine_read.py --library <so>
+        <venv>/bin/python bench/engine_read.py --library <so>
 
     systemd-run --wait --collect --pipe -p WorkingDirectory=<repo> \
-        <venv>/bin/python tui/bench/paint.py --library <so>
+        <venv>/bin/python bench/paint.py --library <so>
 
     systemd-run --wait --collect --pipe -p WorkingDirectory=<repo> \
-        <venv>/bin/python tui/bench/fleet_scale.py --library <so>
+        <venv>/bin/python bench/fleet_scale.py --library <so>
 
 Each prints a table and a last line `PASS` or `FAIL`, and exits 0 or 1. A miss is not met by reporting it: the numbers go
 to the operator, with the fallbacks the plan's engine-read go/no-go names.

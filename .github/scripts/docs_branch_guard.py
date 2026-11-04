@@ -30,9 +30,9 @@ import sys
 
 import tomllib
 
-# A branch this check has already cleared may still touch: plans, the AI workflow ledger, research
-# notes (any file under these, regardless of extension), or a Markdown file.
-DOCS_ONLY_DIRS = ("plans/", ".aiworkflow/", "docs/")
+# A docs branch may touch plans and docs (any extension), or Markdown files elsewhere,
+# including .aiworkflow/. Non-Markdown workflow files are code.
+DOCS_ONLY_DIRS = ("plans/", "docs/")
 
 
 def _run_git(args: list[str]) -> subprocess.CompletedProcess:
