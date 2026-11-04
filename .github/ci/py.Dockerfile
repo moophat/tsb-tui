@@ -8,4 +8,4 @@ WORKDIR /src
 COPY pyproject.toml README.md /src/
 COPY tsb_tui /src/tsb_tui
 # Installs the exact runtime and pytest pins from this repo's manifest.
-RUN pip install --no-cache-dir --no-compile -e '.[test]' ruff==0.16.9
+RUN pip install --no-cache-dir --no-compile -e '.[test]' ruff==0.16.9 setuptools==84.2.1
