@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import importlib.metadata
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 import tsb_contract_client
@@ -235,7 +235,7 @@ def event_log_lines(terminal: Any) -> list[str]:
     burst: list[Event] = []
 
     def clock(event: Event) -> str:
-        return datetime.fromtimestamp(now_wall - (state.now() - event.at), tz=timezone.utc).astimezone().strftime("%H:%M:%S")
+        return datetime.fromtimestamp(now_wall - (state.now() - event.at), tz=UTC).astimezone().strftime("%H:%M:%S")
 
     def flush() -> None:
         if burst:

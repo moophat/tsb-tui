@@ -21,8 +21,9 @@ import pytest
 from drive_support import Rig
 from input_server import InputRecordingApp, make_session
 from signout_support import HeldRequestApp, LogoutProbeApp
-from tsb_tui.drive import runner
 from tsbc import _serve
+
+from tsb_tui.drive import runner
 
 GUIDE_TITLE = "# tsb-tui drive: a guide for agents"
 

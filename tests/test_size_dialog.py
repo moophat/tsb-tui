@@ -23,9 +23,10 @@ from input_server import (
 )
 from stub_server import create_owner_session, resize_requests
 from textual.widgets import Button, Static
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.size_dialog import REASON_TEXT, SizeDialog, describe_answer
-from tsbc import _serve
 
 LEADER = "ctrl+backslash"
 

@@ -9,10 +9,9 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-
-import tomllib
 
 
 class SavedThemeError(Exception):

@@ -1,0 +1,167 @@
+# Every PR and push to main runs both required checks; there are no path filters.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    runs-on: [self-hosted, tsb-tui-ci]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build the Python CI image
+        run: docker build --file .github/ci/py.Dockerfile --tag ci-tui-py .
+
+      # tsb-program is private. The read-only deploy key is written to a directory removed on exit,
+      # GitHub's published ed25519 host key is pinned (never ssh-keyscan), and the https remote is
+      # rewritten to ssh. A pull request controls every file in its own checkout (the Makefile,
+      # tools/, the scripts), so this step runs only the git commands written below, nothing from the
+      # checkout, and the key is deleted before the next step starts.
+      - name: program/ fetched at the pinned commit
+        env:
+          PROGRAM_DEPLOY_KEY: ${{ secrets.PROGRAM_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$PROGRAM_DEPLOY_KEY" ] || { echo "::error::secret PROGRAM_DEPLOY_KEY is empty or missing: no other way of fetching tsb-program"; exit 1; }
+          keydir="$(mktemp -d "$RUNNER_TEMP/program-key.XXXXXX")"
+          trap 'rm -rf "$keydir"' EXIT
+          umask 077
+          printf '%s\n' "$PROGRAM_DEPLOY_KEY" > "$keydir/id"
+          # https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$keydir/known_hosts"
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work -v "$keydir:/ssh:ro" \
+            -e GIT_SSH_COMMAND='ssh -i /ssh/id -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts' \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0='url.git@github.com:moophat/.insteadOf' \
+            -e GIT_CONFIG_VALUE_0='https://github.com/moophat/' \
+            ci-tui-py bash -euo pipefail -c '
+              sha="$(git rev-parse :program)"
+              mkdir -p program
+              find program -mindepth 1 -delete
+              rm -rf "$(git rev-parse --git-dir)/modules/contract"
+              git submodule init program
+              git clone --filter=blob:none --no-checkout --sparse https://github.com/moophat/tsb-program.git program
+              git -C program sparse-checkout set --cone srs contract
+              git -C program checkout --detach "$sha"
+              git -C program fetch origin +refs/heads/main:refs/remotes/origin/main --tags
+              git submodule absorbgitdirs program
+            '
+          rm -rf "$keydir"
+
+      # Project code only runs after the deploy key has been removed.
+      - name: Initialize and check the program pin
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            ci-tui-py bash -euo pipefail -c 'make contract-init && make contract-check CONTRACT_MAIN_REF=origin/main'
+
+      - name: Unit suite
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -e PYTEST_ADDOPTS='-rsx --runxfail' \
+            ci-tui-py make test 2>&1 | tee "$RUNNER_TEMP/tsb-tui-test.log"
+
+      - name: No test skips
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/tsb-tui-test.log"
+          [ -s "$log" ] || { echo '::error::missing test output'; exit 1; }
+          if grep -E '^SKIPPED|[0-9]+ (skipped|xfailed|xpassed|deselected)' "$log"; then
+            echo '::error::the whole unit suite must run without skips or hidden tests'
+            exit 1
+          fi
+
+  lint:
+    runs-on: [self-hosted, tsb-tui-ci]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build the Python CI image
+        run: docker build --file .github/ci/py.Dockerfile --tag ci-tui-py .
+
+      # tsb-program is private. The read-only deploy key is written to a directory removed on exit,
+      # GitHub's published ed25519 host key is pinned (never ssh-keyscan), and the https remote is
+      # rewritten to ssh. A pull request controls every file in its own checkout (the Makefile,
+      # tools/, the scripts), so this step runs only the git commands written below, nothing from the
+      # checkout, and the key is deleted before the next step starts.
+      - name: program/ fetched at the pinned commit
+        env:
+          PROGRAM_DEPLOY_KEY: ${{ secrets.PROGRAM_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "$PROGRAM_DEPLOY_KEY" ] || { echo "::error::secret PROGRAM_DEPLOY_KEY is empty or missing: no other way of fetching tsb-program"; exit 1; }
+          keydir="$(mktemp -d "$RUNNER_TEMP/program-key.XXXXXX")"
+          trap 'rm -rf "$keydir"' EXIT
+          umask 077
+          printf '%s\n' "$PROGRAM_DEPLOY_KEY" > "$keydir/id"
+          # https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$keydir/known_hosts"
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work -v "$keydir:/ssh:ro" \
+            -e GIT_SSH_COMMAND='ssh -i /ssh/id -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts' \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0='url.git@github.com:moophat/.insteadOf' \
+            -e GIT_CONFIG_VALUE_0='https://github.com/moophat/' \
+            ci-tui-py bash -euo pipefail -c '
+              sha="$(git rev-parse :program)"
+              mkdir -p program
+              find program -mindepth 1 -delete
+              rm -rf "$(git rev-parse --git-dir)/modules/contract"
+              git submodule init program
+              git clone --filter=blob:none --no-checkout --sparse https://github.com/moophat/tsb-program.git program
+              git -C program sparse-checkout set --cone srs contract
+              git -C program checkout --detach "$sha"
+              git -C program fetch origin +refs/heads/main:refs/remotes/origin/main --tags
+              git submodule absorbgitdirs program
+            '
+          rm -rf "$keydir"
+
+      # Project code only runs after the deploy key has been removed.
+      - name: Initialize and check the program pin
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            ci-tui-py bash -euo pipefail -c 'make contract-init && make contract-check CONTRACT_MAIN_REF=origin/main'
+
+      - name: Lint and repository guards
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -e CI -e GITHUB_EVENT_NAME -e HEAD_REF -e BASE_REF \
+            ci-tui-py make lint
+

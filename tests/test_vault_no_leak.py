@@ -22,11 +22,12 @@ from test_new_session_login import _gate_up, _open_dialog
 from test_screen_lock import Clock, _dump, _locked
 from test_vault_unlock import _prompt
 from textual.widgets import Button, Input
+from tsbc import _serve
+from vault_support import CHAIN, VaultServe
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.lock import LockScreen
 from tsb_tui.vault_flow import save_login
-from tsbc import _serve
-from vault_support import CHAIN, VaultServe
 
 TARGET_PASSWORD = "FIXTURE-TARGET-PASSWORD-77"
 KEY_TEXT = "-----BEGIN OPENSSH PRIVATE KEY-----\nRklYVFVSRS1MRUFLLUNIRUNL\n-----END OPENSSH PRIVATE KEY-----\n"

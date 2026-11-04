@@ -11,7 +11,7 @@ Nothing here imports Textual.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def parse_timestamp(value: str | None) -> datetime | None:
@@ -19,7 +19,7 @@ def parse_timestamp(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return datetime.fromisoformat(value).astimezone(UTC)
     except ValueError:
         return None
 

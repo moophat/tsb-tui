@@ -26,10 +26,11 @@ from collections.abc import Callable, Iterator
 
 from stub_server import resize_requests
 from tsb_contract_client import Client
-from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.terminal import TerminalScreen
 from tsbc import _serve
 from tsbc._serve import ServeApp
+
+from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.terminal import TerminalScreen
 
 # The size the marker frame asks for; any valid size will do, and the fixture clamps it.
 MARKER_SIZE = (91, 33)

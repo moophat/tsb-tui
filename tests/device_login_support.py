@@ -3,8 +3,9 @@ from contextlib import asynccontextmanager
 
 from stub_server import DeviceLoginApp, StubServer
 from textual.widgets import Input
-from tsb_tui.app import TsbTuiApp
 from workspace_support import fixture_login, open_new_session
+
+from tsb_tui.app import TsbTuiApp
 
 
 def password(prompt_id=1, attempt=1):

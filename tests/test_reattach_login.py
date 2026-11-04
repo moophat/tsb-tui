@@ -32,12 +32,13 @@ from drive_support import Rig
 from prompt_support import STUB_TARGET, create_stub_session, open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
 from tsb_contract_client import Client
+from tsbc._serve import PASSWORD, TARGET, USER, ServeApp
+from workspace_support import login, open_new_session
+
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.drive.runner import Driver
 from tsb_tui.screens.terminal import TerminalScreen
-from tsbc._serve import PASSWORD, TARGET, USER, ServeApp
-from workspace_support import login, open_new_session
 
 RESTART_PATHS = ("/sessions", "/auth/me", "/auth/ws-ticket")
 

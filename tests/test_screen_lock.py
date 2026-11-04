@@ -24,12 +24,13 @@ from input_server import InputRecordingApp, flushed
 from stub_server import emit_live_output, record_output
 from textual.screen import Screen
 from textual.widgets import Input, Static
-from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.lock import LockScreen
-from tsb_tui.screens.login import LoginScreen
 from tsbc import _serve
 from vault_support import CHAIN, VaultServe
 from workspace_support import fixture_login, named_sessions, open_here
+
+from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.lock import LockScreen
+from tsb_tui.screens.login import LoginScreen
 
 SECRET_1 = b"SESSION-BYTE-ONE-d41d8cd9\r\n"
 SECRET_2 = b"SESSION-BYTE-TWO-98f00b20\r\n"

@@ -1,6 +1,6 @@
 """Puts the pinned contract tree at `program/contract/` on sys.path before any test module
 imports `tsbc` or `tsb_contract_client`. The pin is the program submodule at its release
-(v0.3.1); `program/contract/` and `program/contract/client/` go first on sys.path so an import
+(v0.12.1); `program/contract/` and `program/contract/client/` go first on sys.path so an import
 that would otherwise resolve from site-packages, the sibling `../tsb-program`, or a stale
 copy of an older tag fails loudly instead. Nothing is copied, cached or resolved with git: the
 path is valid because it is the program release (`make contract-check` proves it). CI no longer
@@ -10,7 +10,7 @@ _transport.py) fails outright. pytest imports every conftest.py before collectin
 in its directory, so this runs first.
 
 It also yields the vendored libghostty-vt shared object's path to the engine tests (`term_so`).
-That file is untracked engine input (phase 1's H1 tarball), so the fixture fails loudly when it is
+That file is vendored at the engine PIN, so the fixture fails loudly when it is
 absent rather than letting the engine tests error with a confusing import — exactly as this file
 already does for `program/contract/`.
 
@@ -34,9 +34,10 @@ from pathlib import Path
 import pytest
 
 TUI_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = TUI_DIR.parent
+REPO_ROOT = TUI_DIR
 CONTRACT_DIR = REPO_ROOT / "program" / "contract"
-TERM_SO = REPO_ROOT / "vt" / "third_party" / "libghostty-vt" / "lib" / "libghostty-vt.so"
+TERM_SO = Path(os.environ["TSB_TUI_TERM_LIBRARY"]) if "TSB_TUI_TERM_LIBRARY" in os.environ else (
+    REPO_ROOT / "vendor" / "libghostty-vt" / "libghostty-vt.so")
 
 if not CONTRACT_DIR.is_dir() or not any(CONTRACT_DIR.iterdir()):
     raise RuntimeError(
@@ -52,14 +53,13 @@ for _entry in (CONTRACT_DIR, CONTRACT_DIR / "client"):
 def term_so() -> Path:
     """The path to the vendored libghostty-vt `.so` (phase 1's engine input).
 
-    The engine is built on the integration node at the pin and unpacked into the worktree,
-    untracked; it is never committed (phase 1 "Input"). Failing here, loudly, is the point: without
-    it there is no engine to test, and an import error would hide that.
+    The engine is vendored at the recorded PIN, with a local build override from
+    TSB_TUI_TERM_LIBRARY. A missing file fails rather than skipping engine tests.
     """
     if not TERM_SO.is_file():
         raise RuntimeError(
-            f"{TERM_SO} is absent — unpack the H1 node-step tarball into the worktree (it is "
-            f"untracked engine input; phase 1 does not start without it)")
+            f"{TERM_SO} is absent — restore vendor/libghostty-vt/libghostty-vt.so "
+            f"or set TSB_TUI_TERM_LIBRARY to the local engine build")
     return TERM_SO
 
 

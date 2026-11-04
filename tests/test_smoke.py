@@ -16,6 +16,7 @@ import sys
 
 import pytest
 from stub_server import SlowChunkedApp, StubServer
+
 from tsb_tui import smoke
 from tsb_tui.__main__ import main
 

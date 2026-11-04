@@ -19,8 +19,9 @@ from __future__ import annotations
 import base64
 
 import pytest
-from tsb_tui import vault_crypto
 from vault_support import CHAIN, b64, vector
+
+from tsb_tui import vault_crypto
 
 OPAQUE = vector("kat-opaquestring")["cases"]
 REFERENCE = vector("kat-argon2id-reference")["cases"]

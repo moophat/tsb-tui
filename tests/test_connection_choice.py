@@ -16,10 +16,11 @@ import asyncio
 import pytest
 from stub_server import SlowChunkedApp, StubServer
 from textual.widgets import Select
+from workspace_support import login, open_new_session
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.new_session import NewSessionScreen
-from workspace_support import login, open_new_session
 
 TARGET_ID = "stub-target"
 

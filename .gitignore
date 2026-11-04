@@ -1,0 +1,19 @@
+# agent / tool state
+.claude/
+.gemini/
+.aiworkflow/*.bak
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# local test and build output
+/results/
+/dist/
+/build/

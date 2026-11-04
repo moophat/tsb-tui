@@ -24,13 +24,14 @@ import threading
 import pytest
 from test_new_session_login import _gate_up, _open_dialog
 from textual.widgets import Button, Input
+from tsbc import _serve
+from vault_support import CHAIN, RECORDING_LINE, VaultServe, flat
+from workspace_support import fixture_login
+
 from tsb_tui import vault_crypto
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.vault_prompts import InitScreen, PassphraseScreen
-from tsbc import _serve
-from vault_support import CHAIN, RECORDING_LINE, VaultServe, flat
-from workspace_support import fixture_login
 
 
 def _locked_target(serve_app: VaultServe) -> None:

@@ -23,10 +23,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Self
 
+from tsbc import _serve
+
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.drive.runner import Driver, Transcript
-from tsbc import _serve
 
 
 class _Sink:

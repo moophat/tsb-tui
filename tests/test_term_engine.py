@@ -14,9 +14,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from tsb_tui.term import VTBackend, load
 
-GOLDENS = Path(__file__).resolve().parents[2] / "program" / "contract" / "fixtures" / "C4"
+GOLDENS = Path(__file__).resolve().parents[1] / "program" / "contract" / "fixtures" / "C4"
 
 # Every golden is opened at 80×24 with scrollback 4194304 — the values every C4 sequence fixture's
 # `open` carries (VT plan DV17, plan DT18).

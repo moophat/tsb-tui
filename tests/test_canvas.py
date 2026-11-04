@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 from stub_server import SlowChunkedApp, StubServer
 from textual.app import App
+
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.terminal import TerminalScreen

@@ -18,13 +18,14 @@ import threading
 
 from stub_server import SlowChunkedApp, StubServer
 from textual.widgets import Button, Input, RadioButton, RadioSet, Static
-from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.attach_confirm import AttachConfirmScreen
-from tsb_tui.screens.new_session import NewSessionScreen
 from tsbc import _serve
 from tsbc._serve import ServeApp
 from vault_support import VaultServe
 from workspace_support import fixture_login
+
+from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.attach_confirm import AttachConfirmScreen
+from tsb_tui.screens.new_session import NewSessionScreen
 
 USER = "fixture-account"
 PASSWORD = "FIXTURE-NOT-A-PASSWORD-typed"

@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from test_canvas import _first_paint, _Host, _style_at
 from textual.app import App
+
 from tsb_tui import config
 from tsb_tui.term import VTBackend, load
 from tsb_tui.theme import TermPalette, contrast_ratio, lift

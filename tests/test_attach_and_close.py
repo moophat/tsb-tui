@@ -17,6 +17,7 @@ import asyncio
 from collections.abc import Callable
 
 from stub_server import SlowChunkedApp, StubServer
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.login import LoginScreen
 from tsb_tui.screens.prompts import EndedScreen

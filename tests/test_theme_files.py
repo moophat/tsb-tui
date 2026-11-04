@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from tsb_tui.theme import contrast_ratio, relative_luminance
 from tsb_tui.theme_files import (
     Scheme,

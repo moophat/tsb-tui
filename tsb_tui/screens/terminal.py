@@ -37,7 +37,7 @@ import functools
 import time
 from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from rich.style import Style
@@ -932,7 +932,7 @@ class TerminalScreen(Screen):
         sentence = types
         if state is not None and state.token_history and state.holder is not None:
             move = state.token_history[-1]
-            when = datetime.fromtimestamp(self.app.wall_clock() - (state.now() - move["at"]), tz=timezone.utc).astimezone()
+            when = datetime.fromtimestamp(self.app.wall_clock() - (state.now() - move["at"]), tz=UTC).astimezone()
             how = _HOW_HELD.get(move["reason"])
             if move["reason"] == "handoff" and move["previous"] is not None and (
                     move["previous"].get("user") == me):

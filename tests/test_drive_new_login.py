@@ -19,9 +19,10 @@ import os
 import sys
 
 from drive_support import Rig
-from tsb_tui.drive import commands, runner
 from tsbc import _serve
 from tsbc._serve import ServeApp
+
+from tsb_tui.drive import commands, runner
 
 SIZED = ("size.auto_request=true",)
 PASSWORD = "FIXTURE-NOT-A-PASSWORD-agent"

@@ -16,6 +16,9 @@ import threading
 from input_server import InputRecordingApp
 from stub_server import SlowChunkedApp, StubServer, resize_requests
 from tsb_contract_client import Client
+from tsbc import _serve
+from workspace_support import fixture_login, login, named_sessions, open_here
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens import fleet_view as fleet_view_module
 from tsb_tui.screens.fleet_view import (
@@ -27,8 +30,6 @@ from tsb_tui.screens.fleet_view import (
     fleet_view_lines,
     visible_rows,
 )
-from tsbc import _serve
-from workspace_support import fixture_login, login, named_sessions, open_here
 
 LEADER = "ctrl+backslash"
 

@@ -16,7 +16,7 @@ import asyncio
 import os
 import re
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -27,11 +27,12 @@ from model_frames import attached_frame, token_frame
 from model_frames import clients_frame as _clients_frame
 from prompt_support import NOW, iso, notice, validated
 from stub_server import create_owner_session, record_output
+from tsbc import _serve
+from workspace_support import fixture_login, named_sessions
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.theme_picker import ThemePicker
 from tsb_tui.widgets.stale_banner import STALE_NOTICE
-from tsbc import _serve
-from workspace_support import fixture_login, named_sessions
 
 SIZES = ((65, 30), (120, 40), (200, 60))
 ROUTER = (b"rtr-core-01#show clock\r\n*14:02:07.311 ICT Sat Oct 10 2026\r\n"
@@ -408,7 +409,7 @@ def test_s1_the_rail_widens_in_place_into_the_fleet_sidebar(size, serve, wait_un
             # Not NOW (2027-01-15): the fixture server gives every session `ends_at` 2026-09-30T12:00:00Z, so NOW is after
             # it and the sidebar would show an expired countdown. This clock stands four days before it, outside the
             # 72 h warning window, and is fixed so a countdown reads the same at every size.
-            before_the_end = datetime(2026, 9, 26, 12, 0, 0, tzinfo=timezone.utc).timestamp()
+            before_the_end = datetime(2026, 9, 26, 12, 0, 0, tzinfo=UTC).timestamp()
             app.wall_clock = lambda: before_the_end
             async with app.run_test(size=size) as pilot:
                 screen = await fixture_login(app, pilot)

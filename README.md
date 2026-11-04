@@ -1,10 +1,16 @@
 # tui — U7
 
+## Repository history
+
+This repository was extracted with rewritten history from tsb-core at `25d10226`
+(the `tui/` tree `345dc6ae`). Commit hashes are new, original commit signatures are
+not carried, and `#NNN` in an inherited commit message refers to a tsb-core PR.
+
 A first-party shipped surface and the core's verification instrument — one artifact, both roles, no conflict (`Core_value` § Surface Philosophy ships it alongside web and desktop; `Desktop_Renderer` §4 gives it the same coverage at days not weeks). Python + Textual. Imports only the published contract client (CI lint), so what ships is a genuine API consumer and the smoke test for every deploy.
 
-Ownership, seams and exit evidence: `../tsb-program/spine/plan.md` §2 (U7). A sub building this unit writes only inside `tui/`.
+Ownership, seams and exit evidence: tsb-program’s `spine/plan.md` §2 (U7). This repository owns the TUI unit.
 
-The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO](../program/contract/protocols/edges/SF-CO.md) ([`../program/contract/protocols/`](../program/contract/protocols/README.md)): what a surface must and may do is in each protocol's consumer lines.
+The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO](program/contract/protocols/edges/SF-CO.md) ([`program/contract/protocols/`](program/contract/protocols/README.md)): what a surface must and may do is in each protocol's consumer lines.
 
 ## Layout
 
@@ -66,7 +72,7 @@ Interactive, from any node with network access to the core:
 From a phone: SSH to the integration node, then `zellij`, then the command above inside it.
 
 Non-interactive smoke path (what the deploy hook runs after every deploy, alongside
-`harness/rigs/smoke.sh` — `manage.sh verify` runs only the latter, never the TUI):
+`tsb-core/harness/rigs/smoke.sh` — `tsb-core/deploy/manage.sh verify` runs only the latter, never the TUI):
 
     TSB_SUPERADMIN_USER=<user> TSB_SUPERADMIN_PASSWORD_FILE=<file> \
       tsb-tui --smoke --broker https://<host> --target ID [--ca-file PEM]
@@ -110,7 +116,7 @@ line on stdout. Its commands (`login`, `sessions`, `attach`, `switch`, `read`, `
 person would fire, the owner's brake works headless (a take-over fails a pending wait within 100 ms of the `token`
 frame), and the input guard (`input.guard`, Frontend §9) refuses a viewer's `type` locally. **The guide is the
 reference**: `tsb_tui/drive/GUIDE.md`, printed by `--guide` and listed by `--help`. It is the harness's scenario
-language too (`harness/` rigs drive the TUI through it).
+language too (tsb-core’s `harness/` rigs drive the TUI through it).
 
 Two profiles are for it. `drive` acts for the agent on nothing (no automatic size requests, no mouse). `harness` has the
 mouse on and counts output; its `input.guard` is on by default like every profile (D52 was ruled on 2026-10-12), so a
@@ -303,7 +309,7 @@ takes the scheme's cursor).
 
 ## Install
 
-`tui/pyproject.toml` declares `[project.scripts] tsb-tui`, so `pipx install ./tui` gives a working
+`pyproject.toml` declares `[project.scripts] tsb-tui`, so `pipx install .` gives a working
 `tsb-tui` script — except the contract client, which PEP 508 cannot name by a relative path (see
 the comment in `pyproject.toml`). `program/` is a submodule with `update = none`, so this copy
 needs `program/` populated by `make contract-init` from the repo root first. Inject it from a
@@ -314,21 +320,21 @@ throwaway copy of `program/contract/`, never in place — building writes `build
     cp -r program/contract /tmp/contract-$$   # throwaway; pip then builds inside the copy
     pipx inject tsb-tui /tmp/contract-$$
 
-`deploy/manage.sh up`'s post-deploy hook does exactly this, for the operator who ran `sudo`: it
+`tsb-core/deploy/manage.sh up`'s post-deploy hook does exactly this, for the operator who ran `sudo`: it
 installs `tsb-tui`, injects a throwaway copy of `program/contract/` (so pip's own `build/`
 and `*.egg-info` never land in the program submodule), then runs
-`harness/rigs/smoke.sh` and `tsb-tui --smoke` against the instance it just brought up.
+`tsb-core/harness/rigs/smoke.sh` and `tsb-tui --smoke` against the instance it just brought up.
 
 ## Tests
 
-    pip install -e ".[test]"   # from tui/; tests/conftest.py puts program/contract/ and
+    pip install -e ".[test]"   # from the repo root; tests/conftest.py puts program/contract/ and
                                  # program/contract/client/ first on sys.path and imports the
                                  # contract client from there — no separate contract install needed
     pytest tests/
 
 `tests/conftest.py` needs `program/contract/` populated (`make contract-init`) and the engine at
-`vt/third_party/libghostty-vt/lib/libghostty-vt.so` (the H1 build, untracked), and fails loudly on either rather than
-skipping silently. No test is skipped (the harness's rule, `harness/README.md` "No skips"). Every test talks to the contract's in-process
+`vendor/libghostty-vt/libghostty-vt.so` (vendored at its PIN; `TSB_TUI_TERM_LIBRARY` may override it locally), and fails loudly on either rather than
+skipping silently. No test is skipped (the harness's rule, `tsb-core/harness/README.md` "No skips"). Every test talks to the contract's in-process
 fixture server (`tsbc._serve`) or to `tests/stub_server.py`, never to a real sshd, a node or the workstation.
 
 * **The consumer MUSTs.** `tests/test_consumer_musts.py` holds the table of the plan's consumer MUSTs with the test that

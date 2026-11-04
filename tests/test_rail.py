@@ -16,6 +16,16 @@ from fleet_support import ME, PEER, derived, fixture_records, holder
 from input_server import InputRecordingApp
 from stub_server import SlowChunkedApp, StubServer
 from textual.command import CommandPalette
+from tsbc import _serve
+from workspace_support import (
+    click_chip,
+    fixture_login,
+    login,
+    named_sessions,
+    open_here,
+    rail_row,
+)
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model.fleet import Fleet
 from tsb_tui.screens.new_session import NewSessionScreen
@@ -29,15 +39,6 @@ from tsb_tui.widgets.rail import (
     Rail,
     RailModel,
     rail_rows,
-)
-from tsbc import _serve
-from workspace_support import (
-    click_chip,
-    fixture_login,
-    login,
-    named_sessions,
-    open_here,
-    rail_row,
 )
 
 

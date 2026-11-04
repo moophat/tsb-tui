@@ -20,14 +20,15 @@ import pytest
 from prompt_support import STUB_TARGET, open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
 from tsb_contract_client import ApiError
+from tsbc._serve import PASSWORD, USER
+from workspace_support import open_new_session
+
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.drive.commands import DriveError
 from tsb_tui.drive.runner import Driver
 from tsb_tui.screens.login import LoginScreen
 from tsb_tui.screens.terminal import TerminalScreen
-from tsbc._serve import PASSWORD, USER
-from workspace_support import open_new_session
 
 
 def _stack(app) -> list[str]:

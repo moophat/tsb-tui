@@ -15,6 +15,7 @@ import asyncio
 
 from prompt_support import NOW, iso, open_stub_terminal, validated
 from stub_server import SlowChunkedApp, StubServer
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.widgets.stale_banner import STALE_NOTICE
 

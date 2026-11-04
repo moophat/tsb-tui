@@ -3,13 +3,13 @@
 Not collected by the suite: no `test_` function, so a normal run never rewrites the golden (a test that
 regenerated its own fixture would compare nothing). Run it by hand, exactly as the golden was first made:
 
-    python tui/tests/golden_sidebar_painted.py [sizes]
+    python tests/golden_sidebar_painted.py [sizes]
 
 with the test venv's python. It captures from the package on `sys.path`, so to capture the code *before* a
 change, point it at a copy of the package from the commit before it (`BASE` is any scratch directory):
 
-    mkdir -p "$BASE" && git archive <commit> tui/tsb_tui | tar -x -C "$BASE" --strip-components=1
-    PYTHONPATH="$BASE" python tui/tests/golden_sidebar_painted.py
+    mkdir -p "$BASE" && git archive <commit> tsb_tui | tar -x -C "$BASE"
+    PYTHONPATH="$BASE" python tests/golden_sidebar_painted.py
 
 The fleet is the same as the golden test builds: the contract's `C1/session-record-shape-v0.3` records,
 ~95% ended, all owned by the login, `GET /sessions` answered from that list. The environment is the
@@ -26,7 +26,7 @@ import tempfile
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
-REPO_ROOT = TESTS_DIR.parents[1]
+REPO_ROOT = TESTS_DIR.parent
 sys.path.insert(0, str(TESTS_DIR))
 for _entry in (REPO_ROOT / "program" / "contract", REPO_ROOT / "program" / "contract" / "client"):
     sys.path.insert(0, str(_entry))
@@ -46,9 +46,10 @@ def _pin_environment(home: Path) -> None:
     os.environ["HOME"] = str(home)
     os.environ["XDG_CONFIG_HOME"] = str(home / ".config")
     os.environ["XDG_STATE_HOME"] = str(home / ".local" / "state")
+    library = os.environ.get("TSB_TUI_TERM_LIBRARY", str(REPO_ROOT / "vendor" / "libghostty-vt" / "libghostty-vt.so"))
     for name in [name for name in os.environ if name.startswith("TSB_TUI_")]:
         del os.environ[name]
-    os.environ["TSB_TUI_TERM_LIBRARY"] = str(REPO_ROOT / "vt" / "third_party" / "libghostty-vt" / "lib" / "libghostty-vt.so")
+    os.environ["TSB_TUI_TERM_LIBRARY"] = library
     os.environ["TSB_TUI_SIZE_AUTO_REQUEST"] = "false"
     os.environ["TSB_TUI_REATTACH_BACKOFF_MS"] = "20,20,20,20,20,20"
     os.environ["TSB_TUI_MENU_OPEN_ON_LEADER_AFTER_MS"] = "10000"

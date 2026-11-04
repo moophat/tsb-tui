@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import os
 import re
+import tomllib
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import tomllib
 from rich.errors import StyleSyntaxError
 from rich.style import Style
 

@@ -21,11 +21,12 @@ import pytest
 from test_new_session_login import _gate_up, _open_dialog
 from test_vault_unlock import _answer, _prompt
 from textual.widgets import Button, RadioButton, RadioSet
+from tsbc import _serve
+from vault_support import CHAIN, VaultServe, flat
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.vault_prompts import PassphraseScreen
-from tsbc import _serve
-from vault_support import CHAIN, VaultServe, flat
 
 CHOICE = "#credential-choice"
 

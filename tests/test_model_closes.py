@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from stub_server import SlowChunkedApp, StubServer
 from tsb_contract_client import Client
+
 from tsb_tui.model.attachment import (
     CLOSE_BAD_ATTACH,
     CLOSE_DETACHED_BY_SERVER,

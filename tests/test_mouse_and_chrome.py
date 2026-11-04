@@ -17,6 +17,15 @@ from input_server import InputRecordingApp, other_client
 from textual import events
 from textual.app import App
 from textual.command import CommandPalette
+from tsbc import _serve
+from workspace_support import (
+    click_chip,
+    fixture_login,
+    named_sessions,
+    open_here,
+    rail_row,
+)
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model.fleet import GROUP_NEEDS_YOU
 from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen
@@ -33,14 +42,6 @@ from tsb_tui.widgets.rail import (
 )
 from tsb_tui.widgets.sidebar import Sidebar
 from tsb_tui.widgets.status_row import StatusRow
-from tsbc import _serve
-from workspace_support import (
-    click_chip,
-    fixture_login,
-    named_sessions,
-    open_here,
-    rail_row,
-)
 
 SIZES = ((65, 30), (120, 40), (200, 60))
 

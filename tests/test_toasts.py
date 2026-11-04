@@ -12,6 +12,7 @@ import asyncio
 
 from prompt_support import NOW, iso, notice, open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model.events import (
     KIND_DATA_PATH,

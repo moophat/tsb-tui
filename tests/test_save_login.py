@@ -20,13 +20,14 @@ import asyncio
 from test_vault_unlock import _answer, _prompt
 from textual import events
 from textual.widgets import Button, Input, RadioButton
+from tsbc import _serve
+from vault_support import CHAIN, RECORDING_LINE, VaultServe
+from workspace_support import fixture_login
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.credentials import KeyField, SaveLoginScreen
 from tsb_tui.screens.vault_prompts import InitScreen
 from tsb_tui.vault_flow import SaveOutcome, save_login
-from tsbc import _serve
-from vault_support import CHAIN, RECORDING_LINE, VaultServe
-from workspace_support import fixture_login
 
 VAULT_PATHS = ("/vault/salt", "/vault/credentials", "/vault/unlock", "/vault/init", "/profiles/batch")
 PASSWORD = "FIXTURE-TARGET-PASSWORD-1"

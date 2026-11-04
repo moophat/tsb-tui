@@ -14,6 +14,7 @@ import asyncio
 import pathlib
 
 from input_server import InputRecordingApp
+
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.fleet_view import FleetView

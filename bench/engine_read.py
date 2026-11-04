@@ -38,12 +38,13 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 from _common import CHUNK_BYTES, Stream
+
 from tsb_tui.term import VTBackend, load
 
 # The default `.so` path (the caller's knob in phase 3). The orchestrator passes `--library` when it
 # stages the engine elsewhere; the repo-relative path is the fallback for a run in the worktree.
 DEFAULT_LIBRARY = os.path.join(
-    os.path.dirname(_TUI), "vt", "third_party", "libghostty-vt", "lib", "libghostty-vt.so"
+    _TUI, "vendor", "libghostty-vt", "libghostty-vt.so"
 )
 DEFAULT_SCROLLBACK = 4 * 1024 * 1024  # DT18
 GATE_MS = 15.0

@@ -18,7 +18,7 @@ from typing import Any
 from tsbc import _serve
 from tsbc._serve import ServeApp
 
-CONTRACT_C7 = Path(__file__).resolve().parents[2] / "program" / "contract" / "fixtures" / "C7"
+CONTRACT_C7 = Path(__file__).resolve().parents[1] / "program" / "contract" / "fixtures" / "C7"
 
 RECORDING_LINE = "Typed keys may be recorded when this TUI runs inside a TSB session."
 

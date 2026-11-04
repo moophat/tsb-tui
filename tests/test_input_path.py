@@ -26,13 +26,14 @@ from input_server import (
     other_client,
 )
 from textual import events
+from tsbc import _serve
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.terminal import (
     KIND_INPUT_DROPPED,
     KIND_INPUT_SUPPRESSED,
     TerminalScreen,
 )
-from tsbc import _serve
 
 
 def _log_kinds(screen: TerminalScreen, kind: str) -> list:

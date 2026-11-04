@@ -11,11 +11,12 @@ shipped default look is pinned to the file the operator can copy and edit.
 from __future__ import annotations
 
 import asyncio
+import tomllib
 from pathlib import Path
 
 import pytest
-import tomllib
 from input_server import InputRecordingApp
+
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.theme_files import (

@@ -25,6 +25,7 @@ from rich.cells import cell_len
 from test_scroll_search import _fill, _row_of, _search
 from test_scroll_view import GRID_ROWS, _scene
 from textual.events import MouseMove
+
 from tsb_tui.term import VTBackend, load
 
 BLANK = "nothing to copy: the selection is blank"

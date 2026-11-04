@@ -17,8 +17,9 @@ from dataclasses import dataclass, field
 import pytest
 from drive_support import Rig
 from input_server import InputRecordingApp, make_session
-from tsb_tui.drive import waits
 from tsbc import _serve
+
+from tsb_tui.drive import waits
 
 # -- the rules, without a screen --
 

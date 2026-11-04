@@ -16,6 +16,7 @@ import threading
 
 from prompt_support import NOW, click_laid_out, iso, open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
+
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.prompts import AlertPopup, AlertsScreen, AlertStack
 

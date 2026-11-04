@@ -1,0 +1,4 @@
+[submodule "contract"]
+	path = program
+	url = ../tsb-program.git
+	update = none

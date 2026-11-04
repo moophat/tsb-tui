@@ -16,8 +16,6 @@ import threading
 
 from input_server import InputRecordingApp, other_client
 from stub_server import SlowChunkedApp, StubServer, emit_live_output
-from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.prompts import EndedScreen
 from tsbc import _serve
 from workspace_support import (
     click_chip,
@@ -27,6 +25,9 @@ from workspace_support import (
     open_here,
     rail_row,
 )
+
+from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.prompts import EndedScreen
 
 LEADER = "ctrl+backslash"
 CURSOR_REPORT = re.compile(rb"\x1b\[\d+;\d+R")
