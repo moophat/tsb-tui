@@ -87,7 +87,9 @@ class LateCreateStub(RestartStub):
 
     def http(self, method, path, headers, body):
         if method == "POST" and path == "/sessions":
-            self.create_gate.wait(30)
+            # The stub answers the create on its own timeout, so this bound must exceed the 30 s login wait: a slow
+            # run could finish the create before Login. A released gate costs nothing.
+            self.create_gate.wait(60)
             # The base stub's create, not `super()`: the restart must not answer this one.
             return SlowChunkedApp.http(self, method, path, headers, body)
         return super().http(method, path, headers, body)

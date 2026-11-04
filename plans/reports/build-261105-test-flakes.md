@@ -68,3 +68,5 @@ RUFF_EXIT=0
 ```
 
 All four files ran; none skipped. The whole suite was not run (CI runs it). Not committed, not pushed.
+
+**PR #7 review fixes (commit 67e4fd0, taken):** `LateCreateStub.create_gate.wait` raised to 60 s so the stub's own create timeout exceeds the 30 s login wait; the credentials test's first predicate drops `"core switches" not in screen_text(app)` (references and kinds only), so the label-shown-while-locked case is reported by its own assertion below.
