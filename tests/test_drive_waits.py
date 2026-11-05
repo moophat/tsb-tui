@@ -271,7 +271,7 @@ def test_a_timeout_is_an_ordinary_answer_with_the_last_lines_of_the_screen(serve
         async with Rig(url, tmp_path=tmp_path) as rig:
             await rig.login()
             await rig.attach(sid)
-            await rig.cmd("type", text="show version\r\n")
+            await rig.cmd("type", text="show version\r", look=await rig.look())
             assert (await rig.cmd("wait", until={"reply": "show version"}))["ok"]
             answer = await rig.cmd("wait", until={"prompt": "never"}, timeout_ms=150)
             assert answer["ok"] is False and answer["error"] == "timeout" and answer["tail"] == ["show version"]
@@ -327,7 +327,7 @@ def test_the_owner_taking_the_keyboard_fails_the_agents_wait_within_100_ms(serve
                 "answer" if line.get("error") == "takeover" else "-", time.monotonic())
             pending = agent.send("wait", until={"reply": "never printed"}, timeout_ms=20000)
             await _pending(agent)
-            assert (await owner.cmd("keys", keys=["ctrl+c"]))["ok"], "the owner types and takes the keyboard"
+            assert (await owner.cmd("keys", keys=["ctrl+c"], look=await owner.look()))["ok"], "the owner types and takes the keyboard"
             answer = await asyncio.wait_for(pending, 10)
             assert answer["ok"] is False and answer["error"] == "takeover", answer
             assert answer["why"] == f"{_serve.USER}, the owner, took the keyboard"
@@ -357,7 +357,7 @@ def test_a_wait_for_holder_not_me_passes_on_the_same_takeover_frame(serve, tmp_p
             assert (await agent.cmd("wait", until={"holder": "me"}))["ok"]
             pending = agent.send("wait", until={"holder": "not_me"}, timeout_ms=20000)
             await _pending(agent)
-            await owner.cmd("keys", keys=["ctrl+c"])
+            await owner.cmd("keys", keys=["ctrl+c"], look=await owner.look())
             answer = await asyncio.wait_for(pending, 10)
             assert answer["ok"] is True, answer
 

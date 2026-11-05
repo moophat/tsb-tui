@@ -221,6 +221,8 @@ level = "basic"
 lines = 2000
 
 [drive]
+send_gate = true
+brake_look_max_ms = 10000
 default_cols = 120
 default_rows = 40
 answer_timeout_ms = 30000

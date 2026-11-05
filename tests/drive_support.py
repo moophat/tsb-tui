@@ -190,6 +190,12 @@ class Rig:
         assert answer["ok"], answer
         return answer
 
+    async def look(self, *, session: str | None = None) -> str:
+        fields = {"session": session} if session is not None else {}
+        answer = await self.cmd("wait", until={"screen": ".*", "settled_ms": True}, **fields)
+        assert answer["ok"] and answer.get("look"), answer
+        return answer["look"]
+
     async def attach(self, session: str) -> dict[str, Any]:
         answer = await self.cmd("attach", session=session)
         assert answer["ok"], answer

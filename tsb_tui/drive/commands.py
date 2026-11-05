@@ -34,6 +34,7 @@ from ..model.fleet import is_attachable
 from ..model.targets import PAGE_LIMIT, QueryError, as_text, make_row, parse_query
 from ..screens.new_session import CREATE_SIZE_OFF, TERM, create_size
 from ..screens.terminal import (
+    _DRIVE_GATE,
     MARK_INPUT,
     SOURCE_KEY,
     SessionSlot,
@@ -41,13 +42,15 @@ from ..screens.terminal import (
     end_refused_text,
 )
 from ..term import UnknownKey, VTBackend, encode_key
+from ..term.ghostty import MODS_SHIFT
+from ..term.keys import _parse
 from . import waits
 
 if TYPE_CHECKING:
     from .runner import Driver
 
 # Every op, in the order the guide lists them.
-OPS = ("login", "sessions", "targets", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "ask_to_type",
+OPS = ("login", "sessions", "targets", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "take", "ask_to_type",
        "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize", "quit",
        "login_hostkey", "login_answer", "login_cancel")
 READS = ("screen", "reply", "history", "who")
@@ -265,6 +268,33 @@ class Fronted:
     switched_from: str | None = None
 
 
+@dataclass
+class SendHistory:
+    count: int = 0
+    last_send_at: float | None = None
+    output_since_send: bool = False
+    last_output_at: float | None = None
+
+
+@dataclass(frozen=True)
+class Look:
+    session: str
+    state: AttachmentState
+    attachment: int
+    applied: int
+    output: int
+    keyboard: int
+    keyboard_items: int
+    stale_items: int
+    size: int
+    stale: int
+    sends: int
+    kind: str
+    at: float
+    alt: bool
+    cursor_hidden: bool
+
+
 class Commands:
     """The ops, as methods named `op_<name>`. Each takes the command object and returns the answer's fields, or raises
     `DriveError`."""
@@ -275,6 +305,9 @@ class Commands:
         # it with this fingerprint rather than a gate that would let Attach through unticked.
         self._pending_hostkeys: dict[str, dict[str, Any]] = {}
         self._device_logins: dict[str, Any] = {}
+        self.send_history: dict[str, SendHistory] = {}
+        self._looks: dict[str, Look] = {}
+        self._last_look: dict[str, str] = {}
 
     async def run(self, cmd: dict[str, Any]) -> dict[str, Any]:
         op = cmd.get("op")
@@ -656,15 +689,8 @@ class Commands:
                 raise DriveError("bad_request", "lines: expected a positive number")
             lines = backend.grid_lines(join_wrapped=join)[-min(asked or cap, cap):]
             return {"lines": lines, "alt": alt_screen(backend)}
-        backend.sync_render_state()
-        cursor = backend.live_cursor()
-        modes = backend.modes()
-        return {"lines": screen_lines(backend, join_wrapped=join), "cursor": [cursor.y, cursor.x],
-                "cols": backend.cols, "rows": backend.rows, "alt": modes.alternate_screen,
-                "modes": {"cursor_keys_application": modes.cursor_keys_application,
-                          "keypad_application": modes.keypad_application, "bracketed_paste": modes.bracketed_paste,
-                          "mouse_tracking": modes.mouse_tracking, "focus_events": modes.focus_events,
-                          "kitty_flags": modes.kitty_flags, "synchronized_output": modes.synchronized_output}}
+        with backend.lock():
+            return self.screen_answer(slot, join_wrapped=join, nested=False)
 
     @staticmethod
     def _who(state: AttachmentState) -> dict[str, Any]:
@@ -678,18 +704,158 @@ class Commands:
 
     # -- input --
 
-    async def _send(self, slot: SessionSlot, data: bytes) -> dict[str, Any]:
-        """Bytes to the session through the one input path. The guard (DT4 a) answers `not_typist` and sends nothing;
-        what the core refuses comes back as an `input_refused` event, since TSB sends no acknowledgement."""
+    def history(self, sid: str) -> SendHistory:
+        return self.send_history.setdefault(sid, SendHistory())
+
+    def note_output(self, sid: str) -> None:
+        # Called from the processor's output event, never from the socket reader or an attach dump.
+        history = self.history(sid)
+        history.last_output_at = self.d.app.idle_clock()
+        if history.last_send_at is not None:
+            history.output_since_send = True
+
+    def _record_send(self, slot: SessionSlot) -> None:
+        history = self.history(slot.session_id)
+        history.count += 1
+        history.last_send_at = self.d.app.idle_clock()
+        history.output_since_send = False
+
+    def look_kind(self, slot: SessionSlot) -> tuple[str | None, str | None]:
+        history = self.history(slot.session_id)
+        now = self.d.app.idle_clock()
+        if slot.canvas.backend.modes().synchronized_output:
+            return "unsettled", "output still arriving"
+        if history.last_send_at is None:
+            return "ordinary", None
+        if not history.output_since_send:
+            if (now - history.last_send_at) * 1000 >= self.d.cfg["drive.wait_timeout_ms"]:
+                return "after_silence", None
+            return None, "no output since your send"
+        if history.last_output_at is None or (now - history.last_output_at) * 1000 < self.d.cfg["drive.settled_ms"]:
+            return "unsettled", "output still arriving"
+        return "ordinary", None
+
+    def screen_answer(self, slot: SessionSlot, *, refusal: bool = False, join_wrapped: bool = False,
+                      nested: bool = True) -> dict[str, Any]:
+        """Caller holds backend.lock: applied counts, then grid, cursor, modes and the look together."""
+        backend = slot.canvas.backend
+        state = slot.pump.state
+        applied = state.applied_items
+        output = state.output_bytes_applied
+        keyboard, size, stale = state.keyboard_moves, state.size_changes, state.stale_changes
+        history = self.history(slot.session_id)
+        backend.sync_render_state()
+        lines = screen_lines(backend, join_wrapped=join_wrapped)
+        cursor = backend.live_cursor()
+        modes = backend.modes()
+        now = self.d.app.idle_clock()
+        last_output = history.last_output_at
+        if last_output is None:
+            last_output = state.last_output_at
+        block = {"lines": lines, "cursor": [cursor.y, cursor.x], "cols": backend.cols, "rows": backend.rows,
+                 "alt": modes.alternate_screen, "cursor_hidden": not cursor.visible,
+                 "quiet_ms": max(0, int((now - last_output) * 1000)) if last_output is not None else 0,
+                 "modes": {"cursor_keys_application": modes.cursor_keys_application,
+                           "keypad_application": modes.keypad_application, "bracketed_paste": modes.bracketed_paste,
+                           "mouse_tracking": modes.mouse_tracking, "focus_events": modes.focus_events,
+                           "kitty_flags": modes.kitty_flags, "synchronized_output": modes.synchronized_output}}
+        kind, why = self.look_kind(slot)
+        out: dict[str, Any] = {"screen": block} if nested else block
+        out["look"] = None
+        if why is not None:
+            out["no_look_yet"] = why
+        if kind is not None:
+            ident = f"L{len(self._looks) + 1}"
+            self._looks[ident] = Look(slot.session_id, state, state.attachment_generation, applied, output,
+                                      keyboard, state.applied_keyboard_items, state.applied_stale_items,
+                                      size, stale, history.count, kind, now,
+                                      modes.alternate_screen, not cursor.visible)
+            if not refusal:
+                self._last_look[slot.session_id] = ident
+            out.update(look=ident, look_kind=kind)
+        return out
+
+    def _refuse(self, slot: SessionSlot, code: str, why: str, **extra: Any) -> None:
+        raise DriveError(code, why + "; nothing was sent", sent=False,
+                         **self.screen_answer(slot, refusal=True), **extra)
+
+    def _check_gate(self, slot: SessionSlot, cmd: dict[str, Any], data: bytes, *,
+                    text: str | None, names: list[str] | None, legacy: list[bytes]) -> None:
+        state = slot.pump.state
+        backend = slot.canvas.backend
+        brake = data in (b"\x03", b"\x1e")
+        bare_enter = text == "\r" if text is not None else len(legacy) == 1 and legacy[0] == b"\r"
+        has_text = text is not None
+        if text is not None:
+            if "\n" in text or "\r" in text[:-1] or ("\t" in text and "\r" in text):
+                self._refuse(slot, "multi_line", "one final CR only, with no tab in the same send")
+            if not brake and any(ord(ch) < 32 and ch not in "\t\r" for ch in text):
+                self._refuse(slot, "control_bytes", "control bytes must be sent as keys alone")
+        else:
+            ends, tabs, controls = [], [], []
+            for name, payload in zip(names, legacy, strict=True):
+                parsed = _parse(name)
+                base = name.split("+")[-1]
+                line_end = (base == "enter" or name.lower() in ("ctrl+m", "ctrl+j")
+                            or payload.endswith((b"\r", b"\n")))
+                tab = base == "tab" or payload == b"\t"
+                is_text = parsed.utf8 is not None and not (parsed.mods & ~MODS_SHIFT)
+                has_text |= is_text
+                ends.append(line_end)
+                tabs.append(tab)
+                controls.append(not (line_end or tab or is_text))
+            if sum(ends) > 1 or any(ends[:-1]) or (any(tabs) and any(ends)):
+                self._refuse(slot, "multi_line", "one final line-end key only, with no tab in the same send")
+            if len(names) > 1 and any(controls):
+                self._refuse(slot, "control_bytes", "a control key must go alone")
+        if state.stale_state == "pending" or state.stale_prompt is not None:
+            self._refuse(slot, "stale", "a stale choice is pending")
+        ident = cmd.get("look")
+        if ident == "last":
+            ident = self._last_look.get(slot.session_id)
+        seen = self._looks.get(ident)
+        if seen is None or seen.session != slot.session_id:
+            self._refuse(slot, "no_look", "name a look that showed this session's screen")
+        if seen.state is not state or seen.attachment != state.attachment_generation:
+            self._refuse(slot, "no_look", "the session was reattached since that look")
+        if seen.sends != self.history(slot.session_id).count:
+            self._refuse(slot, "no_look", "that look was used up by a send")
+        # The screen-lock check belongs here when its contract release lands.
+        changed = []
+        if state.received_items != seen.applied or state.output_bytes_applied != seen.output:
+            changed.append("output")
+        if (state.keyboard_moves != seen.keyboard
+                or state.received_keyboard_items != seen.keyboard_items):
+            changed.append("keyboard")
+        if state.size_changes != seen.size:
+            changed.append("size")
+        if state.stale_changes != seen.stale or state.received_stale_items != seen.stale_items:
+            changed.append("stale")
+        young_brake = brake and (self.d.app.idle_clock() - seen.at) * 1000 < self.d.cfg["drive.brake_look_max_ms"]
+        if young_brake:
+            changed = [cause for cause in changed if cause not in ("output", "size")]
+            if (seen.alt, seen.cursor_hidden) != (backend.modes().alternate_screen, not backend.live_cursor().visible):
+                changed.append("output")
+        if changed:
+            self._refuse(slot, "screen_changed", "the screen changed after your look", changed=changed)
+        if seen.kind == "unsettled" and not brake:
+            self._refuse(slot, "unsettled", "output still arriving: only a stop key may go")
+        if seen.kind == "after_silence" and not (brake or bare_enter):
+            self._refuse(slot, "silent", "nothing came back after your send: only a stop key or bare Enter may go")
+        if has_text and not brake:
+            taken = backend.modes().alternate_screen or not backend.live_cursor().visible
+            if taken and not cmd.get("full_screen", False):
+                self._refuse(slot, "full_screen", "a program has taken the screen; say full_screen: true")
+            if not taken and cmd.get("full_screen", False):
+                self._refuse(slot, "not_full_screen", "no program has taken the screen")
+        # The target prompt check belongs here when its contract release lands.
+
+    async def _send(self, slot: SessionSlot, cmd: dict[str, Any], data: bytes, *, text: str | None = None,
+                    names: list[str] | None = None, legacy: list[bytes] | None = None) -> dict[str, Any]:
         screen = self._screen()
         fronted = self._to_front(slot)
         state = slot.pump.state
-        if await screen.send_input(SOURCE_KEY, data, slot):
-            out: dict[str, Any] = {"front": screen.front.session_id if screen.front else None, "queued": len(data)}
-            if fronted.switched_from is not None:
-                out["switched_from"] = fronted.switched_from
-            return out
-        if state.closed:
+        if state.closed or slot.closed:
             raise DriveError("not_attached", "the session is closed; nothing was sent", sent=False)
         if screen.scroll_view_open and slot is screen.front:
             raise DriveError("not_available", "the scroll view is open in this TUI, and nothing reaches the session "
@@ -697,27 +863,57 @@ class Commands:
         if not state.may_type and self.d.cfg["input.guard"]:
             raise DriveError("not_typist", "you do not hold the keyboard; nothing was sent",
                              holder=self._holder_user(state), sent=False)
-        raise DriveError("not_attached", "the session is not ready for input; nothing was sent", sent=False)
+        with slot.canvas.backend.lock():
+            if self.d.cfg["drive.send_gate"]:
+                self._check_gate(slot, cmd, data, text=text, names=names, legacy=legacy or [])
+            self._record_send(slot)
+        if not await screen.send_input(SOURCE_KEY, data, slot, drive_gate=_DRIVE_GATE):
+            raise DriveError("not_attached", "the session is not ready for input; nothing was sent", sent=False)
+        out = {"front": screen.front.session_id if screen.front else None, "queued": len(data), "sent": True}
+        out.update(await self.d.wait_after_send(slot, self._send_timeout(cmd)))
+        if fronted.switched_from is not None:
+            out["switched_from"] = fronted.switched_from
+        return out
+
+    def _send_timeout(self, cmd: dict[str, Any]) -> int:
+        if "look" in cmd and not isinstance(cmd["look"], str):
+            raise DriveError("bad_request", "look: expected a look id or last")
+        if "full_screen" in cmd and not isinstance(cmd["full_screen"], bool):
+            raise DriveError("bad_request", "full_screen: expected true or false")
+        try:
+            return waits.timeout_for(cmd.get("timeout_ms"), default_ms=self.d.cfg["drive.wait_timeout_ms"],
+                                     max_ms=self.d.cfg["drive.wait_timeout_max_ms"])
+        except waits.BadWait as exc:
+            raise DriveError("bad_request", str(exc)) from None
 
     async def op_type(self, cmd: dict[str, Any]) -> dict[str, Any]:
         text = _field(cmd, "text", str)
         if not text:
             raise DriveError("bad_request", "text: expected at least one character")
-        return await self._send(self._slot(cmd), text.encode("utf-8"))
+        self._send_timeout(cmd)
+        return await self._send(self._slot(cmd), cmd, text.encode("utf-8"), text=text)
 
     async def op_keys(self, cmd: dict[str, Any]) -> dict[str, Any]:
         names = cmd.get("keys")
         if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
             raise DriveError("bad_request", "keys: expected a list of key names such as [\"ctrl+c\"]")
+        self._send_timeout(cmd)
         slot = self._slot(cmd)
-        data = b""
-        for name in names:
-            try:
-                data += encode_key(slot.canvas.backend, name)
-            except UnknownKey:
-                raise DriveError("unknown_key", f"{name!r} is not a key name drive knows; nothing was sent",
-                                 key=name, sent=False) from None
-        return await self._send(slot, data)
+        backend = slot.canvas.backend
+        plain = VTBackend(backend.lib, 1, 1, scrollback_bytes=0)
+        try:
+            with backend.lock():
+                data, legacy = b"", []
+                for name in names:
+                    try:
+                        data += encode_key(backend, name)
+                        legacy.append(encode_key(plain, name))
+                    except UnknownKey:
+                        raise DriveError("unknown_key", f"{name!r} is not a key name drive knows; nothing was sent",
+                                         key=name, sent=False) from None
+        finally:
+            plain.close()
+        return await self._send(slot, cmd, data, names=names, legacy=legacy)
 
     # -- waits --
 
@@ -735,6 +931,7 @@ class Commands:
             out: dict[str, Any] = {"elapsed_ms": elapsed_ms}
             if done.matched:
                 out["matched"] = done.matched
+            out.update(done.extra or {})
             return out
         raise DriveError(done.error or "timeout", done.why or "", elapsed_ms=elapsed_ms,
                          tail=self.d.probe(slot).tail(), **(done.extra or {}))
@@ -755,6 +952,14 @@ class Commands:
         if why is not None:
             raise DriveError("not_available", why)
         return await self.d.hand_off(slot, client_id)
+
+    async def op_take(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        slot = self._slot(cmd)
+        self._to_front(slot)
+        why = A.blocked("take_back", A.Facts(slot.pump.state, open_sessions=len(self._screen().slots)))
+        if why is not None:
+            raise DriveError("not_available", why)
+        return await self.d.hand_off(slot, slot.pump.state.client_id)
 
     async def op_hand_back(self, cmd: dict[str, Any]) -> dict[str, Any]:
         slot = self._slot(cmd)
@@ -907,9 +1112,11 @@ class Commands:
         names = cmd.get("keys")
         if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
             raise DriveError("bad_request", "keys: expected a list of Textual key names such as [\"ctrl+backslash\"]")
+        screen = self.d.screen()
+        before = screen.dropped_inputs if screen is not None else 0
         await self.d.pilot.press(*names)
         await self.d.pilot.pause()
-        return {}
+        return {"dropped": (screen.dropped_inputs - before) if screen is not None else 0}
 
     async def op_resize(self, cmd: dict[str, Any]) -> dict[str, Any]:
         if "size" in cmd:

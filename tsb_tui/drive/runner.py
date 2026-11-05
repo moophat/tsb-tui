@@ -22,7 +22,7 @@ import time
 import traceback
 import unicodedata
 from collections.abc import AsyncIterator, Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import IO, Any
 
@@ -88,6 +88,12 @@ class Driver:
         self.commands = Commands(self)
         app.taps.append(self.tap)
 
+    def ready(self, size: tuple[int, int]) -> dict[str, Any]:
+        return {"ev": "ready", "principal": self.app.username, "size": f"{size[0]}x{size[1]}",
+                "profile": self.cfg.profile, "engine": self.app.engine.build_info.version_string,
+                "send_gate": self.cfg["drive.send_gate"], "settled_ms": self.cfg["drive.settled_ms"],
+                "wait_timeout_ms": self.cfg["drive.wait_timeout_ms"]}
+
     # -- the app, as the commands see it --
 
     def screen(self) -> TerminalScreen | None:
@@ -131,6 +137,8 @@ class Driver:
 
     def _from_log(self, sid: str, event: Event) -> None:
         if event.kind == KIND_OUTPUT:
+            if event.detail.get("bytes", 0) > 0:
+                self.commands.note_output(sid)
             if self._output is not None:
                 self._output.add(sid, int(event.detail.get("bytes", 0)))
             return
@@ -198,12 +206,39 @@ class Driver:
         started = probe.now()
         since = self._seq
         wait = waits.Wait(until, probe, started=started)
-        pending = _Pending(slot.session_id, lambda: wait.check(self._events_since(slot.session_id, since)),
+        def check() -> waits.Done | None:
+            with slot.canvas.backend.lock():
+                done = wait.check(self._events_since(slot.session_id, since))
+                if done is not None and done.ok and any(getattr(until, name) is not None
+                                                       for name in ("prompt", "screen", "reply")):
+                    done = replace(done, extra=self.commands.screen_answer(slot))
+                return done
+
+        pending = _Pending(slot.session_id, check,
                            asyncio.get_running_loop().create_future(),
                            settled_in=wait.settled_in if until.settled_ms is not None else None)
         done = await self._await(pending, timeout_ms, lambda: waits.Done(
             False, "timeout", f"nothing matched within {timeout_ms} ms"))
         return done, int((probe.now() - started) * 1000)
+
+    async def wait_after_send(self, slot: SessionSlot, timeout_ms: int) -> dict[str, Any]:
+        def answer(settled: bool) -> waits.Done:
+            with slot.canvas.backend.lock():
+                return waits.Done(True, extra={"settled": settled, **self.commands.screen_answer(slot)})
+
+        def check() -> waits.Done | None:
+            with slot.canvas.backend.lock():
+                return answer(True) if self.commands.look_kind(slot)[0] == "ordinary" else None
+
+        def quiet_in() -> float:
+            history = self.commands.history(slot.session_id)
+            if not history.output_since_send or history.last_output_at is None:
+                return 0
+            return max(0, history.last_output_at + self.cfg["drive.settled_ms"] / 1000 - self.app.idle_clock())
+
+        pending = _Pending(slot.session_id, check, asyncio.get_running_loop().create_future(), settled_in=quiet_in)
+        done = await self._await(pending, timeout_ms, lambda: answer(False))
+        return done.extra or {}
 
     async def condition(self, predicate: Callable[[], Any], sid: str, what: str) -> Any:
         """Wait, for at most `drive.wait_timeout_ms`, until `predicate` returns something true, and return it. The
@@ -411,6 +446,8 @@ class Driver:
         except Exception as exc:  # noqa: BLE001 — a bug in drive is an answer, with its trace on stderr
             traceback.print_exc(file=sys.stderr)
             answer = {"ok": False, "error": "internal", "why": f"{type(exc).__name__}: {exc}"}
+        if isinstance(cmd, dict) and cmd.get("op") in ("type", "keys") and not self.cfg["drive.send_gate"]:
+            answer["send_gate"] = False
         if isinstance(cmd, dict) and "id" in cmd:
             answer = {"id": ident, **answer}
         return answer
@@ -602,9 +639,7 @@ async def _run(args: argparse.Namespace, cfg: config.Config, size: tuple[int, in
                 except DriveError as exc:
                     print(f"tsb-tui drive: login failed: {exc.why}", file=sys.stderr)
                     return 1
-            out.outbound({"ev": "ready", "principal": app.username if password is not None else None,
-                          "size": f"{size[0]}x{size[1]}", "profile": cfg.profile,
-                          "engine": app.engine.build_info.version_string})
+            out.outbound(driver.ready(size))
             lines = script_lines(script) if script is not None else stdin_lines(sys.stdin)
             return await driver.serve(lines, out, script=script is not None)
         finally:

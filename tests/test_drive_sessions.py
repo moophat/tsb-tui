@@ -44,11 +44,11 @@ def test_reads_and_waits_on_background_sessions_leave_the_front_alone_and_action
                 assert (await rig.cmd(command[0], **command[1]))["ok"]
                 assert _front(rig) == third, f"{command[0]} {command[1]} moved the front"
 
-            moved = await rig.cmd("type", session=first, text="a")
+            moved = await rig.cmd("type", session=first, text="a", look=await rig.look(session=first))
             assert moved["front"] == first and moved["switched_from"] == third and _front(rig) == first
-            again = await rig.cmd("type", session=first, text="b")
+            again = await rig.cmd("type", session=first, text="b", look=await rig.look(session=first))
             assert again["front"] == first and "switched_from" not in again
-            keys = await rig.cmd("keys", session=second, keys=["enter"])
+            keys = await rig.cmd("keys", session=second, keys=["enter"], look=await rig.look(session=second))
             assert keys["front"] == second and keys["switched_from"] == first and _front(rig) == second
             switched = await rig.cmd("switch", session=third)
             assert switched["front"] == third and _front(rig) == third
@@ -72,10 +72,10 @@ def test_each_session_keeps_its_own_grid_and_reply_while_another_is_in_front(ser
             await rig.attach(busy)
             await rig.attach(quiet)
             assert _front(rig) == quiet
-            await rig.cmd("type", session=busy, text="start\r\n")
+            await rig.cmd("type", session=busy, text="start\r", look=await rig.look(session=busy))
             assert (await rig.cmd("wait", session=busy, until={"reply": "start"}))["ok"]
             await rig.cmd("switch", session=quiet)
-            _emit_output(serve_app, busy, b"".join(f"row{i:02d}\r\n".encode() for i in range(60)))
+            _emit_output(serve_app, busy, b"\r\n" + b"".join(f"row{i:02d}\r\n".encode() for i in range(60)))
             assert (await rig.cmd("wait", session=busy, until={"reply": "row59"}))["ok"]
             assert _front(rig) == quiet
             reply = await rig.cmd("read", session=busy, what="reply")

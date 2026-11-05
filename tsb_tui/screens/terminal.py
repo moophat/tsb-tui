@@ -224,6 +224,7 @@ SOURCE_REPLY = "reply"  # the engine's answer to a query the session asked (WRIT
 SOURCE_FOCUS = "focus"
 SOURCE_MOUSE = "mouse"
 _TYPED = frozenset({SOURCE_KEY, SOURCE_PASTE})
+_DRIVE_GATE = object()
 # The grid's tracked mark for the text since this client's last typed input (`SessionSlot.mark_input`).
 MARK_INPUT = "input"
 
@@ -2268,13 +2269,17 @@ class TerminalScreen(Screen):
 
     # -- input: one path out (DT4) --
 
-    async def send_input(self, source: str, data: bytes, slot: SessionSlot | None = None) -> bool:
+    async def send_input(self, source: str, data: bytes, slot: SessionSlot | None = None,
+                         *, drive_gate: object | None = None) -> bool:
         """The one way bytes leave this screen for a session (the one in front unless `slot` says another). True
         when they were handed to the socket; False when DT4 held them back (typed input under the guard, derived
         input outside its conditions) or there is nothing to send to. The decision is made here, immediately
         before the write, against the state as it is now: a hand-off sent a moment ago has already set
         `handoff_in_flight`, so a reply that was waiting behind it is dropped, not sent as the keyboard
         moves away."""
+        if self.app.under_drive and source in _TYPED and drive_gate is not _DRIVE_GATE:
+            self.dropped_inputs += 1
+            return False
         slot = slot or self._front
         pump = slot.pump if slot is not None else None
         if not data or pump is None or self._unmounted or slot.closed:
