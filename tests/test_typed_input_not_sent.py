@@ -116,13 +116,14 @@ def test_drive_answers_nothing_was_sent(serve, tmp_path, monkeypatch, failure) -
             screen = rig.driver.screen()
             pump = screen.pump
             client_id = pump.state.client_id
+            seen = await rig.look(session=sid)
             if failure == "closed":
                 pump.state.apply_close(None)
             elif failure == "closing":
                 monkeypatch.setattr(pump, "send", AsyncMock(side_effect=ConnectionClosed()))
             else:
                 monkeypatch.setattr(pump, "_att", SimpleNamespace(closed=True))
-            answer = await rig.cmd("type", session=sid, text="x")
+            answer = await rig.cmd("type", session=sid, text="x", look=seen)
             assert answer["ok"] is False, answer
             assert answer["error"] == "not_attached", answer
             assert answer["sent"] is False and "nothing was sent" in answer["why"], answer

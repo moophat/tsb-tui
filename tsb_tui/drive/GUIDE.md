@@ -6,16 +6,21 @@
 
 ## 1. What you have, and what you do not
 
-- **Your own TSB login,** and nothing else. You hold no fleet credentials. `new` opens a session on a target only where TSB resolves a credential for your login; otherwise it answers `no_resolving_credential`.
+- **Your own TSB login,** supplied by whoever runs drive, and no password for that login available to you. You hold no fleet credentials. `new` opens a session on a target only where TSB resolves a credential for your login; otherwise it answers `no_resolving_credential`.
 - **Sessions someone lends you.** A person (the owner) opens a session to a router, a server or a k8s node with their own credentials and lets you work in it. You never see their password or key.
 - **The keyboard, only when it is handed to you.** One client types at a time. You start as a viewer, and the owner hands you the keyboard, or you take it from no one when nobody holds it.
-- **The owner's brake.** The owner can take the keyboard back at any moment, even mid-command. From that instant your input is refused.
+- **The owner's brake.** The owner can take the keyboard back at any moment, even mid-command. From that instant another login’s input is refused. An owner’s own client can take it back by typing, subject to the send gate, or with `take` without typing.
 - **A full record.** Every byte you type is recorded verbatim, passwords included, and the audit says which client held the keyboard and when. Never type a secret you were not given for that purpose. A login you supply on `new` goes into SSH's authentication for that one connection and is never stored; it is recorded only if the deployment's recording knob says so, and then only after you acknowledge it (`recording_acknowledged`, in the `new` row).
 
 ## 2. Starting
 
+The send gate is a **guardrail**, not a control. Its deployment precondition is that something other than the agent
+starts drive and hands it the TSB password on a descriptor, and the agent can read neither that password nor a file
+containing it. The `login` command's password path is subject to the same precondition.
+
+
 ```text
-tsb-tui drive --profile drive --broker https://<broker> --user <your-login> --password-file <file>
+tsb-tui drive --profile drive --broker https://<broker> --user <your-login> --password-file /dev/fd/N
 ```
 
 | Flag | Meaning |
@@ -33,12 +38,12 @@ tsb-tui drive --profile drive --broker https://<broker> --user <your-login> --pa
 A theme and a scheme are chosen with `--set theme.name=… --set theme.term.scheme=…`; the Theme picker is not available under drive.
 
 - Run drive on a machine that is not the TSB host.
-- drive writes `{"ev":"ready","principal":"<your-login>","size":"120x40","profile":"drive","engine":"<version>"}` when it is up and logged in. With no `--user`, `principal` is `null` and the first command is `login`.
+- drive writes `{"ev":"ready","principal":"<your-login>","size":"120x40","profile":"drive","engine":"<version>","send_gate":true,"settled_ms":800,"wait_timeout_ms":30000}` when it is up and logged in. With no `--user`, `principal` is `null` and the first command is `login`.
 - **Exit codes.** `0`: a script passed every step, or stdin ended. `1`: a step failed (a failed wait, or any command answering `ok: false`; **a script stops at the first one**, so it never types on after a step that did not do what it should), or drive could not start. `2`: bad usage. In interactive mode a failed wait is an answer and drive keeps running.
 
 ## 3. Lines in and out
 
-- **A command:** `{"id": 7, "op": "type", "session": "s.3d81e0", "text": "show version\r"}`. `id` is yours and comes back on the answer. `session` defaults to the session in front. Blank lines and lines starting with `#` are skipped.
+- **A command:** `{"id": 7, "op": "type", "session": "s.3d81e0", "text": "show version\r", "look": "L1"}`. `id` is yours and comes back on the answer. `session` defaults to the session in front. Blank lines and lines starting with `#` are skipped.
 - **An answer:** `{"id": 7, "ok": true, ...}`, or `{"id": 7, "ok": false, "error": "<code>", "why": "<plain words>", ...}`.
 - **An event:** `{"ev": "<name>", "session": "s.…", ...}`. Events arrive at any time, between answers.
 - A device login has no session yet: its events use `device_login` instead. `device_login_hostkey` carries `kind`
@@ -72,11 +77,12 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 | `attach` | `session` | `session`, `chip` (its number on the rail), `front`, `you` (`type` or `view_only`), `holder`, `you_may_type`, `size`. A `gate` event comes first when the session is recorded |
 | `switch` | `session` | `front` |
 | `read` | `session`, `what`, optional `join_wrapped`, `lines` | see § 6 |
-| `type` | `session`, `text` | `front`, `queued` (bytes), and `switched_from` when it brought the session forward. TSB sends no acknowledgement: a refusal arrives as an event |
-| `keys` | `session`, `keys` | as `type`. Every name is checked first: an unknown one is refused and nothing is sent |
-| `wait` | `session`, `until`, `timeout_ms` | `elapsed_ms`, and `matched` for what a regex or an event matched; or the reason it failed (§ 7) |
+| `type` | `session`, `text`, `look`, optional `full_screen`, `timeout_ms` | `front`, `queued` (bytes), `sent: true`, `settled`, the `screen` block and look state. Waits for output since the send, then the quiet window. At timeout it still reports `sent: true`, with `settled: false`. `switched_from` when it brought the session forward. TSB sends no acknowledgement: a core refusal arrives as an event |
+| `keys` | `session`, `keys`, `look`, optional `full_screen`, `timeout_ms` | as `type`. Every name is checked first: an unknown one is refused and nothing is sent |
+| `wait` | `session`, `until`, `timeout_ms` | `elapsed_ms`, and `matched` for what a regex or an event matched; a held `prompt`, `screen` or `reply` wait also carries the screen block and look state of that moment; or the reason it failed (§ 7) |
 | `hand_back` | `session`, optional `to` | `to`: the owner's client that now holds the keyboard |
 | `hand` | `session`, `to` | `to`: the client that now holds it |
+| `take` | `session` | `to`: your own client now holds the keyboard; owner only, types no bytes, needs no look. Refused with the action table’s reason when already holding it |
 | `ask_to_type` | `session` | always `not_available`: TSB has no way to ask yet |
 | `answer` | `session`, `choice` (1 to 4) | `choice`: the name of the one sent. Only the keyboard holder is asked |
 | `size` | `session` | `asked`, `size` and `reason` of the answer. Only the keyboard holder may ask |
@@ -84,7 +90,7 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 | `end` | `session`, `confirm` (must be `true`) | `session`. **Ends the session for everyone and cannot be undone**, as the Menu's End session… does, so it needs `confirm: true`: without it the answer is `bad_request` and nothing is sent. It answers when TSB has: use `wait` with `{"ended": true}` for the end frame (§ 7). Only the session's owner, or someone allowed to terminate sessions, may end it; anyone else gets `refused`, whose `why` is the sentence the screen shows, and the session keeps running. `ended` when the record already says it ended (nothing is sent), `no_such_session` when TSB no longer knows it, `request_failed` for any other failure, `not_attached` when this drive has no such session open |
 | `logout` | — | `detached`: the sessions it left, in the order they were opened (each keeps running, none is ended), and `broker`: `signed_out`, or `unconfirmed` when TSB did not confirm the logout (your login there then ends when it expires; drive holds no login either way). It is the Menu's Sign out. A `login` is accepted afterwards. `not_logged_in` when there is nothing to sign out of |
 | `snapshot` | `format`: `text` (default) or `svg` | `text` or `svg`: the whole UI, as a person would see it |
-| `click`, `press` | `label`; `keys` | `click` presses a visible control by its label (not available while the mouse is off, as in the `drive` profile); `press` sends Textual key names, for example `["ctrl+backslash", "w"]` (for tests of the UI itself) |
+| `click`, `press` | `label`; `keys` | `click` presses a visible control by its label (not available while the mouse is off, as in the `drive` profile); `press` sends Textual key names to the UI, dropping every key bound for the session and reporting its count in `dropped`; for example `["ctrl+backslash", "w"]` (for tests of the UI itself) |
 | `resize` | `size` (`"100x30"`) or `cols` and `rows` | `size`: the headless window changed |
 | `login_hostkey` | `device_login`, `accept` | — Answers a pending first-use host-key question after you check its fingerprint out of band |
 | `login_answer` | `device_login`, `prompt_id`, `answers_from` (`"stdin"`) or `answers_file` | — One stdin line per prompt, read raw and never in the transcript; `answers_file` names a pipe (`/dev/fd/N`), never a regular file or a device |
@@ -111,18 +117,38 @@ the device-login events above. There is no Remember offer under drive.
   arrive in time, the command returns `bad_request` and sends no answer round. Regular files and devices are refused. `answers` in a command is refused and redacted from the transcript.
 - `login_cancel {device_login}` cancels a pending login.
 
-The look rule gates `type` and `keys` only; it does not gate these three login commands. The attached TUI's screen lock
-does not block a headless login. After `connected`, the ordinary session input and recording gates apply. On a lost socket, a session may have
+The look rule gates `type` and `keys` only; it does not gate these three login commands. The attached TUI's existing screen-lock behavior remains until the headless lock contract release. After `connected`, the ordinary session input and recording gates apply. On a lost socket, a session may have
 opened: refresh `sessions` before deciding whether to start again.
 
 Every read is made in your own client, from what it already received. TSB itself never serves screen content.
 
-- **`screen`:** `lines` (exactly the session's rows, trailing spaces trimmed, blank rows `""`), `cursor` as `[row, column]`, `cols`, `rows`, `alt` (a full-screen program such as vim or top owns the screen), and `modes` (cursor keys, keypad, bracketed paste, mouse tracking, focus events, kitty keyboard flags, synchronized output).
+- **`screen`:** `lines` (exactly the session's rows, trailing spaces trimmed, blank rows `""`), `cursor` as `[row, column]`, `cols`, `rows`, `alt` (a full-screen program such as vim or top owns the screen), `cursor_hidden` (mode 25), `quiet_ms`, and `modes` (cursor keys, keypad, bracketed paste, mouse tracking, focus events, kitty keyboard flags, synchronized output).
 - **`reply`:** everything printed since your last `type` or `keys` in that session, scrollback included, **starting with what you typed if the session echoed it**. With no input yet it is everything this client has received. `truncated` says the knob `drive.reply_max_lines` (5 000) cut it, keeping the first lines. In a full-screen program there is no scrollback: `reply` returns the screen and says `alt: true`.
 - **`history`:** the last `lines` lines (at most `drive.reply_max_lines`), scrollback included.
 - **`who`:** `holder` (a login or null), `holder_client`, `owner`, `you` (your client id), `clients` (each with `user`, `client_id`, `may_control`) and `you_may_type`.
 - **A scroll view** open in this TUI (`press` `["ctrl+backslash", "left_square_bracket"]`, then `pageup`) changes none of these reads: they are about the session, never about which rows the window shows. While it is open nothing typed reaches the session (the engine still answers the session's own queries): `type` and `keys` answer `not_available` and send nothing, and `press` `escape` closes it.
 - `join_wrapped: true` joins a line that wrapped over several rows into one (and drops the blank rows at the bottom of `screen`); the cursor stays in screen rows.
+
+A screen answer mints a `look` id and `look_kind`: `ordinary`, `unsettled`, or `after_silence`. Name it on the next
+send. `look: "last"` resolves to this session's latest non-refusal look; a refusal's look can only be named by its id.
+A look is used up by any send in its session; an answer reporting `sent: false` does not spend it. An old attachment's
+look is `no_look`, even after reattaching the same session. Reads of reply, history or who, and waits on holder, state,
+events or settled alone, mint no look.
+At each mint drive drops looks from ended attachments, spent sends, or changed keyboard/stale counts. Looks with
+older output/size counts remain usable by a young brake until `drive.brake_look_max_ms`. At most 64 looks are kept
+per session, oldest dropped first. Naming a dropped look returns `no_look` with "that look is too old".
+
+After a send, quiet time alone is insufficient: there must be output since that send, then `drive.settled_ms` quiet.
+Before any output the answer has `look: null` and `no_look_yet: "no output since your send"`. While output still arrives
+it carries an `unsettled` look and `no_look_yet: "output still arriving"`, good only for a brake. Synchronized output
+(DEC 2026) always mints an `unsettled` look, so a brake can stop a program mid-frame. Once the silence time passes
+without output, an `after_silence` look permits only a brake or bare Enter. Any output ends that silence restriction.
+History survives detach, attach, automatic reattach and logout/login for this process's life; an attach dump is not
+output since a send, but an attach redraw is.
+
+A gate refusal sends nothing and returns `sent: false`, `screen` (the whole block), and the look state just described.
+Earlier refusals (`bad_request`, `unknown_key`, `not_attached`, `not_available`, `not_typist`) keep their existing shape.
+drive never repairs a mismatch: no automatic Ctrl-C, q, retry or other typed input.
 
 ## 7. Waiting
 
@@ -141,7 +167,18 @@ Every read is made in your own client, from what it already received. TSB itself
 - A regex is searched with `^` and `$` meaning a line.
 - After your own `end`, which answers when TSB has, `wait` with `{"ended": true}` returns once the end frame has reached your client.
 - **`timeout_ms`** defaults to 30 000 and is capped at 600 000 (`drive.wait_timeout_ms`, `drive.wait_timeout_max_ms`). A timeout is an ordinary answer, `"error": "timeout"`, with `tail`: the last lines of the screen (up to ten, trailing blank rows dropped). A wait that fails for another reason carries `tail` too.
-- **Settled is a hint,** counted from the later of the wait and the last byte, so a wait never answers sooner than that after you sent it. A slow command can pause longer. Always pair `settled_ms` with a `prompt`.
+- A wait answers as soon as its predicates hold, even if its look is null or unsettled. The predicates and the
+  returned screen and look are read in the same backend lock section.
+- Before a send use a screen wait such as `{"screen":".*","settled_ms":true}` (or the expected prompt with
+  `settled_ms: true`). A holder wait alone is not a look. Settled is a hint about quiet, never proof of completion.
+- `drive.settled_ms` defaults to 800 and cannot load below 800 ms; `drive.wait_timeout_ms` defaults to 30000 and
+  cannot load below 5000 ms, from a file, environment or `--set`. A command's own `timeout_ms` may be shorter.
+  `ready` reports the effective values. Both `type` and `keys` use the silence time as their default timeout.
+- `[drive] send_gate = true` is on in both profiles. Its temporary rollback switch is **config file only**:
+  `TSB_TUI_DRIVE_SEND_GATE`, `--set drive.send_gate=...` and all `[profiles.*]` settings refuse it. With it off,
+  `ready`, every send answer (including errors) and the record show `send_gate: false`. No rig switches it off.
+  It is removed one release after the lab rig and staging have run with it on and no rig needs it.
+- The attached screen lock is unchanged in this release; drive's look-based screen lock awaits its contract release.
 - **A wait fails at once,** with the reason, when one of these happens, unless the wait is for that very thing:
 
 | Happens | Answer's `error` |
@@ -187,7 +224,26 @@ Most devices you will meet are routers, switches and consoles, not Linux.
 - **Pagers.** Long output stops at `--More--`. Either switch paging off for your session first (IOS: `terminal length 0`; Junos: `set cli screen-length 0`), or wait for `{"screen": "--More--"}` and press `space`.
 - **Confirmations** such as `[confirm]` or `[yes/no]` wait for you. Wait for them with `screen`, then answer deliberately.
 - **Telnet and serial** sessions have no size: `size` answers with the reason `not_resizable`.
-- **Ctrl-C does not always interrupt.** IOS aborts some commands with Ctrl-^, which you send as the byte itself: `{"op": "type", "text": "\u001e"}`. Check the device before relying on a key.
+- **Ctrl-C does not always interrupt.** IOS aborts some commands with Ctrl-^, which you send as the byte itself: `{"op": "type", "text": "\u001e", "look": "L1"}`. Check the device before relying on a key.
+
+One line per send: `type` allows one final CR only, never LF or CRLF. `keys` allows one line-end key last, by identity
+(`enter` with any modifiers, Ctrl-M or Ctrl-J in either case) or by a legacy payload ending in CR or LF. A tab and line
+end never share a send. A control key (arrows, function keys, escape, deletion, navigation, Ctrl/Alt keys included)
+goes alone in `keys`. `type` refuses other C0 controls except a lone brake byte. No paste or batch command is added.
+
+A program has taken the screen if the alternate screen is on or mode 25 hides the cursor. `type` and text keys
+(printable characters, punctuation names, space and Shift-text) then need `full_screen: true`; that statement is
+refused when no program took the screen. Non-text keys need a look but no statement. A brake needs no statement.
+
+Brakes are whole payloads of Ctrl-C (`0x03`) or Ctrl-^ (`0x1e`), including the aliases Ctrl-6 and Ctrl-circumflex_accent.
+`type "\u0003"` and `type "\u001e"` are brakes under every keyboard mode; kitty may encode a `keys` Ctrl-C as an
+escape sequence, which is an ordinary control key instead. A young brake look tolerates output and size changes for
+`drive.brake_look_max_ms` (10000 by default), but never keyboard moves, stale choices or a change of alternate screen
+or mode 25. Past that age it gets the strict change check. An old attachment's look never counts.
+
+After silence, a bare Enter is `type "\r"` or a single key whose legacy payload is exactly CR (Enter, Ctrl-M).
+Ctrl-J is a line end but never that probe. If a probe also brings nothing back, stop with a brake or hand it to a person.
+After a probe, check that a prompt came back: an echo or unrelated output can end the silence too.
 
 ## 10. Events
 
@@ -195,7 +251,7 @@ Each is written unless the knob `drive.events` leaves it out. A wait can still m
 
 | `ev` | Fields | Means |
 |---|---|---|
-| `ready` | `principal`, `size`, `profile`, `engine` | drive is up (always written, once) |
+| `ready` | `principal`, `size`, `profile`, `engine`, `send_gate`, `settled_ms`, `wait_timeout_ms` | drive is up (always written, once) |
 | `gate` | `recording` | the recording warning, told before an attach; nothing is attached yet |
 | `token` | `reason`, `holder`, and `from` (when it came to you) or `you`, `your_input` | who holds the keyboard now. `holder` is `"me"`, a `{user, client_id}`, or `null` (nobody). `your_input: "refused from now"` says it left you by someone else's hand and your input is refused (it is left out for an owner's client, which takes the keyboard back by typing, and when you handed it over yourself) |
 | `input_refused` | `reason` | your input did not reach the device: `not_typist`, `stale`, `replaying`, `unreachable` |
@@ -222,6 +278,14 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 
 | `error` | Means |
 |---|---|
+| `no_look` | missing, unknown, used-up or wrong-session/attachment look; take a new screen look |
+| `screen_changed` | output bytes or a `token`, `size` or `stale` frame followed the look; `changed` lists only the actual causes (`output`, `keyboard`, `size`, `stale`). Clients, notices and prompt frames do not count as changes |
+| `unsettled` | the named look permits only a brake while output is arriving or synchronized output is on |
+| `silent` | nothing came back for the silence time; only a brake or bare Enter may go |
+| `full_screen` | a program took the screen but the text send did not say so |
+| `not_full_screen` | the text send said full_screen but no program took the screen |
+| `multi_line` | only one final CR/line-end key, and no tab with a line end |
+| `control_bytes` | control bytes in text, or a control key mixed with other keys |
 | `not_typist` | you do not hold the keyboard; nothing was sent |
 | `takeover` | the owner took the keyboard during your wait |
 | `token_moved` | the keyboard moved away from you for another reason (`handoff`, `owner`, `detach`) |
@@ -246,30 +310,15 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 ## 12. A short example
 
 ```text
-> {"id":1,"op":"sessions"}
-< {"id":1,"ok":true,"sessions":[{"session":"s.7f3a2c","target":"rtr-core-01","state":"live","owner":"tu","holder":"tu","rec":true,"ends_in":"6d 23h"}]}
-> {"id":2,"op":"attach","session":"s.7f3a2c"}
+> {"id":1,"op":"attach","session":"s.7f3a2c"}
 < {"ev":"gate","session":"s.7f3a2c","recording":"This session is recorded byte-perfect. Anything typed will be stored as-is."}
-< {"ev":"clients","session":"s.7f3a2c","clients":[{"user":"tu","client_id":"cl.5c20","may_control":true},{"user":"ci-agent","client_id":"cl.91c2","may_control":true}]}
-< {"id":2,"ok":true,"session":"s.7f3a2c","chip":1,"front":true,"you":"view_only","holder":"tu","you_may_type":true,"size":"120x40"}
-> {"id":3,"op":"wait","until":{"holder":"me"},"timeout_ms":600000}
-< {"ev":"token","session":"s.7f3a2c","reason":"handoff","holder":"me","from":"tu"}
-< {"id":3,"ok":true,"elapsed_ms":12020}
-> {"id":4,"op":"type","text":"terminal length 0\r"}
-< {"id":4,"ok":true,"front":"s.7f3a2c","queued":18}
-> {"id":5,"op":"wait","until":{"settled_ms":800,"prompt":"rtr-core-01#\\s*$"}}
-< {"id":5,"ok":true,"elapsed_ms":1240,"matched":{"prompt":"rtr-core-01#"}}
-> {"id":6,"op":"type","text":"show ip interface brief\r"}
-< {"id":6,"ok":true,"front":"s.7f3a2c","queued":24}
-> {"id":7,"op":"wait","until":{"settled_ms":800,"prompt":"rtr-core-01#\\s*$"}}
-< {"id":7,"ok":true,"elapsed_ms":1010,"matched":{"prompt":"rtr-core-01#"}}
-> {"id":8,"op":"read","what":"reply"}
-< {"id":8,"ok":true,"lines":["show ip interface brief","Interface              IP-Address      OK? Method Status                Protocol","GigabitEthernet0/0/0   192.0.2.1       YES NVRAM  up                    up","...","rtr-core-01#"],"alt":false,"truncated":false}
-> {"id":9,"op":"hand_back"}
-< {"ev":"token","session":"s.7f3a2c","reason":"handoff","holder":{"user":"tu","client_id":"cl.5c20"},"you":"view_only"}
-< {"id":9,"ok":true,"to":{"user":"tu","client_id":"cl.5c20"}}
-> {"id":10,"op":"detach"}
-< {"id":10,"ok":true}
+< {"id":1,"ok":true,"session":"s.7f3a2c","chip":1,"front":true,"you":"type","holder":"ci-agent","you_may_type":true,"size":"120x40"}
+> {"id":2,"op":"wait","until":{"settled_ms":true,"screen":".*"}}
+< {"id":2,"ok":true,"elapsed_ms":801,"matched":{"screen":"rtr-core-01#"},"screen":{"lines":["rtr-core-01#"],"cursor":[0,12],"cols":120,"rows":40,"alt":false,"cursor_hidden":false,"quiet_ms":801,"modes":{}},"look":"L1","look_kind":"ordinary"}
+> {"id":3,"op":"type","text":"show clock\r","look":"L1"}
+< {"id":3,"ok":true,"front":"s.7f3a2c","queued":11,"sent":true,"settled":true,"screen":{"lines":["rtr-core-01#show clock","12:34:56 UTC","rtr-core-01#"],"cursor":[2,12],"cols":120,"rows":40,"alt":false,"cursor_hidden":false,"quiet_ms":801,"modes":{}},"look":"L2","look_kind":"ordinary"}
+> {"id":4,"op":"detach"}
+< {"id":4,"ok":true}
 ```
 
 ## 13. Not available yet
@@ -277,3 +326,21 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 - **Asking for the keyboard** (`ask_to_type`).
 - **Seeing only the sessions lent to you:** today you may see every session on a device you were granted. How lending works is still to be designed.
 - **Files and scroll back beyond what your client holds** arrive later.
+
+## 14. What the gate does not guarantee
+
+Use one drive process per login per session. Clients of the same login can take the keyboard by typing; the control
+token excludes other logins, not those clients. Between a look and the send decision nothing may have reached this
+client; bytes already in flight and the socket send-lock wait still leave a race of roughly a target round trip.
+`sent` says bytes were handed to the socket, never that the command finished or worked.
+
+A pager on the main screen, REPL, IOS text mode, or editor without alternate screen/hidden cursor can resemble a
+prompt. A silent hang, an unfinished password line from the previous typist, a default on Enter, and a look you did
+not actually read can still mislead you. Any output may satisfy the post-send rule: syslog, wall, a background job,
+an attach redraw, or the probe's own echo. Minimize asynchronous output (`terminal no monitor`, `logging synchronous`)
+and disable paging where suitable. In tmux the alternate screen is always on, so text sends say `full_screen: true`;
+the look is the protection there. A brake can still land in a boot loader or a different program in a compound line.
+
+Target prompt-pattern checking is not built in this release: it awaits a contract field. Its planned record is read
+at attach; a 404 there leaves that attachment unchecked until the next attach, and a pattern must reach the cursor
+row's end, including any text already typed. No prompt pattern is accepted on a send command.

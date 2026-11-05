@@ -312,7 +312,7 @@ def test_drive_presses_space_for_a_pager(serve, tmp_path) -> None:
             await rig.login(_serve.USER)
             await rig.attach(sid)
             client_id = rig.app.workspace().slot_for(sid).pump.state.client_id
-            answer = await rig.cmd("keys", keys=["space"])
+            answer = await rig.cmd("keys", keys=["space"], look=await rig.look())
             assert answer["ok"] and answer["queued"] == 1, answer
             for _ in range(500):
                 if serve_app.received(client_id):

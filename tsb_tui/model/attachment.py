@@ -154,6 +154,23 @@ class AttachmentState:
                  session_id: str | None = None, event_log: EventLog | None = None,
                  clock: Callable[[], float] = time.monotonic) -> None:
         self.session_id = session_id
+        # Received items include frames as well as bytes; applied items trail a blocked feed.
+        self.received_items = 0
+        self.applied_items = 0
+        # Balance received/applied bytes across attach dumps too; only live output marks send history.
+        self.received_output_bytes = 0
+        self.applied_output_bytes = 0
+        self.received_size_items = 0
+        self.applied_size_items = 0
+        self.received_keyboard_items = 0
+        self.applied_keyboard_items = 0
+        self.received_stale_items = 0
+        self.applied_stale_items = 0
+        self.output_bytes_applied = 0
+        self.keyboard_moves = 0
+        self.size_changes = 0
+        self.stale_changes = 0
+        self.attachment_generation = 0
         self.client_id = client_id
         self.user = user
         self._clock = clock
@@ -255,6 +272,12 @@ class AttachmentState:
         fields change nothing (V1, V2)."""
         if not isinstance(frame, dict) or frame.get("v") != 1:
             return
+        if frame.get("t") == "token":
+            self.applied_keyboard_items += 1
+        elif frame.get("t") == "size":
+            self.applied_size_items += 1
+        elif frame.get("t") == "stale":
+            self.applied_stale_items += 1
         handler = _HANDLERS.get(frame.get("t"))
         if handler is not None:
             handler(self, frame)
@@ -267,6 +290,7 @@ class AttachmentState:
         self.log.add(kind, self._clock(), **detail)
 
     def apply_attached(self, frame: dict[str, Any]) -> None:
+        self.attachment_generation += 1
         self.client_id = frame["client_id"]
         record = frame["session"]
         self.session = record
@@ -334,6 +358,8 @@ class AttachmentState:
         # CR1: the holder is the frame's holder, whatever the reason; an unknown reason reads by
         # `holder`. Any token frame clears our in-flight handoff (DT4 b).
         previous = self.holder
+        if previous != frame.get("holder"):
+            self.keyboard_moves += 1
         self.holder = frame.get("holder")
         self.handoff_in_flight = False
         # Any token move voids the outstanding stale prompt: whoever receives the token is asked anew
@@ -346,6 +372,8 @@ class AttachmentState:
 
     def apply_size(self, frame: dict[str, Any]) -> None:
         # An unknown reason reads cols/rows as the size in effect (V5).
+        if (self.size_cols, self.size_rows) != (frame.get("cols"), frame.get("rows")):
+            self.size_changes += 1
         self.size_cols = frame.get("cols")
         self.size_rows = frame.get("rows")
         self.last_size = frame
@@ -368,6 +396,7 @@ class AttachmentState:
         self._add_event(KIND_NOTICE, ends_at=self.ends_at, ends_by=self.ends_by, ending=self.ending)
 
     def apply_stale(self, frame: dict[str, Any]) -> None:
+        self.stale_changes += 1
         self.stale_state = frame.get("state")
         self.stale_cause = frame.get("cause")
         self.stale_gap_seq = frame.get("gap_seq")
@@ -444,6 +473,7 @@ class AttachmentState:
         self.size_final = False
 
     def note_output(self, data: bytes) -> None:
+        self.output_bytes_applied += len(data)
         self.last_output_at = self._clock()
         self._add_event(KIND_OUTPUT, bytes=len(data))
 
@@ -647,10 +677,19 @@ class AttachmentPump:
                 if await self._handle_close(code, reason):
                     continue
                 break
+            self.state.received_items += 1
+            if isinstance(message, dict):
+                if message.get("t") == "token":
+                    self.state.received_keyboard_items += 1
+                elif message.get("t") == "size":
+                    self.state.received_size_items += 1
+                elif message.get("t") == "stale":
+                    self.state.received_stale_items += 1
             # An attachment that delivered traffic was accepted: a later 4001 is a new loss.
             self._ticket_retry_used = False
             if isinstance(message, (bytes, bytearray)):
                 data = bytes(message)
+                self.state.received_output_bytes += len(data)
                 self._queue.append(data)
                 self._queued_output += len(data)
             else:
@@ -707,14 +746,16 @@ class AttachmentPump:
         between the dump's slices while its replies are still muted, and the `clients` frame the core
         sends after the dump has been applied too.
         """
+        item_count = 1
         if self._expect_dump:
             self._expect_dump = False
             role, data = "dump", first
         else:
             role = "output"
             run = bytearray(first)
-            while self._queue and not isinstance(self._queue[0], dict):
+            while self._queue and isinstance(self._queue[0], bytes):
                 run += self._queue.popleft()
+                item_count += 1
             data = bytes(run)
         self._queued_output = max(0, self._queued_output - len(data))
         self._room.set()
@@ -724,6 +765,8 @@ class AttachmentPump:
             replies = await loop.run_in_executor(self._executor, self._sink, role, data)
         finally:
             self._feeding = False
+        self.state.applied_items += item_count
+        self.state.applied_output_bytes += len(data)
         replies = list(replies or [])
         if role == "dump":
             self.state.dump_seen = True
@@ -738,6 +781,7 @@ class AttachmentPump:
         if frame.get("t") == "prefix":
             self._expect_dump = True
         self.state.apply_frame(frame)
+        self.state.applied_items += 1
 
     # -- reattach (DT13, D26) --
 

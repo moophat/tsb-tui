@@ -226,7 +226,7 @@ def test_type_sends_the_text_literally_and_says_how_much_was_queued(serve, tmp_p
             await rig.login()
             await rig.attach(sid)
             client = rig.app.workspace().slot_for(sid).pump.state.client_id
-            answer = await rig.cmd("type", text="df -h /var\r")
+            answer = await rig.cmd("type", text="df -h /var\r", look=await rig.look())
             assert answer["ok"] and answer["queued"] == 11 and answer["front"] == sid
             assert "switched_from" not in answer
             marker = await rig.cmd("wait", until={"reply": "df -h /var"})
@@ -248,14 +248,14 @@ def test_keys_are_encoded_for_the_sessions_modes_and_an_unknown_name_sends_nothi
             await rig.login()
             await rig.attach(sid)
             client = rig.app.workspace().slot_for(sid).pump.state.client_id
-            assert (await rig.cmd("keys", keys=["up"]))["queued"] == 3
+            assert (await rig.cmd("keys", keys=["up"], look=await rig.look()))["queued"] == 3
             _emit_output(serve_app, sid, b"\x1b[?1h")
             await _mode(rig, sid, "cursor_keys_application")
-            assert (await rig.cmd("keys", keys=["up", "ctrl+c"]))["queued"] == 4
+            assert (await rig.cmd("keys", keys=["up", "ctrl+c"], look=await rig.look()))["error"] == "control_bytes"
             refused = await rig.cmd("keys", keys=["ctrl+d", "bogus-key"])
             assert refused["error"] == "unknown_key" and refused["key"] == "bogus-key" and refused["sent"] is False
             await rig.cmd("wait", until={"settled_ms": 50})
-            assert serve_app.received(client) == [b"\x1b[A", b"\x1bOA\x03"], serve_app.received(client)
+            assert serve_app.received(client) == [b"\x1b[A"], serve_app.received(client)
 
     _run(check())
 
@@ -339,9 +339,9 @@ def test_read_reply_is_the_text_since_this_clients_last_input_scrollback_include
         async with Rig(url, tmp_path=tmp_path) as rig:
             await rig.login()
             await rig.attach(sid)
-            await rig.cmd("type", text="first\r\n")
+            await rig.cmd("type", text="first\r", look=await rig.look())
             assert (await rig.cmd("wait", until={"reply": "first"}))["ok"], "the echo must land before the output"
-            _emit_output(serve_app, sid, b"".join(f"line{i:02d}\r\n".encode() for i in range(60)))
+            _emit_output(serve_app, sid, b"\r\n" + b"".join(f"line{i:02d}\r\n".encode() for i in range(60)))
             answer = await rig.cmd("wait", until={"reply": "line59"})
             assert answer["ok"], answer
             reply = await rig.cmd("read", what="reply")
@@ -349,7 +349,7 @@ def test_read_reply_is_the_text_since_this_clients_last_input_scrollback_include
             assert reply["alt"] is False and reply["truncated"] is False
             screen = await rig.cmd("read", what="screen")
             assert "line00" not in screen["lines"], "line00 should have scrolled off the 24-row screen"
-            await rig.cmd("type", text="second\r\n")
+            await rig.cmd("type", text="second\r", look=await rig.look())
             assert (await rig.cmd("wait", until={"reply": "second"}))["ok"]
             again = await rig.cmd("read", what="reply")
             assert all("line" not in line for line in again["lines"]), again
@@ -368,7 +368,7 @@ def test_a_full_screen_program_owns_the_reply_and_the_screen_says_alt(serve, tmp
         async with Rig(url, tmp_path=tmp_path) as rig:
             await rig.login()
             await rig.attach(sid)
-            await rig.cmd("type", text="vim notes\r\n")
+            await rig.cmd("type", text="vim notes\r", look=await rig.look())
             assert (await rig.cmd("wait", until={"reply": "vim notes"}))["ok"]
             _emit_output(serve_app, sid, b"\x1b[?1049h\x1b[2;3HINSERT -- notes")
             assert (await rig.cmd("wait", until={"screen": "INSERT"}))["ok"]
@@ -975,6 +975,7 @@ def test_the_guide_names_every_command_event_and_error_drive_has() -> None:
     for name in (*events.EVENT_NAMES, "output", "ready"):
         assert f"`{name}`" in guide, f"the guide does not name the event {name}"
     built = set(re.findall(r'DriveError\(\s*"([a-z_]+)"', sources)) | set(re.findall(r'Done\(\s*False,\s*"([a-z_]+)"', sources))
+    built |= set(re.findall(r'_refuse\(slot, "([a-z_]+)"', sources))
     built |= {"internal"}
     table = guide.split("## 11. Errors")[1].split("## 12.")[0]
     told = {code for row in re.findall(r"^\| ([^|]+) \|", table, re.MULTILINE) for code in re.findall(r"`([a-z_]+)`", row)}
@@ -1004,7 +1005,7 @@ def test_drive_reads_are_live_while_the_view_is_open(serve, tmp_path) -> None:
         async with Rig(url, tmp_path=tmp_path) as rig:
             await rig.login()
             await rig.attach(sid)
-            await rig.cmd("type", text="first\r\n")
+            await rig.cmd("type", text="first\r", look=await rig.look())
             assert (await rig.cmd("wait", until={"reply": "first"}))["ok"]
             _emit_output(serve_app, sid, b"".join(f"L{i:03d}\r\n".encode() for i in range(300)))
             assert (await rig.cmd("wait", until={"reply": "L299"}))["ok"]
@@ -1012,7 +1013,7 @@ def test_drive_reads_are_live_while_the_view_is_open(serve, tmp_path) -> None:
             async def reads() -> list[dict[str, Any]]:
                 answers = [await rig.cmd("read", what="screen"), await rig.cmd("read", what="reply"),
                            await rig.cmd("read", what="history", lines=50)]
-                return [{key: value for key, value in answer.items() if key != "id"} for answer in answers]
+                return [{key: value for key, value in answer.items() if key not in ("id", "look", "quiet_ms")} for answer in answers]
 
             live = await reads()
             await _shown(rig, "L299")
@@ -1048,6 +1049,6 @@ def test_type_while_the_scroll_view_is_open_sends_nothing_and_says_not_available
             assert serve_app.received(attached["you"]) == [], "something reached the session while the view was open"
             assert (await rig.cmd("press", keys=["escape"]))["ok"]
             await _shown(rig, "keys → scroll", present=False)
-            assert (await rig.cmd("type", text="ls\r"))["ok"]
+            assert (await rig.cmd("type", text="ls\r", look=await rig.look()))["ok"]
 
     _run(check())

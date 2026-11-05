@@ -60,7 +60,7 @@ def test_the_owner_takes_the_keyboard_back_and_the_agents_next_input_is_stopped(
             token = next(e for e in agent.events("token") if e["holder"] == "me")
             assert token["reason"] == "handoff" and token["from"] == _serve.USER
 
-            assert (await agent.cmd("type", text="ping 198.51.100.77 repeat 100000\r"))["ok"]
+            assert (await agent.cmd("type", text="ping 198.51.100.77 repeat 100000\r", look=await agent.look()))["ok"]
             assert (await agent.cmd("wait", until={"reply": "ping 198.51.100.77"}, timeout_ms=5000))["ok"]
             assert (await owner.cmd("wait", until={"screen": "ping 198.51.100.77"}, timeout_ms=5000))["ok"]
 
@@ -71,18 +71,18 @@ def test_the_owner_takes_the_keyboard_back_and_the_agents_next_input_is_stopped(
             await owner.cmd("wait", until={"settled_ms": 150})
             assert serve_app.received(owner_client) == [], "the owner's watching client sent input"
 
-            assert (await owner.cmd("keys", keys=["ctrl+c"]))["ok"]
+            agent_old = await agent.look()
+            assert (await owner.cmd("keys", keys=["ctrl+c"], look=await owner.look()))["ok"]
             assert (await agent.cmd("wait", until={"holder": "not_me"}, timeout_ms=2000))["ok"]
             assert (await owner.cmd("wait", until={"holder": "me"}, timeout_ms=2000))["ok"]
             assert b"\x03" in b"".join(serve_app.received(owner_client)), "the Ctrl-C did not reach the core"
 
             before = list(serve_app.received(agent_client))
-            typed = await agent.cmd("type", text="x")
+            typed = await agent.cmd("type", text="x", timeout_ms=1, look=await agent.look())
             if guard == "false":
                 assert typed["ok"] is True and typed["queued"] == 1
-                refused = await agent.cmd(
-                    "wait", until={"event": {"ev": "input_refused", "reason": "not_typist"}}, timeout_ms=2000)
-                assert refused["ok"] is True, refused
+                await _until(lambda: any(e.get("reason") == "not_typist" for e in agent.events("input_refused")),
+                             "the core's refusal event, possibly delivered during the send wait")
                 assert serve_app.received(agent_client) == [*before, b"x"], "the core never saw the agent's input"
             else:
                 assert typed["ok"] is False and typed["error"] == "not_typist" and typed["sent"] is False
@@ -91,6 +91,13 @@ def test_the_owner_takes_the_keyboard_back_and_the_agents_next_input_is_stopped(
                 assert serve_app.received(agent_client) == before, "the guard let the agent's input through"
                 assert not agent.events("input_refused"), "the core was asked, so the guard was not what stopped it"
             assert not any(chunk == b"x" for chunk in serve_app.received(owner_client))
+            assert (await owner.cmd("hand", to=agent_client))["ok"]
+            assert (await agent.cmd("wait", until={"holder": "me"}))["ok"]
+            old = await agent.cmd("type", text="x", look=agent_old)
+            if guard == "true":
+                assert old["error"] == "no_look" and "that look is too old" in old["why"], old
+            else:
+                assert old["error"] == "no_look", old  # the attempted send used up every earlier look
 
     asyncio.run(check())
 

@@ -199,6 +199,8 @@ KNOB_TYPES: dict[str, type] = {
     "drive.wait_timeout_ms": int,
     "drive.wait_timeout_max_ms": int,
     "drive.settled_ms": int,
+    "drive.send_gate": bool,
+    "drive.brake_look_max_ms": int,
     "drive.reply_max_lines": int,
     "drive.events": list,
     "drive.output_events": str,
@@ -318,6 +320,8 @@ KNOB_OWNERS: dict[str, int] = {
     "drive.wait_timeout_ms": 9,
     "drive.wait_timeout_max_ms": 9,
     "drive.settled_ms": 9,
+    "drive.send_gate": 9,
+    "drive.brake_look_max_ms": 9,
     "drive.reply_max_lines": 9,
     "drive.events": 9,
     "drive.output_events": 9,
@@ -434,6 +438,10 @@ def _load_defaults() -> dict[str, Any]:
 
 def _profile_overlay(doc: Mapping[str, Any], profile: str) -> dict[str, Any]:
     profiles = doc.get("profiles", {})
+    if isinstance(profiles, Mapping):
+        for name, entry in profiles.items():
+            if isinstance(entry, Mapping) and "drive.send_gate" in _flatten(entry):
+                raise ConfigError(f"profiles.{name}.drive.send_gate: config file only")
     section = profiles.get(profile, {}) if isinstance(profiles, Mapping) else {}
     if not isinstance(section, Mapping):
         raise ConfigError(f"profiles.{profile}: must be a table")
@@ -454,7 +462,10 @@ def _read_file(path: Path | None) -> tuple[dict[str, Any], str | None]:
     if "profiles" in doc:
         # A `[profiles.*]` table belongs to the packaged file, not the operator's: a copied key in it would
         # be read as a knob overlay and override the profile in force, so it is refused, never dropped.
-        raise ConfigError(f"{path}: profiles: a [profiles.*] table is not a knob and cannot be set here")
+        key = next(iter(_flatten({"profiles": doc["profiles"]})), "profiles")
+        why = ("drive.send_gate is config file only" if key.endswith(".drive.send_gate") else
+               "a [profiles.*] table is not a knob and cannot be set here")
+        raise ConfigError(f"{path}: {key}: {why}")
     knobs = _flatten({k: v for k, v in doc.items() if k not in _NON_KNOB_TOP})
     for key in knobs:
         if key not in KNOB_TYPES:
@@ -467,6 +478,8 @@ def _env_overlay(environ: Mapping[str, str]) -> dict[str, Any]:
     for name, raw in environ.items():
         if not name.startswith("TSB_TUI_") or name == "TSB_TUI_PROFILE":
             continue
+        if name == "TSB_TUI_DRIVE_SEND_GATE":
+            raise ConfigError(f"{name}: drive.send_gate is config file only")
         key = _ENV_TO_KEY.get(name)
         if key is None:
             raise ConfigError(f"{name}: unknown configuration key")
@@ -481,6 +494,8 @@ def _set_overlay(overrides: Iterable[str] | Mapping[str, Any]) -> dict[str, Any]
     values: dict[str, Any] = {}
     for key, raw in items:
         key = key.strip()
+        if key == "drive.send_gate":
+            raise ConfigError("drive.send_gate: config file only")
         if key not in KNOB_TYPES:
             raise ConfigError(f"{key}: unknown configuration key")
         values[key] = raw
@@ -872,12 +887,12 @@ def _check_drive_knobs(values: Mapping[str, Any]) -> None:
     _names_from(values, "drive.events", EVENT_NAMES)
     _one_of(values, "drive.output_events", OUTPUT_MODES)
     for key in ("drive.default_cols", "drive.default_rows", "drive.wait_timeout_max_ms", "drive.reply_max_lines",
-                "drive.answer_timeout_ms"):
+                "drive.answer_timeout_ms", "drive.brake_look_max_ms"):
         if values[key] < 1:
             raise ConfigError(f"{key} = {values[key]}: expected at least 1")
-    for key in ("drive.wait_timeout_ms", "drive.settled_ms"):
-        if values[key] < 0:
-            raise ConfigError(f"{key} = {values[key]}: expected 0 or more")
+    for key, floor in (("drive.wait_timeout_ms", 5000), ("drive.settled_ms", 800)):
+        if values[key] < floor:
+            raise ConfigError(f"{key} = {values[key]}: expected at least {floor}")
 
 
 def knobs_pending(through: int = CURRENT_PHASE) -> list[str]:

@@ -241,7 +241,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
     meaningful, not vacuous. `view.inspector` is pending too, because the Inspector's content is not decided and
     nothing reads the knob. Spelled out, so reading a new knob is a deliberate change to this list."""
     assert set(config.knobs_owned_through()) == {
-        "drive.answer_timeout_ms",
+        "drive.answer_timeout_ms", "drive.send_gate", "drive.brake_look_max_ms",
         "drive.default_cols", "drive.default_rows", "drive.events", "drive.output_events", "drive.reply_max_lines",
         "drive.settled_ms", "drive.switch_on_action", "drive.wait_timeout_max_ms", "drive.wait_timeout_ms",
         "alerts.popup", "alerts.read_timeout_s", "broker.timeout_s", "event_log.lines", "fleet_view.refresh_s",
