@@ -462,8 +462,10 @@ def _read_file(path: Path | None) -> tuple[dict[str, Any], str | None]:
     if "profiles" in doc:
         # A `[profiles.*]` table belongs to the packaged file, not the operator's: a copied key in it would
         # be read as a knob overlay and override the profile in force, so it is refused, never dropped.
-        raise ConfigError(f"{path}: profiles: a [profiles.*] table is not a knob and cannot be set here; "
-                          "drive.send_gate is config file only")
+        key = next(iter(_flatten({"profiles": doc["profiles"]})), "profiles")
+        why = ("drive.send_gate is config file only" if key.endswith(".drive.send_gate") else
+               "a [profiles.*] table is not a knob and cannot be set here")
+        raise ConfigError(f"{path}: {key}: {why}")
     knobs = _flatten({k: v for k, v in doc.items() if k not in _NON_KNOB_TOP})
     for key in knobs:
         if key not in KNOB_TYPES:

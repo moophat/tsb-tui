@@ -157,6 +157,11 @@ class AttachmentState:
         # Received items include frames as well as bytes; applied items trail a blocked feed.
         self.received_items = 0
         self.applied_items = 0
+        # Balance received/applied bytes across attach dumps too; only live output marks send history.
+        self.received_output_bytes = 0
+        self.applied_output_bytes = 0
+        self.received_size_items = 0
+        self.applied_size_items = 0
         self.received_keyboard_items = 0
         self.applied_keyboard_items = 0
         self.received_stale_items = 0
@@ -269,7 +274,9 @@ class AttachmentState:
             return
         if frame.get("t") == "token":
             self.applied_keyboard_items += 1
-        elif frame.get("t") in ("stale", "stale_prompt"):
+        elif frame.get("t") == "size":
+            self.applied_size_items += 1
+        elif frame.get("t") == "stale":
             self.applied_stale_items += 1
         handler = _HANDLERS.get(frame.get("t"))
         if handler is not None:
@@ -400,7 +407,6 @@ class AttachmentState:
                         gap_seq=self.stale_gap_seq, choice=self.stale_choice)
 
     def apply_stale_prompt(self, frame: dict[str, Any]) -> None:
-        self.stale_changes += 1
         self.stale_prompt = frame
         self._add_event(KIND_STALE, prompt_id=frame.get("prompt_id"), code=frame.get("code"))
 
@@ -675,12 +681,15 @@ class AttachmentPump:
             if isinstance(message, dict):
                 if message.get("t") == "token":
                     self.state.received_keyboard_items += 1
-                elif message.get("t") in ("stale", "stale_prompt"):
+                elif message.get("t") == "size":
+                    self.state.received_size_items += 1
+                elif message.get("t") == "stale":
                     self.state.received_stale_items += 1
             # An attachment that delivered traffic was accepted: a later 4001 is a new loss.
             self._ticket_retry_used = False
             if isinstance(message, (bytes, bytearray)):
                 data = bytes(message)
+                self.state.received_output_bytes += len(data)
                 self._queue.append(data)
                 self._queued_output += len(data)
             else:
@@ -757,6 +766,7 @@ class AttachmentPump:
         finally:
             self._feeding = False
         self.state.applied_items += item_count
+        self.state.applied_output_bytes += len(data)
         replies = list(replies or [])
         if role == "dump":
             self.state.dump_seen = True

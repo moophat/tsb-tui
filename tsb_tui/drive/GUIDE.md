@@ -131,8 +131,12 @@ Every read is made in your own client, from what it already received. TSB itself
 
 A screen answer mints a `look` id and `look_kind`: `ordinary`, `unsettled`, or `after_silence`. Name it on the next
 send. `look: "last"` resolves to this session's latest non-refusal look; a refusal's look can only be named by its id.
-A look is used up by any send in its session. An old attachment's look is `no_look`, even after reattaching the same
-session. Reads of reply, history or who, and waits on holder, state, events or settled alone, mint no look.
+A look is used up by any send in its session; an answer reporting `sent: false` does not spend it. An old attachment's
+look is `no_look`, even after reattaching the same session. Reads of reply, history or who, and waits on holder, state,
+events or settled alone, mint no look.
+At each mint drive drops looks from ended attachments, spent sends, or changed keyboard/stale counts. Looks with
+older output/size counts remain usable by a young brake until `drive.brake_look_max_ms`. At most 64 looks are kept
+per session, oldest dropped first. Naming a dropped look returns `no_look` with "that look is too old".
 
 After a send, quiet time alone is insufficient: there must be output since that send, then `drive.settled_ms` quiet.
 Before any output the answer has `look: null` and `no_look_yet: "no output since your send"`. While output still arrives
@@ -275,7 +279,7 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 | `error` | Means |
 |---|---|
 | `no_look` | missing, unknown, used-up or wrong-session/attachment look; take a new screen look |
-| `screen_changed` | output or a frame arrived, the keyboard moved, the size changed or a stale change followed the look; `changed` lists causes |
+| `screen_changed` | output bytes or a `token`, `size` or `stale` frame followed the look; `changed` lists only the actual causes (`output`, `keyboard`, `size`, `stale`). Clients, notices and prompt frames do not count as changes |
 | `unsettled` | the named look permits only a brake while output is arriving or synchronized output is on |
 | `silent` | nothing came back for the silence time; only a brake or bare Enter may go |
 | `full_screen` | a program took the screen but the text send did not say so |

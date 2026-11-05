@@ -100,8 +100,16 @@ async def test_type_after_an_unchanged_look_sends_exactly_its_bytes_once(rig, se
 
 @scenario
 async def test_one_byte_after_the_look_refuses_and_returns_a_screen_and_a_look_that_works(rig, server, sid, slot, clock, patch):
+    await barrier(rig, server)
     old = await look(rig)
-    await output(rig, server, sid, b'z')
+    before = slot.pump.state.output_bytes_applied
+    with server.lock:
+        server._emit_output(server.sessions[sid], b'z')
+    for _ in range(500):
+        if slot.pump.state.output_bytes_applied == before + 1:
+            break
+        await asyncio.sleep(.002)
+    assert slot.pump.state.output_bytes_applied == before + 1
     answer = await send(rig, look=old)
     refused(answer, 'screen_changed')
     assert answer['changed'] == ['output']
@@ -213,6 +221,8 @@ async def test_send_history_survives_detach_attach_reattach_and_relogin(rig, ser
             await rig.login()
         await rig.attach(sid)
         assert rig.driver.commands.send_history[sid] is history
+        answer = await rig.cmd('read', what='screen')
+        assert answer['look'] is None or answer['look_kind'] == 'unsettled', answer
     pump = rig.driver.screen().front.pump
     prior = pump.state.client_id
     pump._att._ws._writer.transport.abort()
@@ -222,13 +232,34 @@ async def test_send_history_survives_detach_attach_reattach_and_relogin(rig, ser
         await asyncio.sleep(.005)
     assert pump.state.client_id != prior and pump.state.dump_seen
     assert rig.driver.commands.send_history[sid] is history
+    answer = await rig.cmd('read', what='screen')
+    assert answer['look'] is None or answer['look_kind'] == 'unsettled', answer
+    clock[0] += 1
     # A new attached frame also changes the attachment identity.
     state = rig.driver.screen().front.pump.state
     old = await rig.cmd('read', what='screen')
     state.apply_attached({'client_id': state.client_id, 'session': state.session})
     assert rig.driver.commands.send_history[sid] is history
-    if old['look']:
-        refused(await send(rig, look=old['look']), 'no_look')
+    assert old['look']
+    refused(await send(rig, look=old['look']), 'no_look')
+
+    # With a silent target, attachment changes never create an ordinary look.
+    patch.setattr(server, '_emit_output', lambda sess, data: None)
+    clock[0] += 1
+    await send(rig, look=await look(rig))
+    for relogin in (False, True):
+        await rig.cmd('detach')
+        if relogin:
+            await rig.cmd('logout')
+            await rig.login()
+        await rig.attach(sid)
+        answer = await rig.cmd('read', what='screen')
+        assert answer['look'] is None, answer
+        assert answer['no_look_yet'] == 'no output since your send'
+        assert rig.driver.commands.send_history[sid] is history
+    clock[0] += rig.app.cfg['drive.wait_timeout_ms'] / 1000 + .001
+    answer = await rig.cmd('read', what='screen')
+    assert answer['look'] and answer['look_kind'] == 'after_silence', answer
 
 
 @scenario
@@ -589,10 +620,15 @@ async def test_type_waits_for_output_and_quiet_and_returns_the_settled_screen(ri
 
 @scenario
 async def test_type_timeout_returns_sent_screen_and_a_brake_can_follow(rig, server, sid, slot, clock, patch):
+    original = slot.pump.send
+    async def printing(data):
+        await original(data)
+        # Apply output before the wait starts; the fixed clock keeps it unquiet at timeout.
+        await output(rig, server, sid, b'still printing')
+    patch.setattr(slot.pump, 'send', printing)
     answer = await send(rig, look=await look(rig))
     assert answer['sent'] and answer['settled'] is False and 'screen' in answer
-    await output(rig, server, sid)
-    answer = await rig.cmd('read', what='screen')
+    assert answer['look'] and answer['look_kind'] == 'unsettled', answer
     assert (await send(rig, '\x03', look=answer['look']))['ok']
 
 

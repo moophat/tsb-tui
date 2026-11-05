@@ -95,7 +95,7 @@ def test_the_owner_takes_the_keyboard_back_and_the_agents_next_input_is_stopped(
             assert (await agent.cmd("wait", until={"holder": "me"}))["ok"]
             old = await agent.cmd("type", text="x", look=agent_old)
             if guard == "true":
-                assert old["error"] == "screen_changed" and "keyboard" in old["changed"], old
+                assert old["error"] == "no_look" and "that look is too old" in old["why"], old
             else:
                 assert old["error"] == "no_look", old  # the attempted send used up every earlier look
 

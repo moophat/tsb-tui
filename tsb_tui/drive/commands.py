@@ -20,7 +20,7 @@ import select
 import stat
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -286,6 +286,7 @@ class Look:
     keyboard: int
     keyboard_items: int
     stale_items: int
+    size_items: int
     size: int
     stale: int
     sends: int
@@ -308,6 +309,7 @@ class Commands:
         self.send_history: dict[str, SendHistory] = {}
         self._looks: dict[str, Look] = {}
         self._last_look: dict[str, str] = {}
+        self._look_serial = 0
 
     async def run(self, cmd: dict[str, Any]) -> dict[str, Any]:
         op = cmd.get("op")
@@ -735,12 +737,39 @@ class Commands:
             return "unsettled", "output still arriving"
         return "ordinary", None
 
+    def _prune_looks(self, now: float) -> None:
+        screen = self._screen()
+        for ident, seen in list(self._looks.items()):
+            slot = screen.slot_for(seen.session)
+            state = slot.pump.state if slot is not None and slot.pump is not None else None
+            ended = (state is None or slot.closed or state.closed or seen.state is not state
+                     or seen.attachment != state.attachment_generation)
+            if ended:
+                del self._looks[ident]
+                continue
+            spent = seen.sends != self.history(seen.session).count
+            moved = (seen.keyboard != state.keyboard_moves
+                     or seen.keyboard_items != state.received_keyboard_items
+                     or seen.stale != state.stale_changes
+                     or seen.stale_items != state.received_stale_items)
+            behind = (seen.applied != state.received_output_bytes or seen.output != state.output_bytes_applied
+                      or seen.size != state.size_changes or seen.size_items != state.received_size_items)
+            young = (now - seen.at) * 1000 < self.d.cfg["drive.brake_look_max_ms"]
+            if spent or moved or (behind and not young):
+                del self._looks[ident]
+        # Dict order is mint order; a session's oldest surviving looks leave first.
+        counts: dict[str, int] = {}
+        for ident, seen in reversed(list(self._looks.items())):
+            counts[seen.session] = counts.get(seen.session, 0) + 1
+            if counts[seen.session] > 64:
+                del self._looks[ident]
+
     def screen_answer(self, slot: SessionSlot, *, refusal: bool = False, join_wrapped: bool = False,
                       nested: bool = True) -> dict[str, Any]:
         """Caller holds backend.lock: applied counts, then grid, cursor, modes and the look together."""
         backend = slot.canvas.backend
         state = slot.pump.state
-        applied = state.applied_items
+        applied = state.applied_output_bytes
         output = state.output_bytes_applied
         keyboard, size, stale = state.keyboard_moves, state.size_changes, state.stale_changes
         history = self.history(slot.session_id)
@@ -765,11 +794,13 @@ class Commands:
         if why is not None:
             out["no_look_yet"] = why
         if kind is not None:
-            ident = f"L{len(self._looks) + 1}"
+            self._look_serial += 1
+            ident = f"L{self._look_serial}"
             self._looks[ident] = Look(slot.session_id, state, state.attachment_generation, applied, output,
                                       keyboard, state.applied_keyboard_items, state.applied_stale_items,
-                                      size, stale, history.count, kind, now,
+                                      state.applied_size_items, size, stale, history.count, kind, now,
                                       modes.alternate_screen, not cursor.visible)
+            self._prune_looks(now)
             if not refusal:
                 self._last_look[slot.session_id] = ident
             out.update(look=ident, look_kind=kind)
@@ -814,6 +845,13 @@ class Commands:
         if ident == "last":
             ident = self._last_look.get(slot.session_id)
         seen = self._looks.get(ident)
+        if seen is None:
+            try:
+                serial = int(ident[1:]) if isinstance(ident, str) and ident.startswith("L") else 0
+            except ValueError:
+                serial = 0
+            if 0 < serial <= self._look_serial and ident == f"L{serial}":
+                self._refuse(slot, "no_look", "that look is too old")
         if seen is None or seen.session != slot.session_id:
             self._refuse(slot, "no_look", "name a look that showed this session's screen")
         if seen.state is not state or seen.attachment != state.attachment_generation:
@@ -822,12 +860,12 @@ class Commands:
             self._refuse(slot, "no_look", "that look was used up by a send")
         # The screen-lock check belongs here when its contract release lands.
         changed = []
-        if state.received_items != seen.applied or state.output_bytes_applied != seen.output:
+        if state.received_output_bytes != seen.applied or state.output_bytes_applied != seen.output:
             changed.append("output")
         if (state.keyboard_moves != seen.keyboard
                 or state.received_keyboard_items != seen.keyboard_items):
             changed.append("keyboard")
-        if state.size_changes != seen.size:
+        if state.size_changes != seen.size or state.received_size_items != seen.size_items:
             changed.append("size")
         if state.stale_changes != seen.stale or state.received_stale_items != seen.stale_items:
             changed.append("stale")
@@ -866,8 +904,15 @@ class Commands:
         with slot.canvas.backend.lock():
             if self.d.cfg["drive.send_gate"]:
                 self._check_gate(slot, cmd, data, text=text, names=names, legacy=legacy or [])
+            history = self.history(slot.session_id)
+            before = replace(history)
             self._record_send(slot)
         if not await screen.send_input(SOURCE_KEY, data, slot, drive_gate=_DRIVE_GATE):
+            with slot.canvas.backend.lock():
+                history.count = before.count
+                history.last_send_at = before.last_send_at
+                history.output_since_send = before.output_since_send
+                history.last_output_at = before.last_output_at
             raise DriveError("not_attached", "the session is not ready for input; nothing was sent", sent=False)
         out = {"front": screen.front.session_id if screen.front else None, "queued": len(data), "sent": True}
         out.update(await self.d.wait_after_send(slot, self._send_timeout(cmd)))
