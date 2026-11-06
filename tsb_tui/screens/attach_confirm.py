@@ -81,7 +81,12 @@ class AttachConfirmScreen(ModalScreen[bool]):
         yield Static(GATE_KEYS, id="attach-confirm-keys", markup=False)
 
     def on_mount(self) -> None:
-        self.query_one("#hostkey-ack" if self._hostkey is not None else "#attach-button").focus()
+        self.call_after_refresh(self._focus_initial)
+
+    def _focus_initial(self) -> None:
+        target = self.query("#hostkey-ack" if self._hostkey is not None else "#attach-button")
+        if target:
+            target.first().focus()
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         # Attach stays greyed until the host key is ticked: the one acknowledgement the gate asks for.
