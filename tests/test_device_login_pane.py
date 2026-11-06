@@ -146,6 +146,51 @@ def test_connected_turns_the_overlay_into_the_attached_session_on_the_same_socke
     asyncio.run(check())
 
 
+def test_a_display_only_round_between_password_and_acceptance_ends_connected(wait_until):
+    display_only = {"t": "device_login_prompt", "v": 1, "method": "keyboard-interactive",
+                    "name": "Notice", "instruction": "Welcome", "prompts": []}
+
+    async def check():
+        async with opened(wait_until, rounds=[password(), display_only]) as (_, pilot, screen, dialog, stub):
+            pane = await start(dialog, pilot, wait_until)
+            slot = screen.front
+            await answer(pane, pilot, wait_until)
+            await wait_until(pilot, lambda: slot.pump and slot.pump.state.dump_seen, "attached dump")
+            assert screen.front is slot and slot.session_id in stub.sessions
+            assert stub.login_sockets == 1 and stub.ticket_mints == 0 and stub.attaches == 0
+            assert not pane.display
+            assert pane.connected
+    asyncio.run(check())
+
+
+def test_an_injected_error_in_render_frame_produces_the_connect_failed_result(wait_until, monkeypatch):
+    emitted = []
+
+    async def check():
+        from tsb_tui.screens import device_login
+
+        async with opened(wait_until) as (_, pilot, _, dialog, stub):
+            pane = await pane_for(dialog, pilot, wait_until)
+            pane._emit = emitted.append
+
+            async def broken(self, frame):
+                raise RuntimeError("injected error")
+
+            monkeypatch.setattr(device_login.DeviceLoginPane, "render_frame", broken)
+            pane.query_one("#device-user", Input).value = "fixture-account"
+            await pane.submit_user()
+            await wait_until(pilot, lambda: pane.ended, "pane ended")
+            assert pane.ended
+            assert "The device connection failed." in str(pane.query_one("#device-status").render())
+            assert pane.query_one("#device-open-again").display
+            await wait_until(pilot, lambda: any(e.get("ev") == "device_login_result" for e in emitted), "emitted result")
+            result = next(e for e in emitted if e.get("ev") == "device_login_result")
+            assert result["outcome"] == "connect_failed"
+            assert result["why"] == "The device connection failed."
+            assert not any(f.get("t") == "device_login_cancel" for f in stub.login_frames)
+    asyncio.run(check())
+
+
 def test_input_waits_for_the_recording_gate_after_connected(wait_until):
     async def check():
         async with opened(wait_until, recording=True) as (app, pilot, screen, dialog, _):

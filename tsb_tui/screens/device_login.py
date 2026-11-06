@@ -255,6 +255,13 @@ class DeviceLoginPane(VerticalScroll):
                 self.emit({"t": "device_login_result", "outcome": "connect_failed",
                            "error": "request_failed", "why": LOST})
                 self.terminal._refresh_fleet()
+        except Exception:  # noqa: BLE001 — an unexpected error ends the device login visibly
+            if self._live():
+                reason = OUTCOMES["connect_failed"]
+                self.finish(reason)
+                self.emit({"t": "device_login_result", "outcome": "connect_failed",
+                           "error": "request_failed", "why": reason})
+                self.terminal._refresh_fleet()
         finally:
             if not self.adopted:
                 self.candidate = None
@@ -265,7 +272,7 @@ class DeviceLoginPane(VerticalScroll):
                         await self.login.close()
 
     def emit(self, frame: dict) -> None:
-        if self._emit is not None:
+        if self._emit is not None and self.pending is not None:
             event = {"ev": frame["t"], "device_login": self.pending["device_login_id"],
                      **{k: v for k, v in frame.items() if k not in ("t", "v")}}
             if self._too_old:
@@ -302,12 +309,14 @@ class DeviceLoginPane(VerticalScroll):
             self.emit(frame)
             return
         self.prompt = frame
-        refused = frame["attempt"] > self.last_answered_attempt > 0
-        if refused:
-            self.status("The device refused the answer.")
-        else:
-            self.status("")
         password = method == "password"
+        has_prompts = password or bool(frame.get("prompts"))
+        if has_prompts:
+            refused = frame["attempt"] > self.last_answered_attempt > 0
+            if refused:
+                self.status("The device refused the answer.")
+            else:
+                self.status("")
         for selector in ("#own-password-label", "#own-password"):
             self.query_one(selector).display = password
         self.query_one("#own-password Input", Input).set_class(password, "device-answer")
@@ -316,12 +325,12 @@ class DeviceLoginPane(VerticalScroll):
         self.query_one("#device-name", Static).update(device_text(frame.get("name", "")))
         self.query_one("#device-instruction", Static).update(device_text(frame.get("instruction", "")))
         if not password:
-            if frame["prompts"]:
+            if frame.get("prompts"):
                 if self.candidate is not None:
                     self.status(MORE_THAN_PASSWORD)
                 self.candidate = None
                 self.remember_allowed = False
-            for prompt in frame["prompts"]:
+            for prompt in frame.get("prompts", []):
                 await questions.mount(Static(device_text(prompt["text"]), classes="device-label", markup=False),
                                       Input(password=not prompt["echo"], classes="device-answer"))
         self.query_one("#device-remember").display = password and self.remember_allowed and not self.app.under_drive
@@ -342,7 +351,8 @@ class DeviceLoginPane(VerticalScroll):
 
     async def send_answers(self, answers: list[str] | None = None, prompt_id: int | None = None) -> None:
         if ((self.app.screen_lock.locked and not self.app.under_drive)
-                or not self._live() or self.prompt is None or self.ended or self.connected):
+                or not self._live() or self.prompt is None or ("prompt_id" not in self.prompt and prompt_id is None)
+                or self.ended or self.connected):
             return
         if answers is None:
             answers = [box.value for box in self.query(".device-answer")]
@@ -351,7 +361,8 @@ class DeviceLoginPane(VerticalScroll):
         if (self.prompt["method"] == "password" and self.remember_allowed and not self.app.under_drive
                 and self.query_one("#device-remember", Checkbox).value):
             self.candidate = answers[0]
-        self.last_answered_attempt = self.prompt["attempt"]
+        if "attempt" in self.prompt:
+            self.last_answered_attempt = self.prompt["attempt"]
         self.query_one("#device-send").disabled = True
         await self.login.answer(self.prompt["prompt_id"] if prompt_id is None else prompt_id, answers)
 
