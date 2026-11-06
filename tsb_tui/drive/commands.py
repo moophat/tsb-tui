@@ -816,6 +816,7 @@ class Commands:
         backend = slot.canvas.backend
         brake = data in (b"\x03", b"\x1e")
         bare_enter = text == "\r" if text is not None else len(legacy) == 1 and legacy[0] == b"\r"
+        ends_line = text.endswith("\r") if text is not None else False
         has_text = text is not None
         if text is not None:
             if "\n" in text or "\r" in text[:-1] or ("\t" in text and "\r" in text):
@@ -835,6 +836,7 @@ class Commands:
                 ends.append(line_end)
                 tabs.append(tab)
                 controls.append(not (line_end or tab or is_text))
+            ends_line = bool(ends and ends[-1])
             if sum(ends) > 1 or any(ends[:-1]) or (any(tabs) and any(ends)):
                 self._refuse(slot, "multi_line", "one final line-end key only, with no tab in the same send")
             if len(names) > 1 and any(controls):
@@ -887,6 +889,8 @@ class Commands:
             if not taken and cmd.get("full_screen", False):
                 self._refuse(slot, "not_full_screen", "no program has taken the screen")
         # The target prompt check belongs here when its contract release lands.
+        if ends_line and not cmd.get("full_screen", False) and not state.shell_marks.at_prompt:
+            self._refuse(slot, "not_at_prompt", "shell marks show the command has not returned to a prompt")
 
     async def _send(self, slot: SessionSlot, cmd: dict[str, Any], data: bytes, *, text: str | None = None,
                     names: list[str] | None = None, legacy: list[bytes] | None = None) -> dict[str, Any]:
@@ -906,6 +910,8 @@ class Commands:
                 self._check_gate(slot, cmd, data, text=text, names=names, legacy=legacy or [])
             history = self.history(slot.session_id)
             before = replace(history)
+            shell_marks = state.shell_marks
+            exit_serial = shell_marks.exit_serial
             self._record_send(slot)
         if not await screen.send_input(SOURCE_KEY, data, slot, drive_gate=_DRIVE_GATE):
             with slot.canvas.backend.lock():
@@ -916,6 +922,9 @@ class Commands:
             raise DriveError("not_attached", "the session is not ready for input; nothing was sent", sent=False)
         out = {"front": screen.front.session_id if screen.front else None, "queued": len(data), "sent": True}
         out.update(await self.d.wait_after_send(slot, self._send_timeout(cmd)))
+        if (text is not None and out.get("settled") and state.shell_marks is shell_marks
+                and shell_marks.exit_serial > exit_serial and shell_marks.exit_code is not None):
+            out["exit_code"] = shell_marks.exit_code
         if fronted.switched_from is not None:
             out["switched_from"] = fronted.switched_from
         return out

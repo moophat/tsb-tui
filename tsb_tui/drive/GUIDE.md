@@ -150,6 +150,18 @@ A gate refusal sends nothing and returns `sent: false`, `screen` (the whole bloc
 Earlier refusals (`bad_request`, `unknown_key`, `not_attached`, `not_available`, `not_typist`) keep their existing shape.
 drive never repairs a mismatch: no automatic Ctrl-C, q, retry or other typed input.
 
+Shells that emit OSC 133 marks give drive an extra check after all other send checks. After a live
+prompt-start `A`, a line-ending `type` or `keys` send without `full_screen: true` is refused with
+`not_at_prompt` if a command-start `C` or command-finished `D` followed that prompt. Prompt-end `B`
+keeps the prompt state. A new `A` permits the send only if all the other checks pass too.
+Attach and reattach reset this state: dump marks never count, and the check starts only after a live `A`.
+Network gear emits no marks; sessions without marks behave as before.
+
+A settled `type` answer adds integer `exit_code` only if a `D` carrying a code arrived after that send
+and before the answer. It reports the last `D`'s code if several arrived; a final `D` without a code,
+no new `D`, or an unsettled answer omits the field. The exit code is data for the sender to read;
+drive never acts on it.
+
 ## 7. Waiting
 
 `until` holds one or more predicates, and all must hold:
@@ -281,6 +293,7 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 | `no_look` | missing, unknown, used-up or wrong-session/attachment look; take a new screen look |
 | `screen_changed` | output bytes or a `token`, `size` or `stale` frame followed the look; `changed` lists only the actual causes (`output`, `keyboard`, `size`, `stale`). Clients, notices and prompt frames do not count as changes |
 | `unsettled` | the named look permits only a brake while output is arriving or synchronized output is on |
+| `not_at_prompt` | live shell marks show no ready prompt for a line-ending send |
 | `silent` | nothing came back for the silence time; only a brake or bare Enter may go |
 | `full_screen` | a program took the screen but the text send did not say so |
 | `not_full_screen` | the text send said full_screen but no program took the screen |
