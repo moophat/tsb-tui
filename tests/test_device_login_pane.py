@@ -37,6 +37,10 @@ def test_the_hostkey_is_accepted_in_the_pane_before_any_prompt(wait_until, scree
     async def check():
         async with opened(wait_until, hostkey=True) as (app, pilot, _, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
+            # The host-key view is painted after the frame lands in the pane; read the screen once it is drawn, so the
+            # fleet view behind the pane is not what the assertion reads.
+            await wait_until(pilot, lambda: "Check it out of band" in screen_text(app),
+                             "the host-key prompt on the screen", 30.0)
             assert "Check it out of band" in screen_text(app)
             assert pane.prompt is None
             await pane.answer_hostkey(True)

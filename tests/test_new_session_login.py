@@ -259,6 +259,10 @@ def test_no_resolving_credential_focuses_the_username(serve, wait_until) -> None
             await wait_until(pilot, lambda: _text(dialog.query_one("#new-session-error", Static)) == NO_LOGIN_HELD,
                              "the dialog's sentence")
             assert app.screen is dialog
+            # The focus moves to the username field after the sentence lands; read it once the field holds the keys, so
+            # the assertion does not catch the focus still on the target field.
+            await wait_until(pilot, lambda: app.focused is dialog.query_one("#login-user", Input),
+                             "the focus on the username field", 30.0)
             assert app.focused is dialog.query_one("#login-user", Input)
             assert not dialog.query_one("#create-button", Button).disabled
             _type_login(dialog)
