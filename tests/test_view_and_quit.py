@@ -354,6 +354,76 @@ def test_end_session_on_a_session_the_login_does_not_own_says_the_core_refused(s
     asyncio.run(_check())
 
 
+def test_end_dialog_x_key_ends_the_session(serve, wait_until) -> None:
+    """tsb-core #440: pressing `x` in the End dialog dismisses with True and sends DELETE, exactly as clicking
+    [ End it ] does. Before the fix ConfirmEndScreen had no BINDINGS beyond Esc, so pressing `x` sent the
+    letter to the session through the workspace instead of dismissing the dialog with True."""
+
+    async def _check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        (sid,) = named_sessions(url, serve_app, "rtr-core-01")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, sid)
+            await screen.run_action_id("end")
+            await wait_until(pilot, lambda: isinstance(app.screen, ConfirmEndScreen)
+                             and app.screen.query("#end-confirm"), "the End dialog")
+            await pilot.press("x")
+            await wait_until(pilot, lambda: _deletes(serve_app) == [f"/sessions/{sid}"],
+                             "DELETE after x")
+
+    asyncio.run(_check())
+
+
+def test_end_dialog_k_key_keeps_the_session(serve, wait_until) -> None:
+    """tsb-core #440: pressing `k` in the End dialog dismisses with False and sends nothing, exactly as
+    clicking [ Keep it ] does. Before the fix ConfirmEndScreen had no BINDINGS beyond Esc, so pressing `k`
+    sent the letter to the session instead of dismissing the dialog with False."""
+
+    async def _check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        (sid,) = named_sessions(url, serve_app, "rtr-core-01")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, sid)
+            await screen.run_action_id("end")
+            await wait_until(pilot, lambda: isinstance(app.screen, ConfirmEndScreen)
+                             and app.screen.query("#end-keep"), "the End dialog")
+            await pilot.press("k")
+            await wait_until(pilot, lambda: app.screen is screen, "dialog to close after k")
+            assert _deletes(serve_app) == [], "k must not send DELETE"
+
+    asyncio.run(_check())
+
+
+def test_end_dialog_keys_line_names_x_k_and_esc(serve, wait_until) -> None:
+    """tsb-core #440: while the End dialog is open the status row shows `keys → confirm` and names x, k and Esc,
+    so a person with no mouse knows every key available. Before the fix ConfirmEndScreen had no status_target
+    override beyond _Dialog's default (Esc only), so x and k were absent from the keys line."""
+
+    async def _check() -> None:
+        _serve_app, url = serve(InputRecordingApp())
+        (sid,) = named_sessions(url, _serve_app, "rtr-core-01")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, sid)
+            await screen.run_action_id("end")
+            await wait_until(pilot, lambda: isinstance(app.screen, ConfirmEndScreen)
+                             and "keys → confirm" in screen.status.text, "the End dialog")
+            keys_line = screen.status.text
+            assert "x End it" in keys_line, f"x not in keys line: {keys_line!r}"
+            assert "k Keep it" in keys_line, f"k not in keys line: {keys_line!r}"
+            assert "Esc" in keys_line, f"Esc not in keys line: {keys_line!r}"
+            # x comes before k (AnswerScreen order: End it, Keep it, Esc)
+            assert keys_line.index("x End it") < keys_line.index("k Keep it"), \
+                f"x should precede k: {keys_line!r}"
+
+    asyncio.run(_check())
+
+
 # -- Pan --
 
 

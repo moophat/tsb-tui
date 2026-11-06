@@ -123,6 +123,11 @@ class ConfirmEndScreen(_Dialog):
     DEFAULT_CSS = """
     ConfirmEndScreen .panel { max-width: 70; border: round $error; }
     """
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape", "close", "Close"),
+        Binding("x", "end_it", "End it", show=False),
+        Binding("k", "keep_it", "Keep it", show=False),
+    ]
     KEYS_NAME = "confirm"
 
     def __init__(self, terminal: Any, label: str) -> None:
@@ -137,12 +142,21 @@ class ConfirmEndScreen(_Dialog):
                 yield Choice("[ End it ]", "end", id="end-confirm")
                 yield Choice("[ Keep it ]", "keep", id="end-keep")
 
+    def status_target(self) -> KeysTarget:
+        return KeysTarget(self.KEYS_NAME, (Hint("x", "End it"), Hint("k", "Keep it"), Hint("Esc", "close")))
+
     def on_choice_pressed(self, message: Choice.Pressed) -> None:
         message.stop()
         self.dismiss(message.choice.key == "end")
 
     def action_close(self) -> None:
         self.dismiss(None)
+
+    def action_end_it(self) -> None:
+        self.dismiss(True)
+
+    def action_keep_it(self) -> None:
+        self.dismiss(False)
 
 
 class SearchPrompt(_Dialog):
