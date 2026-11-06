@@ -107,6 +107,70 @@ def test_prompt_end_cannot_clear_a_command_since_prompt_start():
     assert state.at_prompt
 
 
+def test_oversized_exit_status_counts_as_a_codeless_d_mark():
+    from tsb_tui.drive.shell_marks import ShellMarks
+
+    state = ShellMarks()
+    state.feed(b'\x1b]133;A\x07')
+    assert state.at_prompt
+    state.feed(b'\x1b]133;D;' + b'9' * 5000 + b'\x07')
+    assert state.last_mark == 'D'
+    assert state.exit_serial == 1
+    assert state.exit_code is None
+    assert not state.at_prompt
+    state.feed(b'\x1b]133;D;7\x07')
+    assert state.exit_serial == 2
+    assert state.exit_code == 7
+
+
+@pytest.mark.parametrize('digits, code', [
+    (b'2147483647', 2147483647),
+    (b'2147483648', None),
+    (b'00000000000', None),
+])
+def test_exit_status_is_capped(digits, code):
+    from tsb_tui.drive.shell_marks import ShellMarks
+
+    state = ShellMarks()
+    state.feed(b'\x1b]133;D;' + digits + b'\x07')
+    assert state.last_mark == 'D'
+    assert state.exit_serial == 1
+    assert state.exit_code == code
+
+
+def test_plain_output_returns_at_once_without_touching_state():
+    from tsb_tui.drive.shell_marks import ShellMarks
+
+    state = ShellMarks()
+    state.feed(b'\x1b]133;A\x07\x1b]133;C\x07')
+    before = dict(vars(state))
+    state.feed(b'x' * (1024 * 1024))
+    assert vars(state) == before
+
+
+def test_plain_text_inside_an_open_mark_is_scanned():
+    from tsb_tui.drive.shell_marks import ShellMarks
+
+    state = ShellMarks()
+    state.feed(b'\x1b]133;D;')
+    state.feed(b'42')
+    state.feed(b'\x07')
+    assert state.last_mark == 'D'
+    assert state.exit_serial == 1
+    assert state.exit_code == 42
+
+
+def test_escape_at_a_chunk_end_opens_the_mark_in_the_next_chunk():
+    from tsb_tui.drive.shell_marks import ShellMarks
+
+    state = ShellMarks()
+    state.feed(b'\x1b')
+    state.feed(b']133;A\x07')
+    assert state.last_mark == 'A'
+    assert state.prompt_seen
+    assert state.at_prompt
+
+
 @scenario
 async def test_dump_marks_and_partial_marks_do_not_survive_reattach(rig, server, sid, slot, clock, patch):
     await marks(rig, server, sid, clock, b'\x1b]133;A\x07\x1b]133;C\x07\x1b]133;')

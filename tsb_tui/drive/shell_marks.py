@@ -15,6 +15,7 @@ class ShellMarks:
         self._mark: str | None = None
         self._code: int | None = None
         self._digits = False
+        self._digit_count = 0
         self._field = 'mark'
         self._valid = False
 
@@ -23,6 +24,8 @@ class ShellMarks:
         return not self.prompt_seen or self._at_prompt
 
     def feed(self, data: bytes) -> None:
+        if not self._osc and not self._escape and data.find(b'\x1b') < 0:
+            return
         for byte in data:
             if self._osc:
                 if byte == 7 or (self._escape and byte == 92):
@@ -48,13 +51,20 @@ class ShellMarks:
                     if byte == 59:
                         self._field = 'code' if self._mark == 'D' else 'options'
                         self._code = 0
+                        self._digit_count = 0
                     else:
                         self._valid = False
                 elif byte == 59:
                     self._field = 'options'
                 elif self._field == 'code' and 48 <= byte <= 57:
-                    self._digits = True
-                    self._code = self._code * 10 + byte - 48
+                    self._digit_count += 1
+                    if (self._digit_count > 10
+                            or self._code * 10 + byte - 48 > 2147483647):
+                        self._field = 'invalid_code'
+                        self._digits = False
+                    else:
+                        self._digits = True
+                        self._code = self._code * 10 + byte - 48
                 else:
                     self._field = 'invalid_code'
                     self._digits = False
@@ -64,6 +74,7 @@ class ShellMarks:
                 self._prefix = b''
                 self._mark = self._code = None
                 self._digits = False
+                self._digit_count = 0
                 self._field = 'mark'
             else:
                 self._escape = byte == 27
