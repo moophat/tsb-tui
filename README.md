@@ -69,6 +69,8 @@ Interactive, from any node with network access to the core:
 
     tsb-tui --broker https://<host> [--ca-file PEM] [--target ID]
 
+To install, log in, open a session and drive it as an agent from scratch, follow [`docs/using-tsb-tui.md`](docs/using-tsb-tui.md).
+
 From a phone: SSH to the integration node, then `zellij`, then the command above inside it.
 
 Non-interactive smoke path (what the deploy hook runs after every deploy, alongside
