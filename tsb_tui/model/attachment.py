@@ -44,6 +44,7 @@ from typing import Any
 from tsb_contract_client import ApiError, AsyncAttachment, AttachRefused
 
 from .._transport import ConnectionClosed
+from ..drive.shell_marks import ShellMarks
 from .events import (
     KIND_ATTACHED,
     KIND_CLIENTS,
@@ -170,6 +171,7 @@ class AttachmentState:
         self.keyboard_moves = 0
         self.size_changes = 0
         self.stale_changes = 0
+        self.shell_marks = ShellMarks()
         self.attachment_generation = 0
         self.client_id = client_id
         self.user = user
@@ -290,6 +292,7 @@ class AttachmentState:
         self.log.add(kind, self._clock(), **detail)
 
     def apply_attached(self, frame: dict[str, Any]) -> None:
+        self.shell_marks = ShellMarks()
         self.attachment_generation += 1
         self.client_id = frame["client_id"]
         record = frame["session"]
@@ -771,6 +774,7 @@ class AttachmentPump:
         if role == "dump":
             self.state.dump_seen = True
         else:
+            self.state.shell_marks.feed(data)
             self.state.note_output(data)
         if self._hooks.on_run_done is not None:
             await self._hooks.on_run_done(self.state, role, data, replies)
