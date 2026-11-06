@@ -128,6 +128,8 @@ jobs:
           trap 'rm -rf "$contract_dir"' EXIT
           cp -R program/contract "$contract_dir/contract"
           pip wheel --no-deps --no-build-isolation -w "$PWD/dist" "$contract_dir/contract"
+          # The engine that ships in the archive is the one `make lint` verifies, checked before it is packed.
+          PYTHON=python bash tools/check-engine.sh
           tar -czf dist/libghostty-vt-linux-x86_64.tar.gz -C vendor/libghostty-vt \
             libghostty-vt.so PIN licenses
           cp install.sh dist/install.sh

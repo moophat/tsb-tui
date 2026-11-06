@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import textwrap
 from pathlib import Path
@@ -20,8 +21,28 @@ PAYLOADS = [TUI, CONTRACT, ENGINE, "install.sh"]
 
 
 def executable(path, source):
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(textwrap.dedent(source).lstrip())
     path.chmod(0o755)
+
+
+def fake_interpreter(path, ok):
+    """A PATH interpreter that passes (or fails) install.sh's `sys.version_info >= (3, 12)` check."""
+    executable(path, f"""
+        #!/bin/bash
+        exit {0 if ok else 1}
+    """)
+
+
+def system_path(bin_dir, monkeypatch):
+    """PATH holding only bin_dir plus the system tools install.sh needs, so no real interpreter is found."""
+    tools = bin_dir.parent / "system-tools"
+    tools.mkdir()
+    for tool in ("bash", "awk", "sha256sum", "tar", "mkdir"):
+        found = shutil.which(tool)
+        assert found, tool
+        (tools / tool).symlink_to(found)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{tools}")
 
 
 @pytest.fixture
@@ -45,6 +66,14 @@ def bundle(tmp_path, monkeypatch):
         [[ "$1" == GNU_LIBC_VERSION ]] || exit 1
         printf '%s\\n' "$FAKE_GLIBC"
     """)
+    executable(bin_dir / "uname", """
+        #!/bin/bash
+        printf 'x86_64\\n'
+    """)
+    # Only the two newest candidates are faked, so the fake pipx's `#!/usr/bin/env python3`
+    # shebang still resolves to the interpreter running these tests.
+    for name in ("python3.13", "python3.12"):
+        fake_interpreter(bin_dir / name, True)
     executable(bin_dir / "pipx", """
         #!/usr/bin/env python3
         import json, os, sys
@@ -103,6 +132,10 @@ def test_bad_checksum_stops_before_pipx(bundle, name):
 
 def test_install_order_engine_location_and_write_boundaries(bundle):
     assets, venvs, log = bundle
+    executable(venvs / "tsb-tui/bin/python", """
+        #!/bin/bash
+        exit 0
+    """)
     before = {p: p.read_bytes() for p in assets.parent.rglob("*") if p.is_file()}
     # Unrelated manifest entries must not be checked or installed.
     with (assets / "SHA256SUMS").open("a") as manifest:
@@ -112,7 +145,7 @@ def test_install_order_engine_location_and_write_boundaries(bundle):
     assert result.returncode == 0, result.stdout + result.stderr
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     assert calls == [
-        ["install", "--force", TUI],
+        ["install", "--force", "--python", "python3.13", TUI],
         ["inject", "--force", "tsb-tui", CONTRACT],
         ["environment", "--value", "PIPX_LOCAL_VENVS"],
         ["environment", "--value", "PIPX_BIN_DIR"],
@@ -134,8 +167,14 @@ def test_install_succeeds_when_pipx_bin_is_missing_from_path(bundle, monkeypatch
     pipx_bin = assets.parent / "pipx bin"
     pipx_bin.mkdir()
     shutil.move(bin_dir / "tsb-tui", pipx_bin / "tsb-tui")
+    executable(_venvs / "tsb-tui/bin/python", """
+        #!/bin/bash
+        exit 0
+    """)
     monkeypatch.setenv("FAKE_BIN_DIR", str(pipx_bin))
-    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.defpath}")
+    monkeypatch.setenv(
+        "PATH", os.pathsep.join([str(bin_dir), str(Path(sys.executable).parent), os.defpath])
+    )
     assert str(pipx_bin) not in os.environ["PATH"].split(os.pathsep)
     result = run_install(assets)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -159,6 +198,47 @@ def test_unsupported_libc_stops_before_pipx(bundle, monkeypatch, version):
     assert not venvs.exists()
 
 
+def test_non_x86_64_stops_before_the_engine(bundle, monkeypatch):
+    assets, venvs, log = bundle
+    bin_dir = Path(os.environ["FAKE_BIN_DIR"])
+    executable(bin_dir / "uname", """
+        #!/bin/bash
+        printf 'aarch64\\n'
+    """)
+    result = run_install(assets)
+    assert result.returncode == 1
+    assert result.stderr.strip() == "tsb-tui's release ships the screen engine for x86_64 Linux only."
+    assert not log.exists()
+    assert not venvs.exists()
+
+
+def test_python_older_than_3_12_stops_before_pipx(bundle, monkeypatch):
+    assets, venvs, log = bundle
+    bin_dir = Path(os.environ["FAKE_BIN_DIR"])
+    for name in ("python3.13", "python3.12"):
+        (bin_dir / name).unlink()
+    fake_interpreter(bin_dir / "python3", False)
+    system_path(bin_dir, monkeypatch)
+    result = run_install(assets)
+    assert result.returncode == 1
+    assert result.stderr.strip() == "tsb-tui needs Python 3.12 or newer."
+    assert not log.exists()
+    assert not venvs.exists()
+
+
+def test_engine_that_does_not_load_stops_before_drive(bundle):
+    assets, venvs, log = bundle
+    executable(venvs / "tsb-tui/bin/python", """
+        #!/bin/bash
+        exit 1
+    """)
+    result = run_install(assets)
+    assert result.returncode == 1
+    assert result.stderr.strip() == "The screen engine did not load; see the error above."
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert ["tsb-tui", "drive", "--help"] not in calls
+
+
 @pytest.mark.parametrize("existing", ["yes", "no"])
 def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, existing):
     workflow = (ROOT / ".github/workflows/release.yml").read_text()
@@ -167,10 +247,12 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
     build = "rm -rf dist build tsb_tui.egg-info\n" + textwrap.dedent(build.split("          BUILD\n", 1)[0])
     vendor = tmp_path / "vendor/libghostty-vt"
     shutil.copytree(ROOT / "vendor/libghostty-vt", vendor)
+    shutil.copytree(ROOT / "tools", tmp_path / "tools")
     shutil.copytree(ROOT / "program/contract", tmp_path / "program/contract")
     shutil.copyfile(ROOT / "install.sh", tmp_path / "install.sh")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    (bin_dir / "python").symlink_to(sys.executable)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_EXISTING", existing)
     monkeypatch.setenv("RELEASE_TAG", "v1.2.3")

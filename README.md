@@ -313,10 +313,11 @@ takes the scheme's cursor).
 Debian 11 or newer), Python 3.12+ and pipx available, download both wheels,
 `libghostty-vt-linux-x86_64.tar.gz`, `install.sh` and `SHA256SUMS` from the
 [GitHub release](https://github.com/moophat/tsb-tui/releases) into one directory.
-Run `bash install.sh` there. It checks the assets, installs both Python packages
-and the screen engine without root or shell profile changes, and checks
-`tsb-tui drive --help`. Pipx may fetch Python dependencies from the package index;
-all TSB pieces come from the downloaded release assets.
+Run `bash install.sh` there. It checks the assets, picks the first of `python3.13`,
+`python3.12` or `python3` that reports 3.12 or newer to run pipx on, installs both Python packages
+and the screen engine without root or shell profile changes, loads the engine once through the
+TUI's own loader to check it, and checks `tsb-tui drive --help`. Pipx may fetch Python dependencies
+from the package index; all TSB pieces come from the downloaded release assets.
 If pipx's bin directory is not on PATH, the installer prints a reminder to run
 `pipx ensurepath` yourself.
 
