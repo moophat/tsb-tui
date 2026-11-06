@@ -102,7 +102,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             ci-tui-py bash -euo pipefail -c 'make contract-init && make contract-check CONTRACT_MAIN_REF=origin/main'
 
-      - name: Stamp the version and build the wheel offline
+      - name: Stamp the version and build the release assets offline
         run: |
           set -euo pipefail
           docker run --rm -i --network none \
@@ -123,14 +123,24 @@ jobs:
           PYTHON
           rm -rf dist build tsb_tui.egg-info
           pip wheel --no-deps --no-build-isolation -w dist .
+          # Building writes into its source tree; keep the pinned submodule read-only.
+          contract_dir="$(mktemp -d)"
+          trap 'rm -rf "$contract_dir"' EXIT
+          cp -R program/contract "$contract_dir/contract"
+          pip wheel --no-deps --no-build-isolation -w "$PWD/dist" "$contract_dir/contract"
+          tar -czf dist/libghostty-vt-linux-x86_64.tar.gz -C vendor/libghostty-vt \
+            libghostty-vt.so PIN licenses
+          cp install.sh dist/install.sh
           cd dist
-          set -- *.whl
-          [[ "$#" == 1 && -f "$1" ]] || { echo 'expected exactly one wheel'; exit 1; }
-          sha256sum "$1" > SHA256SUMS
+          set -- tsb_tui-*.whl
+          [[ "$#" == 1 && -f "$1" ]] || { echo 'expected exactly one TUI wheel'; exit 1; }
+          set -- tsb_contract-*.whl
+          [[ "$#" == 1 && -f "$1" ]] || { echo 'expected exactly one contract wheel'; exit 1; }
+          sha256sum tsb_tui-*.whl tsb_contract-*.whl libghostty-vt-linux-x86_64.tar.gz install.sh > SHA256SUMS
           sha256sum --check SHA256SUMS
           BUILD
 
-      - name: Publish the wheel and checksums
+      - name: Publish the release assets and checksums
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -142,16 +152,16 @@ jobs:
             echo '::error::release tag moved since the wheel was built'; exit 1;
           }
           if gh release view "$RELEASE_TAG" >/dev/null; then
-            gh release upload "$RELEASE_TAG" --clobber dist/*.whl dist/SHA256SUMS
+            gh release upload "$RELEASE_TAG" --clobber \
+              dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/SHA256SUMS
           else
             gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes '' \
-              dist/*.whl dist/SHA256SUMS
+              dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/SHA256SUMS
           fi
           assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
-          wheel_name="$(basename dist/*.whl)"
-          grep -Fxq -- "$wheel_name" <<< "$assets" || {
-            echo '::error::release wheel asset is missing'; exit 1;
-          }
-          grep -Fxq -- SHA256SUMS <<< "$assets" || {
-            echo '::error::release SHA256SUMS asset is missing'; exit 1;
-          }
+          for asset in dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/SHA256SUMS; do
+            asset_name="$(basename "$asset")"
+            grep -Fxq -- "$asset_name" <<< "$assets" || {
+              echo "::error::release asset $asset_name is missing"; exit 1;
+            }
+          done

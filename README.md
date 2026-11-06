@@ -309,6 +309,17 @@ takes the scheme's cursor).
 
 ## Install
 
+**From a release:** on Linux x86_64 with glibc 2.29 or newer (Ubuntu 20.04,
+Debian 11 or newer), Python 3.12+ and pipx available, download both wheels,
+`libghostty-vt-linux-x86_64.tar.gz`, `install.sh` and `SHA256SUMS` from the
+[GitHub release](https://github.com/moophat/tsb-tui/releases) into one directory.
+Run `bash install.sh` there. It checks the assets, installs both Python packages
+and the screen engine without root or shell profile changes, and checks
+`tsb-tui drive --help`. Pipx may fetch Python dependencies from the package index;
+all TSB pieces come from the downloaded release assets.
+If pipx's bin directory is not on PATH, the installer prints a reminder to run
+`pipx ensurepath` yourself.
+
 `pyproject.toml` declares `[project.scripts] tsb-tui`, so `pipx install .` gives a working
 `tsb-tui` script — except the contract client, which PEP 508 cannot name by a relative path (see
 the comment in `pyproject.toml`). `program/` is a submodule with `update = none`, so this copy
