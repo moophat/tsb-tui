@@ -305,6 +305,27 @@ def test_a_drive_login_answers_only_after_the_workspace_has_mounted(serve) -> No
     asyncio.run(check())
 
 
+def test_a_drive_login_waits_for_a_login_screen_that_has_not_composed(serve) -> None:
+    """Pushing a fresh LoginScreen and calling `log_in` in the same iteration, before its form is built, must
+    wait for the screen and complete the login — not query `#username` on the empty screen and raise
+    `NoMatches`. This is the reattach path drive's own `login` hits when it arrives right after a lost login."""
+
+    async def check() -> None:
+        from tsb_tui.screens.login import LoginScreen
+
+        _server, url = serve()
+        cfg = config.load(profile="harness", overrides=["fleet_view.refresh_s=1"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(120, 40)) as pilot:
+            driver = Driver(app, pilot, emit=lambda o: None)
+            # The screen is on the stack but its compose has not run: it has no fields yet.
+            app.push_screen(LoginScreen())
+            assert isinstance(app.screen, LoginScreen) and not app.screen.is_mounted
+            assert await driver.log_in(USER, PASSWORD) == USER
+
+    asyncio.run(check())
+
+
 def test_a_create_that_completes_after_the_login_is_gone_is_discarded(wait_until) -> None:
     # fails today: `_on_create_done` pops the top of the stack — LoginScreen, once the 401 has routed to Login —
     # and opens the session through `app.workspace()`, which is None, so the app crashes and the login page is

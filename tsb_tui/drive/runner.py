@@ -294,6 +294,9 @@ class Driver:
         login = self.app.screen
         if not isinstance(login, LoginScreen):
             raise DriveError("bad_request", "the login screen is not showing")
+        # A screen that is pushed but not composed yet has no fields: wait for the form `log_in` needs.
+        await self.wait_for_login_screen()
+        login = self.app.screen
         login.query_one("#username", Input).value = user
         login.query_one("#password", Input).value = password
         # The form keeps the last refusal until an attempt clears it: clear it first, so a refusal read below is this

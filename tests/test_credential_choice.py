@@ -91,6 +91,10 @@ def test_two_candidates_of_one_name_and_two_layers_are_shown_with_no_default_and
             assert sorted("granted" in line for line in lines) == [False, True]
             assert not any("personal" in line or "org" in line.split() for line in lines), (
                 "the layer is said as yours and granted")
+            # The two candidate lines are painted after the dialog mounts; read the screen once they are on it, so the
+            # view behind the dialog is not what the assertion reads.
+            await wait_until(pilot, lambda: "yours" in flat(screen_text(app)) and "granted" in flat(screen_text(app)),
+                             "the two candidate lines on the screen", 30.0)
             assert "yours" in flat(screen_text(app)) and "granted" in flat(screen_text(app)), "it is on the screen"
             radios = dialog.query_one(CHOICE, RadioSet)
             assert radios.pressed_button is None, "no candidate is pre-selected (Contract §12)"
