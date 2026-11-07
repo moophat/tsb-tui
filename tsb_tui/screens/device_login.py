@@ -4,7 +4,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import logging
 import re
+import traceback
 from typing import Any
 
 from rich.cells import cell_len
@@ -18,11 +20,14 @@ from .. import vault_flow
 from .._transport import ConnectionClosed, HandshakeError, HttpError, ProtocolError
 from .attach_confirm import AttachConfirmScreen
 
+LOG = logging.getLogger("tsb_tui.device_login")
+
 RECORDED = "The user name, the device's prompts and every answer will be recorded. Continue?"
 TOO_OLD = "This TUI is too old for this device login; update it."
 MORE_THAN_PASSWORD = "Not saved: the device asked for more than a password, and only a password is saved."
 LOST = "The device login's link to TSB was lost; a session may have opened."
 UNATTACHED = "The device accepted the login and the session opened, but this pane could not attach to it; it is in the sessions list."
+POST_ADOPT = "The session opened, but this pane hit an error finishing the login; it is in the sessions list."
 OUTCOMES = {
     "refused": "The device refused the login.", "timeout": "The device login timed out.",
     "password_change_requested": "The device requires a password change.",
@@ -255,6 +260,34 @@ class DeviceLoginPane(VerticalScroll):
                 self.emit({"t": "device_login_result", "outcome": "connect_failed",
                            "error": "request_failed", "why": LOST})
                 self.terminal._refresh_fleet()
+        except Exception as exc:  # noqa: BLE001 — an unexpected error is told by state: never connect_failed
+            # after the device accepted the login (ruling 2026-11-07). Logged as type + frames only: a message can
+            # carry device text or an answer, so it reaches neither the person nor drive, and never exc_info.
+            LOG.warning("unexpected %s\n%s", type(exc).__name__, "".join(traceback.format_tb(exc.__traceback__)))
+            if self._live():
+                if not self.connected:
+                    reason = OUTCOMES["connect_failed"]
+                    self.finish(reason)
+                    self.emit({"t": "device_login_result", "outcome": "connect_failed",
+                               "error": "request_failed", "why": reason})
+                    self.terminal._refresh_fleet()
+                elif not self.adopted:
+                    await self._connected_without_attachment()
+                else:
+                    # The handoff decides (ruling 2026-11-07, round 3). Cleared: the slot keeps its attachment, the
+                    # pane is hidden so the words go to the slot's status line (`_complete`'s own route), and drive's
+                    # result is sent only if it has had none (`emit` drops it once `_complete` sent it).
+                    if self.slot.device_gate:
+                        # The handoff never completed: the pane never half-attaches. Close the slot (it detaches; the
+                        # session lives on), tell the person as the declined-gate path does — a toast, since a closed
+                        # slot shows no status row — and give drive its result only if it has had none. Attaching
+                        # later from the sessions list goes through the ordinary attach and its recording gate.
+                        self.terminal._close_slot(self.slot)
+                        self.app.toast(UNATTACHED, title="connected")
+                        self.emit({"t": "device_login_result", "outcome": "connected", "why": UNATTACHED})
+                    else:
+                        self.terminal.set_login_status(self.slot, POST_ADOPT)
+                        self.emit({"t": "device_login_result", "outcome": "connected", "why": POST_ADOPT})
         finally:
             if not self.adopted:
                 self.candidate = None
@@ -265,7 +298,7 @@ class DeviceLoginPane(VerticalScroll):
                         await self.login.close()
 
     def emit(self, frame: dict) -> None:
-        if self._emit is not None:
+        if self._emit is not None and self.pending is not None:
             event = {"ev": frame["t"], "device_login": self.pending["device_login_id"],
                      **{k: v for k, v in frame.items() if k not in ("t", "v")}}
             if self._too_old:
@@ -302,12 +335,14 @@ class DeviceLoginPane(VerticalScroll):
             self.emit(frame)
             return
         self.prompt = frame
-        refused = frame["attempt"] > self.last_answered_attempt > 0
-        if refused:
-            self.status("The device refused the answer.")
-        else:
-            self.status("")
         password = method == "password"
+        has_prompts = password or bool(frame.get("prompts"))
+        if has_prompts:
+            refused = frame["attempt"] > self.last_answered_attempt > 0
+            if refused:
+                self.status("The device refused the answer.")
+            else:
+                self.status("")
         for selector in ("#own-password-label", "#own-password"):
             self.query_one(selector).display = password
         self.query_one("#own-password Input", Input).set_class(password, "device-answer")
@@ -316,12 +351,12 @@ class DeviceLoginPane(VerticalScroll):
         self.query_one("#device-name", Static).update(device_text(frame.get("name", "")))
         self.query_one("#device-instruction", Static).update(device_text(frame.get("instruction", "")))
         if not password:
-            if frame["prompts"]:
+            if frame.get("prompts"):
                 if self.candidate is not None:
                     self.status(MORE_THAN_PASSWORD)
                 self.candidate = None
                 self.remember_allowed = False
-            for prompt in frame["prompts"]:
+            for prompt in frame.get("prompts", []):
                 await questions.mount(Static(device_text(prompt["text"]), classes="device-label", markup=False),
                                       Input(password=not prompt["echo"], classes="device-answer"))
         self.query_one("#device-remember").display = password and self.remember_allowed and not self.app.under_drive
@@ -342,7 +377,8 @@ class DeviceLoginPane(VerticalScroll):
 
     async def send_answers(self, answers: list[str] | None = None, prompt_id: int | None = None) -> None:
         if ((self.app.screen_lock.locked and not self.app.under_drive)
-                or not self._live() or self.prompt is None or self.ended or self.connected):
+                or not self._live() or self.prompt is None or ("prompt_id" not in self.prompt and prompt_id is None)
+                or self.ended or self.connected):
             return
         if answers is None:
             answers = [box.value for box in self.query(".device-answer")]
@@ -351,7 +387,8 @@ class DeviceLoginPane(VerticalScroll):
         if (self.prompt["method"] == "password" and self.remember_allowed and not self.app.under_drive
                 and self.query_one("#device-remember", Checkbox).value):
             self.candidate = answers[0]
-        self.last_answered_attempt = self.prompt["attempt"]
+        if "attempt" in self.prompt:
+            self.last_answered_attempt = self.prompt["attempt"]
         self.query_one("#device-send").disabled = True
         await self.login.answer(self.prompt["prompt_id"] if prompt_id is None else prompt_id, answers)
 
@@ -427,6 +464,9 @@ class DeviceLoginPane(VerticalScroll):
                 fields = await self._connected_answer(session["id"])
                 self._emit({"ev": "device_login_result", "device_login": self.pending["device_login_id"],
                             "outcome": "connected", **fields})
+                # Drive has had its result: `emit`'s guard on a pending result sends drive no second one (ruling
+                # 2026-11-07), so a later error in this step gets no attach-field-free result.
+                self.pending = None
             if self.candidate is not None and self._live():
                 result = await vault_flow.save_login(self.app, self.target, self.user, password=self.candidate,
                                                      reference=proposed_reference(self.target, self.user))

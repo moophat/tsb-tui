@@ -1,5 +1,6 @@
 """The pane's SSH login, exercised over the pinned client's real socket."""
 import asyncio
+import logging
 import secrets
 import threading
 
@@ -144,6 +145,105 @@ def test_connected_turns_the_overlay_into_the_attached_session_on_the_same_socke
             assert stub.login_sockets == 1 and stub.ticket_mints == 0 and stub.attaches == 0
             assert not pane.display
     asyncio.run(check())
+
+
+def test_a_display_only_round_between_password_and_acceptance_ends_connected(wait_until):
+    display_only = {"t": "device_login_prompt", "v": 1, "method": "keyboard-interactive",
+                    "name": "Notice", "instruction": "Welcome", "prompts": []}
+
+    async def check():
+        async with opened(wait_until, rounds=[password(), display_only]) as (_, pilot, screen, dialog, stub):
+            pane = await start(dialog, pilot, wait_until)
+            slot = screen.front
+            await answer(pane, pilot, wait_until)
+            await wait_until(pilot, lambda: slot.pump and slot.pump.state.dump_seen, "attached dump")
+            assert screen.front is slot and slot.session_id in stub.sessions
+            assert stub.login_sockets == 1 and stub.ticket_mints == 0 and stub.attaches == 0
+            assert not pane.display
+            assert pane.connected
+    asyncio.run(check())
+
+
+def test_an_injected_error_in_render_frame_produces_the_connect_failed_result(wait_until, monkeypatch):
+    emitted = []
+
+    async def check():
+        from tsb_tui.screens import device_login
+
+        async with opened(wait_until) as (_, pilot, _, dialog, stub):
+            pane = await pane_for(dialog, pilot, wait_until)
+            pane._emit = emitted.append
+
+            async def broken(self, frame):
+                raise RuntimeError("injected error")
+
+            monkeypatch.setattr(device_login.DeviceLoginPane, "render_frame", broken)
+            pane.query_one("#device-user", Input).value = "fixture-account"
+            await pane.submit_user()
+            await wait_until(pilot, lambda: pane.ended, "pane ended")
+            assert pane.ended
+            assert "The device connection failed." in str(pane.query_one("#device-status").render())
+            assert pane.query_one("#device-open-again").display
+            await wait_until(pilot, lambda: any(e.get("ev") == "device_login_result" for e in emitted), "emitted result")
+            result = next(e for e in emitted if e.get("ev") == "device_login_result")
+            assert result["outcome"] == "connect_failed"
+            assert result["why"] == "The device connection failed."
+            assert not any(f.get("t") == "device_login_cancel" for f in stub.login_frames)
+    asyncio.run(check())
+
+
+def test_an_attachment_failure_after_connected_never_says_connect_failed(wait_until, monkeypatch):
+    """The device accepted the login and the session exists; a session ending before its screen arrives is an
+    error after acceptance, so the pane takes the unattached path and no result ever says connect_failed."""
+    emitted = []
+
+    async def check():
+        from tsb_tui.screens import device_login
+
+        async def no_screen(self):
+            raise RuntimeError("the session ended before its screen arrived")
+
+        monkeypatch.setattr(device_login.AsyncDeviceLogin, "attachment", no_screen)
+        async with opened(wait_until) as (_, pilot, _, dialog, _):
+            pane = await start(dialog, pilot, wait_until)
+            pane._emit = emitted.append
+            await answer(pane, pilot, wait_until)
+            await wait_until(pilot, lambda: pane.ended, "the pane ended after the failed attach")
+            assert pane.connected and not pane.adopted
+            results = [e for e in emitted if e.get("ev") == "device_login_result"]
+            assert not any(r["outcome"] == "connect_failed" for r in results), (
+                f"a result after acceptance reported connect_failed: {results}")
+            assert results[-1]["outcome"] == "connected"
+            assert "it is in the sessions list" in str(pane.query_one("#device-status").render())
+            assert not pane.query_one("#device-open-again").display
+    asyncio.run(check())
+
+
+def test_an_unexpected_error_is_logged_by_type_and_frames_never_its_message(wait_until, monkeypatch, caplog):
+    """The catch-all logs the unexpected error as its type name and its stack frames only: a message can carry
+    device text or an answer, so nothing of it reaches the person, drive, or the log."""
+    marker = secrets.token_urlsafe(12)
+    caplog.set_level(logging.WARNING)
+
+    async def check():
+        from tsb_tui.screens import device_login
+
+        async def broken(self, frame):
+            raise RuntimeError(marker)
+
+        monkeypatch.setattr(device_login.DeviceLoginPane, "render_frame", broken)
+        async with opened(wait_until) as (_, pilot, _, dialog, _):
+            pane = await pane_for(dialog, pilot, wait_until)
+            pane.query_one("#device-user", Input).value = "fixture-account"
+            await pane.submit_user()
+            await wait_until(pilot, lambda: pane.ended, "pane ended")
+
+    asyncio.run(check())
+    records = [r for r in caplog.records if r.name == "tsb_tui.device_login"]
+    assert records, "the unexpected error left no trace on tsb_tui.device_login"
+    text = "\n".join(r.getMessage() for r in records)
+    assert "RuntimeError" in text
+    assert marker not in text, "the exception's message reached the log"
 
 
 def test_input_waits_for_the_recording_gate_after_connected(wait_until):
