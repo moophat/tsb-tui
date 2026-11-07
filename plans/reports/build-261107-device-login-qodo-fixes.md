@@ -219,4 +219,87 @@ Permission denied in this lane).
 `git status --short`: `tests/test_device_login_pane.py`, `tests/test_drive_device_login.py`,
 `tsb_tui/screens/device_login.py`, + this report. Whole suite not run, as instructed. Nothing committed or pushed.
 
-Status: DONE
+---
+
+# Round 3 — the handoff decides the post-adoption branch (ruling 2026-11-07, on Qodo's re-review of 6f946a6)
+
+Qodo's finding: an error after adoption but before `_complete` clears `slot.device_gate` left the adopted session
+behind the gate, refusing input, while drive had heard `connected`.
+
+## Change 5 — `tsb_tui/screens/device_login.py`, the post-adoption branch splits on the handoff
+
+```python
+if self.slot.device_gate:
+    self.terminal._close_slot(self.slot)
+    self.app.toast(UNATTACHED, title="connected")
+    self.emit({"t": "device_login_result", "outcome": "connected", "why": UNATTACHED})
+else:
+    self.terminal.set_login_status(self.slot, POST_ADOPT)
+    self.emit({"t": "device_login_result", "outcome": "connected", "why": POST_ADOPT})
+```
+
+Inside the same `if self._live():` guard, and the same `LOG.warning` before it. Gate cleared: as built in round 2.
+Gate not cleared: the pane never half-attaches — close the slot (detach; the session lives on), tell the person
+through the app's toast (the declined-gate path's route, since a closed slot shows no status row), and drive gets
+the `connected` result with UNATTACHED's words only if it has had none (`emit`'s pending guard). Never
+`connect_failed`. **The toast title I used is `"connected"`** — the declined-gate path's style is a one-word
+outcome label (`title=result.status`, and the fleet's `title="session"`, `title="saved"`, `title="mapped"`), and
+the outcome being told is that the session connected and lives on. Attaching later from the sessions list goes
+through the ordinary attach and its recording gate (no code change: that path already exists).
+
+## Change 6 — `tests/test_drive_device_login.py`
+
+`test_an_error_before_the_handoff_closes_the_slot_and_never_leaves_it_behind_the_gate` — monkeypatches
+`DeviceLoginPane._unlocked` to raise, so `_complete` fails after adoption and before the gate is cleared. Asserts:
+drive got exactly one `device_login_result`, `outcome == "connected"`, `why == UNATTACHED`, no attach fields, no
+`connect_failed`; the adopted slot is taken off the screen (`slot not in slots`, `slot.leaving`,
+`slot.session_id` set) and no remaining slot is attached behind a set gate; the toast carrying UNATTACHED's words
+was shown.
+
+## Red proof on 6f946a6 (only the source change stashed)
+
+```
+$ git log --oneline -2   # 6f946a6 is HEAD
+$ git stash push tsb_tui/screens/device_login.py
+$ env -u NO_COLOR PYTHONPATH=. $PY -m pytest tests/test_drive_device_login.py \
+    -k "behind_the_gate" -p no:cacheprovider -q
+                result = await _event(rig, "device_login_result")
+                ...
+>               assert result["outcome"] == "connected" and result["why"] == device_login.UNATTACHED
+E               AssertionError: ...
+E                 - The device accepted the login and the session opened, but this pane could not attach to it; it is in the sessions list.
+E                 + The session opened, but this pane hit an error finishing the login; it is in the sessions list.
+1 failed, 12 deselected in 1.66s
+$ git stash pop
+```
+
+(On 6f946a6 drive's result carried POST_ADOPT's words, so the assertion fails on the `why` first; the slot behind
+the gate and the missing toast are what the rest of the test pins down.)
+
+## Green run (rounds 1–3)
+
+```
+$ env -u NO_COLOR PYTHONPATH=. $PY -m pytest \
+    tests/test_device_login_pane.py tests/test_drive_device_login.py -p no:cacheprovider -q
+........................................................                 [100%]
+56 passed, 1 warning in 77.86s (0:01:17)
+```
+
+51 existing + 5 new. `ruff check tsb_tui tests` → `All checks passed!` (via `$PY -m ruff`; the binary is
+Permission denied in this lane). `git status --short`: `tsb_tui/screens/device_login.py`,
+`tests/test_drive_device_login.py` (+ this report). Nothing committed or pushed.
+
+## The warning, and what I did not verify
+
+The green run carries one new `RuntimeWarning: coroutine 'TerminalScreen._attach_and_pump' was never awaited`,
+reported against an older test by pytest's late garbage-collection check; running the new test alone shows it
+comes from the new path: adoption creates the attach worker, and the ruling's `_close_slot` cancels it in the same
+UI turn before the coroutine starts. Consequence I could not fix inside the allowed files: when the worker never
+started, `_release_slot` closes the canvas but nothing closes the handed-over device-login socket, so that socket
+waits for GC. A clean fix is in `tsb_tui/screens/terminal.py` (`adopt_device_attachment` / `_release_slot`), which
+this brief does not allow me to touch — it is flagged, not changed. The test passes with the warning; I did not
+silence it.
+
+Not verified: the socket's fate on a real core (no lab, per the brief); the whole suite; `make lint`.
+
+Status: DONE_WITH_CONCERNS

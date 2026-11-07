@@ -239,6 +239,44 @@ def test_an_error_after_the_connected_result_sends_drive_no_second_result(tmp_pa
     asyncio.run(check())
 
 
+def test_an_error_before_the_handoff_closes_the_slot_and_never_leaves_it_behind_the_gate(
+        tmp_path, monkeypatch, wait_until):
+    """Qodo's finding (round 3): an error after adoption but before `slot.device_gate` is cleared must never leave
+    the adopted session behind the gate while drive heard `connected`. The pane closes the slot (the session lives
+    on), toasts the unattached words, and drive gets one `connected` result with that why and no attach fields."""
+
+    async def check():
+        from tsb_tui.screens import device_login
+
+        async def broken(self):
+            raise RuntimeError("the unlock exploded")
+
+        monkeypatch.setattr(device_login.DeviceLoginPane, "_unlocked", broken)
+        stub = DeviceLoginApp(rounds=[password()])
+        with StubServer(stub) as url:
+            async with Rig(url, tmp_path=tmp_path, overrides=("size.auto_request=true",)) as rig:
+                await rig.login()
+                dlid = await _new(rig)
+                await _event(rig, "device_login_prompt")
+                pane = rig.app.workspace().front.device_login
+                slot = pane.slot
+                with _pipe_with("\n") as path:
+                    await rig.cmd("login_answer", device_login=dlid, prompt_id=1, answers_file=path)
+                result = await _event(rig, "device_login_result")
+                results = rig.events("device_login_result")
+                assert len(results) == 1, f"drive got more than one result: {results}"
+                assert result["outcome"] == "connected" and result["why"] == device_login.UNATTACHED
+                assert not {"session", "chip", "front", "you", "holder", "you_may_type", "size"} & result.keys()
+                assert not any(r.get("outcome") == "connect_failed" for r in results)
+                await wait_until(rig.pilot, lambda: slot not in rig.app.workspace().slots, "the closed slot")
+                assert slot.leaving and slot.session_id is not None, "the adopted slot was never taken off the screen"
+                assert not [s for s in rig.app.workspace().slots if s.device_gate and s.session_id is not None], \
+                    "a session stayed attached behind the recording gate"
+                assert any(device_login.UNATTACHED in n.message for n in rig.app._notifications), \
+                    "the person was never told the session is in the sessions list"
+    asyncio.run(check())
+
+
 def test_login_cancel_after_connected_says_the_session_lives_on(tmp_path):
     async def check():
         stub = DeviceLoginApp(rounds=[password()])

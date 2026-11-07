@@ -274,12 +274,20 @@ class DeviceLoginPane(VerticalScroll):
                 elif not self.adopted:
                     await self._connected_without_attachment()
                 else:
-                    # The slot keeps its attachment; the session exists and is in the sessions list. The pane is
-                    # hidden after adoption, so the words go to the slot's status line (`_complete`'s own route),
-                    # and drive's result is sent only if it has had none (`emit` drops it once `_complete` sent
-                    # the connected result).
-                    self.terminal.set_login_status(self.slot, POST_ADOPT)
-                    self.emit({"t": "device_login_result", "outcome": "connected", "why": POST_ADOPT})
+                    # The handoff decides (ruling 2026-11-07, round 3). Cleared: the slot keeps its attachment, the
+                    # pane is hidden so the words go to the slot's status line (`_complete`'s own route), and drive's
+                    # result is sent only if it has had none (`emit` drops it once `_complete` sent it).
+                    if self.slot.device_gate:
+                        # The handoff never completed: the pane never half-attaches. Close the slot (it detaches; the
+                        # session lives on), tell the person as the declined-gate path does — a toast, since a closed
+                        # slot shows no status row — and give drive its result only if it has had none. Attaching
+                        # later from the sessions list goes through the ordinary attach and its recording gate.
+                        self.terminal._close_slot(self.slot)
+                        self.app.toast(UNATTACHED, title="connected")
+                        self.emit({"t": "device_login_result", "outcome": "connected", "why": UNATTACHED})
+                    else:
+                        self.terminal.set_login_status(self.slot, POST_ADOPT)
+                        self.emit({"t": "device_login_result", "outcome": "connected", "why": POST_ADOPT})
         finally:
             if not self.adopted:
                 self.candidate = None
