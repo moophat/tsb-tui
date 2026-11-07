@@ -174,6 +174,71 @@ def test_drive_cancels_an_unknown_kind_and_reports_it(tmp_path):
     asyncio.run(check())
 
 
+def test_an_error_after_adoption_leaves_the_attachment_and_sends_connected_once(tmp_path, monkeypatch, wait_until):
+    """The device accepted the login and the slot took its attachment; an error finishing the login after adoption
+    never says connect_failed: drive gets one `connected` result with the pane's plain words and no attach fields,
+    the slot keeps its attachment, and the slot's status line carries those words."""
+
+    async def check():
+        from tsb_tui.screens import device_login, terminal
+
+        def broken(self, slot):
+            raise RuntimeError("the size request exploded")
+
+        monkeypatch.setattr(terminal.TerminalScreen, "request_device_size", broken)
+        stub = DeviceLoginApp(rounds=[password()])
+        with StubServer(stub) as url:
+            async with Rig(url, tmp_path=tmp_path, overrides=("size.auto_request=true",)) as rig:
+                await rig.login()
+                dlid = await _new(rig)
+                await _event(rig, "device_login_prompt")
+                pane = rig.app.workspace().front.device_login
+                slot = pane.slot
+                with _pipe_with("\n") as path:
+                    await rig.cmd("login_answer", device_login=dlid, prompt_id=1, answers_file=path)
+                result = await _event(rig, "device_login_result")
+                results = rig.events("device_login_result")
+                assert len(results) == 1, f"drive got more than one result: {results}"
+                assert result["outcome"] == "connected" and result["why"] == device_login.POST_ADOPT
+                assert not {"session", "chip", "front", "you", "holder", "you_may_type", "size"} & result.keys()
+                assert slot.session_id is not None
+                await wait_until(rig.pilot, lambda: slot.pump is not None and slot.pump.state.dump_seen,
+                                 "the adopted slot's dump")
+                assert slot.login_status == device_login.POST_ADOPT
+    asyncio.run(check())
+
+
+def test_an_error_after_the_connected_result_sends_drive_no_second_result(tmp_path, monkeypatch):
+    """Drive has its `connected` result with the attach fields; an error after it (here, in the Remember save) is
+    told on the slot's status line and sends drive nothing else: no second result, never connect_failed."""
+
+    async def check():
+        from tsb_tui.screens import device_login
+
+        async def broken_save(app, target, username, **kw):
+            raise RuntimeError("the save exploded")
+
+        monkeypatch.setattr(device_login.vault_flow, "save_login", broken_save)
+        stub = DeviceLoginApp(rounds=[password()])
+        with StubServer(stub) as url:
+            async with Rig(url, tmp_path=tmp_path, overrides=("size.auto_request=true",)) as rig:
+                await rig.login()
+                dlid = await _new(rig)
+                await _event(rig, "device_login_prompt")
+                pane = rig.app.workspace().front.device_login
+                # Drive never offers Remember, so the test names the candidate the save step takes.
+                pane.candidate = "x"
+                with _pipe_with("\n") as path:
+                    await rig.cmd("login_answer", device_login=dlid, prompt_id=1, answers_file=path)
+                first = await _event(rig, "device_login_result")
+                assert first["outcome"] == "connected" and "session" in first
+                await rig.pilot.pause(0.3)
+                results = rig.events("device_login_result")
+                assert len(results) == 1, f"drive got a second result: {results}"
+                assert not any(r.get("outcome") == "connect_failed" for r in results)
+    asyncio.run(check())
+
+
 def test_login_cancel_after_connected_says_the_session_lives_on(tmp_path):
     async def check():
         stub = DeviceLoginApp(rounds=[password()])

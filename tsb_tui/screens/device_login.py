@@ -4,7 +4,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import logging
 import re
+import traceback
 from typing import Any
 
 from rich.cells import cell_len
@@ -18,11 +20,14 @@ from .. import vault_flow
 from .._transport import ConnectionClosed, HandshakeError, HttpError, ProtocolError
 from .attach_confirm import AttachConfirmScreen
 
+LOG = logging.getLogger("tsb_tui.device_login")
+
 RECORDED = "The user name, the device's prompts and every answer will be recorded. Continue?"
 TOO_OLD = "This TUI is too old for this device login; update it."
 MORE_THAN_PASSWORD = "Not saved: the device asked for more than a password, and only a password is saved."
 LOST = "The device login's link to TSB was lost; a session may have opened."
 UNATTACHED = "The device accepted the login and the session opened, but this pane could not attach to it; it is in the sessions list."
+POST_ADOPT = "The session opened, but this pane hit an error finishing the login; it is in the sessions list."
 OUTCOMES = {
     "refused": "The device refused the login.", "timeout": "The device login timed out.",
     "password_change_requested": "The device requires a password change.",
@@ -255,13 +260,26 @@ class DeviceLoginPane(VerticalScroll):
                 self.emit({"t": "device_login_result", "outcome": "connect_failed",
                            "error": "request_failed", "why": LOST})
                 self.terminal._refresh_fleet()
-        except Exception:  # noqa: BLE001 — an unexpected error ends the device login visibly
+        except Exception as exc:  # noqa: BLE001 — an unexpected error is told by state: never connect_failed
+            # after the device accepted the login (ruling 2026-11-07). Logged as type + frames only: a message can
+            # carry device text or an answer, so it reaches neither the person nor drive, and never exc_info.
+            LOG.warning("unexpected %s\n%s", type(exc).__name__, "".join(traceback.format_tb(exc.__traceback__)))
             if self._live():
-                reason = OUTCOMES["connect_failed"]
-                self.finish(reason)
-                self.emit({"t": "device_login_result", "outcome": "connect_failed",
-                           "error": "request_failed", "why": reason})
-                self.terminal._refresh_fleet()
+                if not self.connected:
+                    reason = OUTCOMES["connect_failed"]
+                    self.finish(reason)
+                    self.emit({"t": "device_login_result", "outcome": "connect_failed",
+                               "error": "request_failed", "why": reason})
+                    self.terminal._refresh_fleet()
+                elif not self.adopted:
+                    await self._connected_without_attachment()
+                else:
+                    # The slot keeps its attachment; the session exists and is in the sessions list. The pane is
+                    # hidden after adoption, so the words go to the slot's status line (`_complete`'s own route),
+                    # and drive's result is sent only if it has had none (`emit` drops it once `_complete` sent
+                    # the connected result).
+                    self.terminal.set_login_status(self.slot, POST_ADOPT)
+                    self.emit({"t": "device_login_result", "outcome": "connected", "why": POST_ADOPT})
         finally:
             if not self.adopted:
                 self.candidate = None
@@ -438,6 +456,9 @@ class DeviceLoginPane(VerticalScroll):
                 fields = await self._connected_answer(session["id"])
                 self._emit({"ev": "device_login_result", "device_login": self.pending["device_login_id"],
                             "outcome": "connected", **fields})
+                # Drive has had its result: `emit`'s guard on a pending result sends drive no second one (ruling
+                # 2026-11-07), so a later error in this step gets no attach-field-free result.
+                self.pending = None
             if self.candidate is not None and self._live():
                 result = await vault_flow.save_login(self.app, self.target, self.user, password=self.candidate,
                                                      reference=proposed_reference(self.target, self.user))
