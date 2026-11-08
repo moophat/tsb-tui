@@ -1,6 +1,6 @@
 """Puts the pinned contract tree at `program/contract/` on sys.path before any test module
 imports `tsbc` or `tsb_contract_client`. The pin is the program submodule at its release
-(v0.12.1); `program/contract/` and `program/contract/client/` go first on sys.path so an import
+(v0.14.1); `program/contract/` and `program/contract/client/` go first on sys.path so an import
 that would otherwise resolve from site-packages, the sibling `../tsb-program`, or a stale
 copy of an older tag fails loudly instead. Nothing is copied, cached or resolved with git: the
 path is valid because it is the program release (`make contract-check` proves it). CI no longer
