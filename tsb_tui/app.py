@@ -44,8 +44,22 @@ from .theme import PALETTE_OUTER, TermPalette, build_theme, role_colours
 
 T = TypeVar("T")
 
+
+def default_engine_filename(platform: str | None = None) -> str:
+    plat = sys.platform if platform is None else platform
+    if plat == "win32":
+        return "ghostty-vt.dll"
+    if plat == "darwin":
+        return "libghostty-vt.dylib"
+    return "libghostty-vt.so"
+
+
+def default_library_path(platform: str | None = None) -> Path:
+    return Path("lib") / "tsb-tui" / default_engine_filename(platform)
+
+
 # Where the deploy hook installs the engine next to the venv (DT2), when `term.library` names none.
-DEFAULT_LIBRARY = Path("lib") / "tsb-tui" / "libghostty-vt.so"
+DEFAULT_LIBRARY = default_library_path()
 
 # The fixed warning text a session record carries when recording is active (session-record
 # schema.json): shown before a surface attaches or sends input (open_decisions §5, LOCKED).
@@ -68,7 +82,7 @@ class EngineError(Exception):
 def library_path(cfg: config_mod.Config) -> Path:
     """The engine's path: the `term.library` knob, else `<sys.prefix>/lib/tsb-tui/libghostty-vt.so` (DT2)."""
     named = cfg["term.library"]
-    return Path(named) if named else Path(sys.prefix) / DEFAULT_LIBRARY
+    return Path(named) if named else Path(sys.prefix) / default_library_path()
 
 
 def load_engine(cfg: config_mod.Config) -> GhosttyLib:
@@ -78,10 +92,12 @@ def load_engine(cfg: config_mod.Config) -> GhosttyLib:
     try:
         return load(path)
     except (LibraryError, AbiError) as exc:
+        default_file = default_engine_filename()
+        default_install = Path(sys.prefix) / default_library_path()
         raise EngineError(
             f"cannot load the terminal engine at {path} ({exc}); set the `term.library` knob "
-            f"(--set term.library=PATH, or TSB_TUI_TERM_LIBRARY) to a libghostty-vt.so, or install "
-            f"it at {Path(sys.prefix) / DEFAULT_LIBRARY}") from exc
+            f"(--set term.library=PATH, or TSB_TUI_TERM_LIBRARY) to a {default_file}, or install "
+            f"it at {default_install}") from exc
 
 
 class MenuProvider(Provider):

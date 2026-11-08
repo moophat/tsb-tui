@@ -21,6 +21,7 @@ import copy
 import hashlib
 import os
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -210,3 +211,32 @@ def test_load_refuses_a_missing_library(tmp_path: Path) -> None:
     missing = tmp_path / "libghostty-vt.so"
     with pytest.raises(G.LibraryError, match="libghostty-vt.so"):
         G.load(missing)
+
+
+def test_windows_default_engine_filename_and_error_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P1: on Windows default engine is ghostty-vt.dll and error message names it."""
+    from tsb_tui import app
+    from tsb_tui.config import load
+
+    monkeypatch.setenv("TSB_TUI_TERM_LIBRARY", "")
+    cfg = load(overrides={"term.library": ""})
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert app.library_path(cfg).name == "libghostty-vt.dylib"
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert app.library_path(cfg).name == "libghostty-vt.so"
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert app.library_path(cfg).name == "ghostty-vt.dll"
+    with pytest.raises(app.EngineError, match=r"ghostty-vt\.dll"):
+        app.load_engine(cfg)
+
+
+def test_load_engine_calls_add_dll_directory_on_windows(monkeypatch: pytest.MonkeyPatch, term_so: Path) -> None:
+    """P2: on Windows, before loading the engine, os.add_dll_directory() its folder."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    added: list[str] = []
+    monkeypatch.setattr(os, "add_dll_directory", lambda p: added.append(p), raising=False)
+    G.load(term_so)
+    assert added == [str(term_so.resolve().parent)]

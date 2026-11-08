@@ -102,7 +102,8 @@ def read_key_file(path: str) -> tuple[str | None, str | None]:
     opened without blocking and judged on the open descriptor, so a FIFO or a device is refused, never read, and a file
     that grows between the check and the read is still bounded."""
     try:
-        fd = os.open(os.path.expanduser(path), os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY)
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOCTTY", 0)
+        fd = os.open(os.path.expanduser(path), flags)
     except OSError:
         return None, "The TUI cannot read that file."
     try:

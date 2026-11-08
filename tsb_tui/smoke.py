@@ -52,7 +52,9 @@ def _password_from_file(path_str: str) -> str:
         print(f"ERROR: TSB_SUPERADMIN_PASSWORD_FILE={path_str} does not name a file", file=sys.stderr)
         raise SystemExit(1)
     mode = path.stat().st_mode
-    if mode & (stat.S_IRWXG | stat.S_IRWXO):
+    if sys.platform == "win32":
+        print("NOTICE: password file mode check skipped on Windows; stdin is the safer door", file=sys.stderr)
+    elif mode & (stat.S_IRWXG | stat.S_IRWXO):
         print(f"WARNING: TSB_SUPERADMIN_PASSWORD_FILE={path_str} is group- or other-readable; "
               "it should be owner-only", file=sys.stderr)
     value = path.read_text(encoding="utf-8").rstrip("\r\n")
