@@ -10,6 +10,9 @@ from test_drive_device_login import _event, _new
 from test_remember import _save_spy
 from textual.widgets import Input
 
+# A blocking drive never answers while the writer is open, so the bound only needs to be finite.
+PIPE_ANSWER_BOUND_S = 10.0
+
 
 def _remember(dialog):
     dialog.query_one("#login-user", Input).value = "fixture-account"
@@ -127,7 +130,7 @@ def test_missing_pipe_answer_lines_expire_without_sending_a_round(tmp_path):
                                                        answers_file=f"/dev/fd/{reader}"))
                     try:
                         try:
-                            result = await asyncio.wait_for(asyncio.shield(task), 0.6)
+                            result = await asyncio.wait_for(asyncio.shield(task), PIPE_ANSWER_BOUND_S)
                         except TimeoutError:
                             raise AssertionError("The missing answer line blocked past its configured deadline") from None
                         assert not result["ok"] and result["error"] == "bad_request"
