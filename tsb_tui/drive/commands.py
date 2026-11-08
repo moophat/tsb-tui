@@ -1064,14 +1064,14 @@ class Commands:
                 self._refuse(slot, "full_screen", "a program has taken the screen; say full_screen: true")
             if not taken and cmd.get("full_screen", False):
                 self._refuse(slot, "not_full_screen", "no program has taken the screen")
-        if ends_line and not cmd.get("full_screen", False) and not state.shell_marks.at_prompt:
-            self._refuse(slot, "not_at_prompt", "shell marks show the command has not returned to a prompt")
         if ends_line and not brake and not cmd.get("full_screen", False):
             check = self._prompts[slot.session_id]
             if check.why:
                 self._refuse(slot, "prompt_unusable", check.why)
             if check.compiled is not None and not check.compiled.matches(self.d.probe(slot).cursor_row().rstrip(" ")):
                 self._refuse(slot, "prompt_mismatch", f"cursor row does not match target prompt pattern {check.source!r}")
+        if ends_line and not cmd.get("full_screen", False) and not state.shell_marks.at_prompt:
+            self._refuse(slot, "not_at_prompt", "shell marks show the command has not returned to a prompt")
 
     async def _send(self, slot: SessionSlot, cmd: dict[str, Any], data: bytes, *, text: str | None = None,
                     names: list[str] | None = None, legacy: list[bytes] | None = None) -> dict[str, Any]:

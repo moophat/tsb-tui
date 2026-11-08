@@ -153,7 +153,8 @@ A gate refusal sends nothing and returns `sent: false`, `screen` (the whole bloc
 Earlier refusals (`bad_request`, `unknown_key`, `not_attached`, `not_available`, `not_typist`) keep their existing shape.
 drive never repairs a mismatch: no automatic Ctrl-C, q, retry or other typed input.
 
-Shells that emit OSC 133 marks give drive an extra check after all other send checks. After a live
+Shells that emit OSC 133 marks give drive an extra check after all other send checks, including the
+target prompt-pattern check. After a live
 prompt-start `A`, a line-ending `type` or `keys` send without `full_screen: true` is refused with
 `not_at_prompt` if a command-start `C` or command-finished `D` followed that prompt. Prompt-end `B`
 keeps the prompt state. A new `A` permits the send only if all the other checks pass too.
