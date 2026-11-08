@@ -394,6 +394,13 @@ class TerminalScreen(Screen):
         self._chord: str | None = None  # the first character of a two-character key after the leader (`:` of `:q`)
         # The dialogs open over this screen, innermost last; each has `sync()` and `status_target()`.
         self.dialogs: list[Any] = []
+        # A dialog opened for the session in front is recorded here against that session's id, so a session's
+        # end pops only its own dialogs and leaves the operator's unrelated ones open. Keyed by the pushed
+        # screen; pruned when a screen leaves the stack.
+        self._dialog_session: dict[Any, str] = {}
+        # The ended front slot whose ended screen is deferred behind an unrelated dialog that was open: it comes
+        # up when that dialog closes, and only if this session is still the front one then.
+        self._deferred_end_slot: SessionSlot | None = None
         self._menu_open = False
         self._leader_pending = False
         self._leader_timer: Timer | None = None
@@ -1368,7 +1375,7 @@ class TerminalScreen(Screen):
             if confirmed:
                 self.send_end(session_id)
 
-        self.app.push_screen(ConfirmEndScreen(self, label), decided)
+        self._push_session_dialog(ConfirmEndScreen(self, label), decided)
 
     def has_ended(self, session_id: str) -> bool:
         """Whether the record this screen holds for the session says it is over."""
@@ -2121,7 +2128,7 @@ class TerminalScreen(Screen):
             elif kill is False:
                 self.run_worker(self.answer_quiet(False), exclusive=False)
 
-        self.app.push_screen(ConfirmKillScreen(self, self._target()), decided)
+        self._push_session_dialog(ConfirmKillScreen(self, self._target()), decided)
 
     # -- the end of a session for this client (F10, D36) --
 
@@ -2150,12 +2157,53 @@ class TerminalScreen(Screen):
             # for the unlock and is shown after a re-check of the slot (it may have been closed, or left the front).
             self.app.screen_lock.after_unlock(lambda: self._show_end_dialog_after_lock(slot))
             return
+        self._prune_dialog_sessions()
+        self._pop_session_dialogs(slot)  # pop only this session's dialogs; leave the operator's unrelated ones open
+        self.refresh_status()  # the end is said in the status row at once, whether a dialog is open
+        if self.app.screen is not self:
+            # An unrelated dialog is still open over the workspace: the ended screen comes up when it closes, and only
+            # if this session is still the front one then (D36). The end words are already in the row.
+            self._deferred_end_slot = slot
+            return
+        self._show_ended_screen(slot)
+
+    def _show_ended_screen(self, slot: SessionSlot) -> None:
         slot.ended_dialog_shown = True
-        while self.app.screen is not self and len(self.app.screen_stack) > 1:
-            self.app.pop_screen()
         self._toast(slot.ended.title, "session", "warning")
         self.app.push_screen(EndedScreen(self, slot.ended, self._target(slot)))
         self.refresh_status()
+
+    def _pop_session_dialogs(self, slot: SessionSlot) -> None:
+        """Pop the screens recorded for this session's id from the top of the stack; stop at any screen that is not
+        one of them (the operator's unrelated dialog), so it stays open."""
+        while (self.app.screen is not self and len(self.app.screen_stack) > 1
+               and self._dialog_session.get(self.app.screen) == slot.session_id):
+            self._dialog_session.pop(self.app.screen, None)
+            self.app.pop_screen()
+
+    def _prune_dialog_sessions(self) -> None:
+        """Drop recorded dialogs that have left the stack (the operator closed them)."""
+        stack = self.app.screen_stack
+        for screen in list(self._dialog_session):
+            if screen not in stack:
+                del self._dialog_session[screen]
+
+    def _push_session_dialog(self, screen: Any, callback: Any = None) -> None:
+        """Push a dialog opened for the session in front and record which session it belongs to, so a session's end
+        pops only its own dialogs and leaves the operator's unrelated ones open."""
+        self.app.push_screen(screen, callback)
+        if self._front is not None:
+            self._dialog_session[screen] = self._front.session_id
+
+    def on_screen_resume(self) -> None:
+        """The last modal over the workspace closed: show a deferred end, and only if the session it ended is still
+        the front one (D36)."""
+        slot = self._deferred_end_slot
+        if (slot is not None and slot is self._front and not slot.closed and slot.ended is not None
+                and not slot.ended_dialog_shown):
+            self._deferred_end_slot = None
+            self._pop_session_dialogs(slot)
+            self._show_ended_screen(slot)
 
     def _show_end_dialog_after_lock(self, slot: SessionSlot) -> None:
         if (self.is_attached and self.app.workspace() is self and slot is self._front and not slot.closed
@@ -2680,10 +2728,10 @@ class TerminalScreen(Screen):
         self.app.open_menu()
 
     def do_who(self) -> None:
-        self.app.push_screen(WhosHereScreen(self))
+        self._push_session_dialog(WhosHereScreen(self))
 
     def do_size(self) -> None:
-        self.app.push_screen(SizeDialog(self))
+        self._push_session_dialog(SizeDialog(self))
 
     def do_auto_size(self) -> None:
         on = self.toggle_auto_size()
@@ -2693,7 +2741,7 @@ class TerminalScreen(Screen):
         self.action_detach()
 
     def do_answer(self) -> None:
-        self.app.push_screen(AnswerScreen(self, self._target(), self.pump.state.quiet_prompt))
+        self._push_session_dialog(AnswerScreen(self, self._target(), self.pump.state.quiet_prompt))
 
     async def do_take_back(self) -> None:
         """Hand the keyboard to this client: the owner takes it back from whoever types (D45)."""
@@ -2764,8 +2812,8 @@ class TerminalScreen(Screen):
             self.end_session(self._front.session_id)
 
     def do_event_log(self) -> None:
-        self.app.push_screen(EventLogScreen(self, f"Event log · {self._target()} · this client's view of the session",
-                                            lambda: event_log_lines(self), follow=True))
+        self._push_session_dialog(EventLogScreen(self, f"Event log · {self._target()} · this client's view of the session",
+                                                 lambda: event_log_lines(self), follow=True))
 
     def do_settings(self) -> None:
         self.app.push_screen(TextScreen(self, "Settings · the knobs in force, and where each came from",
