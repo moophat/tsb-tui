@@ -406,3 +406,55 @@ def test_lock_now_calls_the_operation_and_locks_this_screen_from_a_key_and_from_
             await wait_until(pilot, lambda: len(serve_app.calls("POST", "/auth/lock")) == 2, "the second operation")
 
     asyncio.run(check())
+
+
+def test_a_me_answer_held_past_the_login_lock_waits_for_unlock(serve, wait_until):
+    """A slow Me read must neither replace the lock screen nor reveal a workspace behind it."""
+    import threading
+
+    from tsb_tui.screens.terminal import TerminalScreen
+
+    class HeldMe(VaultServe):
+        def __init__(self):
+            super().__init__(locks={"screen_lock_after": 1})
+            self.me_started = threading.Event()
+            self.release_me = threading.Event()
+
+        def http(self, method, path, headers, body):
+            if (method, path) == ("GET", "/auth/me"):
+                self.me_started.set()
+                assert self.release_me.wait(10), "the held Me response was not released"
+            return super().http(method, path, headers, body)
+
+    async def check(current_login):
+        server, url = serve(HeldMe())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            clock = _wire(app)
+            login = app.screen
+            login.query_one("#username", Input).value = _serve.USER
+            login.query_one("#password", Input).value = _serve.PASSWORD
+            await pilot.click("#login-button")
+            try:
+                await wait_until(pilot, server.me_started.is_set, "the held post-login Me read")
+                lock = await _locked(app, pilot, wait_until, clock, 2)
+                assert app.workspace() is None
+                server.release_me.set()
+                await wait_until(pilot, lambda: bool(app.screen_lock._after), "the deferred workspace switch")
+                assert app.screen is lock and app.workspace() is None
+                assert not any(isinstance(screen, TerminalScreen) for screen in app.get_screen_stack())
+                if not current_login:
+                    app._login_gen += 1
+                await _unlock_with(lock, _serve.PASSWORD)
+                await wait_until(pilot, lambda: not app.screen_lock.locked and not app.screen_lock._after,
+                                 "unlock and deferred callbacks")
+                await pilot.pause()
+                if current_login:
+                    await wait_until(pilot, lambda: isinstance(app.screen, TerminalScreen), "the workspace after unlock")
+                else:
+                    assert app.screen is login and app.workspace() is None
+            finally:
+                server.release_me.set()
+
+    asyncio.run(check(True))
+    asyncio.run(check(False))

@@ -281,11 +281,18 @@ async def _tick_and_judge(rig: Rig, screen, flags: list[bool], counter: Counter,
         if not screen._fleet_dirty:
             break
     assert not screen._fleet_dirty, "a live trigger left a rebuild queued before the tick"
-    counter.reset()
-    clock[0] = new_clock
-    await rig.app_call(screen._tick)
-    assert flags == [needs_rebuild], (
-        f"a painted row's right-hand fields {'changed' if needs_rebuild else 'kept'} width: the tick said {flags}")
+    def tick() -> list[bool]:
+        # The periodic tick can run while the setup waits for a clean model. Measure only
+        # this explicit tick, with no event-loop turn between the clock change and its call.
+        counter.reset()
+        flags.clear()
+        clock[0] = new_clock
+        screen._tick()
+        return list(flags)
+
+    judged = await rig.app_call(tick)
+    assert judged == [needs_rebuild], (
+        f"a painted row's right-hand fields {'changed' if needs_rebuild else 'kept'} width: the tick said {judged}")
     # The tick marks the model dirty; the coalesced rebuild runs at the next refresh of the screen, which may
     # already have happened inside this step, so the mark is either still pending or spent on a rebuild.
     assert (screen._fleet_dirty or counter.models >= 1) == needs_rebuild, (

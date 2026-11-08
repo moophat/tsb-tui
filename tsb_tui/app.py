@@ -225,6 +225,7 @@ class TsbTuiApp(App):
         # Set once login succeeds (screens/login.py); read back by screens/new_session.py to
         # tell this principal's own connections apart from ones GET /sessions lists for others.
         self.username: str | None = None
+        self.permissions: frozenset[str] = frozenset()
         # The client's wall clock, read by the countdown (a test sets its own).
         self.wall_clock: Callable[[], float] = time.time
         # Sessions whose recording gate was shown in this run (D24): a later attach shows the text in
@@ -645,6 +646,7 @@ class TsbTuiApp(App):
         if isinstance(self.screen, LoginScreen):
             return
         self.stop_alerts()
+        self.permissions = frozenset()
         self.screen_lock.clear()      # the login ended: no lock, no settings, nothing held
         # Every screen above the base is removed first: `switch_screen` replaces only the top of the stack, so
         # a dialog on top (the end dialog) leaves the workspace mounted under the login page, and a mounted
