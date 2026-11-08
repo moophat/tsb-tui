@@ -71,7 +71,7 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 | `op` | Fields | Answers |
 |---|---|---|
 | `login` | `user`, `password_file` | `principal`. One driver is one login |
-| `sessions` | — | `sessions`: each with `session`, `target`, `state`, `owner`, `holder` (a login or null), `rec`, `ends_in`. Sessions open here come first |
+| `sessions` | optional `live` (bool, default false), `own` (bool, default false) | `sessions`: each with `session`, `target`, `state`, `owner`, `holder` (a login or null), `rec`, `ends_in`. Sessions open here come first. `live` keeps only sessions that have not ended (no end state); `own` keeps only sessions whose owner is this login. Both may be given |
 | `targets` | optional `query` | `targets`: the targets this login may see, each with `id`, `type`, `name`, `group`, `tags`, `discovered_by`, in id order, one page of them. The answer also carries `more`: true, and only then, when TSB has a next page that this command does not fetch. `query` is the Targets tab's: `type:`, `tag:` (repeatable), `group:` and `source:` words, matched by TSB; a word with no `field:` is `bad_request`. Every string is text: a control character in it (an escape included) is replaced by its picture, and a type you do not know is shown as it is |
 | `target_new` | `id`, `type` (`ssh` or `telnet`), `host`; optional `name`, `group`, `tags` (list), `port`, `user` (SSH only) | `target`: the record the core returned. The definition fields are top-level command fields; here `id` is the target id and is also echoed as the command correlation id. Drives the target form; a refusal keeps its fields and answers the core's error code and message. Credentials are saved separately with Save a login on the Targets tab |
 | `target_edit` | `target` (id); optional `type`, `name`, `group`, `tags` (list), `host`, `port`, `user` | `target`: the record the core returned. Reads the editable definition, fills the same form, applies supplied fields and submits the whole. Absent fields keep their values; `null` clears `name`, `group`, `tags`, `port` or `user`; `null` for `type` or `host` is `bad_request`. The target id never changes. Switching to telnet drops `user`. A refusal answers the core's error code and message |
@@ -240,6 +240,7 @@ Most devices you will meet are routers, switches and consoles, not Linux.
 - **Confirmations** such as `[confirm]` or `[yes/no]` wait for you. Wait for them with `screen`, then answer deliberately.
 - **Telnet and serial** sessions have no size: `size` answers with the reason `not_resizable`.
 - **Ctrl-C does not always interrupt.** IOS aborts some commands with Ctrl-^, which you send as the byte itself: `{"op": "type", "text": "\u001e", "look": "L1"}`. Check the device before relying on a key.
+- **A failed-attempt line before the banner.** Network gear may print a failed-attempt line (for example Junos's "Password incorrect.") before a successful login's banner, when its authentication order tries a source that refuses before one that accepts. TSB relays it verbatim. The prompt, not the first line, says whether you are in: wait for the prompt (`[>#]\\s*$`), not for the absence of an error line.
 
 One line per send: `type` allows one final CR only, never LF or CRLF. `keys` allows one line-end key last, by identity
 (`enter` with any modifiers, Ctrl-M or Ctrl-J in either case) or by a legacy payload ending in CR or LF. A tab and line
@@ -259,6 +260,28 @@ or mode 25. Past that age it gets the strict change check. An old attachment's l
 After silence, a bare Enter is `type "\r"` or a single key whose legacy payload is exactly CR (Enter, Ctrl-M).
 Ctrl-J is a line end but never that probe. If a probe also brings nothing back, stop with a brake or hand it to a person.
 After a probe, check that a prompt came back: an echo or unrelated output can end the silence too.
+
+### tmux: attach read-only, read, detach
+
+tmux takes the alternate screen, so every text send inside it says `full_screen: true`; control keys (the prefix) go
+alone with `keys`.
+
+```text
+> {"id":1,"op":"type","text":"tmux attach -r -t mysession\r","look":"last"}
+< {"id":1,"ok":true,"sent":true,...}
+> {"id":2,"op":"wait","until":{"screen":".*","settled_ms":true}}
+< {"id":2,"ok":true,"look":"L2","look_kind":"ordinary",...}
+> {"id":3,"op":"read","what":"reply"}
+< {"id":3,"ok":true,"lines":[...],"alt":true,...}
+> {"id":4,"op":"keys","keys":["ctrl+b"],"look":"L2"}
+< {"id":4,"ok":true,"sent":true,...}
+> {"id":5,"op":"keys","keys":["d"],"look":"last","full_screen":true}
+< {"id":5,"ok":true,"sent":true,...}
+```
+
+The first `type` runs at the shell prompt (no alt screen, no `full_screen`). After tmux attaches the alt screen is
+on: `read` reports `alt: true`, and the detach's `d` needs `full_screen: true`. The prefix `ctrl+b` is a control key
+and goes alone in `keys` with no `full_screen` statement.
 
 ## 10. Events
 
@@ -322,6 +345,12 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 | `request_failed` | a request to TSB failed (the network, or an error status); `why` has it |
 | `bad_request` | the command is malformed |
 | `internal` | a defect in drive itself; its trace is on stderr. Report it |
+| `target_auth_failed` | On `new`: the target refused the login TSB used for it (a credential TSB holds for you, or the login you supplied); it is not your TSB login. Do not retry in a loop — a retry sends the same login and the target refuses it again. Report it to whoever keeps that target's credential, or supply a login with `new` if you have one |
+| `target_connect_failed` | On `new`: the target could not be reached, or the connection failed before a session opened |
+| `no_resolving_credential` | On `new`: TSB holds no device login for your TSB login on this target. Ask the operator to map a credential to your login for that target |
+| `target_not_found` | On `new`: no such target. Send `targets` and use an `id` from it |
+| `login_recording_not_acknowledged` | On `new` with a supplied login: the deployment records device logins and you have not acknowledged it. Only if you accept that, repeat with `"recording_acknowledged": true` |
+| `hostkey_changed` | On `new`: the target's host key changed since TSB recorded it. TSB refuses the connection; report it to the operator — do not accept a changed key |
 
 ## 12. A short example
 

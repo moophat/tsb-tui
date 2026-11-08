@@ -371,16 +371,27 @@ class Commands:
 
     async def op_sessions(self, cmd: dict[str, Any]) -> dict[str, Any]:
         screen = self._screen()
+        live = cmd.get("live", False)
+        own = cmd.get("own", False)
+        if not isinstance(live, bool):
+            raise DriveError("bad_request", "live: expected true or false")
+        if not isinstance(own, bool):
+            raise DriveError("bad_request", "own: expected true or false")
         await self.d.refresh_fleet()
         now = self.d.app.wall_clock()
         rows = []
         for record in screen.listed_sessions():
+            state = record.get("state")
+            if live and state in ("killed", "terminated"):
+                continue
+            if own and record.get("owner") != self.d.app.username:
+                continue
             row: dict[str, Any] = {
-                "session": record["id"], "target": record.get("target_id"), "state": record.get("state"),
+                "session": record["id"], "target": record.get("target_id"), "state": state,
                 "owner": record.get("owner"), "holder": (record.get("control_holder") or {}).get("user"),
                 "rec": bool((record.get("recording") or {}).get("active"))}
             ends = parse_timestamp(record.get("ends_at"))
-            if ends is not None and record.get("state") not in ("killed", "terminated"):
+            if ends is not None and state not in ("killed", "terminated"):
                 row["ends_in"] = format_duration(ends.timestamp() - now)
             rows.append(row)
         return {"sessions": rows}

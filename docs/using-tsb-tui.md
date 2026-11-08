@@ -264,6 +264,9 @@ The full table is [GUIDE.md section 11](../tsb_tui/drive/GUIDE.md#11-errors). Th
 | `timeout` | A wait ran out. The answer has `tail`, the last screen lines | Read `tail`. The command may still be running |
 | `login_failed` | TSB refused the login. `why` is TSB's sentence | Check the login with the operator. Do not retry in a loop |
 | `login_recording_not_acknowledged` | The deployment records device logins | Only if you accept that, repeat with `"recording_acknowledged":true` |
+| `target_auth_failed` | On `new`: the target refused the login TSB used for it (a credential TSB holds for you, or the login you supplied); it is not your TSB login | Do not retry in a loop — a retry sends the same login and the target refuses it again. Report it to whoever keeps that target's credential (on staging, an issue on moophat/tsb-core), or supply a login with `new` if you have one |
+| `target_connect_failed` | On `new`: the target could not be reached, or the connection failed before a session opened | Check the target's address and reachability; report to the operator |
+| `hostkey_changed` | On `new`: the target's host key changed since TSB recorded it | Report to the operator. Do not accept a changed key |
 
 The gate's refusal codes are in section 5. After a refusal, the answer carries `sent: false`: nothing went out.
 
@@ -291,3 +294,7 @@ Most targets are routers, switches and consoles, not Linux.
   session per connection.
 - **Asynchronous output** (syslog, console messages) can end a quiet window too early. `terminal no monitor` or
   `logging synchronous` reduce it.
+- **A failed-attempt line before the banner.** Network gear may print a failed-attempt line (for example Junos's
+  "Password incorrect.") before a successful login's banner, when its authentication order tries a source that
+  refuses before one that accepts. TSB relays it verbatim. The prompt, not the first line, says whether you are in:
+  wait for the prompt (`[>#]\s*$`), not for the absence of an error line.
