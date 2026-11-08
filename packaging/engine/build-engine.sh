@@ -4,6 +4,18 @@ set -euo pipefail
 fail() { echo "build-engine.sh: $*" >&2; exit 1; }
 note() { echo "build-engine.sh: $*"; }
 
+check_active_units() {
+  local units status=0
+  units="$(systemctl list-units 'tsb-pml*.service' 'tsb-engine*.service' --state=active --no-legend --plain 2>/dev/null)" || status=$?
+  [ "$status" = 0 ] || fail "failed to query systemctl for active units"
+  [ -z "$units" ] || [ -z "$(printf '%s\n' "$units" | awk -v current="${TSB_ENGINE_BUILD_UNIT:-}" '$1 != current')" ] ||
+    fail "another node build or post-merge loop is running"
+}
+
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  return 0 2>/dev/null || true
+fi
+
 inside=0
 if [ "${1:-}" = --inside ]; then inside=1; shift; fi
 TARGET="${1:?usage: build-engine.sh x86_64-windows-gnu}"
@@ -45,8 +57,7 @@ VERSION="$(value upstream_version)+${GHOSTTY_COMMIT:0:7}"
 if [ "$inside" = 0 ]; then
   [ "${TSB_VT_BUILD_HOST_ROLE:-}" = integration-node ] ||
     fail "refusing to run outside the integration-node build role"
-  [ -z "$(systemctl list-units 'tsb-pml*.service' 'tsb-engine*.service' --state=active --no-legend --plain | awk -v current="${TSB_ENGINE_BUILD_UNIT:-}" '$1 != current')" ] ||
-    fail "another node build or post-merge loop is running"
+  check_active_units
   exec 9>/run/lock/tsb-engine-build.lock
   flock -n 9 || fail "another engine build holds the node lock"
   out="${TSB_ENGINE_BUILD_OUT:-$PWD}"
