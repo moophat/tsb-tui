@@ -66,9 +66,16 @@ class LoginScreen(Screen):
         self.app._login_gen += 1  # a login completed: a running sign-out checks this and leaves it alone
         self.app.screen_lock.apply(principal.get("locks"))      # the core's resolved lock settings (screen-lock step 1)
         self.app.permissions = frozenset()
-        self.app.call_api(self.app.client.me, on_done=self._on_me_done, on_error=self._on_login_error)
+        generation = self.app._login_gen
+        self.app.call_api(self.app.client.me, on_done=lambda me: self._on_me_done(me, generation),
+                          on_error=self._on_login_error)
 
-    def _on_me_done(self, me: dict) -> None:
+    def _on_me_done(self, me: dict, generation: int) -> None:
+        if generation != self.app._login_gen or not self.is_attached:
+            return
+        if self.app.screen_lock.locked:
+            self.app.screen_lock.after_unlock(lambda: self._on_me_done(me, generation))
+            return
         self.app.permissions = frozenset(me.get("permissions", ()))
         self.app.screen_lock.apply(me.get("locks"))
         self.app.apply_saved_look(self.app.username)

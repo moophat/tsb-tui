@@ -109,3 +109,36 @@ def test_drive_edit_keeps_empty_optional_values_until_null_clears_them(serve, tm
             assert "user" not in server.target_definitions["empty-optionals"]
             assert "tags" not in server.target_definitions["empty-optionals"]
     asyncio.run(check())
+
+
+def test_drive_target_writes_while_locked_send_nothing_and_queue_no_form(serve, tmp_path):
+    """Each target write refuses a locked screen before any read, mutation or queued form."""
+    from tsb_tui.screens.lock import LockScreen
+
+    async def check():
+        server, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            await rig.app_call(rig.app.screen_lock.lock)
+            await rig.pilot.pause()
+            lock = await rig.app_call(lambda: rig.app.screen)
+            assert isinstance(lock, LockScreen)
+            before = list(server.requests)
+            for command in (
+                {"op": "target_new", "id": "locked-target", "type": "ssh", "host": "example"},
+                {"op": "target_edit", "target": "normal", "name": "Must not read"},
+                {"op": "target_delete", "target": "normal", "confirm": True},
+            ):
+                result = await rig.app_call(rig.driver.execute, command)
+                assert result["ok"] is False and result["error"] == "not_available", result
+                assert "screen is locked" in result["why"], result
+                assert await rig.app_call(lambda: rig.app.screen) is lock
+                assert await rig.app_call(lambda: len(rig.app.screen_lock._held)) == 0
+                assert await rig.app_call(lambda: len(rig.app.screen_lock._after)) == 0
+                assert server.requests == before, "a locked target command sent a request to TSB"
+            await rig.app_call(lock._resumed, rig.app._login_gen)
+            await rig.pilot.pause()
+            assert not await rig.app_call(lambda: isinstance(rig.app.screen, TargetFormScreen))
+            assert "locked-target" not in server.targets
+
+    asyncio.run(check())

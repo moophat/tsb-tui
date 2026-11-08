@@ -455,10 +455,14 @@ class Commands:
         return fields
 
     async def op_target_new(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        if self.d.app.screen_lock.locked:
+            raise DriveError("not_available", "the screen is locked")
         self._screen()
         return await self._target_form(self._target_fields(cmd, editing=False), editing=False)
 
     async def op_target_edit(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        if self.d.app.screen_lock.locked:
+            raise DriveError("not_available", "the screen is locked")
         self._screen()
         target = _field(cmd, "target", str)
         changes = self._target_fields(cmd, editing=True)
@@ -478,6 +482,8 @@ class Commands:
         return await self._target_form(definition, editing=True)
 
     async def op_target_delete(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        if self.d.app.screen_lock.locked:
+            raise DriveError("not_available", "the screen is locked")
         screen = self._screen()
         if cmd.get("confirm") is not True:
             raise DriveError("bad_request", "deletion cannot be undone; send confirm: true; open sessions stay open")

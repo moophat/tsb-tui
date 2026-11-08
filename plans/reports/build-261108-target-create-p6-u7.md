@@ -94,3 +94,26 @@ The orchestrator-owned MANIFEST still names v0.12.1; the exact git tag/hash and 
 Only repository `tsb_tui/`, `tests/` and this report were changed. The pinned `program/` remains clean at v0.14.1. Ledgers, AGENTS.md, CLAUDE.md, external plans and requirement sources were not edited. No commits, pushes or releases were made. The pin bump was complete on entry; release and tsb-core pin remain the orchestrator's work, excluded by the brief.
 
 DONE_WITH_CONCERNS
+
+## Fix round
+
+**Model:** codex
+**Date:** 2026-11-08 (Asia/Saigon)
+**Base:** 83ed6b7 on feat/target-form, PR #28.
+
+The two Qodo findings were accepted and ruled by the orchestrator; this round implements only those fixes and their regression tests.
+
+- [x] **A post-login Me answer must not replace the lock.** `LoginScreen` captures the login generation when it requests Me. `_on_me_done` drops an answer for a replaced login or detached login screen. While locked, it queues the completion through `screen_lock.after_unlock`; the callback checks the generation again before applying Me and switching to the workspace.
+- [x] **Locked drive target writes must refuse without side effects.** `target_new`, `target_edit` and `target_delete` check the screen lock at entry and raise the existing `not_available` error with `why: "the screen is locked"`, before validation, a target read/write or opening a form.
+- [x] Add regression coverage against the contract fixture server: `tests/test_screen_lock.py::test_a_me_answer_held_past_the_login_lock_waits_for_unlock` holds Me until the served lock engages, verifies no workspace exists while locked, then checks both a current login's completion after a real password unlock and a superseded generation's discarded completion. `tests/test_drive_target_writes.py::test_drive_target_writes_while_locked_send_nothing_and_queue_no_form` runs all three commands with the lock screen up, asserting the error, unchanged TSB requests, no queued screens/callbacks and no form after unlock.
+- [x] Focused regression command: **2 passed**, zero skipped, in 2.90 s. An initial run had a test-server override signature error, corrected before this passing result; it is not counted as passing evidence.
+- [x] `make lint`: **66 passed**, zero skipped, in 7.80 s; ruff, import lint, leak check and engine checks passed (docs guard: non-PR no-op).
+- [x] `make test`: **1741 passed**, zero skipped, **1 warning**, in 1683.63 s (28:03), exit 0.
+
+No additional design decision was needed. No ledgers, program files, external plans, commits or pushes were changed by this round.
+
+The full run emitted `PytestUnraisableExceptionWarning` during `tests/test_drive_events.py::test_the_harness_profile_counts_output_and_the_drive_profile_does_not`: an exception was ignored in the existing `TerminalScreen._attach_and_pump` coroutine (`KeyError: '__import__'`). That warning path was not changed or investigated in this two-finding round. Both required commands passed with zero skips; the warning is the reason for DONE_WITH_CONCERNS.
+
+Final review confirmed the captured generation is checked both when Me arrives and when its deferred completion runs, and that each drive guard precedes all target-command requests and form construction. The diff is limited to the two production files, the two regression test files and this report. No further design decision was encountered, and no commit or push was made.
+
+DONE_WITH_CONCERNS
