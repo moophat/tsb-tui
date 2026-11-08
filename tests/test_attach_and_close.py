@@ -14,9 +14,14 @@ guessing "killed" for anything it does not recognize.
 from __future__ import annotations
 
 import asyncio
+import gc
+import warnings
 from collections.abc import Callable
 
-from stub_server import SlowChunkedApp, StubServer
+from device_login_support import password
+from stub_server import DeviceLoginApp, SlowChunkedApp, StubServer
+from tsb_contract_client.device_login import AsyncDeviceLogin
+from workspace_support import fixture_login
 
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.login import LoginScreen
@@ -196,5 +201,49 @@ def test_a_session_killed_while_attached_shows_the_end_and_is_not_reattached() -
                 messages = await _wait_for_notification(app, pilot, "Session ended · killed")
                 assert "Session ended · killed (close 4010)" in messages
                 assert stub.attaches == 1, "a killed session must not be reattached"
+
+    asyncio.run(_check())
+
+
+def test_a_slot_closed_before_its_pump_started_closes_the_handed_over_device_login_socket() -> None:
+    """A device login answered to the end hands its socket to the terminal as an attachment
+    (`adopt_device_attachment`), and the slot can be closed before the pump worker ever runs its
+    body: cancelling a worker whose task never stepped leaves the handed-over socket open, and the
+    coroutine is collected un-awaited (a RuntimeWarning). The close must close both — the socket
+    the device login handed over, and the never-started coroutine."""
+
+    async def _check() -> None:
+        stub = DeviceLoginApp(rounds=[password()], outcome="connected")
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(120, 40)) as pilot:
+                screen = await fixture_login(app, pilot)
+                pending = app.client.create_device_login("normal", "fixture-account",
+                                                          "xterm-256color", 120, 40)
+                login = await AsyncDeviceLogin.open(app.client._attach_url(), pending,
+                                                    ssl_context=app.client._ssl())
+                await login.answer(1, ["fixture-answer"])
+                result = None
+                while result is None:
+                    frame = await login.recv()
+                    if frame is not None and frame.get("t") == "device_login_result":
+                        result = frame
+                assert result["outcome"] == "connected"
+                attachment = await login.attachment()
+                assert not attachment._ws.closed, "the handed-over socket is open before the close"
+                slot = screen._add_slot({"id": "pending-handoff", "target_id": "normal",
+                                         "state": "live", "owner": app.username}, defer_attach=True)
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    screen.adopt_device_attachment(slot, attachment)
+                    screen._close_slot(slot)
+                    await pilot.pause()
+                    del slot
+                    gc.collect()
+                    never = [w for w in caught if issubclass(w.category, RuntimeWarning)
+                             and "coroutine" in str(w.message)]
+                assert attachment._ws.closed, "the slot closed and left the handed-over socket open"
+                assert not never, (
+                    f"a never-started coroutine was collected un-awaited: {[str(w.message) for w in never]}")
 
     asyncio.run(_check())

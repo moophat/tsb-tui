@@ -313,6 +313,10 @@ class SessionSlot:
     device_login: Any = None
     device_gate: bool = False
     device_size_pending: bool = False
+    # The socket the device login handed over, and the pump's coroutine before its worker ever ran: once the slot
+    # closes without a pump, the close owns both (the worker's cancel never reaches a task that never stepped).
+    device_attachment: Any = None
+    attach_coro: Any = None
     login_status: str = ""
     login_status_until: float = 0.0
 
@@ -1493,8 +1497,9 @@ class TerminalScreen(Screen):
             return
         slot.session_id = attachment.session["id"]
         slot.record = dict(attachment.session)
-        slot.worker = self.run_worker(self._attach_and_pump(slot, *self.fit_size(), attachment=attachment),
-                                      exclusive=False)
+        slot.device_attachment = attachment
+        slot.attach_coro = self._attach_and_pump(slot, *self.fit_size(), attachment=attachment)
+        slot.worker = self.run_worker(slot.attach_coro, exclusive=False)
         self._mark_fleet_dirty()
 
     def request_device_size(self, slot: SessionSlot) -> None:
@@ -2270,6 +2275,15 @@ class TerminalScreen(Screen):
             slot.device_login.remove()
         if cancel and slot.worker is not None:
             slot.worker.cancel()
+        if slot.pump is None:
+            # The worker never ran its body, so nothing owns the socket the device login handed over: close it
+            # here, and close the never-started coroutine so its collection leaves no "never awaited" warning.
+            if slot.attach_coro is not None:
+                slot.attach_coro.close()
+                slot.attach_coro = None
+            if slot.device_attachment is not None:
+                self._spawn(slot.device_attachment.close())
+                slot.device_attachment = None
         if slot.pump is not None:
             # The pump's feed thread (DT20): shut it down before the grid is freed. A worker already
             # inside `stop` has shut it down, which is harmless.
