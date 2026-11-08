@@ -4,7 +4,9 @@ from __future__ import annotations
 import asyncio
 import functools
 import inspect
+import os
 import time
+from pathlib import Path
 
 import pytest
 from drive_support import Rig
@@ -281,7 +283,7 @@ async def test_transport_failure_retries_and_rechecks_output_after_await(rig, se
 
     async def recovering(current):
         await output(rig, server, sid, b"new output")
-        patch.setattr(rig.app.client, "get_target", lambda target: {"prompt_pattern": ".*"})
+        patch.setattr(rig.app.client, "get_target", lambda target: {"id": target, "prompt_pattern": ".*"})
         await original(current)
 
     patch.setattr(rig.driver.commands, "_read_prompt", recovering)
@@ -307,7 +309,7 @@ async def test_no_look_error_precedes_unusable_pattern(rig, server, sid, slot, c
 
 @scenario(pattern=".*")
 async def test_non_object_target_record_is_retried(rig, server, sid, slot, clock, patch):
-    responses = iter([None, [], {"prompt_pattern": "never-matches"}])
+    responses = iter([None, [], {"id": slot.target, "prompt_pattern": "never-matches"}])
     patch.setattr(rig.app.client, "get_target", lambda target: next(responses))
     await rig.cmd("detach")
     await rig.attach(sid)
@@ -325,3 +327,100 @@ def test_new_reads_target_pattern_for_the_opened_session(serve, tmp_path):
             assert server.target_reads >= 1
             refused(await send_line(rig, look=await look(rig)), "prompt_mismatch")
     asyncio.run(check())
+
+
+@scenario(pattern=".*")
+async def test_attach_does_not_front_a_slot_closed_during_target_read(rig, server, sid, slot, clock, patch):
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+
+    def target_record(target):
+        entered.set()
+        assert release.wait(5)
+        return {"id": target, "prompt_pattern": ".*"}
+
+    patch.setattr(rig.app.client, "get_target", target_record)
+    fronts = []
+    original = rig.driver.screen().show_front
+    patch.setattr(rig.driver.screen(), "show_front", lambda current: (fronts.append(current), original(current))[-1])
+    pending = rig.send("attach", session=sid)
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        await rig.app_call(rig.driver.screen().action_detach)
+    finally:
+        release.set()
+    answer = await pending
+    assert answer.get("error") == "attach_failed", answer
+    assert fronts == [slot]  # the initial existing-slot switch, never after the read
+    assert rig.driver.screen().front is None
+    assert sid not in rig.driver.commands._prompts
+
+
+def test_attach_with_send_gate_off_never_reads_target(serve, tmp_path, monkeypatch):
+    async def check():
+        _server, url = serve(PromptApp())
+        sid = make_session(url)
+        path = Path(os.environ["XDG_CONFIG_HOME"]) / "tsb-tui" / "config.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("[drive]\nsend_gate = false\n")
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            reads = []
+            def unexpected(target):
+                reads.append(target)
+                raise OSError("target read must not run")
+            monkeypatch.setattr(rig.app.client, "get_target", unexpected)
+            await rig.attach(sid)
+            assert reads == []
+            assert rig.driver.commands._prompts == {}
+    asyncio.run(check())
+
+
+@scenario(pattern=".*")
+async def test_target_record_id_must_match_and_is_retried(rig, server, sid, slot, clock, patch):
+    # Exercise both malformed identities in one scenario: neither may disable the pattern.
+    reads = []
+    records = iter([{"prompt_pattern": ".*"}, {"prompt_pattern": ".*"},
+                    {"id": "another-target", "prompt_pattern": ".*"},
+                    {"id": slot.target, "prompt_pattern": "never-matches"}])
+    def target_record(target):
+        reads.append(target)
+        return next(records)
+    patch.setattr(rig.app.client, "get_target", target_record)
+    await rig.cmd("detach")
+    await rig.attach(sid)
+    for _ in range(2):
+        answer = await send_line(rig, look=await look(rig))
+        refused(answer, "prompt_unusable")
+        assert "id" in answer["why"] and "target" in answer["why"]
+    refused(await send_line(rig, look=await look(rig)), "prompt_mismatch")
+    assert reads == [slot.target] * 4
+
+
+@scenario(pattern=".*")
+async def test_prompt_cache_is_dropped_on_every_close_without_losing_history(rig, server, sid, slot, clock, patch):
+    commands = rig.driver.commands
+    history = commands.history(sid)
+    history.count = 7
+    for route in ("detach", "remove", "release", "end"):
+        screen = rig.driver.screen()
+        current = screen.slot_for(sid)
+        assert sid in commands._prompts
+        if route == "detach":
+            await rig.cmd("detach")
+        elif route == "remove":
+            await asyncio.to_thread(rig.app.client.remove_client, sid, current.pump.state.client_id)
+            await rig.driver.condition(lambda current=current: True if current.pump.state.closed else None, sid, "removal")
+        elif route == "release":
+            await rig.app_call(screen._release_slot, current)
+        else:
+            assert (await rig.cmd("end", session=sid, confirm=True))["ok"]
+            assert (await rig.cmd("wait", session=sid, until={"ended": True}))["ok"]
+        assert sid not in commands._prompts, route
+        assert commands.history(sid) is history and history.count == 7
+        if route != "end":
+            if screen.slot_for(sid) is not None:
+                await rig.app_call(screen._close_slot, current)
+            await rig.attach(sid)
+            assert commands._prompts[sid].state is screen.slot_for(sid).pump.state

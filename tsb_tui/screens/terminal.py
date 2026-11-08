@@ -2276,6 +2276,7 @@ class TerminalScreen(Screen):
             slot.pump.shutdown_feed()
         slot.canvas.backend.set_reply_callback(None)
         slot.canvas.close()
+        self.app.tapped(slot.session_id, TAP_SLOT_CLOSED, slot)
 
     def _close_slot(self, slot: SessionSlot, *, cancel: bool = True) -> None:
         """Stop this session's attachment and take it off the screen. The session lives on. When it was in front,
@@ -2287,7 +2288,6 @@ class TerminalScreen(Screen):
         slot.leaving = True
         self._release_slot(slot, cancel=cancel)
         slot.canvas.remove()
-        self.app.tapped(slot.session_id, TAP_SLOT_CLOSED, slot)
         if slot is self._front:
             self._front = None
             if self.slots:

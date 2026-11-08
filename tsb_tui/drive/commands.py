@@ -783,7 +783,10 @@ class Commands:
     async def _attached_answer(self, screen: TerminalScreen, sid: str) -> dict[str, Any]:
         """Wait for the session to be attached, bring it forward and say how it stands: `attach`'s answer."""
         slot = await self.d.attached(sid)
-        await self._read_prompt(slot)
+        if self.d.cfg["drive.send_gate"]:
+            await self._read_prompt(slot)
+        if slot.closed or slot.pump.state.closed or screen.slot_for(sid) is not slot:
+            raise DriveError("attach_failed", slot.left or "the session could not be attached", session=sid)
         screen.show_front(slot)
         state = slot.pump.state
         you_may_type = state.may_control(state.client_id)
@@ -837,6 +840,9 @@ class Commands:
 
     def history(self, sid: str) -> SendHistory:
         return self.send_history.setdefault(sid, SendHistory())
+
+    def note_closed(self, sid: str) -> None:
+        self._prompts.pop(sid, None)
 
     def note_output(self, sid: str) -> None:
         # Called from the processor's output event, never from the socket reader or an attach dump.
@@ -953,6 +959,10 @@ class Commands:
             return
         if not isinstance(record, dict):
             check.why = "target record could not be read: response is not an object"
+            check.retry = True
+            return
+        if record.get("id") != slot.target:
+            check.why = "target record could not be read: id is missing or does not match the slot target"
             check.retry = True
             return
         try:
