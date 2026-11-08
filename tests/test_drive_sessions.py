@@ -110,3 +110,72 @@ def test_sessions_lists_sessions_the_driver_does_not_own_and_marks_those_open_he
             assert len(serve_app.clients.get(never_lent, {})) == 0, "listing a session attached nothing"
 
     asyncio.run(check())
+
+
+def test_sessions_live_keeps_only_sessions_that_have_not_ended(serve, tmp_path) -> None:
+    """#26 item 2: `live` keeps only sessions with no end state. A killed session is excluded; a detached one is kept."""
+
+    async def check() -> None:
+        serve_app, url = serve()
+        mine = make_session(url, _serve.USER)
+        killed = make_session(url, _serve.USER)
+        with serve_app.lock:
+            serve_app._kill(serve_app.sessions[killed])
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login(_serve.USER)
+            all_rows = {row["session"] for row in (await rig.cmd("sessions"))["sessions"]}
+            assert mine in all_rows and killed in all_rows
+            live_rows = {row["session"] for row in (await rig.cmd("sessions", live=True))["sessions"]}
+            assert mine in live_rows and killed not in live_rows
+
+    asyncio.run(check())
+
+
+def test_sessions_own_keeps_only_sessions_owned_by_this_login(serve, tmp_path) -> None:
+    """#26 item 2: `own` keeps only sessions whose owner is this login."""
+
+    async def check() -> None:
+        _app, url = serve()
+        mine = make_session(url, _serve.USER)
+        theirs = make_session(url, _serve.PEER)
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login(_serve.USER)
+            all_rows = {row["session"] for row in (await rig.cmd("sessions"))["sessions"]}
+            assert mine in all_rows and theirs in all_rows
+            own_rows = {row["session"] for row in (await rig.cmd("sessions", own=True))["sessions"]}
+            assert mine in own_rows and theirs not in own_rows
+
+    asyncio.run(check())
+
+
+def test_sessions_live_and_own_together_filter_both_ways(serve, tmp_path) -> None:
+    """#26 item 2: both filters together. A killed session of this login is excluded by live; a live session of
+    another owner is excluded by own; a live session of this login passes both."""
+
+    async def check() -> None:
+        serve_app, url = serve()
+        mine_live = make_session(url, _serve.USER)
+        mine_dead = make_session(url, _serve.USER)
+        make_session(url, _serve.PEER)
+        with serve_app.lock:
+            serve_app._kill(serve_app.sessions[mine_dead])
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login(_serve.USER)
+            rows = {row["session"] for row in (await rig.cmd("sessions", live=True, own=True))["sessions"]}
+            assert rows == {mine_live}
+
+    asyncio.run(check())
+
+
+def test_sessions_non_boolean_live_or_own_answers_bad_request(serve, tmp_path) -> None:
+    """#26 item 2: a non-boolean value for `live` or `own` is bad_request."""
+
+    async def check() -> None:
+        _app, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            for field in ("live", "own"):
+                answer = await rig.cmd("sessions", **{field: "yes"})
+                assert answer["ok"] is False and answer["error"] == "bad_request", (field, answer)
+
+    asyncio.run(check())

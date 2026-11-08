@@ -977,6 +977,9 @@ def test_the_guide_names_every_command_event_and_error_drive_has() -> None:
     built = set(re.findall(r'DriveError\(\s*"([a-z_]+)"', sources)) | set(re.findall(r'Done\(\s*False,\s*"([a-z_]+)"', sources))
     built |= set(re.findall(r'_refuse\(slot, "([a-z_]+)"', sources))
     built |= {"internal"}
+    relayed = {"no_resolving_credential", "target_not_found", "login_recording_not_acknowledged",
+              "target_auth_failed", "target_connect_failed", "hostkey_changed"}
+    built |= relayed
     table = guide.split("## 11. Errors")[1].split("## 12.")[0]
     told = {code for row in re.findall(r"^\| ([^|]+) \|", table, re.MULTILINE) for code in re.findall(r"`([a-z_]+)`", row)}
     told.discard("error")  # the table's own header cell
