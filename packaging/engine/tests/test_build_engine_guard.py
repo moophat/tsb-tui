@@ -49,6 +49,8 @@ def test_guard_refuses_before_docker_when_systemctl_fails(tmp_path):
 
     assert result.returncode != 0
     assert "failed to query systemctl for active units" in result.stderr
+    assert "exit status 1" in result.stderr
+    assert "systemctl: connection refused" in result.stderr
     assert not docker_log.exists(), "script called docker instead of refusing at guard"
 
 
@@ -75,6 +77,8 @@ def test_guard_function_refuses_when_systemctl_fails(tmp_path):
 
     assert result.returncode != 0
     assert "failed to query systemctl for active units" in result.stderr
+    assert "exit status 1" in result.stderr
+    assert "systemctl: connection to bus failed" in result.stderr
 
 
 def test_guard_function_passes_when_systemctl_succeeds_with_no_units(tmp_path):

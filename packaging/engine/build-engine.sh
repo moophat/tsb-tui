@@ -5,9 +5,12 @@ fail() { echo "build-engine.sh: $*" >&2; exit 1; }
 note() { echo "build-engine.sh: $*"; }
 
 check_active_units() {
-  local units status=0
-  units="$(systemctl list-units 'tsb-pml*.service' 'tsb-engine*.service' --state=active --no-legend --plain 2>/dev/null)" || status=$?
-  [ "$status" = 0 ] || fail "failed to query systemctl for active units"
+  local units err_file err status=0
+  err_file="$(mktemp)"
+  units="$(systemctl list-units 'tsb-pml*.service' 'tsb-engine*.service' --state=active --no-legend --plain 2>"$err_file")" || status=$?
+  err="$(cat "$err_file" 2>/dev/null || true)"
+  rm -f "$err_file"
+  [ "$status" = 0 ] || fail "failed to query systemctl for active units (exit status $status)${err:+: $err}"
   [ -z "$units" ] || [ -z "$(printf '%s\n' "$units" | awk -v current="${TSB_ENGINE_BUILD_UNIT:-}" '$1 != current')" ] ||
     fail "another node build or post-merge loop is running"
 }
