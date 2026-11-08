@@ -5,14 +5,24 @@ fail() { echo "build-engine.sh: $*" >&2; exit 1; }
 note() { echo "build-engine.sh: $*"; }
 
 check_active_units() {
-  local units err_file err status=0
+  local units err_file err status=0 conflict
   err_file="$(mktemp)"
-  units="$(systemctl list-units 'tsb-pml*.service' 'tsb-engine*.service' --state=active --no-legend --plain 2>"$err_file")" || status=$?
+  units="$(systemctl list-units 'tsb-pml*.service' 'tsb-engine*.service' --state=active,activating,reloading --no-legend --plain 2>"$err_file")" || status=$?
   err="$(cat "$err_file" 2>/dev/null || true)"
   rm -f "$err_file"
   [ "$status" = 0 ] || fail "failed to query systemctl for active units (exit status $status)${err:+: $err}"
-  [ -z "$units" ] || [ -z "$(printf '%s\n' "$units" | awk -v current="${TSB_ENGINE_BUILD_UNIT:-}" '$1 != current')" ] ||
-    fail "another node build or post-merge loop is running"
+  if [ -n "$units" ]; then
+    conflict="$(printf '%s\n' "$units" | awk -v current="${TSB_ENGINE_BUILD_UNIT:-}" '
+      !$1 || $1 == current { next }
+      {
+        state = ($3 ~ /^(active|activating|reloading)$/) ? $3 : ($2 ? $2 : "unknown")
+        item = $1 " (" state ")"
+        out = (out ? out ", " : "") item
+      }
+      END { if (out) print out }
+    ')"
+    [ -z "$conflict" ] || fail "another node build or post-merge loop is running: $conflict"
+  fi
 }
 
 if [ "${BASH_SOURCE[0]}" != "$0" ]; then

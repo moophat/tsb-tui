@@ -154,3 +154,34 @@ def test_guard_function_ignores_current_build_unit(tmp_path):
 
     assert result.returncode == 0
     assert result.stderr == ""
+
+
+def test_guard_function_refuses_when_activating_unit_running(tmp_path):
+    fake_bin = tmp_path / "bin"
+    call_log = tmp_path / "systemctl.log"
+    make_executable(
+        fake_bin / "systemctl",
+        f"""
+        #!/bin/sh
+        echo "$*" >> "{call_log}"
+        echo "tsb-pml-worker.service activating start-pre"
+        exit 0
+        """,
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+
+    result = subprocess.run(
+        ["bash", "-c", f". '{BUILD_ENGINE}' && check_active_units"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "another node build or post-merge loop is running" in result.stderr
+    assert "tsb-pml-worker.service" in result.stderr
+    assert "activating" in result.stderr
+    assert "--state=active,activating,reloading" in call_log.read_text()
+
