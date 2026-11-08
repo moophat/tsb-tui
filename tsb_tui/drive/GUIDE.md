@@ -240,7 +240,7 @@ Most devices you will meet are routers, switches and consoles, not Linux.
 - **Confirmations** such as `[confirm]` or `[yes/no]` wait for you. Wait for them with `screen`, then answer deliberately.
 - **Telnet and serial** sessions have no size: `size` answers with the reason `not_resizable`.
 - **Ctrl-C does not always interrupt.** IOS aborts some commands with Ctrl-^, which you send as the byte itself: `{"op": "type", "text": "\u001e", "look": "L1"}`. Check the device before relying on a key.
-- **A failed-attempt line before the banner.** Network gear may print a failed-attempt line (for example Junos's "Password incorrect.") before a successful login's banner, when its authentication order tries a source that refuses before one that accepts. TSB relays it verbatim. The prompt, not the first line, says whether you are in: wait for the prompt (`[>#]\\s*$`), not for the absence of an error line.
+- **A failed-attempt line before the banner.** Network gear may print a failed-attempt line (for example Junos's "Password incorrect.") before a successful login's banner, when its authentication order tries a source that refuses before one that accepts. TSB relays it verbatim. The prompt, not the first line, says whether you are in: wait for the prompt (`{"prompt": "[>#]\\s*$"}`), not for the absence of an error line.
 
 One line per send: `type` allows one final CR only, never LF or CRLF. `keys` allows one line-end key last, by identity
 (`enter` with any modifiers, Ctrl-M or Ctrl-J in either case) or by a legacy payload ending in CR or LF. A tab and line
@@ -269,7 +269,7 @@ alone with `keys`.
 ```text
 > {"id":1,"op":"type","text":"tmux attach -r -t mysession\r","look":"last"}
 < {"id":1,"ok":true,"sent":true,...}
-> {"id":2,"op":"wait","until":{"screen":".*","settled_ms":true}}
+> {"id":2,"op":"wait","until":{"screen":"\\[mysession\\]","settled_ms":true}}
 < {"id":2,"ok":true,"look":"L2","look_kind":"ordinary",...}
 > {"id":3,"op":"read","what":"reply"}
 < {"id":3,"ok":true,"lines":[...],"alt":true,...}
@@ -281,7 +281,8 @@ alone with `keys`.
 
 The first `type` runs at the shell prompt (no alt screen, no `full_screen`). After tmux attaches the alt screen is
 on: `read` reports `alt: true`, and the detach's `d` needs `full_screen: true`. The prefix `ctrl+b` is a control key
-and goes alone in `keys` with no `full_screen` statement.
+and goes alone in `keys` with no `full_screen` statement. Step 2 waits for tmux's status line, which shows the
+session's name in brackets.
 
 ## 10. Events
 

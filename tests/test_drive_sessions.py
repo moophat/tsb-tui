@@ -135,7 +135,7 @@ def test_sessions_own_keeps_only_sessions_owned_by_this_login(serve, tmp_path) -
     """#26 item 2: `own` keeps only sessions whose owner is this login."""
 
     async def check() -> None:
-        serve_app, url = serve()
+        _app, url = serve()
         mine = make_session(url, _serve.USER)
         theirs = make_session(url, _serve.PEER)
         async with Rig(url, tmp_path=tmp_path) as rig:
@@ -156,7 +156,7 @@ def test_sessions_live_and_own_together_filter_both_ways(serve, tmp_path) -> Non
         serve_app, url = serve()
         mine_live = make_session(url, _serve.USER)
         mine_dead = make_session(url, _serve.USER)
-        theirs_live = make_session(url, _serve.PEER)
+        make_session(url, _serve.PEER)
         with serve_app.lock:
             serve_app._kill(serve_app.sessions[mine_dead])
         async with Rig(url, tmp_path=tmp_path) as rig:
