@@ -32,7 +32,8 @@ def _guide_commands() -> list[dict]:
 
 def _sent_matches_guide(guide: list[dict], sent: list[dict]) -> None:
     """The guide's commands and the test's sends cannot drift. Compare op order, the wait's `until`, and each send's
-    `keys`, `text` and `full_screen`. `id` and `look` are placeholders in the guide, so never compared."""
+    `keys`, `text` and `full_screen`. `id` is a placeholder in the guide, so never compared. `look` is compared only
+    when the guide gives the literal "last" — a minted look (e.g. "L2") is a placeholder and stays uncompared."""
     assert [c["op"] for c in guide] == ["type", "wait", "read", "keys", "keys"]
     assert [c["op"] for c in sent] == [c["op"] for c in guide]
     for g, s in zip(guide, sent):
@@ -40,6 +41,8 @@ def _sent_matches_guide(guide: list[dict], sent: list[dict]) -> None:
             assert g["until"] == s.get("until"), (g, s)
         for field in ("keys", "text", "full_screen"):
             assert g.get(field, False) == s.get(field, False), (g, s, field)
+        if g.get("look") == "last":
+            assert s.get("look") == "last", (g, s)
 
 
 def test_tmux_read_only_recipe_passes_the_gate(serve, tmp_path) -> None:
@@ -56,10 +59,9 @@ def test_tmux_read_only_recipe_passes_the_gate(serve, tmp_path) -> None:
             assert (await rig.cmd("wait", until={"screen": "\\$"}, timeout_ms=5000))["ok"]
 
             sent = []  # the 5 commands the guide lists, in the order the test runs them; scaffolding stays out
-            look1 = await rig.look()
-            step1 = await rig.cmd("type", text="tmux attach -r -t mysession\r", look=look1)
+            step1 = await rig.cmd("type", text="tmux attach -r -t mysession\r", look="last")
             assert step1["ok"], step1
-            sent.append({"op": "type", "text": "tmux attach -r -t mysession\r"})
+            sent.append({"op": "type", "text": "tmux attach -r -t mysession\r", "look": "last"})
             assert (await rig.cmd("wait", until={"reply": "tmux attach"}, timeout_ms=5000))["ok"]
 
             _emit_output(serve_app, sid, b"\x1b[?1049h\x1b[H\x1b[Jtmux [mysession] 0:window0")
@@ -76,10 +78,9 @@ def test_tmux_read_only_recipe_passes_the_gate(serve, tmp_path) -> None:
             assert step4["ok"], step4
             sent.append({"op": "keys", "keys": ["ctrl+b"]})
 
-            look3 = await rig.look()
-            step5 = await rig.cmd("keys", keys=["d"], look=look3, full_screen=True)
+            step5 = await rig.cmd("keys", keys=["d"], look="last", full_screen=True)
             assert step5["ok"], step5
-            sent.append({"op": "keys", "keys": ["d"], "full_screen": True})
+            sent.append({"op": "keys", "keys": ["d"], "look": "last", "full_screen": True})
 
             _sent_matches_guide(_guide_commands(), sent)
 
