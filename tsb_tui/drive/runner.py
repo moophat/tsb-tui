@@ -554,7 +554,7 @@ def _config_help() -> str:
     if sys.platform == "win32":
         return (
             "a TOML configuration file "
-            "instead of %APPDATA%\\tsb-tui\\config.toml "
+            "instead of %%APPDATA%%\\tsb-tui\\config.toml "
             "(or $XDG_CONFIG_HOME/tsb-tui/config.toml when XDG_CONFIG_HOME is set)"
         )
     return (

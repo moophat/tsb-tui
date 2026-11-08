@@ -126,3 +126,32 @@ def test_config_help_names_windows_path_on_win32(
     assert win_marker in runner_help, (
         f"runner._config_help() does not mention {win_marker!r} on win32: {runner_help!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# --config help on Windows renders %APPDATA% without breaking argparse
+# ---------------------------------------------------------------------------
+
+def test_config_help_escaped_for_argparse_on_win32(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On win32, format_help() on both parsers (__main__ and drive build_parser())
+    does not raise ValueError and renders '%APPDATA%'.
+    """
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    import tsb_tui.__main__ as main_mod
+    import tsb_tui.drive.runner as runner_mod
+
+    main_parser = main_mod.build_parser()
+    runner_parser = runner_mod.build_parser()
+
+    main_help = main_parser.format_help()
+    runner_help = runner_parser.format_help()
+
+    assert "%APPDATA%" in main_help, (
+        f"__main__ parser help does not show '%APPDATA%' on win32: {main_help!r}"
+    )
+    assert "%APPDATA%" in runner_help, (
+        f"drive build_parser() help does not show '%APPDATA%' on win32: {runner_help!r}"
+    )
