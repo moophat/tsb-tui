@@ -523,6 +523,8 @@ class TerminalScreen(Screen):
         # the terminal's FocusIn/FocusOut and on nothing else, where a widget's or a dialog's focus
         # never touches it.
         self.watch(self.app, "app_focus", self._on_outer_focus, init=False)
+        self.app.screen_change_signal.subscribe(self, lambda _: self.call_later(self._complete_deferred_end),
+                                              immediate=True)
         self._stop_alert_watch = self.app.watch_alerts(self._alerts_changed)
         self.set_interval(1.0, self._tick)
         cfg = self.app.cfg
@@ -1375,7 +1377,7 @@ class TerminalScreen(Screen):
             if confirmed:
                 self.send_end(session_id)
 
-        self._push_session_dialog(ConfirmEndScreen(self, label), decided)
+        self._push_session_dialog(ConfirmEndScreen(self, label), session_id, decided)
 
     def has_ended(self, session_id: str) -> bool:
         """Whether the record this screen holds for the session says it is over."""
@@ -2128,7 +2130,7 @@ class TerminalScreen(Screen):
             elif kill is False:
                 self.run_worker(self.answer_quiet(False), exclusive=False)
 
-        self._push_session_dialog(ConfirmKillScreen(self, self._target()), decided)
+        self._push_session_dialog(ConfirmKillScreen(self, self._target()), self.session_id, decided)
 
     # -- the end of a session for this client (F10, D36) --
 
@@ -2188,22 +2190,22 @@ class TerminalScreen(Screen):
             if screen not in stack:
                 del self._dialog_session[screen]
 
-    def _push_session_dialog(self, screen: Any, callback: Any = None) -> None:
-        """Push a dialog opened for the session in front and record which session it belongs to, so a session's end
+    def _push_session_dialog(self, screen: Any, session_id: str, callback: Any = None) -> None:
+        """Push a dialog and record which session it belongs to, so a session's end
         pops only its own dialogs and leaves the operator's unrelated ones open."""
         self.app.push_screen(screen, callback)
-        if self._front is not None:
-            self._dialog_session[screen] = self._front.session_id
+        self._dialog_session[screen] = session_id
 
     def on_screen_resume(self) -> None:
-        """The last modal over the workspace closed: show a deferred end, and only if the session it ended is still
-        the front one (D36)."""
+        self._complete_deferred_end()
+
+    def _complete_deferred_end(self) -> None:
+        """A stack change may expose the ended session's dialogs beneath an unrelated dialog (D36)."""
         slot = self._deferred_end_slot
         if (slot is not None and slot is self._front and not slot.closed and slot.ended is not None
                 and not slot.ended_dialog_shown):
             self._deferred_end_slot = None
-            self._pop_session_dialogs(slot)
-            self._show_ended_screen(slot)
+            self._show_end_dialog(slot)
 
     def _show_end_dialog_after_lock(self, slot: SessionSlot) -> None:
         if (self.is_attached and self.app.workspace() is self and slot is self._front and not slot.closed
@@ -2728,10 +2730,10 @@ class TerminalScreen(Screen):
         self.app.open_menu()
 
     def do_who(self) -> None:
-        self._push_session_dialog(WhosHereScreen(self))
+        self._push_session_dialog(WhosHereScreen(self), self.session_id)
 
     def do_size(self) -> None:
-        self._push_session_dialog(SizeDialog(self))
+        self._push_session_dialog(SizeDialog(self), self.session_id)
 
     def do_auto_size(self) -> None:
         on = self.toggle_auto_size()
@@ -2741,7 +2743,7 @@ class TerminalScreen(Screen):
         self.action_detach()
 
     def do_answer(self) -> None:
-        self._push_session_dialog(AnswerScreen(self, self._target(), self.pump.state.quiet_prompt))
+        self._push_session_dialog(AnswerScreen(self, self._target(), self.pump.state.quiet_prompt), self.session_id)
 
     async def do_take_back(self) -> None:
         """Hand the keyboard to this client: the owner takes it back from whoever types (D45)."""
@@ -2813,7 +2815,7 @@ class TerminalScreen(Screen):
 
     def do_event_log(self) -> None:
         self._push_session_dialog(EventLogScreen(self, f"Event log · {self._target()} · this client's view of the session",
-                                                 lambda: event_log_lines(self), follow=True))
+                                                 lambda: event_log_lines(self), follow=True), self.session_id)
 
     def do_settings(self) -> None:
         self.app.push_screen(TextScreen(self, "Settings · the knobs in force, and where each came from",
@@ -2932,7 +2934,7 @@ class TerminalScreen(Screen):
         """`/` in the view: ask for the text to find. The view stays open under the prompt, and Esc in the prompt
         returns to it where it was."""
         if self._scroll_mode and not self.dialogs:
-            self.app.push_screen(SearchPrompt(self), self._searched)
+            self._push_session_dialog(SearchPrompt(self), self.session_id, self._searched)
 
     def _searched(self, query: str | None) -> None:
         """The prompt's answer. Nothing typed, or nothing left to search in: the view is as it was. Otherwise the
