@@ -81,6 +81,18 @@ def answer_line(line: str) -> str:
 
 def read_answer_pipe(path: str, count: int, timeout: float = 30.0) -> list[str]:
     """Read bounded answer lines from a nonblocking pipe, each against a deadline."""
+    if sys.platform == "win32":
+        # select.select does not support pipe fds on Windows. Refuse any path that
+        # is not a regular file before the open so no blocking call can occur.
+        try:
+            mode = os.stat(path).st_mode
+        except OSError:
+            mode = 0
+        if not stat.S_ISREG(mode):
+            raise DriveError(
+                "bad_request",
+                "on Windows the answers file must be a regular file, not a pipe or other special file",
+            )
     fd = None
     try:
         flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)

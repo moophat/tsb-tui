@@ -26,6 +26,21 @@ import tsb_contract_client  # noqa: F401
 from . import config
 
 
+def _config_help() -> str:
+    """Short, platform-correct description of the default config file location."""
+    if sys.platform == "win32":
+        return (
+            "a TOML configuration file "
+            "instead of %APPDATA%\\tsb-tui\\config.toml "
+            "(or $XDG_CONFIG_HOME/tsb-tui/config.toml when XDG_CONFIG_HOME is set)"
+        )
+    return (
+        "a TOML configuration file "
+        "instead of $XDG_CONFIG_HOME/tsb-tui/config.toml "
+        "(defaults to ~/.config/tsb-tui/config.toml)"
+    )
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="tsb-tui", epilog="`tsb-tui drive --help` is the agent surface: the same app, headless, as JSON lines.")
@@ -38,7 +53,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--profile", default=None, choices=config.PROFILES,
                         help="a configuration profile (default, phone, drive, harness)")
     parser.add_argument("--config", default=None, metavar="FILE",
-                        help="a TOML configuration file instead of ~/.config/tsb-tui/config.toml")
+                        help=_config_help())
     parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE",
                         help="set one knob, e.g. --set size.auto_request=true (repeatable; wins over everything)")
     return parser.parse_args(argv)
