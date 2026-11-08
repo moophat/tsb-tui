@@ -247,7 +247,10 @@ class SlowChunkedApp:
     # -- HTTP (C1) --
 
     def http(self, method: str, path: str, headers: dict[str, str], body: Any) -> tuple[int, list, Any]:
+        if method == "GET" and path == "/auth/me":
+            return 200, [], {"username": self._username}
         if method == "POST" and path == "/auth/login":
+            self._username = body["username"]
             return 200, [("Set-Cookie", "tsb_session=stub; HttpOnly; Secure; SameSite=Strict")], \
                 {"username": body["username"]}
         if method == "POST" and path == "/sessions":

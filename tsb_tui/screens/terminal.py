@@ -149,6 +149,10 @@ from .fleet_view import (
     CMD_SAVE_LOGIN,
     CMD_TAB,
     CMD_TAB_CHANGED,
+    CMD_TARGET_DELETE,
+    CMD_TARGET_EDIT,
+    CMD_TARGET_NEW,
+    GROUP_TARGETS,
     TAB_ALERTS,
     TAB_TARGETS,
     FleetRow,
@@ -394,6 +398,7 @@ class TerminalScreen(Screen):
         # reads it again while the tab is shown.
         self.targets = TargetsModel()
         self._targets_query_error = ""
+        self._target_select: str | None = None
         # The page request in flight: its generation and cursor. Only its own reply may clear it or append.
         self._targets_page: tuple[int, str] | None = None
         self._targets_timer: Timer | None = None
@@ -1020,6 +1025,7 @@ class TerminalScreen(Screen):
             tabs=tuple(self.app.cfg["fleet_view.tabs"]), detail_for=self._details_for,
             buttons_for=self._buttons_for,
             targets=self._target_entries(merged) if on_targets else (),
+            target_edit="target.edit" in self.app.permissions,
             targets_count=self.targets.count_label(),
             targets_note=TARGETS_UNAVAILABLE if self.targets.unavailable else "",
             query_error=self._targets_query_error, target_details_for=self._target_details)
@@ -1113,6 +1119,13 @@ class TerminalScreen(Screen):
             return
         if self.targets.apply(generation, query, page, append=more):
             self._mark_fleet_dirty()
+            if self._target_select is not None and self.fleet_view is not None:
+                if self.targets.row(self._target_select) is not None:
+                    self.fleet_view.selected = (GROUP_TARGETS, self._target_select)
+                    self._target_select = None
+                elif self.targets.next_cursor:
+                    self._fetch_targets(more=True)
+                self._mark_fleet_dirty()
 
     def _targets_failed(self, generation: int, exc: Exception, more: bool, background: bool,
                         cursor: str | None) -> None:
@@ -1239,6 +1252,8 @@ class TerminalScreen(Screen):
             self.run_worker(self.run_action_id("new_session"), exclusive=False)
         elif name == CMD_OPEN_TARGET:
             self._open_target(sid)
+        elif name in (CMD_TARGET_NEW, CMD_TARGET_EDIT, CMD_TARGET_DELETE):
+            self._target_write_command(name, sid)
         elif name == CMD_SAVE_LOGIN:
             self._targets_to_vault(view, save=True)
         elif name == CMD_MAP:
@@ -1253,6 +1268,58 @@ class TerminalScreen(Screen):
             self.fleet.filter_mode = arg if arg in ("mine", "all") else (
                 "all" if self.fleet.filter_mode == "mine" else "mine")
             self._mark_fleet_dirty()
+
+    def target_saved(self, record: dict | None) -> None:
+        if record is not None:
+            self._target_select = record["id"]
+            self._targets_query_error = ""
+            # A saved target must be selectable even when its edited fields no longer match
+            # the query that opened the form. The broker still does all filtering.
+            if self.fleet_view is not None:
+                self.fleet_view.query_text = ""
+                self.fleet_view.applied_query = ""
+            self._fetch_targets(query=Query())
+
+    def _target_write_command(self, command: str, target_id: str | None) -> None:
+        from .target_form import ConfirmTargetDeleteScreen, TargetFormScreen
+
+        if "target.edit" not in self.app.permissions:
+            return
+        if command == CMD_TARGET_NEW:
+            self.app.push_screen(TargetFormScreen(), self.target_saved)
+            return
+        row = self.targets.row(target_id)
+        if row is None:
+            return
+        if row.discovered_by != "tsb":
+            self._targets_query_error = f"This target comes from {row.discovered_by} and is not edited through TSB."
+            self._mark_fleet_dirty()
+            return
+        if command == CMD_TARGET_EDIT:
+            self.app.call_api(self.app.client.get_target_definition, row.id,
+                              on_done=lambda definition: self.app.push_screen(TargetFormScreen(definition), self.target_saved),
+                              on_error=self._target_write_failed)
+        else:
+            def confirmed(yes: bool) -> None:
+                if yes:
+                    self.run_worker(self._delete_target(row.id), exclusive=False)
+            self.app.push_screen(ConfirmTargetDeleteScreen(row.id), confirmed)
+
+    async def delete_target(self, target_id: str) -> None:
+        """The send half of confirmed deletion, shared with drive's explicit confirm."""
+        await asyncio.to_thread(self.app.client.delete_target, target_id)
+        self._targets_query_error = ""
+        self._fetch_targets()
+
+    async def _delete_target(self, target_id: str) -> None:
+        try:
+            await self.delete_target(target_id)
+        except (ApiError, HttpError, OSError) as exc:
+            self._target_write_failed(exc)
+
+    def _target_write_failed(self, exc: Exception) -> None:
+        self._targets_query_error = as_text(exc.message if isinstance(exc, ApiError) else str(exc))
+        self._mark_fleet_dirty()
 
     def _targets_to_vault(self, view: FleetView, *, save: bool) -> None:
         """`l` and `p` on the Targets tab: Save a login for, or Map one of my credentials to, the targets marked with `space`
@@ -3168,11 +3235,19 @@ class TerminalScreen(Screen):
             return KeysTarget("fleet view", (Hint("Tab", "Next tab", click + CMD_TAB),
                                              Hint("Esc", "Back", click + CMD_CLOSE)))
         if view is not None and view.tab == TAB_TARGETS:
-            return KeysTarget("targets", (
+            writes = ()
+            row = self.targets.row(view.selected_session)
+            editable = row is not None and row.discovered_by == "tsb"
+            if "target.edit" in self.app.permissions:
+                writes = (Hint("n", "New target", click + CMD_TARGET_NEW),
+                          Hint("e", "Edit target", click + CMD_TARGET_EDIT if editable else None),
+                          Hint("d", "Delete target…", click + CMD_TARGET_DELETE if editable else None))
+            return KeysTarget("targets", (*writes,
                 Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("/", "Query", click + CMD_FILTER),
                 Hint("Space", "Mark", click + CMD_MARK), Hint("l", "Save login…", click + CMD_SAVE_LOGIN),
                 Hint("p", "Map…", click + CMD_MAP),
-                Hint("Tab", "Next tab", click + CMD_TAB), Hint("Esc", "Back", click + CMD_CLOSE)))
+                Hint("Tab", "Next tab", click + CMD_TAB), Hint("Esc", "Back", click + CMD_CLOSE)),
+                self._targets_query_error)
         if self.compact:
             return KeysTarget("fleet view", (Hint("t", "Take back", click + CMD_TAKE_BACK),
                                              Hint("Esc", "Back", click + CMD_CLOSE)), "tap a row")

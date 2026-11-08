@@ -60,6 +60,10 @@ from ..widgets.sidebar import (
     Part,
 )
 
+CMD_TARGET_NEW = "target_new"
+CMD_TARGET_EDIT = "target_edit"
+CMD_TARGET_DELETE = "target_delete"
+
 CMD_TAB = "tab"
 CMD_ENDED = "ended"  # the show-ended box
 CMD_OPEN_TARGET = "open_target"  # `⏎` on the Targets tab: New session on the selected target
@@ -155,6 +159,7 @@ class FleetViewModel:
     detail_for: Callable[[str], tuple[str, ...]] | None = None
     buttons_for: Callable[[str], tuple[str, ...]] | None = None
     targets: tuple[TargetEntry, ...] = ()
+    target_edit: bool = False
     targets_count: str | None = None  # `412`, `100+` while another page may follow; None before the first page
     targets_note: str = ""  # why there is no list: the inventory is unavailable
     query_error: str = ""  # the broker's (or the TUI's) refusal of the query, shown in the query line
@@ -831,6 +836,9 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_MODE))
         elif key == "e" and self.tab == TAB_SESSIONS:
             self.toggle_show_ended()
+        elif key in ("n", "e", "d") and self.tab == TAB_TARGETS and self._model.target_edit:
+            command = {"n": CMD_TARGET_NEW, "e": CMD_TARGET_EDIT, "d": CMD_TARGET_DELETE}[key]
+            self.post_message(self.Command(command, self.selected_session))
         elif key == "space" and self.tab == TAB_TARGETS:
             self.toggle_mark()
         elif key == "l" and self.tab == TAB_TARGETS:

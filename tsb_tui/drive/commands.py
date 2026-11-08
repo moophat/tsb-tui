@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from .runner import Driver
 
 # Every op, in the order the guide lists them.
-OPS = ("login", "sessions", "targets", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "take", "ask_to_type",
+OPS = ("login", "sessions", "targets", "target_new", "target_edit", "target_delete", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "take", "ask_to_type",
        "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize", "quit",
        "login_hostkey", "login_answer", "login_cancel")
 READS = ("screen", "reply", "history", "who")
@@ -406,6 +406,89 @@ class Commands:
         if page.get("next_cursor"):
             answer["more"] = True
         return answer
+
+    async def _target_form(self, definition: dict, *, editing: bool) -> dict[str, Any]:
+        from ..screens.target_form import TargetFormScreen
+
+        screen = self._screen()
+        form = TargetFormScreen(definition if editing else None)
+        # A refused drive write leaves its form visible, just like a person's Save. Replace that
+        # form on the next explicit write rather than stacking another over it.
+        if isinstance(self.d.app.screen, TargetFormScreen):
+            self.d.app.pop_screen()
+        await self.d.app.push_screen(form, screen.target_saved)
+        form.fill(definition)
+        try:
+            record = await form.save()
+        except ApiError as exc:
+            raise DriveError(exc.code, exc.message) from None
+        except ValueError as exc:
+            raise DriveError("bad_request", str(exc)) from None
+        except (HttpError, OSError) as exc:
+            raise DriveError("request_failed", str(exc)) from None
+        return {"target": record}
+
+    @staticmethod
+    def _target_fields(cmd: dict, *, editing: bool) -> dict:
+        from ..screens.target_form import FIELDS, OPTIONAL_FIELDS
+
+        fields = {}
+        for key in FIELDS:
+            if editing and key == "id":
+                continue  # drive's correlation id is never an edit of the target id
+            if key not in cmd:
+                if not editing and key in ("id", "type", "host"):
+                    raise DriveError("bad_request", f"{key}: required")
+                continue
+            value = cmd[key]
+            if editing and value is None and key in OPTIONAL_FIELDS:
+                fields[key] = None
+                continue
+            kind = list if key == "tags" else int if key == "port" else str
+            if isinstance(value, bool) or not isinstance(value, kind):
+                raise DriveError("bad_request", f"{key}: expected {kind.__name__}")
+            if key == "tags" and any(not isinstance(tag, str) or not tag.strip() or "," in tag for tag in value):
+                raise DriveError("bad_request", "tags: expected nonempty strings without commas")
+            if key == "type" and value not in ("ssh", "telnet"):
+                raise DriveError("bad_request", "type: expected ssh or telnet")
+            fields[key] = value
+        return fields
+
+    async def op_target_new(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        self._screen()
+        return await self._target_form(self._target_fields(cmd, editing=False), editing=False)
+
+    async def op_target_edit(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        self._screen()
+        target = _field(cmd, "target", str)
+        changes = self._target_fields(cmd, editing=True)
+        try:
+            definition = await asyncio.to_thread(self.d.app.client.get_target_definition, target)
+        except ApiError as exc:
+            raise DriveError(exc.code, exc.message) from None
+        except (HttpError, OSError) as exc:
+            raise DriveError("request_failed", str(exc)) from None
+        for key, value in changes.items():
+            if value is None:
+                definition.pop(key, None)
+            else:
+                definition[key] = value
+        if definition["type"] == "telnet":
+            definition.pop("user", None)
+        return await self._target_form(definition, editing=True)
+
+    async def op_target_delete(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        screen = self._screen()
+        if cmd.get("confirm") is not True:
+            raise DriveError("bad_request", "deletion cannot be undone; send confirm: true; open sessions stay open")
+        target = _field(cmd, "target", str)
+        try:
+            await screen.delete_target(target)
+        except ApiError as exc:
+            raise DriveError(exc.code, exc.message) from None
+        except (HttpError, OSError) as exc:
+            raise DriveError("request_failed", str(exc)) from None
+        return {"target": target}
 
     async def _supplied_login(self, cmd: dict[str, Any]) -> dict[str, Any] | None:
         """The `login` of a `new` that supplies one (login-at-connect, rulings A11 and 15:36 (6)), or None for a `new`

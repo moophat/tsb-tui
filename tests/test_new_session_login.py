@@ -172,7 +172,7 @@ def test_half_a_login_is_refused_before_any_call(serve, wait_until) -> None:
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
-            await wait_until(pilot, lambda: _me_reads(serve_app) == 1, "the read of /auth/me")
+            await wait_until(pilot, lambda: _me_reads(serve_app) == 2, "the read of /auth/me")
             before = len(_core_calls(serve_app.requests))
             for user, password in ((USER, ""), ("", PASSWORD)):
                 _type_login(dialog, user, password)
@@ -342,7 +342,7 @@ def test_a_409_not_acknowledged_is_shown_as_the_core_says_it_and_nothing_is_kept
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
-            await wait_until(pilot, lambda: _me_reads(serve_app) == 1, "the read of /auth/me")
+            await wait_until(pilot, lambda: _me_reads(serve_app) == 2, "the read of /auth/me")
             serve_app.login_input = True
             _type_login(dialog)
             dialog.query_one("#create-button", Button).press()
