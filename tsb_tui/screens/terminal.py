@@ -365,6 +365,8 @@ class TerminalScreen(Screen):
         # Writes started from a callback that cannot await (a reply, a focus report), kept so they
         # are neither collected mid-flight nor left running after the screen goes.
         self._writes: set[asyncio.Task[None]] = set()
+        # Socket closes survive unmount and belong to sign-out's detach barrier.
+        self._attachment_closes: set[asyncio.Task[None]] = set()
         self.status: StatusRow | None = None
         self.rail: Rail | None = None
         self.sidebar: Sidebar | None = None
@@ -1493,7 +1495,7 @@ class TerminalScreen(Screen):
 
     def adopt_device_attachment(self, slot: SessionSlot, attachment: Any) -> None:
         if slot.closed:
-            self._spawn(attachment.close())
+            self._close_attachment(attachment)
             return
         slot.session_id = attachment.session["id"]
         slot.record = dict(attachment.session)
@@ -2282,7 +2284,7 @@ class TerminalScreen(Screen):
                 slot.attach_coro.close()
                 slot.attach_coro = None
             if slot.device_attachment is not None:
-                self._spawn(slot.device_attachment.close())
+                self._close_attachment(slot.device_attachment)
                 slot.device_attachment = None
         if slot.pump is not None:
             # The pump's feed thread (DT20): shut it down before the grid is freed. A worker already
@@ -2329,13 +2331,14 @@ class TerminalScreen(Screen):
 
     async def detach_all(self) -> list[str]:
         """Leave every session open here (each lives on) and return their ids, in the order they were opened, only
-        once every attach worker has finished: its `finally` is what closes the session's WebSocket, so by then the
+        once every attach worker and pending attachment close has finished: the worker's `finally` closes its WebSocket,
+        while a handoff whose worker never started is closed separately, so by then the
         close has been sent for each of them (sign out's order: the detaches first, then `logout()`). No toast per
         session: the caller says one thing."""
         detached: list[str] = []
         # Until no slot remains: a slot admitted before sign-out's gate closed (`_refuse_while_signing_out`) may
         # still appear while a worker is awaited, and each pass leaves it too.
-        while self.slots:
+        while self.slots or self._attachment_closes:
             slots = list(self.slots)
             workers = [slot.worker for slot in slots if slot.worker is not None]
             for slot in slots:
@@ -2346,6 +2349,9 @@ class TerminalScreen(Screen):
             for worker in workers:
                 with contextlib.suppress(Exception):  # a cancelled worker raises `WorkerCancelled`: that is the detach
                     await worker.wait()
+            if self._attachment_closes:
+                await asyncio.gather(*(asyncio.shield(task) for task in self._attachment_closes),
+                                     return_exceptions=True)
         return detached
 
     # -- input: one path out (DT4) --
@@ -2438,6 +2444,11 @@ class TerminalScreen(Screen):
         if slot.awaiting_dump:
             return "awaiting_dump"
         return None
+
+    def _close_attachment(self, attachment: Any) -> None:
+        task = asyncio.get_running_loop().create_task(attachment.close())
+        self._attachment_closes.add(task)
+        task.add_done_callback(self._attachment_closes.discard)
 
     def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
         """Run a write from a callback that cannot await. Tasks start in the order they were made and
