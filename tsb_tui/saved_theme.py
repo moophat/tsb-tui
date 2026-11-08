@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import tomllib
 from collections.abc import Mapping
@@ -24,7 +25,10 @@ def state_path(environ: Mapping[str, str] | None = None) -> Path:
     xdg_state = env.get("XDG_STATE_HOME")
     if xdg_state:
         return Path(xdg_state) / "tsb-tui" / "theme.toml"
-    return Path(env.get("HOME", "~")) / ".local" / "state" / "tsb-tui" / "theme.toml"
+    if sys.platform == "win32":
+        local_appdata = env.get("LOCALAPPDATA") or str(Path(env.get("HOME", "~")).expanduser() / "AppData" / "Local")
+        return Path(local_appdata) / "tsb-tui" / "theme.toml"
+    return Path(env.get("HOME", "~")).expanduser() / ".local" / "state" / "tsb-tui" / "theme.toml"
 
 
 def read(path: Path) -> dict[str, dict[str, str]]:
@@ -73,7 +77,8 @@ def write(path: Path, entries: Mapping[str, Mapping[str, str]]) -> None:
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     tmp_path = Path(tmp)
     try:
-        os.fchmod(fd, 0o600)
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
         # Write all bytes in a loop (os.write may write fewer than requested).
         view = memoryview(data)
         while view:

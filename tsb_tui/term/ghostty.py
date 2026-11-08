@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import ctypes
 import json
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -1051,8 +1053,10 @@ def load(path: str | Path) -> GhosttyLib:
     if not so.is_file():
         raise LibraryError(f"libghostty-vt not found at {so} (the `term.library` knob)")
     try:
+        if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+            os.add_dll_directory(str(so.resolve().parent))
         lib = ctypes.CDLL(str(so))
-    except OSError as exc:  # unloadable: wrong architecture, missing glibc, not a shared object
+    except OSError as exc:  # unloadable: wrong architecture, missing glibc, not a shared object; or bad DLL dir
         raise LibraryError(f"could not load libghostty-vt at {so}: {exc}") from exc
     lib.ghostty_type_json.argtypes = []
     lib.ghostty_type_json.restype = ctypes.c_char_p

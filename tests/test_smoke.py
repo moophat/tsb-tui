@@ -13,6 +13,7 @@ from __future__ import annotations
 import io
 import socket
 import sys
+from pathlib import Path
 
 import pytest
 from stub_server import SlowChunkedApp, StubServer
@@ -244,3 +245,20 @@ def test_main_takes_a_profile_a_config_file_and_set_in_that_order_of_precedence(
     assert cfg["view.follow_cursor"] == "off"     # the file beats the profile's "on"
     assert cfg["render.max_fps"] == 20            # --set beats the file
     assert cfg["size.auto_request"] is True       # --set beats the phone profile's false
+
+
+def test_smoke_password_file_mode_check_skipped_on_windows(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """P4: on Windows, smoke password file mode check is skipped and prints notice."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    pw = tmp_path / "superadmin_password"
+    pw.write_text("admin-pass\n")
+    pw.chmod(0o666)
+
+    val = smoke._password_from_file(str(pw))
+    assert val == "admin-pass"
+    captured = capsys.readouterr()
+    assert "mode check skipped on Windows" in captured.err
+    assert "stdin is the safer door" in captured.err
+    assert "is group- or other-readable" not in captured.err
+

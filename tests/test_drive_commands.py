@@ -13,8 +13,10 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import os
 import sys
 import threading
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -1055,3 +1057,35 @@ def test_type_while_the_scroll_view_is_open_sends_nothing_and_says_not_available
             assert (await rig.cmd("type", text="ls\r", look=await rig.look()))["ok"]
 
     _run(check())
+
+
+def test_read_answer_pipe_without_o_nonblock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """P3: read_answer_pipe uses getattr for O_NONBLOCK and FIFO refusal stays."""
+    from tsb_tui.drive import commands
+
+    monkeypatch.delattr(os, "O_NONBLOCK", raising=False)
+    reg_file = tmp_path / "regular"
+    reg_file.write_text("hello\n")
+    with pytest.raises(commands.DriveError) as exc_info:
+        commands.read_answer_pipe(str(reg_file), 1)
+    assert exc_info.value.code == "bad_request"
+    assert "must name a pipe" in exc_info.value.why
+
+
+def test_read_password_file_mode_check_skipped_on_windows(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """P5: on Windows, read_password_file skips group/other mode check and prints notice."""
+    from tsb_tui.drive import commands
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    pw = tmp_path / "password"
+    pw.write_text("secret-pw\n")
+    pw.chmod(0o666)
+
+    res = commands.read_password_file(str(pw))
+    assert res == "secret-pw"
+    captured = capsys.readouterr()
+    assert "mode check skipped on Windows" in captured.err
+    assert "stdin is the safer door" in captured.err
+    assert "is group- or other-readable" not in captured.err
+

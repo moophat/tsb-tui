@@ -14,8 +14,10 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import sys
 from pathlib import Path
 
+import pytest
 from drive_support import Rig
 from input_server import InputRecordingApp, attached, make_session
 from stub_server import record_output
@@ -479,3 +481,33 @@ def test_drive_ignores_the_saved_choice(serve, tmp_path) -> None:
     asyncio.run(check())
     assert _state().read_bytes() == before, "drive changed the state file's bytes"
     assert _state().stat().st_mtime_ns == mtime, "drive touched the state file"
+
+
+def test_saved_theme_write_guards_fchmod_on_windows(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """P6: saved_theme.write guards os.fchmod with hasattr(os, 'fchmod')."""
+    monkeypatch.delattr(os, "fchmod", raising=False)
+    path = tmp_path / "theme.toml"
+    entries = {"alice": {"theme": "nord", "scheme": "dracula"}}
+    saved_theme.write(path, entries)
+    assert saved_theme.read(path) == entries
+
+
+def test_saved_theme_state_path_without_home_expands_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P7: state_path uses expanduser so no literal ~ directory is created."""
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    monkeypatch.delenv("HOME", raising=False)
+    p = saved_theme.state_path({})
+    assert p.parts[0] != "~"
+    assert p.is_absolute()
+
+
+def test_saved_theme_state_path_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P8: on Windows state home is %LOCALAPPDATA%\\tsb-tui and XDG_STATE_HOME still wins."""
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    env = {"LOCALAPPDATA": "/mock/localappdata"}
+    assert saved_theme.state_path(env) == Path("/mock/localappdata") / "tsb-tui" / "theme.toml"
+
+    env_xdg = {"LOCALAPPDATA": "/mock/localappdata", "XDG_STATE_HOME": "/mock/xdg_state"}
+    assert saved_theme.state_path(env_xdg) == Path("/mock/xdg_state") / "tsb-tui" / "theme.toml"
+

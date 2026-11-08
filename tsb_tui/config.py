@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import tomllib
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
@@ -426,7 +427,13 @@ def _flatten(node: Mapping[str, Any], prefix: str = "") -> dict[str, Any]:
 
 
 def _default_path(environ: Mapping[str, str]) -> Path:
-    base = environ.get("XDG_CONFIG_HOME") or str(Path(environ.get("HOME", "~")).expanduser() / ".config")
+    if environ.get("XDG_CONFIG_HOME"):
+        base = environ["XDG_CONFIG_HOME"]
+    elif sys.platform == "win32":
+        appdata = environ.get("APPDATA") or str(Path(environ.get("HOME", "~")).expanduser() / "AppData" / "Roaming")
+        base = appdata
+    else:
+        base = str(Path(environ.get("HOME", "~")).expanduser() / ".config")
     return Path(base) / "tsb-tui" / "config.toml"
 
 

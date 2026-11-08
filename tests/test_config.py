@@ -17,6 +17,7 @@ Why these matter (Rule 9):
 from __future__ import annotations
 
 import re
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any, ClassVar
@@ -707,3 +708,15 @@ def test_a_profiles_table_in_the_operators_file_is_refused_naming_it(tmp_path: P
     chosen = _write(tmp_path / "config.toml", 'profile = "phone"\n')
     cfg = config.load(config_file=chosen, environ={})
     assert cfg.profile == "phone" and cfg["size.auto_request"] is False
+
+
+def test_default_config_path_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P8: on Windows config home is %APPDATA%\\tsb-tui and XDG_CONFIG_HOME still wins."""
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    env = {"APPDATA": "/mock/appdata"}
+    assert config._default_path(env) == Path("/mock/appdata") / "tsb-tui" / "config.toml"
+
+    env_xdg = {"APPDATA": "/mock/appdata", "XDG_CONFIG_HOME": "/mock/xdg_config"}
+    assert config._default_path(env_xdg) == Path("/mock/xdg_config") / "tsb-tui" / "config.toml"
+

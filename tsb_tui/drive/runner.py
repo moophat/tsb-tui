@@ -549,6 +549,21 @@ async def script_lines(lines: Iterable[str]) -> AsyncIterator[str]:
         yield line
 
 
+def _config_help() -> str:
+    """Short, platform-correct description of the default config file location."""
+    if sys.platform == "win32":
+        return (
+            "a TOML configuration file "
+            "instead of %%APPDATA%%\\tsb-tui\\config.toml "
+            "(or $XDG_CONFIG_HOME/tsb-tui/config.toml when XDG_CONFIG_HOME is set)"
+        )
+    return (
+        "a TOML configuration file "
+        "instead of $XDG_CONFIG_HOME/tsb-tui/config.toml "
+        "(defaults to ~/.config/tsb-tui/config.toml)"
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tsb-tui drive", allow_abbrev=False,
@@ -572,7 +587,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="keep the exchange as a transcript: > before a command, < before an answer or event")
     parser.add_argument("--ca-file", default=None, help="a PEM bundle to verify the core's certificate against")
     parser.add_argument("--config", default=None, metavar="FILE",
-                        help="a TOML configuration file instead of ~/.config/tsb-tui/config.toml")
+                        help=_config_help())
     parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE",
                         help="set one knob, e.g. --set input.guard=false (repeatable; wins over everything)")
     return parser

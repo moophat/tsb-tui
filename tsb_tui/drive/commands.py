@@ -81,9 +81,22 @@ def answer_line(line: str) -> str:
 
 def read_answer_pipe(path: str, count: int, timeout: float = 30.0) -> list[str]:
     """Read bounded answer lines from a nonblocking pipe, each against a deadline."""
+    if sys.platform == "win32":
+        # select.select does not support pipe fds on Windows. Refuse any path that
+        # is not a regular file before the open so no blocking call can occur.
+        try:
+            mode = os.stat(path).st_mode
+        except OSError:
+            mode = 0
+        if not stat.S_ISREG(mode):
+            raise DriveError(
+                "bad_request",
+                "on Windows the answers file must be a regular file, not a pipe or other special file",
+            )
     fd = None
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+        fd = os.open(path, flags)
         if not stat.S_ISFIFO(os.fstat(fd).st_mode):
             raise DriveError("bad_request", "answers_file must name a pipe")
         answers = []
@@ -133,8 +146,11 @@ def read_password_file(path: str) -> str:
         raise DriveError("bad_request", f"password_file {path} does not name a file")
     if not (stat.S_ISREG(mode) or stat.S_ISFIFO(mode)):
         raise DriveError("bad_request", f"password_file {path} is not a regular file or a pipe")
-    if stat.S_ISREG(mode) and mode & (stat.S_IRWXG | stat.S_IRWXO):
-        print(f"WARNING: {path} is group- or other-readable; it should be owner-only", file=sys.stderr)
+    if stat.S_ISREG(mode):
+        if sys.platform == "win32":
+            print("NOTICE: password file mode check skipped on Windows; stdin is the safer door", file=sys.stderr)
+        elif mode & (stat.S_IRWXG | stat.S_IRWXO):
+            print(f"WARNING: {path} is group- or other-readable; it should be owner-only", file=sys.stderr)
     try:
         with file.open("rb") as stream:
             data = stream.read(PASSWORD_MAX + 1)

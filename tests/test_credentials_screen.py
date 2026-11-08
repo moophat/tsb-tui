@@ -15,7 +15,9 @@ Map acts on every marked target; the selected row is used only when nothing is m
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
+import pytest
 from test_vault_unlock import _answer, _prompt
 from textual.widgets import Button, DataTable, Input, Select
 from tsbc import _serve
@@ -275,3 +277,25 @@ def test_marking_targets_in_the_inventory_browser_maps_them_in_one_call(serve, w
             assert {m["credential_ref"] for m in call["mappings"]} == {"mine"}
 
     asyncio.run(check())
+
+
+def test_read_key_file_without_o_noctty_or_o_nonblock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """P3: read_key_file uses getattr for O_NOCTTY and O_NONBLOCK; FIFO/non-regular refusal stays."""
+    import os
+
+    from tsb_tui.screens.credentials import read_key_file
+
+    monkeypatch.delattr(os, "O_NOCTTY", raising=False)
+    monkeypatch.delattr(os, "O_NONBLOCK", raising=False)
+
+    key_file = tmp_path / "id_rsa"
+    key_file.write_text("TEST-PRIVATE-KEY")
+    text, err = read_key_file(str(key_file))
+    assert text == "TEST-PRIVATE-KEY"
+    assert err is None
+
+    # FIFO / non-regular refusal stays
+    non_reg, err = read_key_file(str(tmp_path))
+    assert non_reg is None
+    assert err == "That path is not a regular file."
+
