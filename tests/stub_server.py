@@ -124,6 +124,7 @@ class SlowChunkedApp:
                  create_error: tuple[int, str, str] | None = None,
                  create_delay_s: float = 0.0,
                  target_read_error: tuple[int, str, str] | None = None,
+                 prompt_pattern: str | None = None,
                  create_gate: threading.Event | None = None,
                  ticket_status: int = 200, refuse_upgrade: bool = False,
                  attach_close_code: int | None = None, drop_after_chunks: int | None = None,
@@ -156,6 +157,7 @@ class SlowChunkedApp:
         # GET /targets/{id}: a refusal instead of the record (the inventory down), and a create held until the
         # test releases it, so a test can read what the dialog says while the create is still in flight.
         self.target_read_error = target_read_error
+        self.prompt_pattern = prompt_pattern
         self.create_gate = create_gate
         self.create_started = threading.Event()
         self.creates: list[dict] = []
@@ -333,9 +335,12 @@ class SlowChunkedApp:
                 status, code, message = self.target_read_error
                 return status, [], {"error": {"code": code, "message": message}}
             target_id = path.rsplit("/", 1)[-1]
-            return 200, [], {"id": target_id, "type": self.target_types.get(target_id, "ssh"), "name": target_id,
+            record = {"id": target_id, "type": self.target_types.get(target_id, "ssh"), "name": target_id,
                              "group": "stub", "tags": [], "discovered_by": "manual",
                              "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.50", "port": 22}
+            if self.prompt_pattern is not None:
+                record["prompt_pattern"] = self.prompt_pattern
+            return 200, [], record
         if method == "GET" and path.startswith("/sessions/"):
             session = self.sessions.get(path.rsplit("/", 1)[-1])
             if session is None:

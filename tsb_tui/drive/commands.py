@@ -45,6 +45,7 @@ from ..term import UnknownKey, VTBackend, encode_key
 from ..term.ghostty import MODS_SHIFT
 from ..term.keys import _parse
 from . import waits
+from .prompt_pattern import CompiledPattern, ParseError, compile_pattern
 
 if TYPE_CHECKING:
     from .runner import Driver
@@ -312,6 +313,16 @@ class Look:
     cursor_hidden: bool
 
 
+@dataclass
+class PromptCheck:
+    state: AttachmentState
+    generation: int
+    source: str | None = None
+    compiled: CompiledPattern | None = None
+    why: str = ""
+    retry: bool = False
+
+
 class Commands:
     """The ops, as methods named `op_<name>`. Each takes the command object and returns the answer's fields, or raises
     `DriveError`."""
@@ -326,6 +337,7 @@ class Commands:
         self._looks: dict[str, Look] = {}
         self._last_look: dict[str, str] = {}
         self._look_serial = 0
+        self._prompts: dict[str, PromptCheck] = {}
 
     async def run(self, cmd: dict[str, Any]) -> dict[str, Any]:
         op = cmd.get("op")
@@ -771,6 +783,7 @@ class Commands:
     async def _attached_answer(self, screen: TerminalScreen, sid: str) -> dict[str, Any]:
         """Wait for the session to be attached, bring it forward and say how it stands: `attach`'s answer."""
         slot = await self.d.attached(sid)
+        await self._read_prompt(slot)
         screen.show_front(slot)
         state = slot.pump.state
         you_may_type = state.may_control(state.client_id)
@@ -926,6 +939,43 @@ class Commands:
         raise DriveError(code, why + "; nothing was sent", sent=False,
                          **self.screen_answer(slot, refusal=True), **extra)
 
+    async def _read_prompt(self, slot: SessionSlot) -> None:
+        state = slot.pump.state
+        check = PromptCheck(state, state.attachment_generation)
+        self._prompts[slot.session_id] = check
+        try:
+            record = await asyncio.to_thread(self.d.app.client.get_target, slot.target)
+        except (ApiError, HttpError, OSError, ValueError) as exc:
+            if isinstance(exc, ApiError) and exc.status == 404:
+                return
+            check.why = f"target record could not be read: {exc}"
+            check.retry = True
+            return
+        if not isinstance(record, dict):
+            check.why = "target record could not be read: response is not an object"
+            check.retry = True
+            return
+        try:
+            if "prompt_pattern" not in record:
+                return
+            check.source = record["prompt_pattern"]
+            check.compiled = compile_pattern(check.source)
+        except ParseError as exc:
+            check.why = f"target prompt pattern cannot be parsed or built: {exc}"
+
+    @staticmethod
+    def _prompt_send(cmd: dict[str, Any], data: bytes, text: str | None, legacy: list[bytes]) -> bool:
+        if data in (b"\x03", b"\x1e") or cmd.get("full_screen", False):
+            return False
+        return text.endswith("\r") if text is not None else bool(legacy and legacy[-1].endswith((b"\r", b"\n")))
+
+    async def _prepare_prompt(self, slot: SessionSlot) -> None:
+        check = self._prompts.get(slot.session_id)
+        state = slot.pump.state
+        if (check is None or check.state is not state or check.generation != state.attachment_generation
+                or check.retry):
+            await self._read_prompt(slot)
+
     def _check_gate(self, slot: SessionSlot, cmd: dict[str, Any], data: bytes, *,
                     text: str | None, names: list[str] | None, legacy: list[bytes]) -> None:
         state = slot.pump.state
@@ -1004,14 +1054,21 @@ class Commands:
                 self._refuse(slot, "full_screen", "a program has taken the screen; say full_screen: true")
             if not taken and cmd.get("full_screen", False):
                 self._refuse(slot, "not_full_screen", "no program has taken the screen")
-        # The target prompt check belongs here when its contract release lands.
         if ends_line and not cmd.get("full_screen", False) and not state.shell_marks.at_prompt:
             self._refuse(slot, "not_at_prompt", "shell marks show the command has not returned to a prompt")
+        if ends_line and not brake and not cmd.get("full_screen", False):
+            check = self._prompts[slot.session_id]
+            if check.why:
+                self._refuse(slot, "prompt_unusable", check.why)
+            if check.compiled is not None and not check.compiled.matches(self.d.probe(slot).cursor_row().rstrip(" ")):
+                self._refuse(slot, "prompt_mismatch", f"cursor row does not match target prompt pattern {check.source!r}")
 
     async def _send(self, slot: SessionSlot, cmd: dict[str, Any], data: bytes, *, text: str | None = None,
                     names: list[str] | None = None, legacy: list[bytes] | None = None) -> dict[str, Any]:
         screen = self._screen()
         fronted = self._to_front(slot)
+        if self.d.cfg["drive.send_gate"] and self._prompt_send(cmd, data, text, legacy or []):
+            await self._prepare_prompt(slot)
         state = slot.pump.state
         if state.closed or slot.closed:
             raise DriveError("not_attached", "the session is closed; nothing was sent", sent=False)
