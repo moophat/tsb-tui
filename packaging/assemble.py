@@ -22,6 +22,9 @@ def run(*args, **kwargs):
 
 def copy_engine(source, destination, licenses):
     """Accept a directory or tarball with DLLs, licenses/INDEX and optional ENGINE."""
+    for path in [source, *source.rglob('*')]:
+        if path.is_symlink():
+            raise ValueError(f'engine input contains a symlink: {path}')
     dlls = sorted(p for p in source.rglob('*') if p.is_file() and p.suffix.lower() == '.dll')
     if not dlls:
         raise ValueError('engine input contains no DLL')
@@ -65,6 +68,7 @@ def notices(site, engine):
 
 
 def assemble(engine):
+    run('bash', 'tools/contract-pin.sh', 'check', cwd=ROOT)
     rows = verify(HERE / 'inputs.lock', HERE / 'cache', fetch=True)
     runtimes = [row for row in rows if row[1] == 'python']
     if len(runtimes) != 1:
@@ -155,6 +159,9 @@ def assemble(engine):
             os.utime(path, (epoch, epoch), follow_symlinks=False)
         archive_path = work / (bundle.name + '.zip')
         files = sorted(p.relative_to(work).as_posix() for p in bundle.rglob('*') if p.is_file())
+        for path in files:
+            if any(ord(char) < 32 or ord(char) == 127 for char in path):
+                raise ValueError(f'archive path contains a control character: {path!r}')
         run('zip', '-X', '-r', '-q', archive_path, '-@', input='\n'.join(files) + '\n', text=True,
             cwd=work, env={**os.environ, 'TZ': 'UTC'})
         final = out / archive_path.name
