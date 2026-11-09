@@ -74,7 +74,7 @@ def assemble(engine):
     if tracked:
         raise ValueError(f'tracked changes: {tracked.rstrip()}')
     untracked = subprocess.check_output(
-        ['git', 'ls-files', '--others', '--exclude-standard', '--', 'tsb_tui'], cwd=ROOT, text=True)
+        ['git', 'ls-files', '--others', '--', 'tsb_tui', ':(exclude)**/__pycache__/**', ':(exclude)**/*.pyc'], cwd=ROOT, text=True)
     if untracked:
         raise ValueError(f'untracked files under tsb_tui: {untracked.rstrip()}')
     rows = verify(HERE / 'inputs.lock', HERE / 'cache', fetch=True)

@@ -190,7 +190,7 @@ def assembly_inputs(tmp_path, monkeypatch):
     def git_output(command, **kwargs):
         if command in [
             ['git', 'status', '--porcelain', '--untracked-files=no'],
-            ['git', 'ls-files', '--others', '--exclude-standard', '--', 'tsb_tui'],
+            ['git', 'ls-files', '--others', '--', 'tsb_tui', ':(exclude)**/__pycache__/**', ':(exclude)**/*.pyc'],
         ]:
             return ''
         assert command == ['git', 'describe', '--tags', '--exact-match', 'HEAD']
@@ -250,6 +250,7 @@ def test_contract_pin_failure_precedes_inputs(tmp_path, monkeypatch, capsys):
 @pytest.mark.parametrize('tracked,untracked,message', [
     (' M tsb_tui/app.py\n', '', 'tracked changes:  M tsb_tui/app.py'),
     ('', 'tsb_tui/extra.py\n', 'untracked files under tsb_tui: tsb_tui/extra.py'),
+    ('', 'tsb_tui/local_settings.json\n', 'untracked files under tsb_tui: tsb_tui/local_settings.json'),
 ])
 def test_dirty_source_precedes_inputs(tmp_path, monkeypatch, tracked, untracked, message):
     root = tmp_path / 'repo'
@@ -268,7 +269,7 @@ def test_dirty_source_precedes_inputs(tmp_path, monkeypatch, tracked, untracked,
         assert kwargs == {'cwd': root, 'text': True}
         if command == ['git', 'status', '--porcelain', '--untracked-files=no']:
             return tracked
-        assert command == ['git', 'ls-files', '--others', '--exclude-standard', '--', 'tsb_tui']
+        assert command == ['git', 'ls-files', '--others', '--', 'tsb_tui', ':(exclude)**/__pycache__/**', ':(exclude)**/*.pyc']
         return untracked
 
     def refuse_inputs(*args, **kwargs):
