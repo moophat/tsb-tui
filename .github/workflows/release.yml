@@ -176,7 +176,7 @@ jobs:
               dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh \
               dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/SHA256SUMS
           else
-            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes '' \
+            gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-from-tag \
               dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh \
               dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/SHA256SUMS
           fi
