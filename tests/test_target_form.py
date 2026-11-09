@@ -16,11 +16,14 @@ from tsb_tui.screens.target_form import (
     TargetFormScreen,
 )
 
+# The condition, not the bound, is what each test proves; 60 s bounds a wait on a loaded CI runner.
+TARGET_FORM_WAIT_S = 60.0
+
 
 async def open_targets(app, pilot, wait_until):
     screen = await fixture_login(app, pilot)
     screen.open_fleet_view(TAB_TARGETS)
-    await wait_until(pilot, lambda: screen.targets.fetched, "targets")
+    await wait_until(pilot, lambda: screen.targets.fetched, "targets", timeout_s=TARGET_FORM_WAIT_S)
     return screen, screen.fleet_view
 
 
@@ -32,7 +35,7 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
         async with app.run_test(size=(120, 40)) as pilot:
             screen, view = await open_targets(app, pilot, wait_until)
             await pilot.press("n")
-            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "new form")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "new form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             assert CREDENTIAL_NOTE in str(form.query_one("#target-credential-note", Static).content)
             assert not form.query("#target-credential-note Input, #target-credential-note Button")
@@ -41,11 +44,11 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             form.query_one("#target-tags", Input).value = " prod , core "
             form.query_one("#target-user", Input).value = "operator"
             form.query_one("#target-save", Button).press()
-            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "form-target", "created row")
+            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "form-target", "created row", timeout_s=TARGET_FORM_WAIT_S)
             assert server.target_definitions["form-target"] == {
                 "id": "form-target", "type": "ssh", "host": "router.example", "tags": ["prod", "core"], "user": "operator"}
             await pilot.press("e")
-            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "edit form")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "edit form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             assert form.query_one("#target-id", Input).disabled
             assert form.query_one("#target-user", Input).value == "operator"
@@ -54,19 +57,19 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             await pilot.pause()
             assert not form.query_one("#target-account").display
             form.query_one("#target-save", Button).press()
-            await wait_until(pilot, lambda: app.screen is screen and server.targets["form-target"].get("name") == "Renamed", "edited target")
+            await wait_until(pilot, lambda: app.screen is screen and server.targets["form-target"].get("name") == "Renamed", "edited target", timeout_s=TARGET_FORM_WAIT_S)
             assert "user" not in server.target_definitions["form-target"]
             assert ("GET", "/targets/form-target/definition") in [(m, p) for m, p, _ in server.requests]
-            await wait_until(pilot, lambda: view.selected_session == "form-target", "edited row")
+            await wait_until(pilot, lambda: view.selected_session == "form-target", "edited row", timeout_s=TARGET_FORM_WAIT_S)
             await pilot.press("d")
-            await wait_until(pilot, lambda: isinstance(app.screen, ConfirmTargetDeleteScreen), "delete confirmation")
+            await wait_until(pilot, lambda: isinstance(app.screen, ConfirmTargetDeleteScreen), "delete confirmation", timeout_s=TARGET_FORM_WAIT_S)
             assert "form-target" in screen_text(app) and "Open sessions stay open" in screen_text(app)
             await pilot.press("escape")
             assert "form-target" in server.targets
             await pilot.press("d")
-            await wait_until(pilot, lambda: isinstance(app.screen, ConfirmTargetDeleteScreen), "delete confirmation again")
+            await wait_until(pilot, lambda: isinstance(app.screen, ConfirmTargetDeleteScreen), "delete confirmation again", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.query_one("#target-delete-confirm", Button).press()
-            await wait_until(pilot, lambda: "form-target" not in server.targets and screen.targets.row("form-target") is None, "deleted target")
+            await wait_until(pilot, lambda: "form-target" not in server.targets and screen.targets.row("form-target") is None, "deleted target", timeout_s=TARGET_FORM_WAIT_S)
     asyncio.run(check())
 
 
@@ -78,13 +81,13 @@ def test_duplicate_keeps_every_field_and_core_message(serve, wait_until):
         async with app.run_test(size=(100, 40)) as pilot:
             await open_targets(app, pilot, wait_until)
             await pilot.press("n")
-            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             form.fill({"id": "normal", "type": "ssh", "host": "example", "name": "Keep me", "group": "g",
                        "tags": ["a", "b"], "port": 2222, "user": "account"})
             before = form.definition()
             form.query_one("#target-save", Button).press()
-            await wait_until(pilot, lambda: bool(form.query_one("#target-error", Static).content), "duplicate refusal")
+            await wait_until(pilot, lambda: bool(form.query_one("#target-error", Static).content), "duplicate refusal", timeout_s=TARGET_FORM_WAIT_S)
             assert app.screen is form and form.definition() == before
             assert str(form.query_one("#target-error", Static).content) == "a source already holds that target id"
     asyncio.run(check())
@@ -137,12 +140,12 @@ def test_invalid_port_or_empty_tag_is_refused_without_write(serve, wait_until, f
         async with app.run_test(size=(100, 40)) as pilot:
             await open_targets(app, pilot, wait_until)
             await pilot.press("n")
-            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             form.fill({"id": "validate", "host": "example", "type": "ssh"})
             form.query_one(f"#target-{field}", Input).value = value
             form.query_one("#target-save", Button).press()
-            await wait_until(pilot, lambda: bool(form.query_one("#target-error", Static).content), "validation")
+            await wait_until(pilot, lambda: bool(form.query_one("#target-error", Static).content), "validation", timeout_s=TARGET_FORM_WAIT_S)
             assert not any(m == "POST" and p == "/targets" for m, p, _ in server.requests)
     asyncio.run(check())
 
@@ -155,12 +158,12 @@ def test_hot_policy_refusal_keeps_the_form(serve, wait_until):
         async with app.run_test(size=(100, 40)) as pilot:
             await open_targets(app, pilot, wait_until)
             await pilot.press("n")
-            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             form.fill({"id": "revoked", "host": "example", "type": "ssh"})
             server._permissions = lambda user: []
             form.query_one("#target-save", Button).press()
-            await wait_until(pilot, lambda: bool(form.query_one("#target-error", Static).content), "403")
+            await wait_until(pilot, lambda: bool(form.query_one("#target-error", Static).content), "403", timeout_s=TARGET_FORM_WAIT_S)
             assert str(form.query_one("#target-error", Static).content) == "target.edit is required"
             assert form.query_one("#target-id", Input).value == "revoked"
     asyncio.run(check())
@@ -174,17 +177,18 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
         async with app.run_test(size=(120, 40)) as pilot:
             screen, view = await open_targets(app, pilot, wait_until)
             await pilot.press("n")
-            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.fill({"id": "query-target", "type": "ssh", "host": "example"})
             app.screen.query_one("#target-save", Button).press()
-            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "query-target", "new row")
+            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "query-target", "new row", timeout_s=TARGET_FORM_WAIT_S)
             screen._run_query("type:ssh")
-            await wait_until(pilot, lambda: screen.targets.query.type == "ssh", "filtered rows")
+            await wait_until(pilot, lambda: screen.targets.query.type == "ssh", "filtered rows", timeout_s=TARGET_FORM_WAIT_S)
             await pilot.press("e")
-            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "editor")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "editor", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.query_one("#target-telnet", RadioButton).value = True
             app.screen.query_one("#target-save", Button).press()
             await wait_until(pilot, lambda: app.screen is screen and screen.targets.row("query-target") is not None
-                             and screen.targets.row("query-target").type == "telnet", "saved row outside old query")
+                             and screen.targets.row("query-target").type == "telnet", "saved row outside old query",
+                             timeout_s=TARGET_FORM_WAIT_S)
             assert view.selected_session == "query-target"
     asyncio.run(check())
