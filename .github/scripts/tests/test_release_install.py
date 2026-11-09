@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[3]
 TUI = "tsb_tui-1.2.3-py3-none-any.whl"
 CONTRACT = "tsb_contract-0.12.1-py3-none-any.whl"
 ENGINE = "libghostty-vt-linux-x86_64.tar.gz"
+WINDOWS_ZIP = "tsb-tui-1.2.3-windows-x64.zip"
 PAYLOADS = [TUI, CONTRACT, ENGINE, "install.sh"]
 
 
@@ -284,6 +285,26 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
             p.relative_to(vendor).as_posix() for p in (vendor / "licenses").rglob("*")
         } | {"licenses"}
         assert archive.extractfile("libghostty-vt.so").read() == (vendor / "libghostty-vt.so").read_bytes()
+    runner_temp = tmp_path / "runner_temp"
+    winzip = runner_temp / "winzip"
+    winzip.mkdir(parents=True)
+    zip_bytes = b"windows zip test double"
+    (winzip / WINDOWS_ZIP).write_bytes(zip_bytes)
+    zip_digest = hashlib.sha256(zip_bytes).hexdigest()
+    zip_sha_line = f"{zip_digest}  {WINDOWS_ZIP}"
+    (winzip / f"{WINDOWS_ZIP}.sha256").write_text(f"{zip_sha_line}\n")
+    monkeypatch.setenv("RUNNER_TEMP", str(runner_temp))
+    earlier_sums = (dist / "SHA256SUMS").read_text().splitlines()
+
+    stage = workflow.split("      - name: Stage the Windows zip into dist\n        run: |\n", 1)[1]
+    stage = textwrap.dedent(stage.split("\n\n      - name: Publish", 1)[0])
+    result = subprocess.run(["bash", "-euo", "pipefail", "-c", stage], cwd=tmp_path,
+                            capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (dist / WINDOWS_ZIP).is_file()
+    assert (dist / f"{WINDOWS_ZIP}.sha256").is_file()
+    assert {p.name for p in dist.iterdir()} == set(PAYLOADS) | {WINDOWS_ZIP, WINDOWS_ZIP + ".sha256", "SHA256SUMS"}
+    assert (dist / "SHA256SUMS").read_text().splitlines() == earlier_sums + [zip_sha_line]
     executable(bin_dir / "gh", """
         #!/usr/bin/env python3
         import json, os, sys
@@ -306,4 +327,4 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
     calls = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
     assert len(calls) == 1
     assert calls[0][1] == ("upload" if existing == "yes" else "create")
-    assert {Path(arg).name for arg in calls[0] if arg.startswith("dist/")} == set(PAYLOADS) | {"SHA256SUMS"}
+    assert {Path(arg).name for arg in calls[0] if arg.startswith("dist/")} == set(PAYLOADS) | {WINDOWS_ZIP, WINDOWS_ZIP + ".sha256", "SHA256SUMS"}

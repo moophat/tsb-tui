@@ -1,7 +1,7 @@
 # Same Python 3.12 base digest as tsb-core's worker image at the extraction cut.
 FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git make bash ca-certificates openssh-client \
+    && apt-get install -y --no-install-recommends git make bash ca-certificates openssh-client zip unzip \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*'
 WORKDIR /src
