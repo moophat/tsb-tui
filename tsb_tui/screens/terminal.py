@@ -34,7 +34,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import logging
 import time
+import traceback
 from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -175,6 +177,8 @@ from .prompts import (
 )
 from .size_dialog import SizeDialog
 from .whos_here import WhosHereScreen
+
+LOG = logging.getLogger("tsb_tui.terminal")
 
 # The status row is one row (design §2.6). The auto size request subtracts it, and the rail's width,
 # from the window; both come from knobs/constants rather than from whatever is mounted, so the request
@@ -2448,7 +2452,14 @@ class TerminalScreen(Screen):
     def _close_attachment(self, attachment: Any) -> None:
         task = asyncio.get_running_loop().create_task(attachment.close())
         self._attachment_closes.add(task)
-        task.add_done_callback(self._attachment_closes.discard)
+        task.add_done_callback(self._attachment_close_done)
+
+    def _attachment_close_done(self, task: asyncio.Task[None]) -> None:
+        self._attachment_closes.discard(task)
+        if not task.cancelled() and (error := task.exception()) is not None:
+            # Type and frames only, never the message: it can carry device text (as in `device_login`).
+            LOG.warning("an attachment close failed: %s\n%s", type(error).__name__,
+                        "".join(traceback.format_tb(error.__traceback__)))
 
     def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
         """Run a write from a callback that cannot await. Tasks start in the order they were made and
