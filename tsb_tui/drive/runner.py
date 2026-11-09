@@ -30,7 +30,14 @@ from tsb_contract_client import ApiError
 
 from .. import config
 from .._transport import HttpError
-from ..model.events import KIND_OUTPUT, KIND_TOKEN, TAP_RECORD, TAP_SLOT_CLOSED, Event
+from ..model.events import (
+    KIND_CLOSE,
+    KIND_OUTPUT,
+    KIND_TOKEN,
+    TAP_RECORD,
+    TAP_SLOT_CLOSED,
+    Event,
+)
 from ..screens.terminal import SessionSlot, TerminalScreen
 from ..widgets.canvas import Canvas
 from . import waits
@@ -129,6 +136,8 @@ class Driver:
     def tap(self, sid: str, kind: str, detail: Any) -> None:
         """Runs in the middle of whatever changed the model, so it only notes the change and pokes: nothing is judged
         until the change has finished (a byte's note is written before its grid is fed)."""
+        if kind in (TAP_SLOT_CLOSED, KIND_CLOSE):
+            self.commands.note_closed(sid)
         if kind == TAP_SLOT_CLOSED:
             self._left[sid] = getattr(detail, "left", None)
         elif kind != TAP_RECORD and isinstance(detail, Event):

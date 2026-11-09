@@ -153,7 +153,8 @@ A gate refusal sends nothing and returns `sent: false`, `screen` (the whole bloc
 Earlier refusals (`bad_request`, `unknown_key`, `not_attached`, `not_available`, `not_typist`) keep their existing shape.
 drive never repairs a mismatch: no automatic Ctrl-C, q, retry or other typed input.
 
-Shells that emit OSC 133 marks give drive an extra check after all other send checks. After a live
+Shells that emit OSC 133 marks give drive an extra check after all other send checks, including the
+target prompt-pattern check. After a live
 prompt-start `A`, a line-ending `type` or `keys` send without `full_screen: true` is refused with
 `not_at_prompt` if a command-start `C` or command-finished `D` followed that prompt. Prompt-end `B`
 keeps the prompt state. A new `A` permits the send only if all the other checks pass too.
@@ -320,6 +321,8 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 | `no_look` | missing, unknown, used-up or wrong-session/attachment look; take a new screen look |
 | `screen_changed` | output bytes or a `token`, `size` or `stale` frame followed the look; `changed` lists only the actual causes (`output`, `keyboard`, `size`, `stale`). Clients, notices and prompt frames do not count as changes |
 | `unsettled` | the named look permits only a brake while output is arriving or synchronized output is on |
+| `prompt_mismatch` | the cursor row does not match the target’s `prompt_pattern`; the answer names the pattern |
+| `prompt_unusable` | the target record could not be read, or its pattern could not be parsed or built; `why` says which |
 | `not_at_prompt` | live shell marks show no ready prompt for a line-ending send |
 | `silent` | nothing came back for the silence time; only a brake or bare Enter may go |
 | `full_screen` | a program took the screen but the text send did not say so |
@@ -387,6 +390,13 @@ an attach redraw, or the probe's own echo. Minimize asynchronous output (`termin
 and disable paging where suitable. In tmux the alternate screen is always on, so text sends say `full_screen: true`;
 the look is the protection there. A brake can still land in a boot loader or a different program in a compound line.
 
-Target prompt-pattern checking is not built in this release: it awaits a contract field. Its planned record is read
-at attach; a 404 there leaves that attachment unchecked until the next attach, and a pattern must reach the cursor
-row's end, including any text already typed. No prompt pattern is accepted on a send command.
+When a target has `prompt_pattern`, drive reads it at open or attach and keeps it for that attachment.
+Edits are seen at the next attach. A 404 leaves that attachment unchecked until the next attach; other read
+failures refuse checked sends and are retried, awaited before the checks, at the next checked send.
+
+The pattern is I-Regexp (RFC 9485), matched against the whole cursor row with trailing spaces trimmed.
+It must reach the row’s end, including any text already typed. Only line-ending sends without `full_screen: true`
+are checked, after the other checks; brakes and non-line-ending keys bypass it. A bare Enter after silence is
+checked too. Cover every prompt you answer, including `[confirm]` and `Password:`. I-Regexp has no `\s` or `\d`;
+use `[ \t\n\r]` or `[0-9]` as appropriate. Oversized patterns (over 4,096 NFA states) fail closed with
+`prompt_unusable`. No prompt pattern is accepted on a send command.

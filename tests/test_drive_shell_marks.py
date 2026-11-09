@@ -2,7 +2,24 @@
 from pathlib import Path
 
 import pytest
+from test_drive_prompt_pattern import scenario as prompt_scenario
 from test_drive_send_gate import barrier, look, output, refused, scenario, send
+
+
+@prompt_scenario(pattern='never-matches')
+async def test_prompt_mismatch_precedes_shell_mark_refusal(rig, server, sid, slot, clock, patch):
+    await marks(rig, server, sid, clock, b'\x1b]133;A\x07\x1b]133;C\x07')
+    refused(await send(rig, 'bad\r', look=await look(rig)), 'prompt_mismatch')
+    await barrier(rig, server)
+    assert server.received(slot.pump.state.client_id) == []
+
+
+@prompt_scenario(target_read_error=(503, 'inventory_unavailable', 'inventory down'))
+async def test_unusable_prompt_precedes_shell_mark_refusal(rig, server, sid, slot, clock, patch):
+    await marks(rig, server, sid, clock, b'\x1b]133;A\x07\x1b]133;C\x07')
+    refused(await send(rig, 'bad\r', look=await look(rig)), 'prompt_unusable')
+    await barrier(rig, server)
+    assert server.received(slot.pump.state.client_id) == []
 
 
 async def marks(rig, server, sid, clock, data):
