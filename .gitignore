@@ -17,3 +17,6 @@ venv/
 /results/
 /dist/
 /build/
+
+packaging/cache/
+packaging/out/
