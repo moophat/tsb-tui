@@ -46,6 +46,15 @@ def _me_reads(serve_app) -> int:
 ACTIVITY = ("POST", "/auth/activity")
 
 
+def _half_login_calls(requests) -> list[tuple[str, str]]:
+    """The requests a half login can cause: the create (POST /sessions) and the target read (GET /targets,
+    GET /targets/{id}). Named by method and path so a failure says which request leaked; anything on the app's own
+    timers (the fleet poll, the activity signal) is not what a press sends, so it is not counted."""
+    return [(method, path) for method, path, _body in requests
+            if (method, path) == ("POST", "/sessions")
+            or (method == "GET" and (path == "/targets" or path.startswith("/targets/")))]
+
+
 def _core_calls(requests) -> list[tuple[str, str, object]]:
     """The requests a "nothing reached the core" check counts: everything the TUI sends the core except the screen
     lock's user-activity signal (phase 12 § G). That signal is fired by user input, at most once per served interval,
@@ -173,14 +182,15 @@ def test_half_a_login_is_refused_before_any_call(serve, wait_until) -> None:
         async with app.run_test(size=(120, 40)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
             await wait_until(pilot, lambda: _me_reads(serve_app) == 2, "the read of /auth/me")
-            before = len(_core_calls(serve_app.requests))
+            before = len(_half_login_calls(serve_app.requests))
             for user, password in ((USER, ""), ("", PASSWORD)):
                 _type_login(dialog, user, password)
                 dialog.query_one("#create-button", Button).press()
                 await pilot.pause(0.05)
                 assert _text(dialog.query_one("#new-session-error", Static)) == HALF_LOGIN
                 assert not dialog.query_one("#create-button", Button).disabled
-                assert len(_core_calls(serve_app.requests)) == before, "a half login reached the core"
+                leaked = _half_login_calls(serve_app.requests)
+                assert len(leaked) == before, f"a half login reached the core: {leaked[before:]}"
             assert _creates(serve_app) == [] and isinstance(app.screen, NewSessionScreen)
 
     asyncio.run(check())

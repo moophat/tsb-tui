@@ -34,7 +34,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import logging
 import time
+import traceback
 from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -176,6 +178,8 @@ from .prompts import (
 from .size_dialog import SizeDialog
 from .whos_here import WhosHereScreen
 
+LOG = logging.getLogger("tsb_tui.terminal")
+
 # The status row is one row (design §2.6). The auto size request subtracts it, and the rail's width,
 # from the window; both come from knobs/constants rather than from whatever is mounted, so the request
 # is the same before the rail exists and after.
@@ -313,6 +317,10 @@ class SessionSlot:
     device_login: Any = None
     device_gate: bool = False
     device_size_pending: bool = False
+    # The socket the device login handed over, and the pump's coroutine before its worker ever ran: once the slot
+    # closes without a pump, the close owns both (the worker's cancel never reaches a task that never stepped).
+    device_attachment: Any = None
+    attach_coro: Any = None
     login_status: str = ""
     login_status_until: float = 0.0
 
@@ -361,6 +369,8 @@ class TerminalScreen(Screen):
         # Writes started from a callback that cannot await (a reply, a focus report), kept so they
         # are neither collected mid-flight nor left running after the screen goes.
         self._writes: set[asyncio.Task[None]] = set()
+        # Socket closes survive unmount and belong to sign-out's detach barrier.
+        self._attachment_closes: set[asyncio.Task[None]] = set()
         self.status: StatusRow | None = None
         self.rail: Rail | None = None
         self.sidebar: Sidebar | None = None
@@ -1489,12 +1499,13 @@ class TerminalScreen(Screen):
 
     def adopt_device_attachment(self, slot: SessionSlot, attachment: Any) -> None:
         if slot.closed:
-            self._spawn(attachment.close())
+            self._close_attachment(attachment)
             return
         slot.session_id = attachment.session["id"]
         slot.record = dict(attachment.session)
-        slot.worker = self.run_worker(self._attach_and_pump(slot, *self.fit_size(), attachment=attachment),
-                                      exclusive=False)
+        slot.device_attachment = attachment
+        slot.attach_coro = self._attach_and_pump(slot, *self.fit_size(), attachment=attachment)
+        slot.worker = self.run_worker(slot.attach_coro, exclusive=False)
         self._mark_fleet_dirty()
 
     def request_device_size(self, slot: SessionSlot) -> None:
@@ -2270,6 +2281,15 @@ class TerminalScreen(Screen):
             slot.device_login.remove()
         if cancel and slot.worker is not None:
             slot.worker.cancel()
+        if slot.pump is None:
+            # The worker never ran its body, so nothing owns the socket the device login handed over: close it
+            # here, and close the never-started coroutine so its collection leaves no "never awaited" warning.
+            if slot.attach_coro is not None:
+                slot.attach_coro.close()
+                slot.attach_coro = None
+            if slot.device_attachment is not None:
+                self._close_attachment(slot.device_attachment)
+                slot.device_attachment = None
         if slot.pump is not None:
             # The pump's feed thread (DT20): shut it down before the grid is freed. A worker already
             # inside `stop` has shut it down, which is harmless.
@@ -2315,13 +2335,14 @@ class TerminalScreen(Screen):
 
     async def detach_all(self) -> list[str]:
         """Leave every session open here (each lives on) and return their ids, in the order they were opened, only
-        once every attach worker has finished: its `finally` is what closes the session's WebSocket, so by then the
+        once every attach worker and pending attachment close has finished: the worker's `finally` closes its WebSocket,
+        while a handoff whose worker never started is closed separately, so by then the
         close has been sent for each of them (sign out's order: the detaches first, then `logout()`). No toast per
         session: the caller says one thing."""
         detached: list[str] = []
         # Until no slot remains: a slot admitted before sign-out's gate closed (`_refuse_while_signing_out`) may
         # still appear while a worker is awaited, and each pass leaves it too.
-        while self.slots:
+        while self.slots or self._attachment_closes:
             slots = list(self.slots)
             workers = [slot.worker for slot in slots if slot.worker is not None]
             for slot in slots:
@@ -2332,6 +2353,9 @@ class TerminalScreen(Screen):
             for worker in workers:
                 with contextlib.suppress(Exception):  # a cancelled worker raises `WorkerCancelled`: that is the detach
                     await worker.wait()
+            if self._attachment_closes:
+                await asyncio.gather(*(asyncio.shield(task) for task in self._attachment_closes),
+                                     return_exceptions=True)
         return detached
 
     # -- input: one path out (DT4) --
@@ -2424,6 +2448,18 @@ class TerminalScreen(Screen):
         if slot.awaiting_dump:
             return "awaiting_dump"
         return None
+
+    def _close_attachment(self, attachment: Any) -> None:
+        task = asyncio.get_running_loop().create_task(attachment.close())
+        self._attachment_closes.add(task)
+        task.add_done_callback(self._attachment_close_done)
+
+    def _attachment_close_done(self, task: asyncio.Task[None]) -> None:
+        self._attachment_closes.discard(task)
+        if not task.cancelled() and (error := task.exception()) is not None:
+            # Type and frames only, never the message: it can carry device text (as in `device_login`).
+            LOG.warning("an attachment close failed: %s\n%s", type(error).__name__,
+                        "".join(traceback.format_tb(error.__traceback__)))
 
     def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
         """Run a write from a callback that cannot await. Tasks start in the order they were made and

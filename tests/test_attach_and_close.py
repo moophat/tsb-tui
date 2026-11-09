@@ -14,9 +14,17 @@ guessing "killed" for anything it does not recognize.
 from __future__ import annotations
 
 import asyncio
+import gc
+import inspect
+import logging
+import warnings
 from collections.abc import Callable
+from types import SimpleNamespace
 
-from stub_server import SlowChunkedApp, StubServer
+from device_login_support import password
+from stub_server import DeviceLoginApp, SlowChunkedApp, StubServer
+from tsb_contract_client.device_login import AsyncDeviceLogin
+from workspace_support import fixture_login
 
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.login import LoginScreen
@@ -198,3 +206,275 @@ def test_a_session_killed_while_attached_shows_the_end_and_is_not_reattached() -
                 assert stub.attaches == 1, "a killed session must not be reattached"
 
     asyncio.run(_check())
+
+
+def test_a_slot_closed_before_its_pump_started_closes_the_handed_over_device_login_socket() -> None:
+    """A device login answered to the end hands its socket to the terminal as an attachment
+    (`adopt_device_attachment`), and the slot can be closed before the pump worker ever runs its
+    body: cancelling a worker whose task never stepped leaves the handed-over socket open, and the
+    coroutine is collected un-awaited (a RuntimeWarning). The close must close both — the socket
+    the device login handed over, and the never-started coroutine."""
+
+    async def _check() -> None:
+        stub = DeviceLoginApp(rounds=[password()], outcome="connected")
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(120, 40)) as pilot:
+                screen = await fixture_login(app, pilot)
+                pending = app.client.create_device_login("normal", "fixture-account",
+                                                          "xterm-256color", 120, 40)
+                login = await AsyncDeviceLogin.open(app.client._attach_url(), pending,
+                                                    ssl_context=app.client._ssl())
+                await login.answer(1, ["fixture-answer"])
+                result = None
+                while result is None:
+                    frame = await login.recv()
+                    if frame is not None and frame.get("t") == "device_login_result":
+                        result = frame
+                assert result["outcome"] == "connected"
+                attachment = await login.attachment()
+                assert not attachment._ws.closed, "the handed-over socket is open before the close"
+                slot = screen._add_slot({"id": "pending-handoff", "target_id": "normal",
+                                         "state": "live", "owner": app.username}, defer_attach=True)
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always")
+                    screen.adopt_device_attachment(slot, attachment)
+                    attach_coro = slot.attach_coro
+                    screen._close_slot(slot)
+                    assert inspect.getcoroutinestate(attach_coro) == inspect.CORO_CLOSED
+                    await pilot.pause()
+                    del slot
+                    gc.collect()
+                    never = [w for w in caught if issubclass(w.category, RuntimeWarning)
+                             and "coroutine" in str(w.message)]
+                assert attachment._ws.closed, "the slot closed and left the handed-over socket open"
+                assert not never, (
+                    f"a never-started coroutine was collected un-awaited: {[str(w.message) for w in never]}")
+
+    asyncio.run(_check())
+
+
+def test_sign_out_waits_for_a_pre_start_handoffs_socket_close(monkeypatch) -> None:
+    async def _check() -> None:
+        stub = DeviceLoginApp(rounds=[password()], outcome="connected")
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(120, 40)) as pilot:
+                screen = await fixture_login(app, pilot)
+                pending = app.client.create_device_login("normal", "fixture-account",
+                                                          "xterm-256color", 120, 40)
+                login = await AsyncDeviceLogin.open(app.client._attach_url(), pending,
+                                                    ssl_context=app.client._ssl())
+                await login.answer(1, ["fixture-answer"])
+                while True:
+                    frame = await login.recv()
+                    if frame is not None and frame.get("t") == "device_login_result":
+                        assert frame["outcome"] == "connected"
+                        break
+                attachment = await login.attachment()
+                close_started = asyncio.Event()
+                release_close = asyncio.Event()
+                close = attachment.close
+
+                async def held_close() -> None:
+                    close_started.set()
+                    await release_close.wait()
+                    await close()
+
+                monkeypatch.setattr(attachment, "close", held_close)
+                logout = app.client.logout
+                at_logout: list[bool] = []
+
+                def checked_logout() -> None:
+                    at_logout.append(attachment._ws.closed)
+                    logout()
+
+                monkeypatch.setattr(app.client, "logout", checked_logout)
+                slot = screen._add_slot({"id": "pending-handoff", "target_id": "normal",
+                                         "state": "live", "owner": app.username}, defer_attach=True)
+                screen.adopt_device_attachment(slot, attachment)
+                attach_coro = slot.attach_coro
+                screen._close_slot(slot)
+                assert inspect.getcoroutinestate(attach_coro) == inspect.CORO_CLOSED
+                signing_out = asyncio.create_task(app.sign_out())
+                try:
+                    await asyncio.wait_for(close_started.wait(), 2)
+                    await pilot.pause()
+                    assert not signing_out.done()
+                    assert not at_logout, "logout was requested while the handed-over socket was open"
+                    screen.on_unmount()
+                    await pilot.pause()
+                    assert screen._attachment_closes
+                    assert all(not task.done() for task in screen._attachment_closes)
+                finally:
+                    release_close.set()
+                    await asyncio.wait_for(signing_out, 5)
+                assert at_logout == [True]
+                assert attachment._ws.closed
+
+    asyncio.run(_check())
+
+
+def test_sign_out_still_logs_out_when_a_handed_over_attachment_close_raises(monkeypatch) -> None:
+    async def _check() -> None:
+        with StubServer(DeviceLoginApp(rounds=[])) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(120, 40)) as pilot:
+                screen = await fixture_login(app, pilot)
+                release_close = asyncio.Event()
+                close_started = asyncio.Event()
+
+                async def failing_close() -> None:
+                    close_started.set()
+                    await release_close.wait()
+                    raise OSError("socket close failed")
+
+                record = {"id": "pending-handoff", "target_id": "normal",
+                          "state": "live", "owner": app.username}
+                attachment = SimpleNamespace(session=record, close=failing_close)
+                logout = app.client.logout
+                logout_sent: list[bool] = []
+
+                def checked_logout() -> None:
+                    logout_sent.append(True)
+                    logout()
+
+                monkeypatch.setattr(app.client, "logout", checked_logout)
+                slot = screen._add_slot(record, defer_attach=True)
+                screen.adopt_device_attachment(slot, attachment)
+                screen._close_slot(slot)
+                signing_out = asyncio.create_task(app.sign_out())
+                try:
+                    await asyncio.wait_for(close_started.wait(), 2)
+                    await pilot.pause()
+                    assert not logout_sent
+                    assert not signing_out.done()
+                finally:
+                    release_close.set()
+                    result = await asyncio.wait_for(signing_out, 5)
+                assert result is not None
+                assert logout_sent == [True]
+                assert not screen.slots
+                assert not screen._attachment_closes
+
+    asyncio.run(_check())
+
+
+def _terminal_warnings(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records
+            if r.name == "tsb_tui.terminal" and r.levelno == logging.WARNING]
+
+
+def test_sign_out_logs_a_handed_over_attachment_close_failure_by_type_and_frames(monkeypatch, caplog) -> None:
+    """A handed-over close that raises is logged once, by type and frames only, while sign-out still completes:
+    `detach_all` swallows the exception in its gather, so the done-callback is the one place it can be reported."""
+    marker = "socket-close-failed-2229"
+    caplog.set_level(logging.WARNING)
+
+    async def _check() -> None:
+        with StubServer(DeviceLoginApp(rounds=[])) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(120, 40)) as pilot:
+                screen = await fixture_login(app, pilot)
+                release_close = asyncio.Event()
+                close_started = asyncio.Event()
+
+                async def failing_close() -> None:
+                    close_started.set()
+                    await release_close.wait()
+                    raise OSError(marker)
+
+                record = {"id": "pending-handoff", "target_id": "normal",
+                          "state": "live", "owner": app.username}
+                attachment = SimpleNamespace(session=record, close=failing_close)
+                logout = app.client.logout
+                logout_sent: list[bool] = []
+
+                def checked_logout() -> None:
+                    logout_sent.append(True)
+                    logout()
+
+                monkeypatch.setattr(app.client, "logout", checked_logout)
+                slot = screen._add_slot(record, defer_attach=True)
+                screen.adopt_device_attachment(slot, attachment)
+                screen._close_slot(slot)
+                signing_out = asyncio.create_task(app.sign_out())
+                try:
+                    await asyncio.wait_for(close_started.wait(), 2)
+                    await pilot.pause()
+                    assert not logout_sent
+                    assert not signing_out.done()
+                finally:
+                    release_close.set()
+                    result = await asyncio.wait_for(signing_out, 5)
+                    await pilot.pause()
+                assert result is not None
+                assert logout_sent == [True]
+                assert not screen._attachment_closes
+
+    asyncio.run(_check())
+    records = _terminal_warnings(caplog)
+    assert len(records) == 1, [r.getMessage() for r in records]
+    text = "\n".join(r.getMessage() for r in records)
+    assert "OSError" in text
+    assert marker not in text, "the exception's message reached the log"
+
+
+def test_an_attachment_close_failure_outside_sign_out_is_logged_once(caplog) -> None:
+    """The same close outside sign-out is reported once too: nothing awaits its task, so only the callback can log it."""
+    marker = "close-failed-outside-sign-out-2229"
+    caplog.set_level(logging.WARNING)
+
+    async def _check() -> None:
+        with StubServer(DeviceLoginApp(rounds=[])) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(120, 40)) as pilot:
+                screen = await fixture_login(app, pilot)
+
+                async def failing_close() -> None:
+                    raise OSError(marker)
+
+                record = {"id": "pending-handoff", "target_id": "normal",
+                          "state": "live", "owner": app.username}
+                attachment = SimpleNamespace(session=record, close=failing_close)
+                slot = screen._add_slot(record, defer_attach=True)
+                screen.adopt_device_attachment(slot, attachment)
+                screen._close_slot(slot)
+                await _wait_until(pilot, lambda: not screen._attachment_closes)
+                await pilot.pause()
+
+    asyncio.run(_check())
+    records = _terminal_warnings(caplog)
+    assert len(records) == 1, [r.getMessage() for r in records]
+    text = "\n".join(r.getMessage() for r in records)
+    assert "OSError" in text
+    assert marker not in text, "the exception's message reached the log"
+
+
+def test_an_attachment_close_that_succeeds_is_not_logged(caplog) -> None:
+    """A close that finishes cleanly says nothing on the terminal logger."""
+    caplog.set_level(logging.WARNING)
+
+    async def _check() -> None:
+        with StubServer(DeviceLoginApp(rounds=[])) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(120, 40)) as pilot:
+                screen = await fixture_login(app, pilot)
+                closed = asyncio.Event()
+
+                async def closing() -> None:
+                    closed.set()
+
+                record = {"id": "pending-handoff", "target_id": "normal",
+                          "state": "live", "owner": app.username}
+                attachment = SimpleNamespace(session=record, close=closing)
+                slot = screen._add_slot(record, defer_attach=True)
+                screen.adopt_device_attachment(slot, attachment)
+                screen._close_slot(slot)
+                await _wait_until(pilot, lambda: not screen._attachment_closes)
+                assert closed.is_set(), "the close never ran"
+                await pilot.pause()
+
+    asyncio.run(_check())
+    records = _terminal_warnings(caplog)
+    assert not records, [r.getMessage() for r in records]
