@@ -1,18 +1,134 @@
-# tui — U7
+# tsb-tui
 
-## Repository history
+`tsb-tui` is the terminal client for TSB, the Terminal Session Broker. Your terminal sessions live on the TSB broker,
+not on your machine, so you can attach to one, detach and leave it running, come back later, and share it with other
+logins. The same program also runs without a screen as `tsb-tui drive`, which an agent or a test rig uses with one JSON
+command per line.
 
-This repository was extracted with rewritten history from tsb-core at `25d10226`
-(the `tui/` tree `345dc6ae`). Commit hashes are new, original commit signatures are
-not carried, and `#NNN` in an inherited commit message refers to a tsb-core PR.
+New here? [`docs/using-tsb-tui.md`](docs/using-tsb-tui.md) takes you from install to a working session, step by step.
+Agents read [`tsb_tui/drive/GUIDE.md`](tsb_tui/drive/GUIDE.md) (also printed by `tsb-tui drive --guide`).
 
-A first-party shipped surface and the core's verification instrument — one artifact, both roles, no conflict (`Core_value` § Surface Philosophy ships it alongside web and desktop; `Desktop_Renderer` §4 gives it the same coverage at days not weeks). Python + Textual. Imports only the published contract client (CI lint), so what ships is a genuine API consumer and the smoke test for every deploy.
+## Install
 
-Ownership, seams and exit evidence: tsb-program’s `spine/plan.md` §2 (U7). This repository owns the TUI unit.
+You need read access to this repository, which is private, to download a release.
 
-The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO](program/contract/protocols/edges/SF-CO.md) ([`program/contract/protocols/`](program/contract/protocols/README.md)): what a surface must and may do is in each protocol's consumer lines.
+**Linux** (x86_64, glibc 2.29 or newer, Python 3.12 or newer, `pipx`). Download these five assets of a
+[GitHub release](https://github.com/moophat/tsb-tui/releases) into one empty directory:
+`tsb_tui-<version>-py3-none-any.whl`, `tsb_contract-<version>-py3-none-any.whl`,
+`libghostty-vt-linux-x86_64.tar.gz`, `install.sh` and `SHA256SUMS`. Then run:
 
-## Layout
+    bash install.sh
+
+It checks every asset against `SHA256SUMS`, installs both wheels with pipx, unpacks the screen engine into the same
+environment, loads it once, and needs no root. Detail: [guide section 2](docs/using-tsb-tui.md#2-install).
+
+**Windows** (x64). Download `tsb-tui-<version>-windows-x64.zip` and extract it. Run `tsb-tui-check.cmd` first: it loads
+the screen engine, prints `Manifest check: PASS` and the TUI version. Then start the client with
+`tsb-tui.cmd --broker https://<your-broker>`. The zip carries its own Python; nothing is installed.
+
+**From source**, for development: see [For developers](#for-developers).
+
+## Quick start
+
+Interactive, with a person at the keyboard:
+
+    tsb-tui --broker https://<your-broker> [--ca-file PEM] [--target ID]
+
+`--ca-file` is for a broker whose certificate is signed by a private authority. A cleartext `http://` broker address is
+refused unless the host is loopback.
+
+1. **Log in** on the first screen with your TSB username and password.
+2. **List targets.** Press `Ctrl-\` then `F` for the full Fleet view, then `Tab` to the Targets tab. It lists the
+   targets the broker shows this login.
+3. **Open a session.** Select a target and press `Enter`. New session opens on it. The first attach to a session shows a
+   gate with the recording text (every byte typed and shown is recorded) and, for a first-use host key, its fingerprint
+   and a tick.
+4. **Type.** Every key reaches the session except the leader, `Ctrl-\`.
+5. **Detach.** `Ctrl-\` then `d`. The session keeps running on the broker; `Ctrl-\` then `f` opens the sidebar, where
+   you pick it up again. `Ctrl-\` alone opens the Menu, the complete searchable list of actions.
+
+For an agent, the same program headless. One JSON command per line in, one JSON answer or event per line out:
+
+    tsb-tui drive --guide                       # print the guide for agents; needs no broker
+    tsb-tui drive --profile drive --broker https://<your-broker> --user <your-login> \
+      --password-file <file> --set size.auto_request=true
+    {"id":1,"op":"targets"}
+
+The agent must not be able to read the password file: read [guide section 1](docs/using-tsb-tui.md#1-what-you-need)
+before you run `drive` for an agent.
+
+## What it does
+
+**Sessions and sharing**
+- Attach, detach, reattach, and keep several sessions open at once, each on a chip in the rail
+  ([The rail, the sidebar and several sessions](#the-rail-the-sidebar-and-several-sessions)).
+- Who's here: see who is attached, hand the keyboard to another login, take it back (`^\ w`, `^\ t`).
+- End a session for everyone (`^\ x`); quit and leave every session running (`^\ :q`).
+- Copy from the scroll view to your clipboard, and search the output the client holds (`^\ [`).
+
+**Targets** ([guide section 11](docs/using-tsb-tui.md#11-targets-add-edit-delete))
+- List and query the inventory on the Targets tab (`type:ssh tag:prod group:core source:nmaa`).
+- Add (`n`), edit (`e`) and delete (`d`) a target. This needs the `target.edit` permission on your login. Drive has
+  `target_new`, `target_edit` and `target_delete` ([GUIDE.md section 5](tsb_tui/drive/GUIDE.md#5-commands)).
+
+**Logins and the vault**
+- Type a device login in the terminal at connect, or use a stored login; **Remember** (off by default) saves a
+  successful password-only login
+  ([New session and Remember](#tsb-tui-drive-an-agent-or-the-harness-uses-the-tui-as-a-person-does)).
+- Credentials…: save a login, map credentials to targets, delete them; Devices… lists and revokes trusted devices
+  (the vault bullet of [the rail section](#the-rail-the-sidebar-and-several-sessions)).
+
+**The screen lock**
+- The screen locks after the screen-lock time the broker serves; your login password resumes it; Lock now is `^\ L`
+  (same section).
+
+**Themes and colour schemes**
+- Five chrome themes and a list of terminal colour schemes, picked separately
+  ([Themes and colours](#themes-and-colours)). `--set theme.name=nord --set theme.term.scheme=nord`.
+
+**Drive, for agents**
+- A headless client with a send gate, looks, waits and events ([GUIDE.md](tsb_tui/drive/GUIDE.md),
+  [guide sections 3 to 9](docs/using-tsb-tui.md#3-first-run)).
+
+## Upgrading
+
+Find the version you run:
+
+- In the TUI: Menu, then About. It prints `tsb-tui <version>`, the contract client and the engine.
+- On Windows: run `tsb-tui-check.cmd`; its last line is `TUI: <version>`.
+- On Linux the wheel you installed is named `tsb_tui-<version>-py3-none-any.whl`.
+
+There is no `--version` flag.
+
+The latest release is on the repository's [releases page](https://github.com/moophat/tsb-tui/releases). From a shell:
+
+    gh release view --repo moophat/tsb-tui
+
+Upgrading is installing the newer release the same way as the first time. On Linux, download the five assets of the new
+release into a fresh empty directory and run `bash install.sh` again: it installs with `pipx install --force`, so it
+replaces the old version. On Windows, extract the new zip, as before. Your config file and saved themes are not touched.
+
+## Configuration
+
+Every setting is a knob with a default. The packaged defaults are in `tsb_tui/config_default.toml`; Settings… (in the
+Menu) shows every knob in force and the layer its value came from. The order of precedence, last wins:
+
+    packaged defaults, a profile, the config file, TSB_TUI_* environment variables, --set key=value
+
+- **Config file.** Linux: `$XDG_CONFIG_HOME/tsb-tui/config.toml`, which is `~/.config/tsb-tui/config.toml` when
+  `XDG_CONFIG_HOME` is not set. Windows: `%APPDATA%\tsb-tui\config.toml` (or `$XDG_CONFIG_HOME/tsb-tui/config.toml` when
+  `XDG_CONFIG_HOME` is set). `--config FILE` names another file. An absent file is not an error.
+- **`--set KEY=VALUE`** sets one knob and wins over everything; repeat it for more:
+  `--set size.auto_request=true`.
+- **Environment.** `TSB_TUI_` plus the key in capitals with dots as underscores: `theme.name` is `TSB_TUI_THEME_NAME`,
+  `theme.term.scheme` is `TSB_TUI_THEME_TERM_SCHEME`. `TSB_TUI_PROFILE` picks the profile.
+- **Profiles.** `default`, `phone`, `drive`, `harness`; pick one with `--profile` or `profile = "..."` in the file.
+- An unknown key, a bad type or a value no phase builds stops start-up and names the key.
+- `drive.send_gate` can be set in the config file only: `--set` and the environment refuse it.
+
+## For developers
+
+### Layout
 
     tsb_tui/app.py              the Textual App: one client, a stack of screens
     tsb_tui/config.py           the knobs: packaged defaults, a profile, the TOML file, `TSB_TUI_*` and `--set`
@@ -39,7 +155,9 @@ The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO]
     tsb_tui/screens/prompts.py       the stale choice, the quiet prompt, operator alerts, the end dialog
     tsb_tui/model/                   pure state, no Textual: `attachment.py` (every C2 frame and close),
                                      `actions.py` (the one action table), `fleet.py`, `alerts.py`, `countdown.py`
-    tsb_tui/screens/fleet_view.py    the full-screen Fleet view: Sessions and Alerts tabs, Needs you, the table
+    tsb_tui/screens/fleet_view.py    the full-screen Fleet view: Sessions, Targets and Alerts tabs, Needs you, the table
+    tsb_tui/screens/target_form.py   the New target / Edit target form and the delete confirmation (the Targets tab's
+                                     `n`, `e`, `d`)
     tsb_tui/screens/chrome_dialogs.py  End session…'s question, the event log, Settings…, All keys, About
     tsb_tui/widgets/mouse.py         what `mouse.enabled` and `mouse.tooltips` mean for the chrome
     tsb_tui/term/backend.py     libghostty-vt screen state, fed by the attached byte stream (Contract
@@ -51,6 +169,7 @@ The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO]
                                 an agent reads (`tsb-tui drive --guide`)
     tsb_tui/smoke.py            the non-interactive path the deploy hook drives after a deploy
     tsb_tui/__main__.py         `tsb-tui`'s entry point
+    packaging/                  the Windows x64 zip assembler (`packaging/README.md`) and its launchers
     bench/                      the benchmarks the orchestrator runs on the integration node (below); `bench/README.md`
     tests/                      the suite; the shapes it stands on are the contract's (`program/contract/`)
     tests/stub_server.py        a minimal, slow, chunked C1/C2 stub (test scaffolding, not a
@@ -63,7 +182,7 @@ The flows it drives, as any consumer does, are the TSB protocols on edge [SF-CO]
                                      screens drawn at 65x30, 120x40 and 200x60
     tests/test_bench_smoke.py        every bench script, run tiny, so none can rot
 
-## Run
+### Run
 
 Interactive, from any node with network access to the core:
 
@@ -94,7 +213,98 @@ the bottom (`status.position`) says who types and lists what can be done now; ea
 pill and `≡ Menu` take a click. The Menu is the complete list of actions, searchable. Letters are
 rebound with `[keys.leader_map]` in the config file, by action name.
 
-## tsb-tui drive: an agent, or the harness, uses the TUI as a person does
+### Install from source
+
+`pyproject.toml` declares `[project.scripts] tsb-tui`, so `pipx install .` gives a working
+`tsb-tui` script — except the contract client, which PEP 508 cannot name by a relative path (see
+the comment in `pyproject.toml`). `program/` is a submodule with `update = none`, so this copy
+needs `program/` populated by `make contract-init` from the repo root first. Inject it from a
+throwaway copy of `program/contract/`, never in place — building writes `build/` and
+`*.egg-info` into its source — and:
+
+    make contract-init   # from the repo root: populates program/ at the pinned release
+    cp -r program/contract /tmp/contract-$$   # throwaway; pip then builds inside the copy
+    pipx inject tsb-tui /tmp/contract-$$
+
+`tsb-core/deploy/manage.sh up`'s post-deploy hook does exactly this, for the operator who ran `sudo`: it
+installs `tsb-tui`, injects a throwaway copy of `program/contract/` (so pip's own `build/`
+and `*.egg-info` never land in the program submodule), then runs
+`tsb-core/harness/rigs/smoke.sh` and `tsb-tui --smoke` against the instance it just brought up.
+
+### Tests and lint
+
+The Makefile holds the repository's gates (`make` alone runs `lint`):
+
+    make contract-init   # once after a clone and in every new worktree
+    make test            # runs contract-check, then pytest tests/
+    make lint            # ruff, import lint, docs-branch guard, leak check, engine check
+
+`make lint` runs `ruff check` when ruff is installed; it is optional outside CI and required in CI. A direct run:
+
+    pip install -e ".[test]"   # from the repo root; tests/conftest.py puts program/contract/ and
+                                 # program/contract/client/ first on sys.path and imports the
+                                 # contract client from there — no separate contract install needed
+    pytest tests/
+
+`tests/conftest.py` needs `program/contract/` populated (`make contract-init`) and the engine at
+`vendor/libghostty-vt/libghostty-vt.so` (vendored at its PIN; `TSB_TUI_TERM_LIBRARY` may override it locally), and fails loudly on either rather than
+skipping silently. No test is skipped (the harness's rule, `tsb-core/harness/README.md` "No skips"). Every test talks to the contract's in-process
+fixture server (`tsbc._serve`) or to `tests/stub_server.py`, never to a real sshd, a node or the workstation.
+
+* **The consumer MUSTs.** `tests/test_consumer_musts.py` holds the table of the plan's consumer MUSTs with the test that
+  proves each line, and a test that fails when a named test no longer exists. No contract fixture grades a consumer, so
+  this table is the evidence until one does.
+* **The snapshots.** `tests/test_snapshots.py` builds T1, S1, F5, F7, F12's states and A2 of the design's mockups at 65x30,
+  120x40 and 200x60, asserts their content, and writes each as text and SVG into `$TSB_TUI_SNAPSHOT_DIR` (a temporary
+  directory when it is not set) for a person to open against the mockups.
+* **The pilot tests** (`tests/test_flow_pilot.py` and most of the rest) run the real app under Textual's test runner;
+  waits are on a condition, never on time, and each docstring says why the behaviour matters and cites the clause.
+
+### The contract pin
+
+`program/` is a sparse submodule of tsb-program at a pinned release: `program/contract/` is the contract this client
+speaks, and the flows it drives are in [`program/contract/protocols/`](program/contract/protocols/README.md), on edge
+[SF-CO](program/contract/protocols/edges/SF-CO.md): what a surface must and may do is in each protocol's consumer lines.
+`make contract-init` populates it at the release this branch already pins (run it after a clone and in every new
+worktree); `make contract-check` verifies the pin and runs inside `make test`.
+
+### CI and the repository gates
+
+Two workflows run on GitHub Actions in `.github/workflows/`: `test.yml` (tests and the gates above) and `release.yml`
+(below). The TUI imports only the published contract client (an import lint in `make lint`), so what ships is a genuine
+API consumer and the smoke test for every deploy.
+
+### Releases
+
+A release is made by pushing an annotated tag `vX.Y.Z` (the version is the tag; `pyproject.toml` carries `0.0.0` in the
+source). `.github/workflows/release.yml` then runs on the tag and:
+
+1. refuses a tag that is not `vX.Y.Z`, not annotated, or whose commit is not an ancestor of `origin/main`;
+2. fetches `program/` at the pinned commit and checks the pin;
+3. builds the Windows x64 zip from the tagged commit with `packaging/build-zips.sh windows-x64 --engine
+   packaging/engine/windows-x64` ([`packaging/README.md`](packaging/README.md)), its hash-locked inputs downloaded and
+   checked;
+4. stamps the version from the tag, and builds offline the two wheels (`tsb_tui`, `tsb_contract`), checks the engine,
+   and packs `libghostty-vt-linux-x86_64.tar.gz`;
+5. writes `SHA256SUMS` (the zip's line included) and publishes the two wheels, the engine archive, `install.sh`, the
+   zip, its `.zip.sha256` and `SHA256SUMS` to the GitHub release for the tag, whose notes are the tag's own message,
+   and checks that each asset is there.
+
+### Benchmarks
+
+`bench/` holds the three measurements the plan's merge gate needs, run by the orchestrator on the integration node and
+nowhere else, while no post-merge loop is running: they are not rigs (no target, no sshd; each starts the contract's
+fixture server as a child process), but they load a machine. `bench/engine_read.py` is the engine-read go/no-go,
+`bench/paint.py` keystroke-to-screen under a firehose (p95 under 50 ms at 116x39 and 196x59, every WebSocket ping
+answered), `bench/fleet_scale.py` a 500-session fleet (filtering in under 100 ms, the poll never blocking typing). Each
+has `--tiny`, which `tests/test_bench_smoke.py` runs in CI. The exact commands and what each number means are in
+`bench/README.md`.
+
+### Where this unit sits
+
+A first-party shipped surface and the core's verification instrument — one artifact, both roles, no conflict (`Core_value` § Surface Philosophy ships it alongside web and desktop; `Desktop_Renderer` §4 gives it the same coverage at days not weeks). Python + Textual. Ownership, seams and exit evidence: tsb-program’s `spine/plan.md` §2 (U7). This repository owns the TUI unit.
+
+### tsb-tui drive: an agent, or the harness, uses the TUI as a person does
 
 For an SSH target, New session offers the stored login, username/password fields, or **Type the login in the terminal**.
 The last opens a pane before creating anything: TSB asks `login as:`, confirms a first-use host key, then shows the
@@ -125,7 +335,7 @@ mouse on and counts output; its `input.guard` is on by default like every profil
 rig that wants to test the core's own refusal switches it off with `--set input.guard=false`. `--smoke` stays the
 non-drive smoke path it was: drive has no command to create or end a session, which a smoke run needs.
 
-## What reaches the session, and what does not
+### What reaches the session, and what does not
 
 Every key reaches the session except the leader (Ctrl-\\), re-encoded for the session's modes by libghostty's key
 encoder (DECCKM arrows, application keypad, bracketed paste, the kitty keyboard flags). The suite
@@ -146,17 +356,7 @@ does, comes out byte for byte the same. What does not, recorded in that file and
 The phone path (an SSH app, then zellij, then the TUI on the integration node; taps and the wheel) is a manual check
 the tests cannot make.
 
-## Benchmarks
-
-`bench/` holds the three measurements the plan's merge gate needs, run by the orchestrator on the integration node and
-nowhere else, while no post-merge loop is running: they are not rigs (no target, no sshd; each starts the contract's
-fixture server as a child process), but they load a machine. `bench/engine_read.py` is the engine-read go/no-go,
-`bench/paint.py` keystroke-to-screen under a firehose (p95 under 50 ms at 116x39 and 196x59, every WebSocket ping
-answered), `bench/fleet_scale.py` a 500-session fleet (filtering in under 100 ms, the poll never blocking typing). Each
-has `--tiny`, which `tests/test_bench_smoke.py` runs in CI. The exact commands and what each number means are in
-`bench/README.md`.
-
-## The rail, the sidebar and several sessions
+### The rail, the sidebar and several sessions
 
 Login lands on the workspace, not on a form: a four-column rail on the left (`rail.side`, `rail.width`), the
 canvas of the session in front, and one status row. With no session open the sidebar starts open
@@ -195,7 +395,8 @@ canvas of the session in front, and one status row. With no session open the sid
   connection carries one session, so reuse is greyed there). Every string from a target record is drawn as text:
   markup stays literal and a control character (an escape included) shows as its Unicode control picture. A
   New session on a typed id reads `GET /targets/{id}` first, for its type. `tsb-tui drive` has the same two reads as
-  commands, `targets` and `new` (`tsb-tui drive --guide`).
+  commands, `targets` and `new` (`tsb-tui drive --guide`). With the `target.edit` permission, `n`, `e` and `d` add,
+  edit and delete a target (`tsb_tui/screens/target_form.py`); drive has `target_new`, `target_edit` and `target_delete`.
 * **Mouse and touch.** A single click or tap acts on every piece of chrome: the rail, the sidebar, the status row's
   hints (the full view's and Pan's too) and the dialogs' buttons. The wheel moves through the sidebar and the
   view; over the canvas it goes to the session only when the session asked for the mouse and this client holds
@@ -244,7 +445,7 @@ canvas of the session in front, and one status row. With no session open the sid
   `rail.*`, `sidebar.*`, `watch.take_back_brings_to_front`, `fleet_view.*`, `mouse.*`, `view.pan_step`,
   `motion.level`.
 
-## What the screen tells you
+### What the screen tells you
 
 Every state a session's frames put it in is on screen, never only in a log:
 
@@ -273,7 +474,7 @@ Every state a session's frames put it in is on screen, never only in a log:
   a TUI's auto size is the one that tells the session what fits the window); the phone, drive and harness profiles
   keep it off. `input.guard` is on in every profile too (D52, same day).
 
-## Themes and colours
+### Themes and colours
 
 Two independent picks (ruling 2 — a theme never derives a scheme, nor a scheme a theme):
 
@@ -309,53 +510,13 @@ in both folders (R6). The scheme's colours are overridable: `theme.term.fg`, `th
 `theme.term.bg` override the scheme, and `theme.term.cursor_colour` (`role` keeps TSB's accent/steel, `scheme`
 takes the scheme's cursor).
 
-## Install
+## Licence
 
-**From a release:** on Linux x86_64 with glibc 2.29 or newer (Ubuntu 20.04,
-Debian 11 or newer), Python 3.12+ and pipx available, download both wheels,
-`libghostty-vt-linux-x86_64.tar.gz`, `install.sh` and `SHA256SUMS` from the
-[GitHub release](https://github.com/moophat/tsb-tui/releases) into one directory.
-Run `bash install.sh` there. It checks the assets, picks the first of `python3.13`,
-`python3.12` or `python3` that reports 3.12 or newer to run pipx on, installs both Python packages
-and the screen engine without root or shell profile changes, loads the engine once through the
-TUI's own loader to check it, and checks `tsb-tui drive --help`. Pipx may fetch Python dependencies
-from the package index; all TSB pieces come from the downloaded release assets.
-If pipx's bin directory is not on PATH, the installer prints a reminder to run
-`pipx ensurepath` yourself.
+The licence is decided as Apache-2.0 for this repository. The `LICENSE` file is added when the repository is published;
+until then the repository is private.
 
-`pyproject.toml` declares `[project.scripts] tsb-tui`, so `pipx install .` gives a working
-`tsb-tui` script — except the contract client, which PEP 508 cannot name by a relative path (see
-the comment in `pyproject.toml`). `program/` is a submodule with `update = none`, so this copy
-needs `program/` populated by `make contract-init` from the repo root first. Inject it from a
-throwaway copy of `program/contract/`, never in place — building writes `build/` and
-`*.egg-info` into its source — and:
+## Repository history
 
-    make contract-init   # from the repo root: populates program/ at the pinned release
-    cp -r program/contract /tmp/contract-$$   # throwaway; pip then builds inside the copy
-    pipx inject tsb-tui /tmp/contract-$$
-
-`tsb-core/deploy/manage.sh up`'s post-deploy hook does exactly this, for the operator who ran `sudo`: it
-installs `tsb-tui`, injects a throwaway copy of `program/contract/` (so pip's own `build/`
-and `*.egg-info` never land in the program submodule), then runs
-`tsb-core/harness/rigs/smoke.sh` and `tsb-tui --smoke` against the instance it just brought up.
-
-## Tests
-
-    pip install -e ".[test]"   # from the repo root; tests/conftest.py puts program/contract/ and
-                                 # program/contract/client/ first on sys.path and imports the
-                                 # contract client from there — no separate contract install needed
-    pytest tests/
-
-`tests/conftest.py` needs `program/contract/` populated (`make contract-init`) and the engine at
-`vendor/libghostty-vt/libghostty-vt.so` (vendored at its PIN; `TSB_TUI_TERM_LIBRARY` may override it locally), and fails loudly on either rather than
-skipping silently. No test is skipped (the harness's rule, `tsb-core/harness/README.md` "No skips"). Every test talks to the contract's in-process
-fixture server (`tsbc._serve`) or to `tests/stub_server.py`, never to a real sshd, a node or the workstation.
-
-* **The consumer MUSTs.** `tests/test_consumer_musts.py` holds the table of the plan's consumer MUSTs with the test that
-  proves each line, and a test that fails when a named test no longer exists. No contract fixture grades a consumer, so
-  this table is the evidence until one does.
-* **The snapshots.** `tests/test_snapshots.py` builds T1, S1, F5, F7, F12's states and A2 of the design's mockups at 65x30,
-  120x40 and 200x60, asserts their content, and writes each as text and SVG into `$TSB_TUI_SNAPSHOT_DIR` (a temporary
-  directory when it is not set) for a person to open against the mockups.
-* **The pilot tests** (`tests/test_flow_pilot.py` and most of the rest) run the real app under Textual's test runner;
-  waits are on a condition, never on time, and each docstring says why the behaviour matters and cites the clause.
+This repository was extracted with rewritten history from tsb-core at `25d10226`
+(the `tui/` tree `345dc6ae`). Commit hashes are new, original commit signatures are
+not carried, and `#NNN` in an inherited commit message refers to a tsb-core PR.

@@ -298,3 +298,77 @@ Most targets are routers, switches and consoles, not Linux.
   "Password incorrect.") before a successful login's banner, when its authentication order tries a source that
   refuses before one that accepts. TSB relays it verbatim. The prompt, not the first line, says whether you are in:
   wait for the prompt (`[>#]\s*$`), not for the absence of an error line.
+
+## 11. Targets: add, edit, delete
+
+A target is a device or server TSB can open a session on. You can add, change and remove targets from the TUI or from
+`drive`. In the TUI this needs the `target.edit` permission on your login: without it, `n`, `e` and `d` do nothing. The core, not the client, decides what your login may see and change; when it refuses, it
+says why and the client shows its message.
+
+**In the TUI.** Open the full Fleet view (`Ctrl-\` then `F`) and press `Tab` to the Targets tab. Then:
+
+| Key | Does |
+|---|---|
+| `n` | Opens the **New target** form. |
+| `e` | Opens the **Edit target** form on the selected target, filled with its stored definition. The id cannot change. |
+| `d` | Asks "Delete `<target>`? Open sessions stay open. This cannot be undone." Choose **Delete it** or **Keep it** (`Esc` keeps it). |
+
+The form asks for:
+
+- **Id** (required): the target's name in TSB.
+- **Type** (required): SSH or Telnet.
+- **Name** and **Group** (both optional).
+- **Tags** (optional): comma-separated, none of them empty.
+- **Host** (required).
+- **Port** (optional): a whole number from 1 to 65535; blank means the default for the type.
+- **Account** (optional, SSH only): the device user name. It is not a secret.
+
+Press **Save target**. If the core refuses, the form stays open with everything you typed, and the core's message is
+shown under it. `Esc` cancels. After a save the Targets tab selects the target.
+
+**Only TSB's own targets can be changed.** A target that another source discovered (the Source column on the Targets
+tab says which) cannot be edited or deleted here; the tab says it comes from that source. Targets you add go into TSB's
+own source, `tsb`.
+
+**Credentials are separate.** The form saves the target, never its password or key. After you save, press `l` on the
+Targets tab to save a login for the target (`Space` marks several first). If you do not, TSB asks for the login when you
+connect.
+
+**In `drive`.** Three commands, fields as in [GUIDE.md section 5](../tsb_tui/drive/GUIDE.md#5-commands):
+
+    {"op":"target_new","id":"<target-id>","type":"ssh","host":"<host>"}
+    {"op":"target_edit","target":"<target-id>","group":"core","tags":["prod"]}
+    {"op":"target_delete","target":"<target-id>","confirm":true}
+
+- `target_new`: `id`, `type` (`ssh` or `telnet`) and `host` are required; `name`, `group`, `tags` (a list), `port` and
+  `user` (SSH only) are optional. Here `id` is the new target's id.
+- `target_edit`: `target` is the id; every other field is optional and an absent field keeps its value. `null` clears
+  `name`, `group`, `tags`, `port` or `user`; `null` for `type` or `host` is `bad_request`.
+- `target_delete`: `target` and `confirm: true`. Without `confirm: true` the answer is `bad_request` and nothing is
+  sent.
+- Each answers with the `target` record the core returned, or with the core's error code and message. Drive does not
+  save credentials: that is the TUI's `l`.
+
+## 12. Upgrading
+
+Find the version you run:
+
+- In the TUI, open the Menu and choose About. It prints `tsb-tui <version>`, the contract client and the engine.
+- On Windows, run `tsb-tui-check.cmd`. Its last line is `TUI: <version>`.
+- On Linux, the file you installed from is `tsb_tui-<version>-py3-none-any.whl`.
+
+`tsb-tui` has no `--version` flag.
+
+Find the latest release on the [releases page](https://github.com/moophat/tsb-tui/releases), or from a shell:
+
+    gh release view --repo moophat/tsb-tui
+
+Upgrading is installing the newer release the same way as the first time.
+
+- **Linux.** Make a new empty directory. Download the five files of section 2 from the newer release into it and run
+  `bash install.sh` there. It installs with `pipx install --force`, so the old version is replaced; every check in
+  section 2 runs again.
+- **Windows.** Extract the newer `tsb-tui-<version>-windows-x64.zip` and run `tsb-tui-check.cmd`, then `tsb-tui.cmd` as
+  before.
+
+Your config file is not touched.
