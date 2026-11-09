@@ -159,7 +159,32 @@ def assembly_inputs(tmp_path, monkeypatch):
     (engine / 'licenses').mkdir(parents=True)
     (engine / 'main.dll').write_bytes(b'dummy DLL')
     (engine / 'licenses/INDEX').write_text('Engine licence index')
+    root = tmp_path / 'empty-repo'
+    root.mkdir()
+    monkeypatch.setattr(assemble, 'ROOT', root)
     monkeypatch.setattr(assemble, 'HERE', packaging)
+    copytree = assemble.shutil.copytree
+    repository_trees = {
+        root / 'tsb_tui',
+        root / 'program/contract/client/tsb_contract_client',
+        root / 'program/contract/tsbc',
+    }
+
+    def copy_repository_tree(source, destination, **kwargs):
+        if source in repository_trees:
+            Path(destination).mkdir(parents=True)
+            return destination
+        return copytree(source, destination, **kwargs)
+
+    read_text = Path.read_text
+
+    def read_project(path, *args, **kwargs):
+        if path == root / 'pyproject.toml':
+            return '[project]\nversion = "0.0.0"\n'
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(assemble.shutil, 'copytree', copy_repository_tree)
+    monkeypatch.setattr(Path, 'read_text', read_project)
     monkeypatch.setattr(assemble, 'verify', lambda *args, **kwargs: [
         ('windows-x64', 'python', 'unused', 'runtime', 0)])
     monkeypatch.setattr(assemble.subprocess, 'check_output', lambda *args, **kwargs: 'v1.2.3')
@@ -185,6 +210,7 @@ def test_control_character_path_rejected(assembly_inputs, control):
     relative = f'tsb-tui-1.2.3-windows-x64/licenses/engine/{name}'
     assert repr(relative) in str(error.value)
     assert not list((packaging / 'out').glob('*.zip'))
+    assert list(assemble.ROOT.iterdir()) == []
 
 
 def test_contract_pin_failure_precedes_inputs(tmp_path, monkeypatch, capsys):
