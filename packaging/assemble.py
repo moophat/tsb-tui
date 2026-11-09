@@ -69,6 +69,14 @@ def notices(site, engine):
 
 def assemble(engine):
     run('bash', 'tools/contract-pin.sh', 'check', cwd=ROOT)
+    tracked = subprocess.check_output(
+        ['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, text=True)
+    if tracked:
+        raise ValueError(f'tracked changes: {tracked.rstrip()}')
+    untracked = subprocess.check_output(
+        ['git', 'ls-files', '--others', '--exclude-standard', '--', 'tsb_tui'], cwd=ROOT, text=True)
+    if untracked:
+        raise ValueError(f'untracked files under tsb_tui: {untracked.rstrip()}')
     rows = verify(HERE / 'inputs.lock', HERE / 'cache', fetch=True)
     runtimes = [row for row in rows if row[1] == 'python']
     if len(runtimes) != 1:
