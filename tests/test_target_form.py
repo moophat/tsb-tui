@@ -20,6 +20,14 @@ from tsb_tui.screens.target_form import (
 TARGET_FORM_WAIT_S = 60.0
 
 
+async def wait_for_target_workers(app, pilot, step):
+    try:
+        await asyncio.wait_for(app.workers.wait_for_complete(), TARGET_FORM_WAIT_S)
+    except TimeoutError as exc:
+        raise AssertionError(f"{step}: target workers did not complete within {TARGET_FORM_WAIT_S} s") from exc
+    await pilot.pause()
+
+
 async def open_targets(app, pilot, wait_until):
     screen = await fixture_login(app, pilot)
     screen.open_fleet_view(TAB_TARGETS)
@@ -44,10 +52,12 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             form.query_one("#target-tags", Input).value = " prod , core "
             form.query_one("#target-user", Input).value = "operator"
             form.query_one("#target-save", Button).press()
+            await wait_for_target_workers(app, pilot, "created row")
             await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "form-target", "created row", timeout_s=TARGET_FORM_WAIT_S)
             assert server.target_definitions["form-target"] == {
                 "id": "form-target", "type": "ssh", "host": "router.example", "tags": ["prod", "core"], "user": "operator"}
             await pilot.press("e")
+            await wait_for_target_workers(app, pilot, "edit form")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "edit form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             assert form.query_one("#target-id", Input).disabled
@@ -57,18 +67,22 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             await pilot.pause()
             assert not form.query_one("#target-account").display
             form.query_one("#target-save", Button).press()
+            await wait_for_target_workers(app, pilot, "edited target")
             await wait_until(pilot, lambda: app.screen is screen and server.targets["form-target"].get("name") == "Renamed", "edited target", timeout_s=TARGET_FORM_WAIT_S)
             assert "user" not in server.target_definitions["form-target"]
             assert ("GET", "/targets/form-target/definition") in [(m, p) for m, p, _ in server.requests]
             await wait_until(pilot, lambda: view.selected_session == "form-target", "edited row", timeout_s=TARGET_FORM_WAIT_S)
             await pilot.press("d")
+            await wait_for_target_workers(app, pilot, "delete confirmation")
             await wait_until(pilot, lambda: isinstance(app.screen, ConfirmTargetDeleteScreen), "delete confirmation", timeout_s=TARGET_FORM_WAIT_S)
             assert "form-target" in screen_text(app) and "Open sessions stay open" in screen_text(app)
             await pilot.press("escape")
             assert "form-target" in server.targets
             await pilot.press("d")
+            await wait_for_target_workers(app, pilot, "delete confirmation again")
             await wait_until(pilot, lambda: isinstance(app.screen, ConfirmTargetDeleteScreen), "delete confirmation again", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.query_one("#target-delete-confirm", Button).press()
+            await wait_for_target_workers(app, pilot, "deleted target")
             await wait_until(pilot, lambda: "form-target" not in server.targets and screen.targets.row("form-target") is None, "deleted target", timeout_s=TARGET_FORM_WAIT_S)
     asyncio.run(check())
 
@@ -180,13 +194,16 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.fill({"id": "query-target", "type": "ssh", "host": "example"})
             app.screen.query_one("#target-save", Button).press()
+            await wait_for_target_workers(app, pilot, "new row")
             await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "query-target", "new row", timeout_s=TARGET_FORM_WAIT_S)
             screen._run_query("type:ssh")
             await wait_until(pilot, lambda: screen.targets.query.type == "ssh", "filtered rows", timeout_s=TARGET_FORM_WAIT_S)
             await pilot.press("e")
+            await wait_for_target_workers(app, pilot, "editor")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "editor", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.query_one("#target-telnet", RadioButton).value = True
             app.screen.query_one("#target-save", Button).press()
+            await wait_for_target_workers(app, pilot, "saved row outside old query")
             await wait_until(pilot, lambda: app.screen is screen and screen.targets.row("query-target") is not None
                              and screen.targets.row("query-target").type == "telnet", "saved row outside old query",
                              timeout_s=TARGET_FORM_WAIT_S)
