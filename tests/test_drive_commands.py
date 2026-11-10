@@ -874,7 +874,9 @@ def test_guide_prints_without_a_broker_and_help_names_it(monkeypatch, capsys) ->
     with pytest.raises(SystemExit) as stop:
         runner.main(["--help"])
     assert stop.value.code == 0
-    assert "--guide" in capsys.readouterr().out
+    helped = capsys.readouterr().out
+    assert "--guide" in helped
+    assert "--broker" in helped and "broker.url" in helped and "TSB_TUI_BROKER_URL" in helped, helped
 
 
 def test_bad_usage_exits_2_and_a_password_never_comes_from_argv_or_the_environment(
@@ -899,6 +901,21 @@ def test_bad_usage_exits_2_and_a_password_never_comes_from_argv_or_the_environme
     monkeypatch.setenv("TSB_TUI_PASSWORD", "secret")
     rc, _lines, err = _main(monkeypatch, capsys, ["--broker", "http://127.0.0.1:1"])
     assert rc == 1 and "TSB_TUI_PASSWORD" in err and "unknown configuration key" in err
+
+
+def test_a_missing_broker_exits_2_before_it_reads_the_password_stdin(monkeypatch, capsys, tmp_path) -> None:
+    """Qodo round 1 on #48: with no broker anywhere, `--password-file -` must not wait on stdin first, and an absent
+    script must not surface in place of the broker: drive resolves the broker before it reads either."""
+    class NoRead(io.StringIO):
+        def readline(self, *args, **kwargs):
+            raise AssertionError("drive read stdin before it rejected the missing broker")
+
+    for argv in (["--user", "u", "--password-file", "-"],
+                 ["--user", "u", "--password-file", "-", "--script", str(tmp_path / "missing")]):
+        monkeypatch.setattr(sys, "stdin", NoRead())
+        assert runner.main(argv) == 2, argv
+        err = capsys.readouterr().err
+        assert "no broker address" in err, (argv, err)
 
 
 def test_password_file_dash_takes_the_first_stdin_line_then_stdin_carries_commands(

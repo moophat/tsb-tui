@@ -579,7 +579,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Run the TSB terminal client without a screen: one JSON command per line on stdin (or --script), "
                     "answers and events as JSON lines on stdout. `tsb-tui drive --guide` prints the guide for agents.")
     parser.add_argument("--guide", action="store_true", help="print the guide for agents and exit; needs no broker")
-    parser.add_argument("--broker", default=None, help="the core's base URL, default: the broker.url knob")
+    parser.add_argument("--broker", default=None,
+                        help="the core's base URL; optional: when it is absent the broker.url knob in the config "
+                             "file or TSB_TUI_BROKER_URL is used, and the flag wins")
     parser.add_argument("--profile", default="drive", choices=PROFILES,
                         help="drive (the default): acts for the agent on nothing; harness: for the rigs, with output "
                              "counts and the mouse; the guard stays on in both (D52), and --set input.guard=false "
@@ -615,6 +617,18 @@ def main(argv: list[str]) -> int:
         size = parse_size(args.size) if args.size else None
     except ValueError as exc:
         parser.error(f"--size: {exc}")
+    try:
+        cfg = config.load(profile=args.profile, config_file=args.config, overrides=args.overrides)
+    except config.ConfigError as exc:
+        print(f"tsb-tui drive: {exc}", file=sys.stderr)
+        return 1
+    broker_source = None if args.broker else cfg.source("broker.url")
+    args.broker = config.resolve_broker(args.broker, cfg)
+    args.broker_source = broker_source
+    if args.broker is None:
+        from ..__main__ import _missing_broker
+
+        return _missing_broker(args.config)
     script: list[str] | None = None
     if args.script is not None:
         try:
@@ -630,18 +644,6 @@ def main(argv: list[str]) -> int:
             parser.error(f"--password-file: {getattr(exc, 'why', exc)}")
         if not password:
             parser.error("--password-file: the password is empty")
-    try:
-        cfg = config.load(profile=args.profile, config_file=args.config, overrides=args.overrides)
-    except config.ConfigError as exc:
-        print(f"tsb-tui drive: {exc}", file=sys.stderr)
-        return 1
-    broker_source = None if args.broker else cfg.source("broker.url")
-    args.broker = config.resolve_broker(args.broker, cfg)
-    args.broker_source = broker_source
-    if args.broker is None:
-        from ..__main__ import _missing_broker
-
-        return _missing_broker(args.config)
     record = open(args.record, "w", encoding="utf-8") if args.record else None  # noqa: SIM115 — closed in _run
     try:
         return asyncio.run(_run(args, cfg, size or (cfg["drive.default_cols"], cfg["drive.default_rows"]), password,

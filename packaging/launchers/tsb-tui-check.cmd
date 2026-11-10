@@ -1,5 +1,6 @@
 @echo off
 setlocal
+set "TSB_TUI_HOME=%~dp0"
 set "PYTHONNOUSERSITE=1"
 set "PYTHONPATH=%~dp0lib\site"
 set "TSB_ENGINE="

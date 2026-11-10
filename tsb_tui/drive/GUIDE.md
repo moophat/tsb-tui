@@ -25,7 +25,7 @@ tsb-tui drive --profile drive --broker https://<broker> --user <your-login> --pa
 
 | Flag | Meaning |
 |---|---|
-| `--broker URL` | the core's address; required to run, never for `--guide` or `--help` |
+| `--broker URL` | the core's address; optional: it is the `broker.url` knob in the config file or `TSB_TUI_BROKER_URL` when the flag is absent, and the flag wins. Never needed for `--guide` or `--help` |
 | `--profile drive` | the default: acts for you on nothing (no automatic size requests, no automatic answers); the mouse is off, so `click` is not available |
 | `--profile harness` | for test rigs: the mouse is on and output counts are written; `input.guard` is on by default here too (D52 was ruled on 2026-10-12), so a rig that wants to test the core's own refusal switches it off with `--set input.guard=false` |
 | `--user`, `--password-file PATH` | log in at start. The password comes only from a file, or from stdin with `--password-file -` (its first line; the lines after it are commands). On Windows, the group/other mode check is skipped and stdin is the safer door. Never from the command line or an environment value: no flag takes one |
