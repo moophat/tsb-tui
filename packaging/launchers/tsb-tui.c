@@ -68,7 +68,7 @@ static wchar_t *join(const wchar_t *a, const wchar_t *b, const wchar_t *c)
 
 /* A launcher error: print it, and when a double-click opened this console
  * (the launcher is its only process) wait so the window is not gone unread. */
-static int launcher_error(const wchar_t *a, const wchar_t *b, const wchar_t *c)
+static int launcher_error(const wchar_t *a, const wchar_t *b, const wchar_t *c, const wchar_t *d)
 {
     DWORD only;
 
@@ -76,6 +76,7 @@ static int launcher_error(const wchar_t *a, const wchar_t *b, const wchar_t *c)
     emit(a);
     emit(b);
     emit(c);
+    emit(d);
     emit(L"\r\n");
     if (GetConsoleProcessList(&only, 1) == 1) {
         emit(L"Press any key to continue . . .");
@@ -83,6 +84,14 @@ static int launcher_error(const wchar_t *a, const wchar_t *b, const wchar_t *c)
         emit(L"\r\n");
     }
     return 1;
+}
+
+static int launcher_error_code(const wchar_t *what, DWORD code)
+{
+    wchar_t number[16];
+
+    _snwprintf(number, 16, L"%lu", (unsigned long)code);
+    return launcher_error(what, L" (Windows error ", number, L")");
 }
 
 static BOOL WINAPI on_console_event(DWORD event)
@@ -219,10 +228,10 @@ int wmain(void)
     DWORD code;
 
     if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY))
-        return launcher_error(python, L" not found; the install is incomplete", L"");
+        return launcher_error(python, L" not found; the install is incomplete", L"", L"");
     engine = first_line(engine_file);
     if (engine == NULL)
-        return launcher_error(L"lib\\engine\\ENGINE is missing or empty", L"", L"");
+        return launcher_error(L"lib\\engine\\ENGINE is missing or empty", L"", L"", L"");
 
     library = join(dir, L"\\lib\\engine\\", engine);
     engine_dir = join(dir, L"\\lib\\engine", L"");
@@ -247,15 +256,15 @@ int wmain(void)
     ZeroMemory(&startup, sizeof(startup));
     startup.cb = sizeof(startup);
     if (!CreateProcessW(python, command, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &startup, &child)) {
-        emit_error_code(L"cannot start Python", GetLastError());
-        return 1;
+        return launcher_error_code(L"cannot start Python", GetLastError());
     }
     if (job != NULL && !AssignProcessToJobObject(job, child.hProcess))
         emit_error_code(L"warning: Python is not in a job object; it will outlive a closed window", GetLastError());
     if (ResumeThread(child.hThread) == (DWORD)-1) {
-        emit_error_code(L"cannot resume Python", GetLastError());
+        DWORD error = GetLastError();
+
         TerminateProcess(child.hProcess, 1);
-        return 1;
+        return launcher_error_code(L"cannot resume Python", error);
     }
     CloseHandle(child.hThread);
     WaitForSingleObject(child.hProcess, INFINITE);

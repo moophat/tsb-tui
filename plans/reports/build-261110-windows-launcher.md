@@ -86,3 +86,17 @@ reaching Python, the four environment variables inside Python, the engine loadin
 double-click pause, conhost versus Windows Terminal, long paths and non-ASCII folders. No wine (ruled out).
 
 Status: DONE_WITH_CONCERNS (make test not green on this box)
+
+## Qodo round 1
+
+1. `CreateProcessW` failure and a failed resume of the suspended child now go through the same path as the missing
+   python and ENGINE errors (`launcher_error`, which pauses only when the launcher is the sole process on its console);
+   a failed resume still terminates the child first. The pause decision is a one-line comparison of
+   `GetConsoleProcessList` with 1 and needs a Win32 console, so it has no host test; the PC checklist covers it. The
+   job-object warnings stay non-pausing.
+2. `.github/ci/py.Dockerfile` pins `gcc=4:12.2.0-3`, `gcc-12=12.2.0-14+deb12u1`, `libc6-dev=2.36-9+deb12u14` (from
+   `apt-cache policy` on the image's base); `.github/workflows/test.yml` has a "Packaging tests" step in the same image
+   that fails on any skip. Local image, then removed: `packaging/tests` gave 42 passed, 0 skipped, 1 deselected.
+   Decision taken: the step deselects `test_packaging.py::test_built_zip`, which needs a finished release zip that only
+   the release job builds; the alternative is building a zip (network inputs, tag) in the test job. Say if you want that.
+   Risk: a point-release pin such as `libc6-dev` can vanish from the mirror when bookworm updates it, as for the mingw pins.
