@@ -55,3 +55,44 @@ sufficient and introduces no new failure, while the causal synchronisation is wh
 starvation window. The two `e` sites are fixed; no other key in this file starts the read worker.
 
 Status: DONE
+
+## Qodo round 1 and the CI failure
+
+**Model:** gpt-6.1-sol (Codex team)
+
+Steps: inspect worker dispatch, bound and name the waits in the two tests, run the file three times,
+then run lint with the test venv's python. No app code, contract, or other tests change.
+
+Added `wait_for_target_workers`: it wraps `app.workers.wait_for_complete()` in
+`asyncio.wait_for(..., TARGET_FORM_WAIT_S)`, reports the step name on timeout, and follows completion
+with one `pilot.pause()` before the existing condition wait. Both edit waits use it, as do all four
+save-button presses, both `d` presses and the delete-confirm button in the two named tests.
+The existing assertions and condition bounds remain intact.
+
+Worker dispatch found in the handlers:
+- `e`: `call_api` → `_run_blocking`, an App thread worker reading the definition.
+- Save target: the form's `run_worker(_submit())` awaits `save()`, which uses `asyncio.to_thread`
+  for create/replace. Dismissal calls `target_saved`, which starts the target-list refresh worker.
+- `d`: opens the confirmation directly, without a worker. Both sites receive the requested wait
+  anyway; Escape dismisses it without deleting or starting a worker.
+- Delete it: the dismissal callback starts `run_worker(_delete_target(...))`; deletion uses
+  `asyncio.to_thread`, then starts the target-list refresh worker.
+- `n`: opens a form directly, without a worker.
+
+This supersedes the earlier notes that only edit needed synchronization and that deletion's
+condition wait alone covered its worker.
+
+Checkpoint: changes implemented; first file run passed (12 tests); remaining runs and lint pending.
+
+Verification complete:
+- File run 1: `12 passed in 20.84s`, exit 0.
+- File run 2: `12 passed in 22.02s`, exit 0.
+- File run 3: `12 passed in 20.83s`, exit 0.
+- `make lint PYTHON=<the test venv's python>`: exit 0; Ruff, 66 script tests, import lint,
+  docs-branch guard, leak check and engine verification passed.
+- `make contract-check`: clean at the pinned v0.14.1 release. `git diff --check`: exit 0.
+- Only the test file and this report differ from HEAD. No app changes, commit or push.
+  Scratch verification output is under `logs/qodo-*`. The full suite was not rerun in this round;
+  FIX-BRIEF.md requires three file runs and lint.
+
+Status: DONE
