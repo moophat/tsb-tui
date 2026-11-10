@@ -262,3 +262,10 @@ def test_smoke_password_file_mode_check_skipped_on_windows(
     assert "stdin is the safer door" in captured.err
     assert "is group- or other-readable" not in captured.err
 
+
+
+def test_smoke_invalid_broker_names_source(monkeypatch, tmp_path, capsys):
+    _set_creds(monkeypatch, tmp_path)
+    assert smoke.run("http://example.org", TARGET_ID, None,
+                     broker_source="config file portable/config.toml") == 1
+    assert "broker.url (config file portable/config.toml):" in capsys.readouterr().err

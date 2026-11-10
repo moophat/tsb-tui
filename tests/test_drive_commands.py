@@ -890,10 +890,11 @@ def test_bad_usage_exits_2_and_a_password_never_comes_from_argv_or_the_environme
                  ["--broker", "http://127.0.0.1:1", "--size", "wide"],
                  ["--broker", "http://127.0.0.1:1", "--size", "0x5"],
                  ["--broker", "http://127.0.0.1:1", "--script", str(tmp_path / "missing")],
-                 ["--profile", "default"], []):
+                 ["--profile", "default"]):
         with pytest.raises(SystemExit) as stop:
             runner.main(argv)
         assert stop.value.code == 2, argv
+    assert runner.main([]) == 2
     capsys.readouterr()
     monkeypatch.setenv("TSB_TUI_PASSWORD", "secret")
     rc, _lines, err = _main(monkeypatch, capsys, ["--broker", "http://127.0.0.1:1"])

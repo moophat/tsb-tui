@@ -113,7 +113,7 @@ def _engine_step(cfg: config.Config) -> bool:
 
 
 def run(broker: str, target: str, ca_file: str | None, *, recv_timeout: float = RECV_TIMEOUT_S,
-        cfg: config.Config | None = None) -> int:
+        cfg: config.Config | None = None, broker_source: str | None = None) -> int:
     if cfg is None:
         try:
             # Nothing here sends a size request, so auto size means nothing to this path; turn it off
@@ -138,7 +138,8 @@ def run(broker: str, target: str, ca_file: str | None, *, recv_timeout: float = 
         # timeout.
         client = Client(broker, ca_file=ca_file, timeout=cfg["broker.timeout_s"])
     except ValueError as exc:
-        print(f"FAIL broker URL: {exc}", file=sys.stderr)
+        prefix = f"broker.url ({broker_source}): " if broker_source else ""
+        print(f"FAIL broker URL: {prefix}{exc}", file=sys.stderr)
         return 1
     try:
         client.login(user, password)
