@@ -102,6 +102,14 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             ci-tui-py bash -euo pipefail -c 'make contract-init && make contract-check CONTRACT_MAIN_REF=origin/main'
 
+      - name: Build the launcher
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            ci-tui-py packaging/build-launcher.sh
+
       - name: Build the Windows zip
         run: |
           set -euo pipefail
@@ -111,6 +119,15 @@ jobs:
             ci-tui-py packaging/build-zips.sh windows-x64 --engine packaging/engine/windows-x64
           mkdir -p "$RUNNER_TEMP/winzip"
           mv packaging/out/tsb-tui-${RELEASE_TAG#v}-windows-x64.zip packaging/out/tsb-tui-${RELEASE_TAG#v}-windows-x64.zip.sha256 "$RUNNER_TEMP/winzip/"
+
+      - name: Test the Windows zip
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -v "$RUNNER_TEMP/winzip:/work/packaging/out:ro" \
+            ci-tui-py python -m pytest packaging/tests/test_packaging.py::test_built_zip -p no:cacheprovider
 
       - name: Stamp the version and build the release assets offline
         run: |

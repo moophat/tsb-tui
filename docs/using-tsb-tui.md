@@ -79,7 +79,7 @@ Interactive users can save the broker address once in `config.toml`:
 url = "https://<broker>"
 ```
 
-Then run `tsb-tui` (Windows zip: `tsb-tui.cmd`). The address order is `--broker URL`,
+Then run `tsb-tui` (Windows zip: `tsb-tui.exe`). The address order is `--broker URL`,
 `--set broker.url=URL`, `TSB_TUI_BROKER_URL`, then the file. Interactive, smoke and drive use the same order.
 No address means exit 2 with a message naming the config path and `TSB_TUI_BROKER_URL`.
 `--ca-file PEM` remains the flag for a private certificate authority.
@@ -392,7 +392,7 @@ Upgrading is installing the newer release the same way as the first time.
 - **Linux.** Make a new empty directory. Download the five files of section 2 from the newer release into it and run
   `bash install.sh` there. It installs with `pipx install --force`, so the old version is replaced; every check in
   section 2 runs again.
-- **Windows.** Extract the newer `tsb-tui-<version>-windows-x64.zip` and run `tsb-tui-check.cmd`, then `tsb-tui.cmd` as
+- **Windows.** Extract the newer `tsb-tui-<version>-windows-x64.zip` and run `tsb-tui-check.cmd`, then `tsb-tui` as
   before.
 
 Your config file is not touched. When extracting a new Windows zip into a different folder, copy your
