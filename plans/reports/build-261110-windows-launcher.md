@@ -100,3 +100,30 @@ Status: DONE_WITH_CONCERNS (make test not green on this box)
    Decision taken: the step deselects `test_packaging.py::test_built_zip`, which needs a finished release zip that only
    the release job builds; the alternative is building a zip (network inputs, tag) in the test job. Say if you want that.
    Risk: a point-release pin such as `libc6-dev` can vanish from the mirror when bookworm updates it, as for the mingw pins.
+
+## Qodo round 2
+
+**AI-Model:** gpt-6.1-sol
+
+- Added a release step immediately after the Windows zip build, before asset staging or publishing. The build moves
+  the zip and checksum to `$RUNNER_TEMP/winzip`; the test container mounts it read-only at `/work/packaging/out`,
+  where `test_built_zip` looks. A failing test fails the release step.
+- Exact command, with the same CI image and user/workspace mounts as the build:
+
+  ```sh
+  docker run --rm \
+    --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+    -v "$GITHUB_WORKSPACE:/work" -w /work \
+    -v "$RUNNER_TEMP/winzip:/work/packaging/out:ro" \
+    ci-tui-py python -m pytest packaging/tests/test_packaging.py::test_built_zip -p no:cacheprovider
+  ```
+
+- Expected inputs: release-built `tsb-tui-<version>-windows-x64.zip` and matching `.zip.sha256` in
+  `$RUNNER_TEMP/winzip`, plus the checked-out packaging test. No environment variable selects the zip.
+- Local zip build/test not run: the installed `ci-tui-py` lacks `x86_64-w64-mingw32-gcc`. Rebuilding from
+  `.github/ci/py.Dockerfile` needs apt network inputs beyond `packaging/inputs.lock`, including unpinned packages.
+  With that image available, a clean version-tagged checkout builds with `packaging/build-launcher.sh`, then
+  `packaging/build-zips.sh windows-x64 --engine packaging/engine/windows-x64`; the packaging downloads are pinned.
+  Move the resulting zip and checksum to `$RUNNER_TEMP/winzip` before running the command above.
+- `make lint PYTHON=<the test venv's python>`: passed (exit 0).
+- No commit or push. Status: DONE_WITH_CONCERNS (local built-zip execution not verified).
