@@ -21,6 +21,7 @@ from stub_server import SlowChunkedApp, StubServer
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.prompts import EndedScreen
+from tsb_tui.screens.whos_here import WhosHereScreen
 
 KILLED_TEXT = ("Ended by TSB or through it: one of its timers, its owner or an admin.\n"
                "Which one is not sent to clients yet (idle, unattended, orphan, owner, admin).")
@@ -246,5 +247,142 @@ def test_an_end_met_while_reattaching_is_shown_as_that_end(wait_until) -> None:
             async with app.run_test(size=(140, 40)) as pilot:
                 _, dialog = await _ended(pilot, app, wait_until)
                 assert str(dialog.query_one("#ended-title").render()) == "Session ended · killed (close 4010)"
+
+    asyncio.run(_check())
+
+
+def test_an_end_keeps_an_unrelated_dialog_and_shows_the_end_in_the_row(wait_until) -> None:
+    """A session's end must not close a dialog the operator is using for something else: the New-session dialog
+    and its picked target survive, the end is said in the status row at once, and the ended screen comes up only
+    after the operator closes that dialog."""
+
+    async def _check() -> None:
+        stub = SlowChunkedApp(delay_s=0.02, stream_close=(4010, 20))  # the close lands well after attach
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(140, 40)) as pilot:
+                screen = await open_stub_terminal(app, pilot, wait_until)
+                screen._new_session_dialog("picked-target")
+                await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "the new-session dialog")
+                dialog = app.screen
+                assert dialog._initial_target == "picked-target", "the dialog opened on the picked target"
+                await wait_until(pilot, lambda: screen.ended is not None, "the end behind the open dialog")
+                assert app.screen is dialog, "the operator's unrelated dialog must stay open over the end"
+                assert dialog._initial_target == "picked-target", "its picked target survives"
+                assert "✕ ended · stub-target · killed" in screen.status.text, "the end said in the row at once"
+                await pilot.press("escape")
+                await wait_until(pilot, lambda: isinstance(app.screen, EndedScreen),
+                                 "the ended screen after the dialog closes")
+
+    asyncio.run(_check())
+
+
+def test_an_end_pops_the_ended_session_s_own_dialog_and_shows_the_ended_screen_at_once(wait_until) -> None:
+    """A dialog opened for the session that ended is popped, and the ended screen comes up at once."""
+
+    async def _check() -> None:
+        stub = SlowChunkedApp(delay_s=0.02, stream_close=(4010, 20))
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(140, 40)) as pilot:
+                screen = await open_stub_terminal(app, pilot, wait_until)
+                screen.do_who()
+                await wait_until(pilot, lambda: isinstance(app.screen, WhosHereScreen), "the who's here dialog")
+                await wait_until(pilot, lambda: screen.ended is not None, "the end behind the dialog")
+                await wait_until(pilot, lambda: isinstance(app.screen, EndedScreen), "the ended screen at once")
+                assert not any(isinstance(s, WhosHereScreen) for s in app.screen_stack), \
+                    "the ended session's own dialog is popped"
+
+    asyncio.run(_check())
+
+
+def test_an_end_with_no_dialog_open_shows_the_ended_screen_at_once(wait_until) -> None:
+    """With no dialog open, behaviour is as today."""
+
+    async def _check() -> None:
+        stub = SlowChunkedApp(delay_s=0.02, stream_close=(4010, 3))
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(140, 40)) as pilot:
+                screen = await open_stub_terminal(app, pilot, wait_until)
+                await wait_until(pilot, lambda: isinstance(app.screen, EndedScreen), "the ended screen at once")
+                assert "✕ ended · stub-target · killed" in screen.status.text
+
+    asyncio.run(_check())
+
+
+@pytest.mark.parametrize("unrelated_above", [False, True])
+def test_an_end_clears_nested_removal_dialogs_when_exposed(wait_until, unrelated_above) -> None:
+    """Removal belongs to Who's here's session, including beneath an unrelated operator dialog."""
+    from tsb_tui.screens.whos_here import ConfirmRemoveScreen
+
+    async def _check() -> None:
+        stub = SlowChunkedApp(delay_s=0.02, stream_close=(4010, 40))
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(140, 40)) as pilot:
+                screen = await open_stub_terminal(app, pilot, wait_until)
+                screen.do_who()
+                await wait_until(pilot, lambda: isinstance(app.screen, WhosHereScreen), "Who's here")
+                who = app.screen
+                who._confirm_remove("stub-other")
+                await wait_until(pilot, lambda: isinstance(app.screen, ConfirmRemoveScreen), "remove confirmation")
+                removal = app.screen
+                assert screen._dialog_session[removal] == screen.session_id
+                if unrelated_above:
+                    screen._new_session_dialog("picked-target")
+                    await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "unrelated dialog")
+                    unrelated = app.screen
+                await wait_until(pilot, lambda: screen.ended is not None, "session end")
+                if unrelated_above:
+                    assert app.screen is unrelated
+                    assert who in app.screen_stack and removal in app.screen_stack
+                    await pilot.press("escape")
+                await wait_until(pilot, lambda: isinstance(app.screen, EndedScreen), "ended screen")
+                assert who not in app.screen_stack and removal not in app.screen_stack
+                assert sum(isinstance(s, EndedScreen) for s in app.screen_stack) == 1
+
+    asyncio.run(_check())
+
+
+def test_front_session_end_keeps_another_sessions_end_confirmation(wait_until) -> None:
+    """An end confirmation belongs to its selected session, even while a different session is in front."""
+    from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen
+
+    async def _check() -> None:
+        stub = SlowChunkedApp(delay_s=0.02, stream_close=(4010, 40))
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(140, 40)) as pilot:
+                screen = await open_stub_terminal(app, pilot, wait_until)
+                screen.end_session("other-session")
+                await wait_until(pilot, lambda: isinstance(app.screen, ConfirmEndScreen), "other session confirmation")
+                confirmation = app.screen
+                assert screen._dialog_session[confirmation] == "other-session"
+                await wait_until(pilot, lambda: screen.ended is not None, "front session end")
+                assert app.screen is confirmation
+                await pilot.press("escape")
+                await wait_until(pilot, lambda: isinstance(app.screen, EndedScreen), "deferred ended screen")
+
+    asyncio.run(_check())
+
+
+def test_session_end_closes_its_scrollback_search_prompt(wait_until) -> None:
+    """Search in a session's scrollback ends with that session rather than blocking its ended screen."""
+    from tsb_tui.screens.chrome_dialogs import SearchPrompt
+
+    async def _check() -> None:
+        stub = SlowChunkedApp(delay_s=0.02, stream_close=(4010, 40))
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url)
+            async with app.run_test(size=(140, 40)) as pilot:
+                screen = await open_stub_terminal(app, pilot, wait_until)
+                screen.do_scroll()
+                screen.do_search()
+                await wait_until(pilot, lambda: isinstance(app.screen, SearchPrompt), "search prompt")
+                prompt = app.screen
+                await wait_until(pilot, lambda: isinstance(app.screen, EndedScreen), "ended screen")
+                assert prompt not in app.screen_stack
+                assert not screen._scroll_mode
 
     asyncio.run(_check())

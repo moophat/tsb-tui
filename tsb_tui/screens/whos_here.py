@@ -296,8 +296,9 @@ class WhosHereScreen(ModalScreen[None]):
     def _confirm_remove(self, client_id: str) -> None:
         client = next((c for c in self.state.clients if c.get("client_id") == client_id), None)
         user = client.get("user") if client else client_id
-        self.app.push_screen(ConfirmRemoveScreen(self._terminal, str(user), client_id),
-                             lambda confirmed: self._removal_confirmed(confirmed, str(user), client_id))
+        self._terminal._push_session_dialog(
+            ConfirmRemoveScreen(self._terminal, str(user), client_id), self._terminal.session_id,
+            lambda confirmed: self._removal_confirmed(confirmed, str(user), client_id))
 
     def _removal_confirmed(self, confirmed: bool | None, user: str, client_id: str) -> None:
         if not confirmed:
