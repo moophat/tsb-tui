@@ -48,6 +48,10 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             assert server.target_definitions["form-target"] == {
                 "id": "form-target", "type": "ssh", "host": "router.example", "tags": ["prod", "core"], "user": "operator"}
             await pilot.press("e")
+            # The edit form is pushed only after the target's definition read completes (a thread worker's
+            # on_done). On a loaded runner that blocking GET can be starved, so the form appears late. The
+            # server records the request when it serves it: wait for that cause, then the form follows.
+            await wait_until(pilot, lambda: ("GET", "/targets/form-target/definition") in [(m, p) for m, p, _ in server.requests], "definition read", timeout_s=TARGET_FORM_WAIT_S)
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "edit form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             assert form.query_one("#target-id", Input).disabled
