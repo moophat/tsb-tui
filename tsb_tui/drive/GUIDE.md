@@ -318,11 +318,12 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 
 When `new` gets a front's HTTP 502, 503 or 504 instead of TSB's answer, its error code stays the
 same and `why` says the front answered while TSB did not (TSB may be restarting). If the create
-failed, no session was created: wait and send `new` again. If the ticket or attach upgrade failed,
-the session was created: the answer carries its `session` id, and it may be attached again or
-ended. TSB's own JSON errors on the create and ticket keep their usual answers. A 502, 503 or
-504 refusing the WebSocket upgrade is always treated as the front's answer: TSB accepts the
-WebSocket first and refuses an attach with a close code afterwards.
+got it, whether a session was created is not known: send `sessions` to list your sessions before
+sending `new` again. If the ticket or attach upgrade failed, the session was created: the answer
+carries its `session` id, and it may be attached again or ended. TSB's own JSON errors on the
+create and ticket keep their usual answers. A 502, 503 or 504 refusing the WebSocket upgrade is
+always treated as the front's answer: TSB accepts the WebSocket first and refuses an attach with a
+close code afterwards.
 
 | `error` | Means |
 |---|---|

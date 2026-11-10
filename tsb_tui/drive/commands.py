@@ -611,7 +611,8 @@ class Commands:
         except ApiError as exc:
             why = exc.message
             if exc.status in FRONT_STATUSES and exc.code is None:
-                why = FRONT_ANSWER + "no session was created; wait and send new again"
+                why = FRONT_ANSWER + ("whether a session was created is not known; send sessions to list "
+                                      "your sessions before sending new again")
             raise DriveError(exc.code, why, target=target) from None
         except (HttpError, OSError) as exc:
             raise DriveError("request_failed", str(exc)) from None

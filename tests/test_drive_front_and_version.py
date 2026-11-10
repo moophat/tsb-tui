@@ -50,14 +50,44 @@ def test_new_front_answer(serve, tmp_path, monkeypatch, stage, status, json_erro
             assert 'front answered' in answer['why'] and 'TSB did not' in answer['why'], answer
             assert 'restarting' in answer['why'], answer
             if stage == 'create':
-                assert 'no session was created' in answer['why'], answer
-                assert 'new' in answer['why'] and 'wait' in answer['why'], answer
+                assert 'not known' in answer['why'], answer
+                assert 'sessions' in answer['why'] and 'new' in answer['why'], answer
                 assert not server.sessions
                 assert 'session' not in answer
             else:
                 assert answer['session'] in server.sessions, answer
                 assert 'session was created' in answer['why'], answer
                 assert 'attached again or ended' in answer['why'], answer
+
+    asyncio.run(check())
+
+
+def test_new_create_answered_by_front_leaves_creation_unknown(serve, tmp_path, monkeypatch):
+    """A 504 can arrive after the core finished the create: drive must not say the session is absent."""
+    async def check():
+        server, url = serve()
+        async with Rig(url, tmp_path=tmp_path, overrides=("size.auto_request=true",)) as rig:
+            await rig.login()
+            client = rig.app.client
+            request = client._http.request
+
+            def front_after_create(method, path, *args, **kwargs):
+                if method == 'POST' and path == '/sessions':
+                    created = request(method, path, *args, **kwargs)
+                    assert created.status == 201, created
+                    return Response(504, [], b'<html>Gateway timeout</html>')
+                return request(method, path, *args, **kwargs)
+
+            monkeypatch.setattr(client._http, 'request', front_after_create)
+            answer = await rig.cmd('new', target=_serve.TARGET)
+            assert answer['ok'] is False, answer
+            assert answer['error'] is None, answer
+            assert 'front answered' in answer['why'] and 'TSB did not' in answer['why'], answer
+            assert 'restarting' in answer['why'], answer
+            assert 'not known' in answer['why'], answer
+            assert 'sessions' in answer['why'] and 'new' in answer['why'], answer
+            assert server.sessions, answer
+            assert 'session' not in answer, answer
 
     asyncio.run(check())
 
