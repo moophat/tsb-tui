@@ -102,6 +102,14 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             ci-tui-py bash -euo pipefail -c 'make contract-init && make contract-check CONTRACT_MAIN_REF=origin/main'
 
+      - name: Build the launcher
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            ci-tui-py packaging/build-launcher.sh
+
       - name: Build the Windows zip
         run: |
           set -euo pipefail

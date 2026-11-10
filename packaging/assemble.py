@@ -150,12 +150,17 @@ def assemble(engine):
                 archive.extractall(engine_dir, filter='data')
         copy_engine(engine_dir, bundle / 'lib' / 'engine', bundle / 'licenses' / 'engine')
         (bundle / 'THIRD_PARTY_NOTICES').write_text(notices(site, bundle / 'licenses' / 'engine'))
+        launcher = HERE / 'cache' / 'tsb-tui.exe'
+        if not launcher.is_file():
+            raise ValueError(f'{launcher} is missing; run packaging/build-launcher.sh first')
+        shutil.copyfile(launcher, bundle / 'tsb-tui.exe')
         for name in ['tsb-tui.cmd', 'tsb-tui-check.cmd']:
             shutil.copyfile(HERE / 'launchers' / name, bundle / name)
         (bundle / 'VERSION').write_text(version + '\n')
         (bundle / 'README.txt').write_text(
             'Extract this entire folder, then open Windows Terminal here.\n'
-            'Run: tsb-tui.cmd --broker https://<host>\n'
+            'Run: tsb-tui --broker https://<host>\n'
+            'To type tsb-tui from any folder, put this folder on your PATH.\n'
             'Check the engine and TUI versions: tsb-tui-check.cmd\n')
         for path in list(bundle.rglob('__pycache__')):
             shutil.rmtree(path)

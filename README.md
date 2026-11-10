@@ -24,7 +24,8 @@ environment, loads it once, and needs no root. Detail: [guide section 2](docs/us
 
 **Windows** (x64). Download `tsb-tui-<version>-windows-x64.zip` and extract it. Run `tsb-tui-check.cmd` first: it loads
 the screen engine, prints `Manifest check: PASS` and the TUI version. Then start the client with
-`tsb-tui.cmd --broker https://<your-broker>`. To start with just `tsb-tui.cmd`, put
+`tsb-tui --broker https://<your-broker>` (the folder's `tsb-tui.exe`; put the folder on your PATH to type it from
+anywhere). To start with just `tsb-tui`, put
 `config.toml` beside it with `[broker]` and `url = "https://<your-broker>"` (see Configuration).
 The launcher sets `TSB_TUI_HOME` to its own folder. The zip carries its own Python; nothing is installed.
 

@@ -3,6 +3,15 @@
 Requires Linux, Python 3.12+, pip, git, tar support and the system
 `zip` tool. No target code runs on the build machine.
 
+The zip's `tsb-tui.exe` is built from `launchers/tsb-tui.c` and `launchers/cmdline.c` with the mingw-w64
+cross-compiler pinned in `.github/ci/py.Dockerfile`, so build it inside that image (the release workflow does):
+
+```sh
+packaging/build-launcher.sh   # writes cache/tsb-tui.exe; the same sources give the same bytes
+```
+
+The assembler stops if `cache/tsb-tui.exe` is missing. `tsb-tui.cmd` stays in the zip beside the exe for now.
+
 Build from a version-tagged checkout (the existing release policy stamps the
 wheel and VERSION from the tag at HEAD):
 
@@ -43,6 +52,8 @@ Validation sequence:
 3. Run `python -m pytest packaging/tests/ -p no:cacheprovider`.
 4. Run `make lint`.
 
+`tests/test_launcher.py` splits command lines with the host C compiler, and inside the CI image checks that two
+launcher builds are byte-identical and that the exe is a static x64 console program importing only system DLLs.
 Tests cover cached-input corruption, all three engine-selection cases, missing
 dependency licences, archive layout, CRLF launchers, bytecode exclusion, the
 repository's leak pattern and the output checksum. The leak scan covers only the

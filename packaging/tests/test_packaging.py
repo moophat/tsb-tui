@@ -67,10 +67,14 @@ def test_missing_distribution_license_fails(tmp_path):
         assemble.notices(site, engine)
 
 
-def assert_no_authored_leaks(archive, root):
+def leak_pattern():
     # Read the repository guard instead of maintaining a second leak pattern.
     guard = (HERE.parent / '.github/scripts/leak-check.sh').read_text()
-    pattern = re.compile(re.search(r"^PATTERN='(.*)'$", guard, re.MULTILINE).group(1), re.IGNORECASE)
+    return re.compile(re.search(r"^PATTERN='(.*)'$", guard, re.MULTILINE).group(1), re.IGNORECASE)
+
+
+def assert_no_authored_leaks(archive, root):
+    pattern = leak_pattern()
     files = {'tsb-tui.cmd', 'tsb-tui-check.cmd', 'README.txt', 'VERSION', 'lib/engine/ENGINE'}
     trees = ('lib/site/tsb_tui/', 'lib/site/tsb_contract_client/', 'lib/site/tsbc/')
     for name in archive.namelist():
@@ -113,6 +117,12 @@ def test_built_zip():
             assert all(root + name in names for name in required)
             main = z.read(root + 'lib/engine/ENGINE').decode().strip()
             assert root + 'lib/engine/' + main in names
+            launcher = z.read(root + 'tsb-tui.exe')
+            assert launcher[:2] == b'MZ'
+            assert root + 'config.toml' not in names
+            readme = z.read(root + 'README.txt').decode()
+            assert 'Run: tsb-tui --broker' in readme
+            assert 'tsb-tui.cmd' not in readme
             for name in ['tsb-tui.cmd', 'tsb-tui-check.cmd']:
                 data = z.read(root + name)
                 assert b'\r\n' in data
@@ -150,6 +160,7 @@ def assembly_inputs(tmp_path, monkeypatch):
     (packaging / 'launchers').mkdir()
     for name in ['tsb-tui.cmd', 'tsb-tui-check.cmd']:
         (packaging / 'launchers' / name).write_text('launcher')
+    (packaging / 'cache' / 'tsb-tui.exe').write_bytes(b'MZ dummy launcher')
     runtime = tmp_path / 'python'
     runtime.mkdir()
     (runtime / 'python.exe').write_bytes(b'dummy runtime')
@@ -288,3 +299,38 @@ def test_launcher_sets_portable_config_home():
     for name in ('tsb-tui.cmd', 'tsb-tui-check.cmd'):
         launcher = (HERE / 'launchers' / name).read_text()
         assert 'set "TSB_TUI_HOME=%~dp0"' in launcher, name
+
+
+def test_missing_launcher_fails_before_the_zip(assembly_inputs):
+    packaging, engine = assembly_inputs
+    (packaging / 'cache' / 'tsb-tui.exe').unlink()
+    with pytest.raises(ValueError, match='build-launcher.sh'):
+        assemble.assemble(engine)
+    assert not list((packaging / 'out').glob('*.zip'))
+
+
+def test_assembled_bundle_holds_the_exe_and_never_a_config(assembly_inputs, monkeypatch):
+    packaging, engine = assembly_inputs
+    seen = {}
+    run = assemble.run
+
+    def capture(*args, **kwargs):
+        if args[0] == 'zip':
+            bundle = Path(args[4]).parent / 'tsb-tui-1.2.3-windows-x64'
+            seen['files'] = {p.relative_to(bundle).as_posix() for p in bundle.rglob('*') if p.is_file()}
+            seen['exe'] = (bundle / 'tsb-tui.exe').read_bytes()
+            seen['readme'] = (bundle / 'README.txt').read_text()
+        return run(*args, **kwargs)
+
+    monkeypatch.setattr(assemble, 'run', capture)
+    assemble.assemble(engine)
+    assert {'tsb-tui.exe', 'tsb-tui-check.cmd'} <= seen['files']
+    assert 'config.toml' not in seen['files']
+    assert seen['exe'] == b'MZ dummy launcher'
+    assert 'Run: tsb-tui --broker' in seen['readme']
+
+
+def test_launcher_sources_carry_no_leaks():
+    pattern = leak_pattern()
+    for path in sorted((HERE / 'launchers').iterdir()):
+        assert not pattern.search(path.read_text()), path.name
