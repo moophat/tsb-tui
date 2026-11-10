@@ -245,7 +245,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
         "drive.answer_timeout_ms", "drive.send_gate", "drive.brake_look_max_ms",
         "drive.default_cols", "drive.default_rows", "drive.events", "drive.output_events", "drive.reply_max_lines",
         "drive.settled_ms", "drive.switch_on_action", "drive.wait_timeout_max_ms", "drive.wait_timeout_ms",
-        "alerts.popup", "alerts.read_timeout_s", "broker.timeout_s", "event_log.lines", "fleet_view.refresh_s",
+        "alerts.popup", "alerts.read_timeout_s", "broker.url", "broker.timeout_s", "event_log.lines", "fleet_view.refresh_s",
         "fleet_view.details_from", "fleet_view.group_by", "fleet_view.show_ended", "fleet_view.tabs",
         "keys.leader_map.end", "keys.leader_map.event_log", "keys.leader_map.full_view", "keys.leader_map.keys",
         "keys.leader_map.pan", "keys.leader_map.quit", "motion.level", "mouse.canvas_clicks", "mouse.enabled",
@@ -720,3 +720,52 @@ def test_default_config_path_on_windows(monkeypatch: pytest.MonkeyPatch) -> None
     env_xdg = {"APPDATA": "/mock/appdata", "XDG_CONFIG_HOME": "/mock/xdg_config"}
     assert config._default_path(env_xdg) == Path("/mock/xdg_config") / "tsb-tui" / "config.toml"
 
+
+
+def test_broker_url_layers(tmp_path):
+    path = _write(tmp_path / "config.toml", '[broker]\nurl = "https://file"\n')
+    assert config.load(environ={})["broker.url"] == ""
+    assert config.load(config_file=path, environ={})["broker.url"] == "https://file"
+    env = {"TSB_TUI_BROKER_URL": "https://env"}
+    assert config.load(config_file=path, environ=env)["broker.url"] == "https://env"
+    assert config.load(config_file=path, environ=env,
+                       overrides=["broker.url=https://set"])["broker.url"] == "https://set"
+
+
+def test_resolve_broker():
+    cfg = config.load(environ={})
+    assert config.resolve_broker(None, cfg) is None
+    assert config.resolve_broker("", cfg) is None
+    cfg = config.load(environ={}, overrides=["broker.url=https://knob"])
+    assert config.resolve_broker(None, cfg) == "https://knob"
+    assert config.resolve_broker("", cfg) == "https://knob"
+    assert config.resolve_broker("https://flag", cfg) == "https://flag"
+
+
+@pytest.mark.parametrize("portable", [False, True])
+def test_launcher_config_selection(tmp_path, portable):
+    os_dir = tmp_path / "os" / "tsb-tui"
+    os_dir.mkdir(parents=True)
+    _write(os_dir / "config.toml", 'toasts.max = 9\nrender.max_fps = 17\n')
+    home = tmp_path / "program"
+    home.mkdir()
+    if portable:
+        _write(home / "config.toml", 'toasts.max = 7\n')
+    env = {"XDG_CONFIG_HOME": str(os_dir.parent), "TSB_TUI_HOME": str(home)}
+    cfg = config.load(environ=env)
+    assert cfg["toasts.max"] == (7 if portable else 9)
+    assert cfg.source("toasts.max") == f"config file {(home if portable else os_dir) / 'config.toml'}"
+    if portable:
+        assert cfg.source("render.max_fps") == "default"  # Never merge the OS file.
+    assert cfg.user_dir == os_dir
+    explicit = _write(tmp_path / "explicit.toml", 'toasts.max = 11\n')
+    assert config.load(config_file=explicit, environ=env)["toasts.max"] == 11
+
+
+def test_launcher_home_is_not_a_knob(tmp_path):
+    assert config.load(environ={"TSB_TUI_HOME": str(tmp_path)})["toasts.max"] == 3
+
+
+def test_config_with_utf8_bom(tmp_path):
+    path = _write(tmp_path / "config.toml", '\ufefftoasts.max = 7\n')
+    assert config.load(config_file=path, environ={})["toasts.max"] == 7

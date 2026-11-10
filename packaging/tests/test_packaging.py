@@ -282,3 +282,9 @@ def test_dirty_source_precedes_inputs(tmp_path, monkeypatch, tracked, untracked,
         assemble.assemble(tmp_path / 'engine')
     assert message in str(error.value)
     assert list(root.iterdir()) == []
+
+
+def test_launcher_sets_portable_config_home():
+    for name in ('tsb-tui.cmd', 'tsb-tui-check.cmd'):
+        launcher = (HERE / 'launchers' / name).read_text()
+        assert 'set "TSB_TUI_HOME=%~dp0"' in launcher, name

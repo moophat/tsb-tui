@@ -72,6 +72,30 @@ To see that the install works (this needs no broker):
 
 ## 3. First run
 
+Interactive users can save the broker address once in `config.toml`:
+
+```toml
+[broker]
+url = "https://<broker>"
+```
+
+Then run `tsb-tui` (Windows zip: `tsb-tui.cmd`). The address order is `--broker URL`,
+`--set broker.url=URL`, `TSB_TUI_BROKER_URL`, then the file. Interactive, smoke and drive use the same order.
+No address means exit 2 with a message naming the config path and `TSB_TUI_BROKER_URL`.
+`--ca-file PEM` remains the flag for a private certificate authority.
+
+`--config FILE` chooses the file explicitly. Otherwise the Windows launcher sets `TSB_TUI_HOME` to its folder;
+if `config.toml` exists there, that is the only file read. Otherwise the OS file is used:
+`$XDG_CONFIG_HOME/tsb-tui/config.toml` (default `~/.config/tsb-tui/config.toml`) on Linux, or
+`%APPDATA%\tsb-tui\config.toml` on Windows (XDG wins if set). One file, never a merge. Settings shows the
+source file. An absent file is allowed, and a UTF-8 BOM from Notepad or PowerShell is accepted.
+
+`TSB_TUI_HOME` is a launcher variable, not a knob. pipx and manual `python -m tsb_tui` starts do not set it;
+no folder is guessed from the executable, Python environment or working directory. There is no `TSB_TUI_CONFIG`:
+use `--config`. The TUI never writes `config.toml`. Themes and schemes remain under the OS config directory
+(`themes/` and `schemes/`), and saved themes and other state remain in the OS state directory, even with a config
+beside the program. Moving that program folder therefore carries its broker address, not per-user state.
+
 The password arrives on a descriptor that the launcher opened. The launcher is the thing that is not the agent:
 
     tsb-tui drive --profile drive --broker https://<broker> --user <your-login> \
@@ -371,4 +395,8 @@ Upgrading is installing the newer release the same way as the first time.
 - **Windows.** Extract the newer `tsb-tui-<version>-windows-x64.zip` and run `tsb-tui-check.cmd`, then `tsb-tui.cmd` as
   before.
 
-Your config file is not touched.
+Your config file is not touched. When extracting a new Windows zip into a different folder, copy your
+beside-program `config.toml` there yourself if you want to keep using it.
+
+Downgrading to a version before `broker.url` was added refuses that key as unknown. Remove it and pass
+`--broker URL` when using that older version.

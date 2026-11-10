@@ -187,6 +187,7 @@ KNOB_TYPES: dict[str, type] = {
     "gates.hostkey_tick": bool,
     "reattach.auto": bool,
     "reattach.backoff_ms": list,
+    "broker.url": str,
     "broker.timeout_s": int,
     "alerts.popup": bool,
     "alerts.read_timeout_s": int,
@@ -308,6 +309,7 @@ KNOB_OWNERS: dict[str, int] = {
     "gates.hostkey_tick": 6,
     "reattach.auto": 6,
     "reattach.backoff_ms": 6,
+    "broker.url": 2,
     "broker.timeout_s": 2,
     "alerts.popup": 6,
     "alerts.read_timeout_s": 2,
@@ -437,6 +439,21 @@ def _default_path(environ: Mapping[str, str]) -> Path:
     return Path(base) / "tsb-tui" / "config.toml"
 
 
+def default_config_path(environ: Mapping[str, str]) -> Path:
+    """Use the launcher's config file if present, otherwise the OS config file."""
+    home = environ.get("TSB_TUI_HOME")
+    if home:
+        portable = Path(home) / "config.toml"
+        if portable.is_file():
+            return portable
+    return _default_path(environ)
+
+
+def resolve_broker(cli_value: str | None, cfg: Config) -> str | None:
+    """The explicit flag wins over the layered broker.url knob."""
+    return cli_value or cfg["broker.url"] or None
+
+
 def _load_defaults() -> dict[str, Any]:
     text = (Path(__file__).with_name("config_default.toml")).read_text(encoding="utf-8")
     doc = tomllib.loads(text)
@@ -460,7 +477,7 @@ def _read_file(path: Path | None) -> tuple[dict[str, Any], str | None]:
     if path is None or not path.is_file():
         return {}, None
     try:
-        doc = tomllib.loads(path.read_text(encoding="utf-8"))
+        doc = tomllib.loads(path.read_text(encoding="utf-8-sig"))
     except (tomllib.TOMLDecodeError, OSError) as exc:
         raise ConfigError(f"{path}: {exc}") from None
     profile = doc.get("profile")
@@ -483,7 +500,7 @@ def _read_file(path: Path | None) -> tuple[dict[str, Any], str | None]:
 def _env_overlay(environ: Mapping[str, str]) -> dict[str, Any]:
     values: dict[str, Any] = {}
     for name, raw in environ.items():
-        if not name.startswith("TSB_TUI_") or name == "TSB_TUI_PROFILE":
+        if not name.startswith("TSB_TUI_") or name in {"TSB_TUI_PROFILE", "TSB_TUI_HOME"}:
             continue
         if name == "TSB_TUI_DRIVE_SEND_GATE":
             raise ConfigError(f"{name}: drive.send_gate is config file only")
@@ -671,7 +688,7 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
     env = dict(os.environ if environ is None else environ)
     defaults_text = (Path(__file__).with_name("config_default.toml")).read_text(encoding="utf-8")
     defaults_doc = tomllib.loads(defaults_text)
-    file_path = Path(config_file) if config_file is not None else _default_path(env)
+    file_path = Path(config_file) if config_file is not None else default_config_path(env)
     file_values, file_profile = _read_file(file_path)
 
     chosen = profile or env.get("TSB_TUI_PROFILE") or file_profile or "default"

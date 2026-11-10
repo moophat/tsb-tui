@@ -1,14 +1,14 @@
 """`tsb-tui` — `python -m tsb_tui` or the installed script (`[project.scripts]`, pyproject.toml).
 
-Interactive: `tsb-tui --broker URL [--ca-file PEM] [--target ID] [--profile NAME] [--config FILE]
+Interactive: `tsb-tui [--broker URL] [--ca-file PEM] [--target ID] [--profile NAME] [--config FILE]
 [--set KEY=VALUE ...]`.
-Non-interactive smoke path, exit 0/1 (the same binary the deploy hook runs after a deploy):
-`tsb-tui --smoke --broker URL --target ID [--ca-file PEM]`.
+Non-interactive smoke path, exit 0/1 (2 when no broker is configured) (the same binary the deploy hook runs after a deploy):
+`tsb-tui --smoke [--broker URL] --target ID [--ca-file PEM]`.
 
 Agents and the harness: `tsb-tui drive --broker URL --user U --password-file PATH` runs the same app headless and
 speaks JSON lines (`tsb-tui drive --guide` prints what an agent is told; `tsb-tui drive --help` the flags).
 
-Knobs come from the packaged defaults, a profile, `~/.config/tsb-tui/config.toml`, `TSB_TUI_*` and
+Knobs come from the packaged defaults, a profile, the launcher-selected or OS config file, `TSB_TUI_*` and
 `--set`, in that order of precedence (design D30). A start-up that cannot proceed — an unknown key,
 a bad type, an engine that cannot load — exits 1 naming the key or the path.
 """
@@ -30,12 +30,12 @@ def _config_help() -> str:
     """Short, platform-correct description of the default config file location."""
     if sys.platform == "win32":
         return (
-            "a TOML configuration file "
+            "a TOML configuration file overriding the file beside the program (TSB_TUI_HOME), "
             "instead of %%APPDATA%%\\tsb-tui\\config.toml "
             "(or $XDG_CONFIG_HOME/tsb-tui/config.toml when XDG_CONFIG_HOME is set)"
         )
     return (
-        "a TOML configuration file "
+        "a TOML configuration file overriding the file beside the program (TSB_TUI_HOME), "
         "instead of $XDG_CONFIG_HOME/tsb-tui/config.toml "
         "(defaults to ~/.config/tsb-tui/config.toml)"
     )
@@ -44,7 +44,7 @@ def _config_help() -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tsb-tui", epilog="`tsb-tui drive --help` is the agent surface: the same app, headless, as JSON lines.")
-    parser.add_argument("--broker", required=True, help="the core's base URL, e.g. https://host")
+    parser.add_argument("--broker", default=None, help="the core's base URL (default: the broker.url knob)")
     parser.add_argument("--ca-file", default=None, help="a PEM bundle to verify the core's certificate against")
     parser.add_argument("--target", default=None, help="a target id")
     parser.add_argument("--smoke", action="store_true",
@@ -72,10 +72,20 @@ def _load_config(args: argparse.Namespace, *, for_smoke: bool) -> config.Config:
     return config.load(profile=args.profile, config_file=args.config, overrides=overrides)
 
 
+def _missing_broker(config_file: str | None) -> int:
+    import os
+    from pathlib import Path
+
+    path = Path(config_file) if config_file is not None else config.default_config_path(os.environ)
+    print(f"tsb-tui: no broker address. Pass --broker URL, set broker.url in {path}, "
+          "or set TSB_TUI_BROKER_URL.", file=sys.stderr)
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["drive"]:
-        # A subcommand with its own flags: `--broker` is required to run it, never for `--guide` or `--help`.
+        # A subcommand with its own flags; --guide and --help need no broker.
         from .drive import runner
 
         return runner.main(argv[1:])
@@ -94,13 +104,25 @@ def main(argv: list[str] | None = None) -> int:
         except config.ConfigError as exc:
             print(f"tsb-tui: {exc}", file=sys.stderr)
             return 1
-        return smoke.run(args.broker, args.target, args.ca_file, cfg=cfg)
+        broker = config.resolve_broker(args.broker, cfg)
+        if broker is None:
+            return _missing_broker(args.config)
+        source = None if args.broker else cfg.source("broker.url")
+        return smoke.run(broker, args.target, args.ca_file, cfg=cfg, broker_source=source)
 
     try:
         cfg = _load_config(args, for_smoke=False)
+        broker = config.resolve_broker(args.broker, cfg)
+        if broker is None:
+            return _missing_broker(args.config)
         # A cleartext broker URL is refused here (`_http.HttpClient`) unless the host is
         # loopback — otherwise the login password would cross the network in clear.
-        app = app_mod.TsbTuiApp(args.broker, ca_file=args.ca_file, target=args.target, cfg=cfg)
+        try:
+            app = app_mod.TsbTuiApp(broker, ca_file=args.ca_file, target=args.target, cfg=cfg)
+        except ValueError as exc:
+            if not args.broker:
+                raise ValueError(f"broker.url ({cfg.source('broker.url')}): {exc}") from None
+            raise
     except (config.ConfigError, app_mod.EngineError, ThemeError, ValueError) as exc:
         print(f"tsb-tui: {exc}", file=sys.stderr)
         return 1

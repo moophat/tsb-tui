@@ -562,12 +562,12 @@ def _config_help() -> str:
     """Short, platform-correct description of the default config file location."""
     if sys.platform == "win32":
         return (
-            "a TOML configuration file "
+            "a TOML configuration file overriding the file beside the program (TSB_TUI_HOME), "
             "instead of %%APPDATA%%\\tsb-tui\\config.toml "
             "(or $XDG_CONFIG_HOME/tsb-tui/config.toml when XDG_CONFIG_HOME is set)"
         )
     return (
-        "a TOML configuration file "
+        "a TOML configuration file overriding the file beside the program (TSB_TUI_HOME), "
         "instead of $XDG_CONFIG_HOME/tsb-tui/config.toml "
         "(defaults to ~/.config/tsb-tui/config.toml)"
     )
@@ -579,7 +579,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Run the TSB terminal client without a screen: one JSON command per line on stdin (or --script), "
                     "answers and events as JSON lines on stdout. `tsb-tui drive --guide` prints the guide for agents.")
     parser.add_argument("--guide", action="store_true", help="print the guide for agents and exit; needs no broker")
-    parser.add_argument("--broker", default=None, help="the core's base URL, e.g. https://host (required to run)")
+    parser.add_argument("--broker", default=None,
+                        help="the core's base URL; optional: when it is absent the broker.url knob in the config "
+                             "file or TSB_TUI_BROKER_URL is used, and the flag wins")
     parser.add_argument("--profile", default="drive", choices=PROFILES,
                         help="drive (the default): acts for the agent on nothing; harness: for the rigs, with output "
                              "counts and the mouse; the guard stays on in both (D52), and --set input.guard=false "
@@ -609,14 +611,24 @@ def main(argv: list[str]) -> int:
     if args.guide:
         sys.stdout.write(GUIDE.read_text(encoding="utf-8"))
         return 0
-    if not args.broker:
-        parser.error("--broker is required to run (not for --guide or --help)")
     if (args.user is None) != (args.password_file is None):
         parser.error("--user and --password-file go together")
     try:
         size = parse_size(args.size) if args.size else None
     except ValueError as exc:
         parser.error(f"--size: {exc}")
+    try:
+        cfg = config.load(profile=args.profile, config_file=args.config, overrides=args.overrides)
+    except config.ConfigError as exc:
+        print(f"tsb-tui drive: {exc}", file=sys.stderr)
+        return 1
+    broker_source = None if args.broker else cfg.source("broker.url")
+    args.broker = config.resolve_broker(args.broker, cfg)
+    args.broker_source = broker_source
+    if args.broker is None:
+        from ..__main__ import _missing_broker
+
+        return _missing_broker(args.config)
     script: list[str] | None = None
     if args.script is not None:
         try:
@@ -632,11 +644,6 @@ def main(argv: list[str]) -> int:
             parser.error(f"--password-file: {getattr(exc, 'why', exc)}")
         if not password:
             parser.error("--password-file: the password is empty")
-    try:
-        cfg = config.load(profile=args.profile, config_file=args.config, overrides=args.overrides)
-    except config.ConfigError as exc:
-        print(f"tsb-tui drive: {exc}", file=sys.stderr)
-        return 1
     record = open(args.record, "w", encoding="utf-8") if args.record else None  # noqa: SIM115 — closed in _run
     try:
         return asyncio.run(_run(args, cfg, size or (cfg["drive.default_cols"], cfg["drive.default_rows"]), password,
@@ -654,7 +661,9 @@ async def _run(args: argparse.Namespace, cfg: config.Config, size: tuple[int, in
     try:
         app = TsbTuiApp(args.broker, ca_file=args.ca_file, cfg=cfg)
     except (EngineError, ThemeError, ValueError) as exc:
-        print(f"tsb-tui drive: {exc}", file=sys.stderr)
+        source = getattr(args, "broker_source", None)
+        prefix = f"broker.url ({source}): " if isinstance(exc, ValueError) and source else ""
+        print(f"tsb-tui drive: {prefix}{exc}", file=sys.stderr)
         return 1
     out = Transcript(sys.stdout, record)
     async with app.run_test(size=size) as pilot:

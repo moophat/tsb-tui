@@ -24,7 +24,9 @@ environment, loads it once, and needs no root. Detail: [guide section 2](docs/us
 
 **Windows** (x64). Download `tsb-tui-<version>-windows-x64.zip` and extract it. Run `tsb-tui-check.cmd` first: it loads
 the screen engine, prints `Manifest check: PASS` and the TUI version. Then start the client with
-`tsb-tui.cmd --broker https://<your-broker>`. The zip carries its own Python; nothing is installed.
+`tsb-tui.cmd --broker https://<your-broker>`. To start with just `tsb-tui.cmd`, put
+`config.toml` beside it with `[broker]` and `url = "https://<your-broker>"` (see Configuration).
+The launcher sets `TSB_TUI_HOME` to its own folder. The zip carries its own Python; nothing is installed.
 
 **From source**, for development: see [For developers](#for-developers).
 
@@ -33,6 +35,10 @@ the screen engine, prints `Manifest check: PASS` and the TUI version. Then start
 Interactive, with a person at the keyboard:
 
     tsb-tui --broker https://<your-broker> [--ca-file PEM] [--target ID]
+
+Once `broker.url` is configured, start with just `tsb-tui`. Interactive, smoke and drive all use
+`--broker` first, then `--set broker.url`, `TSB_TUI_BROKER_URL`, and the config file. If none supplies an address,
+start-up exits 2 and names the config path and environment variable.
 
 `--ca-file` is for a broker whose certificate is signed by a private authority. A cleartext `http://` broker address is
 refused unless the host is loopback.
@@ -115,13 +121,19 @@ Menu) shows every knob in force and the layer its value came from. The order of 
 
     packaged defaults, a profile, the config file, TSB_TUI_* environment variables, --set key=value
 
-- **Config file.** Linux: `$XDG_CONFIG_HOME/tsb-tui/config.toml`, which is `~/.config/tsb-tui/config.toml` when
-  `XDG_CONFIG_HOME` is not set. Windows: `%APPDATA%\tsb-tui\config.toml` (or `$XDG_CONFIG_HOME/tsb-tui/config.toml` when
-  `XDG_CONFIG_HOME` is set). `--config FILE` names another file. An absent file is not an error.
+- **Config file.** `--config FILE` wins. Otherwise, when the launcher sets `TSB_TUI_HOME` and that folder
+  contains `config.toml`, that file is used. Else the OS default is used: Linux
+  `$XDG_CONFIG_HOME/tsb-tui/config.toml` (default `~/.config/tsb-tui/config.toml`); Windows
+  `%APPDATA%\tsb-tui\config.toml` (XDG takes precedence when set). One file, never a merge; an absent file is
+  not an error. UTF-8 files with or without a BOM are accepted. Themes, schemes and state stay in their OS directories.
+  pipx and a manual `python -m tsb_tui` do not set `TSB_TUI_HOME` or guess a program folder.
+- **Broker.** Set `[broker]` with `url = "https://<your-broker>"` in that file, or use `TSB_TUI_BROKER_URL` or
+  `--set broker.url=https://<your-broker>`. The default is empty; `--broker URL` overrides the knob.
 - **`--set KEY=VALUE`** sets one knob and wins over everything; repeat it for more:
   `--set size.auto_request=true`.
 - **Environment.** `TSB_TUI_` plus the key in capitals with dots as underscores: `theme.name` is `TSB_TUI_THEME_NAME`,
-  `theme.term.scheme` is `TSB_TUI_THEME_TERM_SCHEME`. `TSB_TUI_PROFILE` picks the profile.
+  `theme.term.scheme` is `TSB_TUI_THEME_TERM_SCHEME`. `TSB_TUI_PROFILE` picks the profile. `TSB_TUI_HOME` is set by the Windows launcher; it is not a knob.
+  There is no `TSB_TUI_CONFIG` variable: use `--config FILE`.
 - **Profiles.** `default`, `phone`, `drive`, `harness`; pick one with `--profile` or `profile = "..."` in the file.
 - An unknown key, a bad type or a value no phase builds stops start-up and names the key.
 - `drive.send_gate` can be set in the config file only: `--set` and the environment refuse it.
