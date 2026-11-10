@@ -24,6 +24,7 @@ import sys
 import tsb_contract_client  # noqa: F401
 
 from . import config
+from .screens.chrome_dialogs import tui_version
 
 
 def _config_help() -> str:
@@ -44,6 +45,7 @@ def _config_help() -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tsb-tui", epilog="`tsb-tui drive --help` is the agent surface: the same app, headless, as JSON lines.")
+    parser.add_argument("--version", action="version", version=tui_version())
     parser.add_argument("--broker", default=None, help="the core's base URL (default: the broker.url knob)")
     parser.add_argument("--ca-file", default=None, help="a PEM bundle to verify the core's certificate against")
     parser.add_argument("--target", default=None, help="a target id")

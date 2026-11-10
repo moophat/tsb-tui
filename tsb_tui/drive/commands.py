@@ -58,6 +58,9 @@ READS = ("screen", "reply", "history", "who")
 
 ASK_TO_TYPE_WHY = ("TSB has no way to ask for the keyboard yet; ask the owner another way, then wait for "
                    "holder me")
+FRONT_ANSWER = "the front answered while TSB did not (TSB may be restarting); "
+FRONT_STATUSES = (502, 503, 504)
+
 HOSTKEY_PENDING = ("the host key is seen for the first time: check it out of band, then tick it in the gate "
                    "(press space, then enter); the session is created")
 
@@ -606,7 +609,11 @@ class Commands:
         try:
             created = await asyncio.to_thread(call)
         except ApiError as exc:
-            raise DriveError(exc.code, exc.message, target=target) from None
+            why = exc.message
+            if exc.status in FRONT_STATUSES and exc.code is None:
+                why = FRONT_ANSWER + ("whether a session was created is not known; send sessions to list "
+                                      "your sessions before sending new again")
+            raise DriveError(exc.code, why, target=target) from None
         except (HttpError, OSError) as exc:
             raise DriveError("request_failed", str(exc)) from None
         record = created["session"]
@@ -622,8 +629,22 @@ class Commands:
             self._pending_hostkeys[sid] = hostkey
             raise DriveError("not_available", HOSTKEY_PENDING, session=sid,
                              fingerprint=as_text(hostkey.get("fingerprint")))
-        await self.d.pass_gate(sid, AttachConfirmScreen)
-        return await self._attached_answer(screen, sid)
+        try:
+            await self.d.pass_gate(sid, AttachConfirmScreen)
+            return await self._attached_answer(screen, sid)
+        except DriveError as exc:
+            # The screen preserves ticket ApiError / upgrade HandshakeError as text in slot.left.
+            # Upgrade refusals precede TSB's attach protocol; TSB refuses with a WS close instead.
+            if exc.code == "attach_failed" and any(
+                exc.why.startswith(f"HTTP {status} :")
+                or exc.why == f"could not attach: upgrade refused with HTTP {status}"
+                for status in FRONT_STATUSES
+            ):
+                raise DriveError(
+                    exc.code, FRONT_ANSWER + "the session was created and may be attached again or ended",
+                    session=sid,
+                ) from None
+            raise
 
     async def _new_device_login(self, cmd: dict[str, Any]) -> dict[str, Any]:
         if any(k in cmd for k in ("password", "password_file", "password_from", "remember")):

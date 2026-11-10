@@ -38,7 +38,7 @@ tsb-tui drive --profile drive --broker https://<broker> --user <your-login> --pa
 A theme and a scheme are chosen with `--set theme.name=… --set theme.term.scheme=…`; the Theme picker is not available under drive.
 
 - Run drive on a machine that is not the TSB host.
-- drive writes `{"ev":"ready","principal":"<your-login>","size":"120x40","profile":"drive","engine":"<version>","send_gate":true,"settled_ms":800,"wait_timeout_ms":30000}` when it is up and logged in. With no `--user`, `principal` is `null` and the first command is `login`.
+- drive writes `{"ev":"ready","version":"tsb-tui <version>","principal":"<your-login>","size":"120x40","profile":"drive","engine":"<version>","send_gate":true,"settled_ms":800,"wait_timeout_ms":30000}` when it is up and logged in. With no `--user`, `principal` is `null` and the first command is `login`.
 - **Exit codes.** `0`: a script passed every step, or stdin ended. `1`: a step failed (a failed wait, or any command answering `ok: false`; **a script stops at the first one**, so it never types on after a step that did not do what it should), or drive could not start. `2`: bad usage. In interactive mode a failed wait is an answer and drive keeps running.
 
 ## 3. Lines in and out
@@ -291,7 +291,7 @@ Each is written unless the knob `drive.events` leaves it out. A wait can still m
 
 | `ev` | Fields | Means |
 |---|---|---|
-| `ready` | `principal`, `size`, `profile`, `engine`, `send_gate`, `settled_ms`, `wait_timeout_ms` | drive is up (always written, once) |
+| `ready` | `version` (the same `tsb-tui <version>` string as About and `--version`), `principal`, `size`, `profile`, `engine`, `send_gate`, `settled_ms`, `wait_timeout_ms` | drive is up (always written, once) |
 | `gate` | `recording` | the recording warning, told before an attach; nothing is attached yet |
 | `token` | `reason`, `holder`, and `from` (when it came to you) or `you`, `your_input` | who holds the keyboard now. `holder` is `"me"`, a `{user, client_id}`, or `null` (nobody). `your_input: "refused from now"` says it left you by someone else's hand and your input is refused (it is left out for an owner's client, which takes the keyboard back by typing, and when you handed it over yourself) |
 | `input_refused` | `reason` | your input did not reach the device: `not_typist`, `stale`, `replaying`, `unreachable` |
@@ -315,6 +315,15 @@ Each is written unless the knob `drive.events` leaves it out. A wait can still m
 The owner, not you, is asked "Kill the session?" when your input gets no answer for 3 minutes. If a command legitimately prints nothing for a long time, say so to whoever runs you.
 
 ## 11. Errors
+
+When `new` gets a front's HTTP 502, 503 or 504 instead of TSB's answer, its error code stays the
+same and `why` says the front answered while TSB did not (TSB may be restarting). If the create
+got it, whether a session was created is not known: send `sessions` to list your sessions before
+sending `new` again. If the ticket or attach upgrade failed, the session was created: the answer
+carries its `session` id, and it may be attached again or ended. TSB's own JSON errors on the
+create and ticket keep their usual answers. A 502, 503 or 504 refusing the WebSocket upgrade is
+always treated as the front's answer: TSB accepts the WebSocket first and refuses an attach with a
+close code afterwards.
 
 | `error` | Means |
 |---|---|

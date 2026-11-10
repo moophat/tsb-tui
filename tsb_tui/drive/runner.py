@@ -38,6 +38,7 @@ from ..model.events import (
     TAP_SLOT_CLOSED,
     Event,
 )
+from ..screens.chrome_dialogs import tui_version
 from ..screens.terminal import SessionSlot, TerminalScreen
 from ..widgets.canvas import Canvas
 from . import waits
@@ -96,7 +97,7 @@ class Driver:
         app.taps.append(self.tap)
 
     def ready(self, size: tuple[int, int]) -> dict[str, Any]:
-        return {"ev": "ready", "principal": self.app.username, "size": f"{size[0]}x{size[1]}",
+        return {"ev": "ready", "version": tui_version(), "principal": self.app.username, "size": f"{size[0]}x{size[1]}",
                 "profile": self.cfg.profile, "engine": self.app.engine.build_info.version_string,
                 "send_gate": self.cfg["drive.send_gate"], "settled_ms": self.cfg["drive.settled_ms"],
                 "wait_timeout_ms": self.cfg["drive.wait_timeout_ms"]}
