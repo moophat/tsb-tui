@@ -54,6 +54,9 @@ FLEET_VIEW_KEYS = (
     ("/", "filter"),
     ("m  e", "mine│joinable, show ended"),
     ("space  l  p", "Targets tab: mark a target · save a login for the marked or selected · map a credential"),
+    ("n", "Targets tab: create a target (needs target.edit)"),
+    ("e", "Targets tab: edit a target (needs target.edit)"),
+    ("d", "Targets tab: delete a target (needs target.edit)"),
     ("Tab", "the next tab"),
     ("Ctrl-Q", "quit; every session keeps running"),
     ("Esc", "back to the session"),
@@ -326,13 +329,18 @@ def _package_version() -> str:
         return "not installed as a package"
 
 
+def tui_version() -> str:
+    """The installed TUI identity, shared by About, the CLI and drive."""
+    return f"tsb-tui {_package_version()}"
+
+
 def about_lines(app: Any) -> list[str]:
     """What is running: the TUI, the contract client it was built against and the engine it loaded (DT2)."""
     from ..app import library_path
 
     info = app.engine.build_info
     return [
-        f"tsb-tui {_package_version()}",
+        tui_version(),
         f"contract client {tsb_contract_client.CONTRACT_VERSION} (tsb_contract_client)",
         (f"engine libghostty-vt {info.version_string}, pinned to ghostty {ENGINE_PIN_COMMIT[:7]} "
          "(the library itself reports no commit)"),
