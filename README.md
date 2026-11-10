@@ -137,6 +137,23 @@ before you run `drive` for an agent.
 
 ## Upgrading
 
+At startup, release builds check for a newer version in the background. A toast points to Settings…,
+where the full version and update command can be selected and copied. The notice appears at every start
+while behind, reusing the cached answer within the check interval. The TUI never installs an update.
+
+By default no request goes anywhere but your broker's host: one unauthenticated GET to its
+`/downloads/tsb-tui/latest.json`, with redirects refused and a 1.5 second total wait. `update.url` can
+explicitly select another manifest host. TLS uses the same CA file as the app. Failures, including a
+missing downloads path, stay silent and are cached for the interval; a previously known update stays visible.
+Source builds (`0.0.0`) make no check. The `drive` and `harness` profiles disable it; `phone` keeps it enabled.
+
+The knobs are `update.check` (default `true`), `update.interval_h` (default `24`, minimum `1`) and
+`update.url` (default empty, meaning the broker origin). Turn it off with `TSB_TUI_UPDATE_CHECK=0`,
+`--set update.check=false`, or `[update]` / `check = false` in the config file. The per-user cache is
+`update-check.json` beside the saved theme in the state directory, even with a portable config.
+If you may downgrade, use the environment or `--set`: older versions reject unknown `[update]` keys
+in a config file.
+
 Find the version you run:
 
 - In the TUI: Menu, then About. It prints `tsb-tui <version>`, the contract client and the engine.

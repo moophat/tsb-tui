@@ -85,3 +85,27 @@ def test_test_only_helper_cannot_be_imported_by_shipped_code(root: Path) -> None
 def test_missing_input_fails(root: Path) -> None:
     (root / "bench").rmdir()
     assert run(root)[0] == 2
+
+
+@pytest.mark.parametrize("module", ["urllib.request", "ssl"])
+def test_update_checker_static_download_imports_allowed(root: Path, module: str) -> None:
+    (root / "tsb_tui/update_check.py").write_text(f"import {module}\n")
+    code, out = run(root)
+    assert code == 0, out
+
+
+@pytest.mark.parametrize("module", ["urllib.request", "ssl"])
+@pytest.mark.parametrize("path", ["tsb_tui/other.py", "tsb_tui/nested/update_check.py", "bench/update_check.py"])
+def test_update_checker_allowance_does_not_escape_module(root: Path, module: str, path: str) -> None:
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(f"import {module}\n")
+    code, out = run(root)
+    assert code == 1 and module in out, out
+
+
+@pytest.mark.parametrize("module", ["socket", "http.client", "urllib.parse", "urllib", "http", "ssl.extra"])
+def test_update_checker_other_network_imports_still_fail(root: Path, module: str) -> None:
+    (root / "tsb_tui/update_check.py").write_text(f"import {module}\n")
+    code, out = run(root)
+    assert code == 1 and module in out, out

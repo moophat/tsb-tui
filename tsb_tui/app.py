@@ -9,6 +9,7 @@ exception: `Client.async_attach` is already awaitable and runs directly on Textu
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
 import sys
 import time
 from collections.abc import Callable
@@ -234,6 +235,7 @@ class TsbTuiApp(App):
         # `broker.timeout_s`: a create can take far longer than the client's 10 s default, so every
         # REST call and the attach's open wait on the knob.
         self._broker_url, self._ca_file, self._timeout = broker_url, ca_file, resolved["broker.timeout_s"]
+        self.update_notice: str | None = None
         self.client = self._new_client()
         # The outer window's last size: only a change to it is a "window change" (D18).
         self._window_size: Size | None = None
@@ -326,6 +328,28 @@ class TsbTuiApp(App):
         from .screens.login import LoginScreen
 
         self.push_screen(LoginScreen())
+        self.call_after_refresh(self._start_update_check)
+
+    def _start_update_check(self) -> None:
+        self._update_worker = self._check_update()
+
+    @work(thread=True, exclusive=False)
+    def _check_update(self) -> None:
+        from . import update_check
+
+        try:
+            version = importlib.metadata.version("tsb-tui")
+        except importlib.metadata.PackageNotFoundError:
+            return
+        latest = update_check.decide(self._broker_url, self.cfg, version, self._ca_file)
+        if latest is not None:
+            line = update_check.notice(latest, version, update_check.manifest_url(self._broker_url, self.cfg))
+            self.call_from_thread(self._show_update_notice, line)
+
+    def _show_update_notice(self, line: str) -> None:
+        self.update_notice = line
+        self.toast("An update is available. Open Settings for the version and update command.",
+                   severity="information")
 
     # -- switching the look at run time (B4) --
 

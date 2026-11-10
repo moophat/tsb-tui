@@ -92,6 +92,9 @@ STATUS_POSITIONS = ("bottom", "top")
 
 # The type of each knob. `bool` is checked before `int`, because Python's bool is an int subclass.
 KNOB_TYPES: dict[str, type] = {
+    "update.check": bool,
+    "update.interval_h": int,
+    "update.url": str,
     "theme.name": str,
     "theme.bg": str,
     "theme.surface": str,
@@ -214,6 +217,9 @@ KNOB_TYPES.update({f"keys.leader_map.{action_id}": str for action_id in LEADER_M
 # The phase that reads each key (DT19). A key owned by a phase at or below CURRENT_PHASE must be
 # read by code outside this module; the owning phase's test proves it.
 KNOB_OWNERS: dict[str, int] = {
+    "update.check": 9,
+    "update.interval_h": 9,
+    "update.url": 9,
     "theme.name": 3,
     "theme.bg": 3,
     "theme.surface": 3,
@@ -747,6 +753,8 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
     _check_theme_knobs(resolved)
     _check_fleet_knobs(resolved)
     _check_broker_knobs(resolved)
+    if resolved["update.interval_h"] < 1:
+        raise ConfigError("update.interval_h: expected at least 1")
 
     # OPEN-T5 (ruled 2026-10-15): a theme file with no `variant` gets it computed from its `bg`
     # luminance, as a scheme's is (TT9's rule). TT12: the rule reads the `theme.bg` in force after

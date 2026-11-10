@@ -220,6 +220,8 @@ class TextScreen(_Dialog):
 
     def sync(self) -> None:
         lines = self._lines()
+        if self._title == "Settings · the knobs in force, and where each came from" and self.app.update_notice:
+            lines = [self.app.update_notice, "", *lines]
         body = self.query_one("#text-body", Static)
         body.update("\n".join(lines) if lines else "Nothing yet.")
 
