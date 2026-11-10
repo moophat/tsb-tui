@@ -48,6 +48,8 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             assert server.target_definitions["form-target"] == {
                 "id": "form-target", "type": "ssh", "host": "router.example", "tags": ["prod", "core"], "user": "operator"}
             await pilot.press("e")
+            await app.workers.wait_for_complete()
+            await pilot.pause()
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "edit form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             assert form.query_one("#target-id", Input).disabled
@@ -184,6 +186,8 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
             screen._run_query("type:ssh")
             await wait_until(pilot, lambda: screen.targets.query.type == "ssh", "filtered rows", timeout_s=TARGET_FORM_WAIT_S)
             await pilot.press("e")
+            await app.workers.wait_for_complete()
+            await pilot.pause()
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "editor", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.query_one("#target-telnet", RadioButton).value = True
             app.screen.query_one("#target-save", Button).press()
