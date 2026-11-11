@@ -95,6 +95,30 @@ Describe 'Install swap restoration' {
         Test-Path $new | Should -BeTrue
         Test-Path $directory | Should -BeFalse
     }
+    It 'preserves the original swap error when cleanup is denied and never retries cleanup' {
+        $script:swapFailure = [InvalidOperationException]::new('first rename denied')
+        Mock Rename-Item { throw $script:swapFailure } -ParameterFilter { $LiteralPath -eq $script:directory }
+        Mock Remove-Item { throw 'cleanup removal denied' } -ParameterFilter { $LiteralPath -eq $script:new }
+        Mock Write-Warning {}
+        $failure = $null
+        try {
+            try { Switch-InstallTree $directory $new $old } catch {
+                # The installer also asks for cleanup when a swap failure reaches its outer handler.
+                Remove-FailedNewTree $new $_
+                throw
+            }
+        } catch { $failure = $_ }
+        $failure.Exception.Message | Should -Be 'first rename denied'
+        [object]::ReferenceEquals($failure.Exception, $script:swapFailure) | Should -BeTrue
+        Should -Invoke Remove-Item -Times 1 -Exactly -ParameterFilter { $LiteralPath -eq $script:new }
+        Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter {
+            $Message -like '*first rename denied*' -and
+            $Message -like '*cleanup removal denied*' -and
+            $Message.Contains($script:new)
+        }
+        Test-Path $new | Should -BeTrue
+        [IO.File]::ReadAllText((Join-Path $directory 'identity')) | Should -Be 'old'
+    }
     It 'leaves the existing tree alone if the first rename fails' {
         Mock Rename-Item { throw 'first rename denied' } -ParameterFilter { $LiteralPath -eq $script:directory }
         { Switch-InstallTree $directory $new $old } | Should -Throw '*first rename denied*'

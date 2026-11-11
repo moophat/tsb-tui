@@ -94,8 +94,14 @@ function Initialize-InstallTree([string]$Directory, [string]$New, [string]$Old) 
 }
 
 function Remove-FailedNewTree([string]$New, $Failure) {
-    if (-not $Failure.Exception.Data['ManualRecovery'] -and (Test-Path -LiteralPath $New)) {
-        Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction Stop
+    if ($Failure.Exception.Data['ManualRecovery'] -or $Failure.Exception.Data['NewTreeCleanupAttempted']) { return }
+    $Failure.Exception.Data['NewTreeCleanupAttempted'] = $true
+    try {
+        if (Test-Path -LiteralPath $New) {
+            Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction Stop
+        }
+    } catch {
+        Write-Warning "Installation failed: $($Failure.Exception.Message). Cleanup also failed: $($_.Exception.Message). Retained new tree: '$New'." -WarningAction Continue
     }
 }
 

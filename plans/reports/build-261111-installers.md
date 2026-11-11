@@ -50,3 +50,13 @@ Native Windows 11 PowerShell 5.1/7 TLS negotiation and registry/broadcast integr
 Qodo round 1 status: implemented and automated verification passed; native Windows proof remains outstanding.
 
 CI image: added exact Debian pins curl=7.88.1-10+deb12u15 and wget=1.21.3-1+deb12u1, selected with apt-cache policy inside the pinned bookworm base. Rebuilt tsb-tui-installers-ci (image b7eec08c422e); with networking disabled and CI=1, installer tests: **26 passed** (including **21 Pester cases**); packaging tests using the workflow's selection: **42 passed, 1 deselected** (release-only test_built_zip). The complete packaging directory also ran: **42 passed, 1 failed**, solely test_built_zip because no full dummy-engine release zip was supplied. Host make lint passed (including ruff and **66 repository/import tests**); final diff check passed. Only the Dockerfile and this report changed; no commit, push or workflow-directory changes. **AI-Model:** gpt-6.1-sol.
+
+## Qodo round 2
+
+**AI-Model:** gpt-6.1-sol
+
+Cleanup now catches its own failure, warns with the original installation error, the cleanup error and the retained new-tree path, and lets the caller rethrow the original exception. An exception marker prevents the outer installer handler from retrying the same cleanup; manual-recovery trees remain preserved.
+
+Red-first Pester proof on f47f4f3: **21 passed, 1 failed**; the new test expected 'first rename denied' but received 'cleanup removal denied'. After the fix, the host Makefile installer run using the test venv, PowerShell 7.4.13 and Pester 5.7.1 passed: **26 passed, 1923 deselected in 35.09s**, including **22 Pester cases**. The new case verifies original exception identity, both diagnostic messages and the retained path, exactly one removal attempt despite the outer handler, and preservation of the existing install.
+
+The CI image now installs curl and wget without version pins, with a one-line explanation that they are test transports rather than build inputs. No other image content changed. Host make lint passed, including ruff, **66 repository/import tests** and the engine pin check; final diff check passed. The image was not rebuilt and the full unit suite was not rerun in this round; the requested host installer tests and lint completed. No commit, push, tracker rotation or workflow-directory changes.
