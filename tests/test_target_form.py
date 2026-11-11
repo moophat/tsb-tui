@@ -60,6 +60,7 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             form.query_one("#target-user", Input).value = "operator"
             form.query_one("#target-save", Button).press()
             await wait_for_target_workers(app, pilot, "created row")
+            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "form-target", "created row selected", timeout_s=TARGET_FORM_WAIT_S)
             assert app.screen is screen and view.selected_session == "form-target"
             assert server.target_definitions["form-target"] == {
                 "id": "form-target", "type": "ssh", "host": "router.example", "tags": ["prod", "core"], "user": "operator"}
@@ -202,6 +203,7 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
             app.screen.fill({"id": "query-target", "type": "ssh", "host": "example"})
             app.screen.query_one("#target-save", Button).press()
             await wait_for_target_workers(app, pilot, "new row")
+            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "query-target", "new row selected", timeout_s=TARGET_FORM_WAIT_S)
             assert app.screen is screen and view.selected_session == "query-target"
             screen._run_query("type:ssh")
             await wait_until(pilot, lambda: screen.targets.query.type == "ssh", "filtered rows", timeout_s=TARGET_FORM_WAIT_S)
@@ -214,5 +216,6 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
             await wait_until(pilot, lambda: app.screen is screen and screen.targets.row("query-target") is not None
                              and screen.targets.row("query-target").type == "telnet", "saved row outside old query",
                              timeout_s=TARGET_FORM_WAIT_S)
+            await wait_until(pilot, lambda: view.selected_session == "query-target", "saved row selected", timeout_s=TARGET_FORM_WAIT_S)
             assert view.selected_session == "query-target"
     asyncio.run(check())
