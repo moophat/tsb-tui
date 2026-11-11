@@ -21,11 +21,18 @@ TARGET_FORM_WAIT_S = 60.0
 
 
 async def wait_for_target_workers(app, pilot, step):
-    try:
-        await asyncio.wait_for(app.workers.wait_for_complete(), TARGET_FORM_WAIT_S)
-    except TimeoutError as exc:
-        raise AssertionError(f"{step}: target workers did not complete within {TARGET_FORM_WAIT_S} s") from exc
-    await pilot.pause()
+    deadline = asyncio.get_event_loop().time() + TARGET_FORM_WAIT_S
+    while True:
+        await pilot.pause()
+        if app.workers:
+            remaining = max(0.1, deadline - asyncio.get_event_loop().time())
+            try:
+                await asyncio.wait_for(app.workers.wait_for_complete(), remaining)
+            except TimeoutError as exc:
+                raise AssertionError(f"{step}: target workers did not complete within {TARGET_FORM_WAIT_S} s") from exc
+            await pilot.pause()
+        else:
+            break
 
 
 async def open_targets(app, pilot, wait_until):
@@ -53,7 +60,7 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             form.query_one("#target-user", Input).value = "operator"
             form.query_one("#target-save", Button).press()
             await wait_for_target_workers(app, pilot, "created row")
-            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "form-target", "created row", timeout_s=TARGET_FORM_WAIT_S)
+            assert app.screen is screen and view.selected_session == "form-target"
             assert server.target_definitions["form-target"] == {
                 "id": "form-target", "type": "ssh", "host": "router.example", "tags": ["prod", "core"], "user": "operator"}
             await pilot.press("e")
@@ -195,7 +202,7 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
             app.screen.fill({"id": "query-target", "type": "ssh", "host": "example"})
             app.screen.query_one("#target-save", Button).press()
             await wait_for_target_workers(app, pilot, "new row")
-            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "query-target", "new row", timeout_s=TARGET_FORM_WAIT_S)
+            assert app.screen is screen and view.selected_session == "query-target"
             screen._run_query("type:ssh")
             await wait_until(pilot, lambda: screen.targets.query.type == "ssh", "filtered rows", timeout_s=TARGET_FORM_WAIT_S)
             await pilot.press("e")
