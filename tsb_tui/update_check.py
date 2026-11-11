@@ -44,17 +44,32 @@ def manifest_url(broker: str, cfg) -> str:
 
 def _safe_url(url: str) -> bool:
     allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~:/%"
-    if not url or any(char not in allowed for char in url):
-        return False
     scheme, separator, rest = url.partition("://")
+    if not separator:
+        return False
+    host = ""
+    if rest.startswith("["):
+        closing = rest.find("]")
+        if closing < 0:
+            return False
+        host = rest[1:closing]
+        tail = rest[closing + 1:]
+        if not host or "[" in host or "]" in host or "[" in tail or "]" in tail:
+            return False
+        checked = scheme + separator + host + tail
+    else:
+        checked = url
+    if any(char not in allowed for char in checked):
+        return False
     authority, slash, path = rest.partition("/")
-    if not separator or not authority or not slash or not ("/" + path).endswith("/latest.json"):
+    if not authority or not slash or not ("/" + path).endswith("/latest.json"):
         return False
     if scheme == "https":
         return True
     if scheme != "http":
         return False
-    host = authority.split(":", 1)[0]
+    if not host:
+        host = authority.split(":", 1)[0]
     if host.lower() == "localhost":
         return True
     try:

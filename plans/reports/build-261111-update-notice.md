@@ -94,3 +94,33 @@ All commands ran in the foreground with the test venv through the Makefile's PYT
 The full suite was not rerun in this bounded round; the preceding full-suite evidence applies to the earlier head only. The existing daemon I/O deadline concern and unverified platform/environment proofs described above remain unchanged.
 
 Status: DONE_WITH_CONCERNS
+
+## Qodo round 2
+
+**AI-Model:** deepseek-v4.1-flash-free
+
+Applied the orchestrator's 2026-11-11 16:4x ruling at head `4127ea5`: a bracketed IPv6 host is accepted in the manifest
+address. `[` and `]` are allowed only as the pair around the host immediately after the scheme's `//`; any other
+bracket, an unbalanced bracket or an empty bracket fails. The loopback check reads the host inside the brackets, so
+`::1` is loopback like `127.0.0.1` and `localhost`. Everything else in `_safe_url` is unchanged: HTTPS, or HTTP with a
+loopback host; the path must end in `/latest.json`; no query, fragment, whitespace, quote or shell character; only
+letters, digits and `-._~:/%` elsewhere. Validation stays string-only, with no new import and no URL parser.
+
+### Red-first evidence on 4127ea5
+
+Added the regression tests only, then ran the new selection on the unchanged head: **2 failed, 8 passed, 63
+deselected**. The two failures are the accepted addresses
+(`http://[::1]:8080/downloads/tsb-tui/latest.json` and `https://[2001:db8::1]/downloads/tsb-tui/latest.json`); the
+refusal cases already held, as expected. No request was made: the acceptance tests replace fetching with a recording
+double, and the refusal tests use a fail-fast one.
+
+### Verification after implementation
+
+- New selection: **10 passed, 63 deselected** in 0.68 s.
+- `tests/test_update_check.py`: **73 passed** in 24.66 s.
+- `make lint` with the test venv: **PASS**. Ruff passed; **80 support tests passed**; import-lint clean over 183
+  files; leak check and vendored-engine verification passed.
+- `git diff --check`: **PASS**.
+- No commits or pushes; nothing under `.aiworkflow/` or `program/` was touched.
+
+Status: DONE

@@ -337,6 +337,40 @@ def test_qodo_non_loopback_http_disables_cached_notice(tmp_path, monkeypatch):
                          "0.4.3", cache_path=path, now=100001) is None
 
 
+@pytest.mark.parametrize("url", [
+    "http://[::1]:8080/downloads/tsb-tui/latest.json",
+    "https://[2001:db8::1]/downloads/tsb-tui/latest.json",
+])
+def test_qodo_ipv6_manifest_url_is_fetched(tmp_path, monkeypatch, url):
+    path = tmp_path / "cache"
+    requested = []
+    monkeypatch.setattr(update, "fetch_latest", lambda *args, **_kwargs: requested.append(args[0]) or None)
+    resolved = cfg(tmp_path, overrides=[f"update.url={url}"])
+    assert update._safe_url(url) is True
+    assert update.decide("https://broker.example", resolved, "0.4.3", cache_path=path, now=100000) is None
+    assert requested == [url]
+    assert json.loads(path.read_text())["url"] == url
+
+
+@pytest.mark.parametrize("url", [
+    "http://[2001:db8::1]/downloads/tsb-tui/latest.json",
+    "https://updates.example/channel[1]/latest.json",
+    "https://updates.example/channel]/latest.json",
+    "https://[::1/downloads/tsb-tui/latest.json",
+    "https://::1]/downloads/tsb-tui/latest.json",
+    "https://[::1]]/downloads/tsb-tui/latest.json",
+    "https://[[::1]/downloads/tsb-tui/latest.json",
+    "https://[]/downloads/tsb-tui/latest.json",
+])
+def test_qodo_misplaced_bracket_or_non_loopback_ipv6_is_refused(tmp_path, monkeypatch, url):
+    path = tmp_path / "cache"
+    monkeypatch.setattr(update, "fetch_latest", lambda *_args, **_kwargs: pytest.fail("invalid URL fetched"))
+    resolved = cfg(tmp_path, overrides=[f"update.url={url}"])
+    assert update._safe_url(url) is False
+    assert update.decide("https://broker.example", resolved, "0.4.3", cache_path=path, now=100001) is None
+    assert not path.exists()
+
+
 def test_qodo_future_cache_is_due(tmp_path):
     path = tmp_path / "cache"
     with manifest_server() as (broker, requests):
