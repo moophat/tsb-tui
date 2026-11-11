@@ -242,6 +242,7 @@ def test_the_owned_keys_are_the_keys_of_phases_one_to_nine() -> None:
     meaningful, not vacuous. `view.inspector` is pending too, because the Inspector's content is not decided and
     nothing reads the knob. Spelled out, so reading a new knob is a deliberate change to this list."""
     assert set(config.knobs_owned_through()) == {
+        "update.check", "update.interval_h", "update.url",
         "drive.answer_timeout_ms", "drive.send_gate", "drive.brake_look_max_ms",
         "drive.default_cols", "drive.default_rows", "drive.events", "drive.output_events", "drive.reply_max_lines",
         "drive.settled_ms", "drive.switch_on_action", "drive.wait_timeout_max_ms", "drive.wait_timeout_ms",
@@ -769,3 +770,17 @@ def test_launcher_home_is_not_a_knob(tmp_path):
 def test_config_with_utf8_bom(tmp_path):
     path = _write(tmp_path / "config.toml", '\ufefftoasts.max = 7\n')
     assert config.load(config_file=path, environ={})["toasts.max"] == 7
+
+
+@pytest.mark.parametrize("profile,enabled", [("default", True), ("phone", True),
+                                             ("drive", False), ("harness", False)])
+def test_update_knobs_and_profiles(tmp_path, profile, enabled):
+    resolved = config.load(profile=profile, config_file=tmp_path / "absent", environ={})
+    assert resolved["update.check"] is enabled
+    assert resolved["update.interval_h"] == 24
+    assert resolved["update.url"] == ""
+
+
+def test_update_interval_minimum(tmp_path):
+    with pytest.raises(config.ConfigError, match="update.interval_h"):
+        config.load(config_file=tmp_path / "absent", environ={}, overrides=["update.interval_h=0"])

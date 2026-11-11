@@ -460,3 +460,36 @@ beside-program `config.toml` there yourself if you want to keep using it.
 
 Downgrading to a version before `broker.url` was added refuses that key as unknown. Remove it and pass
 `--broker URL` when using that older version.
+
+
+## Update notices
+
+Release builds check for updates after the first screen is usable. When behind, a toast points to
+Settings… for the full version and platform-specific command, which you can select and copy. Run
+that command yourself to update; the TUI never installs or replaces anything. The notice appears
+at every start while behind, including starts that reuse the cached version.
+
+By default no request goes anywhere but your broker's host: the check reads
+`<broker origin>/downloads/tsb-tui/latest.json`. It sends only the running version in `User-Agent`,
+no authorization or cookies, verifies TLS with the app's CA file, refuses redirects, reads at most
+64 KiB and waits at most 1.5 seconds. A user-set `update.url` can select another manifest host.
+HTTP is accepted only for loopback. Missing downloads (404), malformed answers and other failures
+are silent. A failed refresh retains any previously known update.
+
+| Knob | Default | Meaning |
+|---|---|---|
+| `update.check` | `true` | Enable the check and notices; false makes no request or cache write |
+| `update.interval_h` | `24` | Minimum hours between requests, at least 1 |
+| `update.url` | empty | Override the manifest URL; otherwise use the broker origin |
+
+Disable with `TSB_TUI_UPDATE_CHECK=0`, `--set update.check=false`, or a config file's `[update]`
+table containing `check = false`. Environment names for the other knobs are
+`TSB_TUI_UPDATE_INTERVAL_H` and `TSB_TUI_UPDATE_URL`. `drive` and `harness` profiles disable the
+feature; `phone` keeps it enabled. Development version `0.0.0` makes no check.
+
+The cache is `update-check.json` in the same per-user state directory as `theme.toml`, never beside
+the portable program. It records the attempt time even on failure, so a broken host is not retried
+before the interval. With no known release the cached latest value is null. A successful answer
+replaces the known version, including an equal or older version. If you may downgrade, use `--set`
+or environment variables for these knobs: older versions reject config files containing unknown
+`[update]` keys.

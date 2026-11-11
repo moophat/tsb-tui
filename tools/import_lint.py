@@ -73,6 +73,13 @@ NETWORK_STDLIB = {
 # may not import core/, worker/ or any other TSB code.
 TEST_ALLOWED = {"pytest": "the test runner `make test` uses"}
 
+# This module reads one static nginx release manifest, not a broker API. Every broker API call
+# still goes through tsb_contract_client. Match the file and imported modules exactly.
+UPDATE_CHECK_ALLOWED = {
+    "urllib.request": "one GET of the static update manifest, without redirects",
+    "ssl": "verify the manifest's TLS with the app's configured CA file",
+}
+
 # Top-level names a unit may not define for itself: a local `core` package would make `import
 # core` legal, and a local `tsbc` would shadow the real contract runner.
 REPO_UNITS = frozenset({
@@ -325,7 +332,9 @@ def check_unit(root: Path, unit: str) -> tuple[list[Violation], int]:
                         shown, line, f"relative import (level {site.level}) climbs out of {unit}/'s packages"))
                 continue
             top = module.split(".", 1)[0]
-            if top in NETWORK_STDLIB[unit] and not test:
+            update_allowed = (shown.as_posix() == "tsb_tui/update_check.py"
+                              and module in UPDATE_CHECK_ALLOWED)
+            if top in NETWORK_STDLIB[unit] and not test and not update_allowed:
                 violations.append(Violation(
                     shown, line, f"{unit}/ may not import '{module}' — network calls go through tsb_contract_client"))
                 continue

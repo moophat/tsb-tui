@@ -200,6 +200,7 @@ class TextScreen(_Dialog):
     def __init__(self, terminal: Any, title: str, lines: Callable[[], list[str]], *, follow: bool = False) -> None:
         super().__init__(terminal)
         self._title = title
+        self.is_settings = title == "Settings · the knobs in force, and where each came from"
         self._lines = lines
         self._follow = follow
 
@@ -220,6 +221,8 @@ class TextScreen(_Dialog):
 
     def sync(self) -> None:
         lines = self._lines()
+        if self.is_settings and self.app.update_notice:
+            lines = [self.app.update_notice, "", *lines]
         body = self.query_one("#text-body", Static)
         body.update("\n".join(lines) if lines else "Nothing yet.")
 

@@ -196,6 +196,11 @@ hostkey_tick = true
 auto = true
 backoff_ms = [500, 1000, 2000, 5000, 10000, 30000]
 
+[update]
+check = true
+interval_h = 24
+url = ""
+
 [broker]
 # The core base URL when --broker is absent; empty means no address configured.
 url = ""
@@ -244,6 +249,7 @@ view.follow_cursor = "on"
 fleet_view.refresh_s = 10
 
 [profiles.drive]
+update.check = false
 # B8, TT19: drive and the rigs always see the packaged look. These pins name it outright, so a saved
 # choice, a config file or the environment can never move the look a rig's text snapshot was built on;
 # drive never reads the state file.
@@ -256,6 +262,7 @@ motion.level = "none"
 sidebar.start_filter = "all"
 
 [profiles.harness]
+update.check = false
 # B8, TT19: the same pins as drive — every rig renders the packaged look, and no person's saved
 # choice reaches a rig's snapshot.
 theme.name = "terracotta"
