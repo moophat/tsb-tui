@@ -216,6 +216,5 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
             await wait_until(pilot, lambda: app.screen is screen and screen.targets.row("query-target") is not None
                              and screen.targets.row("query-target").type == "telnet", "saved row outside old query",
                              timeout_s=TARGET_FORM_WAIT_S)
-            await wait_until(pilot, lambda: view.selected_session == "query-target", "saved row selected", timeout_s=TARGET_FORM_WAIT_S)
             assert view.selected_session == "query-target"
     asyncio.run(check())
