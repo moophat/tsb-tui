@@ -107,11 +107,12 @@ def test_cache_reuse_expiry_and_corruption(tmp_path):
 @pytest.mark.parametrize("status,body", [(404, b"missing"), (200, b"bad json")])
 def test_failed_request_keeps_known_latest_or_writes_null(tmp_path, previous, status, body):
     path = tmp_path / "cache"
-    if previous:
-        path.write_text(json.dumps({"checked_at": 1, "latest": previous}))
     with manifest_server(body, status=status) as (broker, requests):
+        url = update.manifest_url(broker, cfg(tmp_path))
+        if previous:
+            path.write_text(json.dumps({"checked_at": 1, "latest": previous, "url": url}))
         assert update.decide(broker, cfg(tmp_path), "0.4.3", cache_path=path, now=100000) == previous
-        assert json.loads(path.read_text()) == {"checked_at": 100000, "latest": previous}
+        assert json.loads(path.read_text()) == {"checked_at": 100000, "latest": previous, "url": url}
         assert update.decide(broker, cfg(tmp_path), "0.4.3", cache_path=path, now=100001) == previous
         assert len(requests) == 1
 
@@ -119,16 +120,18 @@ def test_failed_request_keeps_known_latest_or_writes_null(tmp_path, previous, st
 @pytest.mark.parametrize("latest", [None, "invalid", "0.1.0", "0.4.3"])
 def test_cached_non_newer_is_silent(tmp_path, latest):
     path = tmp_path / "cache"
-    path.write_text(json.dumps({"checked_at": 100000, "latest": latest}))
     with manifest_server() as (broker, requests):
+        url = update.manifest_url(broker, cfg(tmp_path))
+        path.write_text(json.dumps({"checked_at": 100000, "latest": latest, "url": url}))
         assert update.decide(broker, cfg(tmp_path), "0.4.3", cache_path=path, now=100001) is None
         assert not requests
 
 
 def test_success_replaces_previous_even_when_older(tmp_path):
     path = tmp_path / "cache"
-    path.write_text(json.dumps({"checked_at": 1, "latest": "9.0.0"}))
     with manifest_server(b'{"schema":1,"version":"0.1.0"}') as (broker, _requests):
+        path.write_text(json.dumps({"checked_at": 1, "latest": "9.0.0",
+                                    "url": update.manifest_url(broker, cfg(tmp_path))}))
         assert update.decide(broker, cfg(tmp_path), "0.4.3", cache_path=path, now=100000) is None
         assert json.loads(path.read_text())["latest"] == "0.1.0"
 
@@ -250,16 +253,17 @@ def test_development_metadata_makes_no_request(tmp_path, monkeypatch):
 
 def test_cache_without_latest_announces_nothing(tmp_path):
     path = tmp_path / "cache"
-    path.write_text('{"checked_at":100000}')
     with manifest_server() as (broker, requests):
+        path.write_text(json.dumps({"checked_at": 100000, "url": update.manifest_url(broker, cfg(tmp_path))}))
         assert update.decide(broker, cfg(tmp_path), "0.4.3", cache_path=path, now=100001) is None
         assert not requests
 
 
 def test_cache_permissions_and_failed_replace_cleanup(tmp_path, monkeypatch):
     path = tmp_path / "state" / "update-check.json"
-    update.store_cache(path, 100000, "0.10.0")
-    assert update.load_cache(path) == {"checked_at": 100000, "latest": "0.10.0"}
+    url = "https://broker.example/latest.json"
+    update.store_cache(path, 100000, "0.10.0", url)
+    assert update.load_cache(path) == {"checked_at": 100000, "latest": "0.10.0", "url": url}
     if hasattr(os, "fchmod"):
         assert path.stat().st_mode & 0o777 == 0o600
 
@@ -268,7 +272,7 @@ def test_cache_permissions_and_failed_replace_cleanup(tmp_path, monkeypatch):
 
     monkeypatch.setattr(update.os, "replace", fail_replace)
     with pytest.raises(OSError, match="replace failed"):
-        update.store_cache(path, 200000, None)
+        update.store_cache(path, 200000, None, url)
     assert update.load_cache(path)["latest"] == "0.10.0"
     assert list(path.parent.iterdir()) == [path]
 
@@ -276,13 +280,14 @@ def test_cache_permissions_and_failed_replace_cleanup(tmp_path, monkeypatch):
 @pytest.mark.parametrize("previous", [None, "0.10.0"])
 def test_timeout_retains_latest_and_caches_attempt(tmp_path, previous):
     path = tmp_path / "cache"
-    if previous:
-        path.write_text(json.dumps({"checked_at": 1, "latest": previous}))
     with manifest_server(delay=5) as (broker, requests):
+        url = update.manifest_url(broker, cfg(tmp_path))
+        if previous:
+            path.write_text(json.dumps({"checked_at": 1, "latest": previous, "url": url}))
         started = time.monotonic()
         assert update.decide(broker, cfg(tmp_path), "0.4.3", cache_path=path, now=100000) == previous
         assert time.monotonic() - started < 2
-        assert json.loads(path.read_text()) == {"checked_at": 100000, "latest": previous}
+        assert json.loads(path.read_text()) == {"checked_at": 100000, "latest": previous, "url": url}
         assert len(requests) == 1
 
 
@@ -292,3 +297,51 @@ def test_override_manifest_is_requested(tmp_path):
         assert update.decide(broker, resolved, "0.4.3", cache_path=tmp_path / "cache") == "0.10.0"
         assert not broker_requests
         assert other_requests[0][0] == "/channel/latest.json"
+
+
+@pytest.mark.parametrize("override", [False, True])
+def test_qodo_cache_is_scoped_to_manifest_url(tmp_path, override):
+    path = tmp_path / "cache"
+    with manifest_server() as (first, first_requests), manifest_server(
+            b'{"schema":1,"version":"0.4.3"}') as (second, second_requests):
+        initial = cfg(tmp_path)
+        assert update.decide(first, initial, "0.4.3", cache_path=path, now=100000) == "0.10.0"
+        resolved = cfg(tmp_path, overrides=[f"update.url={second}/channel/latest.json"]) if override else initial
+        broker = first if override else second
+        assert update.decide(broker, resolved, "0.4.3", cache_path=path, now=100001) is None
+        assert len(first_requests) == len(second_requests) == 1
+        assert json.loads(path.read_text())["url"] == update.manifest_url(broker, resolved)
+
+
+@pytest.mark.parametrize("suffix", ["?token=x", "#section", "/other.json", "/latest.json/", ";echo", "'", '"',
+                                     " ", "\t", "\n", "$(echo)", "&", "|", "`", "\\", "é"])
+def test_qodo_invalid_manifest_disables_fresh_and_cached_check(tmp_path, monkeypatch, suffix):
+    path = tmp_path / "cache"
+    url = "https://updates.example/channel/latest.json" + suffix
+    resolved = cfg(tmp_path, overrides=[f"update.url={url}"])
+    monkeypatch.setattr(update, "fetch_latest", lambda *_args, **_kwargs: pytest.fail("invalid URL fetched"))
+    for cached in (False, True):
+        if cached:
+            path.write_text(json.dumps({"checked_at": 100000, "latest": "9.0.0", "url": url}))
+        before = path.read_bytes() if path.exists() else None
+        assert update.decide("https://broker.example", resolved, "0.4.3", cache_path=path, now=100001) is None
+        assert (path.read_bytes() if path.exists() else None) == before
+
+
+def test_qodo_non_loopback_http_disables_cached_notice(tmp_path, monkeypatch):
+    path = tmp_path / "cache"
+    url = "http://updates.example/latest.json"
+    path.write_text(json.dumps({"checked_at": 100000, "latest": "9.0.0", "url": url}))
+    monkeypatch.setattr(update, "fetch_latest", lambda *_args, **_kwargs: pytest.fail("cleartext request"))
+    assert update.decide("https://broker.example", cfg(tmp_path, overrides=[f"update.url={url}"]),
+                         "0.4.3", cache_path=path, now=100001) is None
+
+
+def test_qodo_future_cache_is_due(tmp_path):
+    path = tmp_path / "cache"
+    with manifest_server() as (broker, requests):
+        resolved = cfg(tmp_path)
+        url = update.manifest_url(broker, resolved)
+        path.write_text(json.dumps({"checked_at": 200000, "latest": "0.4.3", "url": url}))
+        assert update.decide(broker, resolved, "0.4.3", cache_path=path, now=100000) == "0.10.0"
+        assert len(requests) == 1

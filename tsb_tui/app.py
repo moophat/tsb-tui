@@ -347,7 +347,12 @@ class TsbTuiApp(App):
             self.call_from_thread(self._show_update_notice, line)
 
     def _show_update_notice(self, line: str) -> None:
+        from .screens.chrome_dialogs import TextScreen
+
         self.update_notice = line
+        for screen in self.screen_stack:
+            if isinstance(screen, TextScreen) and screen.is_settings:
+                screen.sync()
         self.toast("An update is available. Open Settings for the version and update command.",
                    severity="information")
 

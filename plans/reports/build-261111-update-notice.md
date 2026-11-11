@@ -58,3 +58,39 @@ The 1.5 second deadline bounds the caller's entire wait, including DNS. A daemon
 Real-instance, TLS, Windows and macOS runtime proofs were not performed. Those remain environment proofs rather than claims of this loopback suite.
 
 Status: DONE_WITH_CONCERNS
+
+## Qodo round 1
+
+**AI-Model:** gpt-6.1-sol
+
+Applied the orchestrator's 2026-11-11 14:4x dispositions for PR #54, starting from head `b56ca9a`.
+
+- Cache entries now store the exact manifest `url`. A different or absent URL makes the entry absent for this check, so changing broker or `update.url` checks immediately and cannot retain another source's update on failure. Existing cache fixtures now identify their source.
+- A notice arriving while Settings is open refreshes its selectable line immediately. Other open text views are left alone.
+- Before consulting the cache or making a request, the manifest URL must use HTTPS, or HTTP with a loopback host; its path must end in `/latest.json`; and every character must be an ASCII letter, digit or one of `-._~:/%`. Invalid configured URLs silently disable checking and notices, including cached notices, without changing the cache or failing startup. Query strings, fragments, whitespace, quotes and shell characters are rejected. Validation and origin extraction use string operations, with no URL-parser import.
+- The installer base removes the final manifest path segment and appends the fixed platform installer name.
+- A future `checked_at` is due immediately, so moving the clock back triggers a fresh request.
+
+### Red-first evidence on b56ca9a
+
+Added only regression tests first, leaving production files at `b56ca9a`, then ran `make test` with the test venv and `PYTEST_ADDOPTS='-q -k qodo'`:
+
+**21 failed, 1971 deselected in 10.87s.**
+
+The failures cover both broker and override URL changes, a late notice in already open Settings, invalid fresh and cached manifest URLs (including non-loopback HTTP), and a future cache timestamp. Invalid-URL tests replace fetching with a fail-fast spy, so they make no external network request.
+
+After implementation, the same red-first selection reported **21 passed, 1971 deselected in 11.35s**.
+
+### Final verification for this round
+
+All commands ran in the foreground with the test venv through the Makefile's PYTHON override.
+
+- `make lint`: **PASS**. Ruff passed; **80 support tests passed in 8.08s**; import-lint, leak check and engine verification passed. The docs branch guard reports its usual no-event no-op outside a PR event.
+- `make test` with `PYTEST_ADDOPTS='-q -k "test_update_check or test_settings"'`: **66 passed, 1926 deselected in 33.03s**. This selects the update-check module and every existing `tests/test_settings*` module, including the new late-notice pilot.
+- `git diff --check`: **PASS**.
+- Import-lint allowance and its tests: unchanged. No `urllib.parse`, socket or other network imports were added.
+- No commits, pushes, tracker rotation or changes under `.aiworkflow/` or `program/`.
+
+The full suite was not rerun in this bounded round; the preceding full-suite evidence applies to the earlier head only. The existing daemon I/O deadline concern and unverified platform/environment proofs described above remain unchanged.
+
+Status: DONE_WITH_CONCERNS
