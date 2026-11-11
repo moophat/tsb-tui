@@ -37,10 +37,16 @@ def release(tmp_path):
     (site / 'latest.json').write_text(json.dumps(
         {'schema': 1, 'version': '1.2.3', 'tag': 'v1.2.3', 'dir': 'v1.2.3/', 'assets': assets}))
     requests = []
+    redirects = set()
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self):
             requests.append(self.path)
+            if self.path in redirects:
+                self.send_response(302)
+                self.send_header('Location', '/redirect-target')
+                self.end_headers()
+                return
             super().do_GET()
 
         def log_message(self, *_args):
@@ -62,11 +68,10 @@ def release(tmp_path):
     # Stub only the transport: real HTTP goes to the loopback server, never another host.
     (bins / 'curl').write_text(
         '#!' + sys.executable + '\n'
-        'import sys, urllib.parse, urllib.request\n'
-        'assert sys.argv[1] == "-fsSL" and sys.argv[3] == "-o"\n'
-        'assert urllib.parse.urlsplit(sys.argv[2]).hostname == "127.0.0.1"\n'
-        'with urllib.request.urlopen(sys.argv[2]) as r, open(sys.argv[4], "wb") as f:\n'
-        '    f.write(r.read())\n')
+        'import os, sys, urllib.parse\n'
+        'urls = [a for a in sys.argv[1:] if a.startswith(("http://", "https://"))]\n'
+        'assert len(urls) == 1 and urllib.parse.urlsplit(urls[0]).hostname in ("127.0.0.1", "::1", "localhost")\n'
+        f'os.execv({shutil.which("curl")!r}, ["curl", *sys.argv[1:]])\n')
     (bins / 'curl').chmod(0o755)
     (bins / 'pipx').write_text(
         '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
@@ -81,7 +86,7 @@ def release(tmp_path):
     base = f'http://127.0.0.1:{server.server_port}'
     thread.start()
     try:
-        yield base, tag, env, work, calls, requests
+        yield base, tag, env, work, calls, requests, redirects
     finally:
         server.shutdown()
         thread.join()
@@ -89,7 +94,7 @@ def release(tmp_path):
 
 
 def run(release, *args, pinned=False):
-    _base, _tag, env, work, _calls, _requests = release
+    _base, _tag, env, work, _calls, _requests, _redirects = release
     if pinned:
         env['TSB_TUI_VERSION'] = '1.2.3'
     return subprocess.run(['bash', str(ROOT / 'install.sh'), *args], cwd=work, env=env,
@@ -97,7 +102,7 @@ def run(release, *args, pinned=False):
 
 
 def test_manifest_install(release):
-    base, _, env, _, calls, requests = release
+    base, _, env, _, calls, requests, _ = release
     result = run(release, '--base', base)
     assert result.returncode == 0, result.stdout + result.stderr
     assert '/latest.json' in requests
@@ -238,7 +243,7 @@ def test_windows_pure_functions(tmp_path):
                              str(ROOT / 'packaging/tests/installers.Tests.ps1')],
                             cwd=tmp_path, check=False, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert 'Tests Passed: 13, Failed: 0, Skipped: 0' in result.stdout
+    assert re.search(r'Tests Passed: [1-9][0-9]*, Failed: 0, Skipped: 0', result.stdout)
 
 
 def test_environment_base_and_broker_are_installer_only(release):
@@ -260,3 +265,57 @@ def test_empty_existing_config_is_not_replaced(release):
     result = run(release, '--base', release[0])
     assert result.returncode == 0, result.stdout + result.stderr
     assert config.read_bytes() == b''
+
+
+@pytest.mark.parametrize('base', ['http://example.invalid', 'http://127.0.0.2', 'http://localhost.example'])
+def test_remote_http_refused(release, base):
+    result = run(release, '--base', base)
+    assert result.returncode != 0
+    assert 'HTTPS' in result.stderr
+    assert not release[4].exists()
+    assert not release[5]
+
+
+@pytest.mark.parametrize('transport', ['curl', 'wget'])
+@pytest.mark.parametrize('path', ['/latest.json', '/v1.2.3/SHA256SUMS',
+                                  '/v1.2.3/libghostty-vt-linux-x86_64.tar.gz'])
+def test_redirect_refused(release, transport, path):
+    if transport == 'wget':
+        bins = Path(release[2]['BINS'])
+        # A closed tool directory forces the fallback without changing the host.
+        (bins / 'curl').unlink()
+        for name in ['bash', 'uname', 'getconf', 'wget', 'mktemp', 'rm']:
+            (bins / name).symlink_to(shutil.which(name))
+        release[2]['PATH'] = str(bins)
+    release[6].add(path)
+    result = run(release, '--base', release[0])
+    assert result.returncode != 0
+    assert 'redirect' in result.stderr.lower()
+    assert path in result.stderr
+    assert '/redirect-target' not in release[5]
+    assert not release[4].exists()
+
+
+@pytest.mark.parametrize('asset', [False, True])
+def test_windows_loopback_redirect_refused(release, asset):
+    pwsh = shutil.which('pwsh')
+    if pwsh is None:
+        if os.environ.get('CI'):
+            pytest.fail('CI image must contain the hash-pinned pwsh and Pester inputs')
+        pytest.skip('run in the CI image for the hash-pinned pwsh and Pester inputs')
+    release[6].add('/latest.json')
+    script = release[3] / 'request.ps1'
+    script.write_text(
+        "param($Installer, $Url, $OutputFile)\n"
+        ". $Installer\n"
+        "try { Get-ReleaseFile $Url $OutputFile; exit 2 }\n"
+        "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }\n")
+    result = subprocess.run(
+        [pwsh, '-NoProfile', '-NonInteractive', '-File', str(script),
+         str(ROOT / 'install.ps1'), release[0] + '/latest.json',
+         str(release[3] / 'archive.zip') if asset else ''],
+        capture_output=True, text=True, check=False, timeout=30)
+    assert result.returncode == 1
+    assert 'redirect' in result.stderr.lower()
+    assert '/latest.json' in result.stderr
+    assert '/redirect-target' not in release[5]

@@ -40,26 +40,92 @@ function Write-FirstConfig([string]$Path, [string]$Url) {
     }
 }
 
+function Get-DownloadBase([string]$Url) {
+    $uri = [uri]$Url
+    if (-not $uri.IsAbsoluteUri -or $uri.Scheme -notin @('https', 'http') -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) {
+        throw 'Invalid -Base URL.'
+    }
+    if ($uri.Scheme -eq 'http' -and $Url -notmatch '^http://(127\.0\.0\.1|localhost|\[::1\])(?::[0-9]+)?(?:/|$)') {
+        throw 'Download base requires HTTPS except for loopback hosts.'
+    }
+    return $uri
+}
+
+function Get-ReleaseFile([string]$Url, [string]$OutFile = '') {
+    $parameters = @{ Uri = $Url; UseBasicParsing = $true; MaximumRedirection = 0; ErrorAction = 'Stop' }
+    if ($OutFile) { $parameters.OutFile = $OutFile; $parameters.PassThru = $true }
+    try {
+        $response = Invoke-WebRequest @parameters
+    } catch {
+        $status = $_.Exception.Response.StatusCode
+        if ($status -and [int]$status -ge 300 -and [int]$status -lt 400) {
+            throw "Redirect refused for '$Url' (HTTP $([int]$status))."
+        }
+        throw
+    }
+    if ([int]$response.StatusCode -ge 300 -and [int]$response.StatusCode -lt 400) {
+        throw "Redirect refused for '$Url' (HTTP $([int]$response.StatusCode))."
+    }
+    if (-not $OutFile) { return ($response.Content | ConvertFrom-Json) }
+}
+
+function Initialize-InstallTree([string]$Directory, [string]$New, [string]$Old) {
+    $leftovers = @($Old, $New | Where-Object { Test-Path -LiteralPath $_ })
+    if (-not $leftovers.Count) { return }
+    if (Test-Path -LiteralPath (Join-Path $Directory 'tsb-tui.exe') -PathType Leaf) {
+        foreach ($path in $leftovers) {
+            Write-Warning "Removing stale recovery directory '$path'."
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+        }
+        return
+    }
+    $message = "Incomplete or missing install; no folders deleted."
+    if (Test-Path -LiteralPath $Directory) {
+        $qDirectory = $Directory.Replace("'", "''")
+        $aside = ($Directory + '.incomplete-' + [guid]::NewGuid().ToString()).Replace("'", "''")
+        $message += "`nExisting: $Directory`nFirst move the incomplete folder aside: Rename-Item -LiteralPath '$qDirectory' -NewName '$(Split-Path $aside -Leaf)'"
+    }
+    foreach ($path in $leftovers) {
+        $quoted = $path.Replace("'", "''")
+        $leaf = (Split-Path $Directory -Leaf).Replace("'", "''")
+        $message += "`nExisting: $path`nTo recover this tree: Rename-Item -LiteralPath '$quoted' -NewName '$leaf'"
+    }
+    throw $message
+}
+
+function Remove-FailedNewTree([string]$New, $Failure) {
+    if (-not $Failure.Exception.Data['ManualRecovery'] -and (Test-Path -LiteralPath $New)) {
+        Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction Stop
+    }
+}
+
 function Switch-InstallTree([string]$Directory, [string]$New, [string]$Old) {
     $hadOld = Test-Path -LiteralPath $Directory
-    if ($hadOld) { Rename-Item -LiteralPath $Directory -NewName (Split-Path $Old -Leaf) -ErrorAction Stop }
     try {
-        Rename-Item -LiteralPath $New -NewName (Split-Path $Directory -Leaf) -ErrorAction Stop
-    } catch {
-        $moveError = $_.Exception.Message
-        if ($hadOld) {
-            try {
-                Rename-Item -LiteralPath $Old -NewName (Split-Path $Directory -Leaf) -ErrorAction Stop
-            } catch {
-                $restoreError = $_.Exception.Message
-                # Single-quote escaping keeps the printed recovery commands copyable in PowerShell.
-                $qOld = $Old.Replace("'", "''")
-                $qNew = $New.Replace("'", "''")
-                $qLeaf = (Split-Path $Directory -Leaf).Replace("'", "''")
-                throw "Moving '$New' to '$Directory' failed: $moveError. Restore also failed: $restoreError.`nRetained: $Old`nRetained: $New`nTo restore the old install: Rename-Item -LiteralPath '$qOld' -NewName '$qLeaf'`nOr to activate the new install: Rename-Item -LiteralPath '$qNew' -NewName '$qLeaf'"
+        if ($hadOld) { Rename-Item -LiteralPath $Directory -NewName (Split-Path $Old -Leaf) -ErrorAction Stop }
+        try {
+            Rename-Item -LiteralPath $New -NewName (Split-Path $Directory -Leaf) -ErrorAction Stop
+        } catch {
+            $moveError = $_.Exception.Message
+            if ($hadOld) {
+                try {
+                    Rename-Item -LiteralPath $Old -NewName (Split-Path $Directory -Leaf) -ErrorAction Stop
+                } catch {
+                    $restoreError = $_.Exception.Message
+                    # Single-quote escaping keeps the printed recovery commands copyable in PowerShell.
+                    $qOld = $Old.Replace("'", "''")
+                    $qNew = $New.Replace("'", "''")
+                    $qLeaf = (Split-Path $Directory -Leaf).Replace("'", "''")
+                    $failure = New-Object InvalidOperationException ("Moving '$New' to '$Directory' failed: $moveError. Restore also failed: $restoreError.`nRetained: $Old`nRetained: $New`nTo restore the old install: Rename-Item -LiteralPath '$qOld' -NewName '$qLeaf'`nOr to activate the new install: Rename-Item -LiteralPath '$qNew' -NewName '$qLeaf'")
+                    $failure.Data['ManualRecovery'] = $true
+                    throw $failure
+                }
             }
+            throw "Moving '$New' to '$Directory' failed: $moveError. The previous install was restored if one existed."
         }
-        throw "Moving '$New' to '$Directory' failed: $moveError. The previous install was restored if one existed."
+    } catch {
+        Remove-FailedNewTree $New $_
+        throw
     }
     if ($hadOld) {
         try { Remove-Item -LiteralPath $Old -Recurse -Force -ErrorAction Stop }
@@ -78,14 +144,9 @@ function Install-TsbTui {
             throw 'Close tsb-tui and run again: a process is running from the install directory.'
         }
     }
-    if ((Test-Path -LiteralPath $new) -or (Test-Path -LiteralPath $old)) {
-        throw "Existing recovery directory: inspect '$new' and '$old' before retrying."
-    }
+    Initialize-InstallTree $install $new $old
     if (-not $Base.Contains('@@TSB_' + 'ORIGIN@@')) {
-        $uri = [uri]$Base
-        if (-not $uri.IsAbsoluteUri -or $uri.Scheme -notin @('https', 'http') -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) {
-            throw 'Invalid -Base URL.'
-        }
+        $uri = Get-DownloadBase $Base
         if (-not $Broker) { $Broker = $uri.GetLeftPart([UriPartial]::Authority) }
     }
     $temp = $null
@@ -109,13 +170,8 @@ function Install-TsbTui {
             }
         } else {
             if ($Base.Contains('@@TSB_' + 'ORIGIN@@')) { throw 'Pass -Base <url>; this installer has no rendered download base.' }
-            foreach ($name in @('Tls12', 'Tls13')) {
-                if ([Enum]::GetNames([Net.SecurityProtocolType]) -contains $name) {
-                    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Enum]::Parse([Net.SecurityProtocolType], $name)
-                }
-            }
             $baseUrl = $Base.TrimEnd('/')
-            $manifest = Invoke-RestMethod -Uri "$baseUrl/latest.json"
+            $manifest = Get-ReleaseFile "$baseUrl/latest.json"
             if (($manifest.schema -isnot [int] -and $manifest.schema -isnot [long]) -or $manifest.schema -ne 1 -or
                 $manifest.version -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$' -or
                 $manifest.tag -cne "v$($manifest.version)" -or $manifest.dir -cne "v$($manifest.version)/") {
@@ -130,7 +186,7 @@ function Install-TsbTui {
             $temp = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
             New-Item -ItemType Directory -Path $temp | Out-Null
             $archive = Join-Path $temp $name
-            Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/$($manifest.dir)$name" -OutFile $archive
+            Get-ReleaseFile "$baseUrl/$($manifest.dir)$name" $archive
             if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $asset.sha256 -or
                 (Get-Item -LiteralPath $archive).Length -ne $asset.size) {
                 Remove-Item -LiteralPath $archive -Force
@@ -202,6 +258,9 @@ print('Broker:', tomllib.loads(p.read_text(encoding='utf-8-sig')).get('broker', 
         if ($LASTEXITCODE -ne 0) { Write-Warning "Could not read version/broker summary; see config at '$config'." }
         Write-Host "Installed at: $install"
         Write-Host 'Open a new terminal tab; tabs already open do not see the change. Type tsb-tui.'
+    } catch {
+        Remove-FailedNewTree $new $_
+        throw
     } finally {
         if ($temp -and (Test-Path -LiteralPath $temp)) { Remove-Item -LiteralPath $temp -Recurse -Force }
     }

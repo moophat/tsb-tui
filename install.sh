@@ -51,9 +51,16 @@ fi
 
 fetch() {
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$1" -o "$2"
+    local status
+    status="$(curl -fsS "$1" -o "$2" -w '%{http_code}')" || return 1
+    if [[ "$status" == 3?? ]]; then
+      echo "Redirect refused for '$1' (HTTP $status)." >&2; return 1
+    fi
   elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$2" "$1"
+    local error
+    error="$(wget --max-redirect=0 -O "$2" "$1" 2>&1)" || {
+      echo "Fetch failed for '$1' (redirects refused): $error" >&2; return 1;
+    }
   else
     echo 'Fetching requires curl or wget.' >&2; return 1
   fi
@@ -73,6 +80,8 @@ from urllib.parse import urlsplit
 u = urlsplit(sys.argv[1])
 if u.scheme not in ('http', 'https') or not u.netloc or u.username or u.password or u.query or u.fragment:
     raise SystemExit('Invalid download base URL.')
+if u.scheme == 'http' and u.hostname not in ('127.0.0.1', '::1', 'localhost'):
+    raise SystemExit('Download base requires HTTPS except for loopback hosts.')
 print(f'{u.scheme}://{u.netloc}')
 PYTHON
 )"

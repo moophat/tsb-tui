@@ -79,7 +79,7 @@ Describe 'Install swap restoration' {
         Mock Rename-Item { throw 'activation denied' } -ParameterFilter { $LiteralPath -eq $script:new }
         { Switch-InstallTree $directory $new $old } | Should -Throw '*activation denied*'
         [IO.File]::ReadAllText((Join-Path $directory 'identity')) | Should -Be 'old'
-        Test-Path $new | Should -BeTrue
+        Test-Path $new | Should -BeFalse
         Test-Path $old | Should -BeFalse
     }
     It 'retains both trees and prints both manual recovery commands if restoration fails' {
@@ -99,6 +99,93 @@ Describe 'Install swap restoration' {
         Mock Rename-Item { throw 'first rename denied' } -ParameterFilter { $LiteralPath -eq $script:directory }
         { Switch-InstallTree $directory $new $old } | Should -Throw '*first rename denied*'
         [IO.File]::ReadAllText((Join-Path $directory 'identity')) | Should -Be 'old'
+        Test-Path $new | Should -BeFalse
+    }
+}
+
+
+Describe 'Download policy' {
+    It 'never accesses the global TLS protocol selector' {
+        (Get-Content (Join-Path $PSScriptRoot '../../install.ps1') -Raw) | Should -Not -Match 'ServicePointManager|SecurityProtocol'
+    }
+    It 'accepts HTTPS and exact HTTP loopback hosts' {
+        foreach ($url in @('https://example.test/assets', 'http://localhost:123/a', 'http://127.0.0.1/a', 'http://[::1]/a')) {
+            (Get-DownloadBase $url).IsAbsoluteUri | Should -BeTrue
+        }
+    }
+    It 'refuses cleartext remote hosts' {
+        foreach ($url in @('http://example.test', 'http://127.0.0.2', 'http://localhost.example')) {
+            { Get-DownloadBase $url } | Should -Throw '*HTTPS*'
+        }
+    }
+    It 'disables redirects for manifest and asset requests' {
+        Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 302; Content = '{}' } }
+        { Get-ReleaseFile 'https://example.test/latest.json' } | Should -Throw '*Redirect*'
+        { Get-ReleaseFile 'https://example.test/archive.zip' 'archive.zip' } | Should -Throw '*Redirect*'
+        Should -Invoke Invoke-WebRequest -Times 2 -Exactly -ParameterFilter { $MaximumRedirection -eq 0 }
+    }
+}
+
+Describe 'Startup recovery' {
+    BeforeEach {
+        $script:directory = Join-Path $TestDrive 'tsb-tui'
+        $script:new = "$directory.new"
+        $script:old = "$directory.old"
+        New-Item -ItemType Directory -Path $directory, $new, $old -Force | Out-Null
+    }
+    AfterEach { Get-ChildItem $TestDrive -Force | Remove-Item -Recurse -Force }
+    It 'removes stale siblings only for a complete installation with warnings' {
+        New-Item -ItemType File -Path (Join-Path $directory 'tsb-tui.exe') | Out-Null
+        Mock Write-Warning {}
+        Initialize-InstallTree $directory $new $old
+        Test-Path $new | Should -BeFalse
+        Test-Path $old | Should -BeFalse
+        Should -Invoke Write-Warning -Times 2 -Exactly
+    }
+    It 'preserves every folder when the live install is incomplete' {
+        $message = ''
+        try { Initialize-InstallTree $directory $new $old } catch { $message = $_.Exception.Message }
+        foreach ($path in @($directory, $old, $new)) {
+            Test-Path $path | Should -BeTrue
+            $message | Should -BeLike "*$path*"
+        }
+        $message | Should -BeLike '*Rename-Item*'
+    }
+    It 'preserves recovery folders when the live installation is absent' {
+        Remove-Item $directory -Recurse
+        { Initialize-InstallTree $directory $new $old } | Should -Throw '*Rename-Item*'
+        Test-Path $old | Should -BeTrue
         Test-Path $new | Should -BeTrue
+    }
+}
+
+Describe 'Pre-swap failure cleanup' {
+    It 'removes the new tree when preserving config fails and leaves the live tree intact' {
+        $previousLocal = $env:LOCALAPPDATA
+        $env:LOCALAPPDATA = $TestDrive
+        $fixtureZip = Join-Path $TestDrive 'fixture.zip'
+        New-Item -ItemType File -Path $fixtureZip | Out-Null
+        . (Join-Path $PSScriptRoot '../../install.ps1') -Zip $fixtureZip
+        $directory = Join-Path $TestDrive 'Programs/tsb-tui'
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $directory 'config.toml'), 'preserved')
+        New-Item -ItemType File -Path (Join-Path $directory 'tsb-tui.exe') | Out-Null
+        Mock Get-Process {}
+        Mock Expand-Archive {
+            $tree = Join-Path $DestinationPath 'tsb-tui-1.2.3-windows-x64'
+            New-Item -ItemType Directory -Path (Join-Path $tree 'python') -Force | Out-Null
+            foreach ($file in @('tsb-tui.exe', 'tsb-tui-check.cmd', 'python/python.exe')) {
+                New-Item -ItemType File -Path (Join-Path $tree $file) | Out-Null
+            }
+        }
+        Mock Copy-Item { throw 'config copy denied' }
+        try {
+            { Install-TsbTui } | Should -Throw '*config copy denied*'
+            Test-Path "$directory.new" | Should -BeFalse
+            Test-Path "$directory.old" | Should -BeFalse
+            [IO.File]::ReadAllText((Join-Path $directory 'config.toml')) | Should -Be 'preserved'
+        } finally {
+            $env:LOCALAPPDATA = $previousLocal
+        }
     }
 }

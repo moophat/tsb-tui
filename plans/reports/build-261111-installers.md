@@ -32,3 +32,19 @@ Registry access, native process enumeration, `WM_SETTINGCHANGE`, `Unblock-File`,
 A scoped read-only simplifier found no required simplification or definite correctness defect. All 13 Pester cases were retained. Final path review found only authorized changes. No `program/` or `.aiworkflow/` modifications, rotation command, commit or push in this continuation. The supplied `BRIEF.md` remains untracked.
 
 Status: DONE_WITH_CONCERNS
+
+## Qodo round 1
+
+**AI-Model:** gpt-6.1-sol
+
+Accepted all three findings under the operator's rulings. Windows no longer accesses the global TLS protocol selector. Both download paths require HTTPS except for the three named loopback hosts, disable redirects, and identify redirect failures. Windows removes failed new trees unless restoration also fails; healthy live installs remove stale siblings with warnings. Missing or incomplete live installs preserve all recovery folders and print their paths and manual recovery commands.
+
+Red-first Makefile installer run: **10 failed, 14 passed, 1923 deselected**. This includes the newly ruled incomplete-live-folder case, TLS policy, URL policy, redirects, and changed swap cleanup expectations. Added a further pre-swap config-copy failure proof. Loopback transport tests exercise curl and wget against actual redirect responses.
+
+Verification: final installer run passed (**26 passed, 1923 deselected in 32.96s**), including **21 Pester cases** and real PowerShell, curl and wget loopback redirect refusals. Lint passed, including ruff and **66 repository/import tests**. The full Makefile suite passed: **1949 passed in 1837.20s (30m 37s)**, with no skips or failures. The previously timing-out target-form case passed in this run. No commit, push, tracker rotation or changes under the workflow directory.
+
+The final lint rerun passed after all source and test edits, including the engine pin check. Bash syntax and the final whitespace/path review passed. Only the two installers, their pytest/Pester tests and this report changed. No commit or push was made; the workflow directory was untouched.
+
+Native Windows 11 PowerShell 5.1/7 TLS negotiation and registry/broadcast integration remain unverified; Linux PowerShell 7 tests do not replace that platform proof. All requested automated checks completed.
+
+Qodo round 1 status: implemented and automated verification passed; native Windows proof remains outstanding.
