@@ -1,8 +1,8 @@
 # Fix #52 — the target-form tests wait for the worker that carries the refresh
 
 **Date:** 2026-11-11
-**Branch:** test/target-form-waits (agy Gemini's uncommitted diff, reviewed and kept as-is)
-**Model:** strata
+**Branch:** fix/target-form-waits
+**Change by:** gemini-3.8-flash (agy); review and report by swift-1.5-iq2_xs (Strata)
 **Scope:** `tests/test_target_form.py` only; no `tsb_tui/`, `tests/conftest.py`, product change.
 
 ## Step 1 — what the selection follows after a save
@@ -64,7 +64,7 @@ were.
   19.85 s), all green. No load generator on this machine.
 - `make lint PYTHON=<the test venv's python>` — exit 0: 66 script tests passed, import-lint clean
   (180 files), leak check clean, engine check verified the vendored object and all headers. Ruff
-  reported SKIP: not installed in the test venv, so the Python style check did not run — say so.
+  was skipped locally because it is not installed in the test venv; CI's lint job runs it.
 - `git diff` shows only `tests/test_target_form.py`; no commit, no push; nothing absolute-pathed.
 
 Status: DONE
