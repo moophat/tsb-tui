@@ -48,3 +48,5 @@ The final lint rerun passed after all source and test edits, including the engin
 Native Windows 11 PowerShell 5.1/7 TLS negotiation and registry/broadcast integration remain unverified; Linux PowerShell 7 tests do not replace that platform proof. All requested automated checks completed.
 
 Qodo round 1 status: implemented and automated verification passed; native Windows proof remains outstanding.
+
+CI image: added exact Debian pins curl=7.88.1-10+deb12u15 and wget=1.21.3-1+deb12u1, selected with apt-cache policy inside the pinned bookworm base. Rebuilt tsb-tui-installers-ci (image b7eec08c422e); with networking disabled and CI=1, installer tests: **26 passed** (including **21 Pester cases**); packaging tests using the workflow's selection: **42 passed, 1 deselected** (release-only test_built_zip). The complete packaging directory also ran: **42 passed, 1 failed**, solely test_built_zip because no full dummy-engine release zip was supplied. Host make lint passed (including ruff and **66 repository/import tests**); final diff check passed. Only the Dockerfile and this report changed; no commit, push or workflow-directory changes. **AI-Model:** gpt-6.1-sol.
