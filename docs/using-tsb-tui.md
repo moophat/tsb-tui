@@ -19,7 +19,7 @@ Placeholders used below: `<broker>` (the broker's web address), `<your-login>` (
 
 - A Linux x86_64 box with glibc 2.29 or newer (Ubuntu 20.04, Debian 11 or newer), Python 3.12 or newer, and
   `pipx` (a tool that installs a Python program in its own private environment).
-- Read access to the tsb-tui GitHub repository, which is private, to download a release.
+- Download access to the broker, or read access to the private GitHub repository for backup release assets.
 - Network reach to `<broker>` over HTTPS. If the broker's certificate is signed by a private authority, you also
   need that authority's PEM file and pass it as `--ca-file <PEM>`.
 - **A TSB login of your own.** Ask the operator for one. Do not share another person's. The audit names who typed.
@@ -36,8 +36,64 @@ Placeholders used below: `<broker>` (the broker's web address), `<your-login>` (
 
 ## 2. Install
 
-Each tsb-tui release on GitHub carries everything TSB ships for the client. Download these five files from the
-release into one empty directory:
+Replace `broker.example` with your broker's host (and port, if needed). The instance serves downloads without a
+login; no GitHub account is needed for these commands.
+
+**Windows 11, x64**, in PowerShell:
+
+```powershell
+irm https://broker.example/downloads/tsb-tui/install.ps1 | iex
+```
+
+This installs per user under `%LOCALAPPDATA%\Programs\tsb-tui`, adds that directory to your user PATH, and creates
+`config.toml` beside the program with the broker address only if no config exists. Close a running TUI before
+upgrading. Open a new terminal tab after installing, then type `tsb-tui`; existing tabs do not see the PATH change.
+The bundled Python needs no separate installation. The installer runs `tsb-tui-check.cmd` once and prints its output;
+a failed check is reported and the install is kept.
+
+**Browser-download fallback** (including Windows 10): open these URLs in a browser, replacing `<version>` with the
+release version (for example, `0.5.0`):
+
+- `https://broker.example/downloads/tsb-tui/install.ps1`
+- `https://broker.example/downloads/tsb-tui/v<version>/tsb-tui-<version>-windows-x64.zip`
+- `https://broker.example/downloads/tsb-tui/v<version>/SHA256SUMS`
+
+Save the zip and `SHA256SUMS` together, then run the saved installer:
+
+```powershell
+.\install.ps1 -Zip .\tsb-tui-<version>-windows-x64.zip -Broker https://broker.example
+```
+
+`-Zip` makes no network requests. With an adjacent `SHA256SUMS`, the zip's SHA-256 must match; without it, the script
+warns that there is no release-hash verification and checks extraction and bundle layout only. Without `-Broker`
+(or a known `-Base`), an offline install keeps any existing config and otherwise writes none; it prints the config
+path and the flag to use. The one-line download requires Windows 11 because the server accepts TLS 1.3 only.
+
+**Linux**, x86_64 with glibc 2.29+, Python 3.12+ and `pipx`:
+
+```bash
+curl -fsSL https://broker.example/downloads/tsb-tui/install.sh | bash
+```
+
+Run in a directory without release wheels to fetch the latest release. The installer checks the downloaded wheels,
+Linux engine and installer against `SHA256SUMS`, installs with pipx and checks the engine. It writes
+`$XDG_CONFIG_HOME/tsb-tui/config.toml` (default `~/.config/tsb-tui/config.toml`) only if a broker is known and no file
+exists. Existing files, even empty ones, are kept. It needs no root and edits no shell profile. If pipx's bin directory
+is absent from PATH, it prints a reminder to run `pipx ensurepath`.
+
+For a downloaded repository copy, pass `bash install.sh --base https://broker.example/downloads/tsb-tui`;
+the equivalent Windows online flag is `-Base`. An unrendered script cannot infer the download host.
+On Linux, `TSB_TUI_BASE` supplies the base and `--base` overrides it; `TSB_TUI_VERSION=x.y.z` fetches that tag's
+`SHA256SUMS` directly, without requesting `latest.json`. `--broker <url>` overrides `TSB_TUI_BROKER`; when fetching,
+the default broker is the download base's origin. These three installer environment variables are removed before
+the application is run; use `TSB_TUI_BROKER_URL` for the application's broker knob.
+
+**macOS:** no release artifact yet; support is pending. `install.sh` refuses on macOS.
+
+The manifest and checksum files detect corruption, not a hostile download server: they come from the same origin.
+Release signing is deferred. GitHub releases remain a backup for people with access to this private repository.
+
+For a Linux install from previously downloaded GitHub assets, keep these five files in one directory:
 
 - `tsb_tui-<version>-py3-none-any.whl`
 - `tsb_contract-<version>-py3-none-any.whl` (the contract client: the Python package that speaks TSB's wire
@@ -48,15 +104,19 @@ release into one empty directory:
 
 Then run:
 
-    bash install.sh
+    bash install.sh --broker https://broker.example
+
+`bash install.sh` alone still installs the local assets without fetching; if no broker is supplied, it keeps any
+existing config and otherwise writes none, printing the config path and `--broker` flag.
 
 `install.sh` does these steps in order and stops at the first one that fails:
 
 1. Checks that the machine is x86_64. The engine is built for x86_64 Linux only.
 2. Checks that glibc is 2.29 or newer.
-3. Checks that the directory holds exactly one tsb-tui wheel and one contract wheel, then checks each of the two
-   wheels, the engine archive and `install.sh` itself against `SHA256SUMS` (each must have exactly one entry).
-4. Picks the Python for pipx: the first of `python3.13`, `python3.12`, `python3` that reports 3.12 or newer.
+3. Picks the first of `python3.13`, `python3.12`, `python3` reporting Python 3.12+; fetches assets when no TUI wheel
+   is present.
+4. Requires exactly one TUI wheel and one contract wheel, then checks both wheels, the engine archive and
+   `install.sh` against `SHA256SUMS` (each must have exactly one entry).
 5. Runs `pipx install` on the tsb-tui wheel and `pipx inject` of the contract wheel into the same environment.
 6. Unpacks the engine into that environment's `lib/tsb-tui/` and loads it once, through the TUI's own loader.
 7. Runs `tsb-tui drive --help`, then prints where the program is.

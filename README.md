@@ -10,24 +10,62 @@ Agents read [`tsb_tui/drive/GUIDE.md`](tsb_tui/drive/GUIDE.md) (also printed by 
 
 ## Install
 
-You need read access to this repository, which is private, to download a release.
+Replace `broker.example` with your broker's host (and port, if needed). The instance serves downloads without a
+login; no GitHub account is needed for these commands.
 
-**Linux** (x86_64, glibc 2.29 or newer, Python 3.12 or newer, `pipx`). Download these five assets of a
-[GitHub release](https://github.com/moophat/tsb-tui/releases) into one empty directory:
-`tsb_tui-<version>-py3-none-any.whl`, `tsb_contract-<version>-py3-none-any.whl`,
-`libghostty-vt-linux-x86_64.tar.gz`, `install.sh` and `SHA256SUMS`. Then run:
+**Windows 11, x64**, in PowerShell:
 
-    bash install.sh
+```powershell
+irm https://broker.example/downloads/tsb-tui/install.ps1 | iex
+```
 
-It checks every asset against `SHA256SUMS`, installs both wheels with pipx, unpacks the screen engine into the same
-environment, loads it once, and needs no root. Detail: [guide section 2](docs/using-tsb-tui.md#2-install).
+This installs per user under `%LOCALAPPDATA%\Programs\tsb-tui`, adds that directory to your user PATH, and creates
+`config.toml` beside the program with the broker address only if no config exists. Close a running TUI before
+upgrading. Open a new terminal tab after installing, then type `tsb-tui`; existing tabs do not see the PATH change.
+The bundled Python needs no separate installation. The installer runs `tsb-tui-check.cmd` once and prints its output;
+a failed check is reported and the install is kept.
 
-**Windows** (x64). Download `tsb-tui-<version>-windows-x64.zip` and extract it. Run `tsb-tui-check.cmd` first: it loads
-the screen engine, prints `Manifest check: PASS` and the TUI version. Then start the client with
-`tsb-tui --broker https://<your-broker>` (the folder's `tsb-tui.exe`; put the folder on your PATH to type it from
-anywhere). To start with just `tsb-tui`, put
-`config.toml` beside it with `[broker]` and `url = "https://<your-broker>"` (see Configuration).
-The launcher sets `TSB_TUI_HOME` to its own folder. The zip carries its own Python; nothing is installed.
+**Browser-download fallback** (including Windows 10): open these URLs in a browser, replacing `<version>` with the
+release version (for example, `0.5.0`):
+
+- `https://broker.example/downloads/tsb-tui/install.ps1`
+- `https://broker.example/downloads/tsb-tui/v<version>/tsb-tui-<version>-windows-x64.zip`
+- `https://broker.example/downloads/tsb-tui/v<version>/SHA256SUMS`
+
+Save the zip and `SHA256SUMS` together, then run the saved installer:
+
+```powershell
+.\install.ps1 -Zip .\tsb-tui-<version>-windows-x64.zip -Broker https://broker.example
+```
+
+`-Zip` makes no network requests. With an adjacent `SHA256SUMS`, the zip's SHA-256 must match; without it, the script
+warns that there is no release-hash verification and checks extraction and bundle layout only. Without `-Broker`
+(or a known `-Base`), an offline install keeps any existing config and otherwise writes none; it prints the config
+path and the flag to use. The one-line download requires Windows 11 because the server accepts TLS 1.3 only.
+
+**Linux**, x86_64 with glibc 2.29+, Python 3.12+ and `pipx`:
+
+```bash
+curl -fsSL https://broker.example/downloads/tsb-tui/install.sh | bash
+```
+
+Run in a directory without release wheels to fetch the latest release. The installer checks the downloaded wheels,
+Linux engine and installer against `SHA256SUMS`, installs with pipx and checks the engine. It writes
+`$XDG_CONFIG_HOME/tsb-tui/config.toml` (default `~/.config/tsb-tui/config.toml`) only if a broker is known and no file
+exists. Existing files, even empty ones, are kept. It needs no root and edits no shell profile. If pipx's bin directory
+is absent from PATH, it prints a reminder to run `pipx ensurepath`.
+
+For a downloaded repository copy, pass `bash install.sh --base https://broker.example/downloads/tsb-tui`;
+the equivalent Windows online flag is `-Base`. An unrendered script cannot infer the download host.
+On Linux, `TSB_TUI_BASE` supplies the base and `--base` overrides it; `TSB_TUI_VERSION=x.y.z` fetches that tag's
+`SHA256SUMS` directly, without requesting `latest.json`. `--broker <url>` overrides `TSB_TUI_BROKER`; when fetching,
+the default broker is the download base's origin. These three installer environment variables are removed before
+the application is run; use `TSB_TUI_BROKER_URL` for the application's broker knob.
+
+**macOS:** no release artifact yet; support is pending. `install.sh` refuses on macOS.
+
+The manifest and checksum files detect corruption, not a hostile download server: they come from the same origin.
+Release signing is deferred. GitHub releases remain a backup for people with access to this private repository.
 
 **From source**, for development: see [For developers](#for-developers).
 

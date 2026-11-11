@@ -18,7 +18,7 @@ TUI = "tsb_tui-1.2.3-py3-none-any.whl"
 CONTRACT = "tsb_contract-0.12.1-py3-none-any.whl"
 ENGINE = "libghostty-vt-linux-x86_64.tar.gz"
 WINDOWS_ZIP = "tsb-tui-1.2.3-windows-x64.zip"
-PAYLOADS = [TUI, CONTRACT, ENGINE, "install.sh"]
+PAYLOADS = [TUI, CONTRACT, ENGINE, "install.sh", "install.ps1"]
 
 
 def executable(path, source):
@@ -109,7 +109,7 @@ def bundle(tmp_path, monkeypatch):
     shutil.copyfile(ROOT / "install.sh", assets / "install.sh")
     (assets / "SHA256SUMS").write_text("".join(
         f"{hashlib.sha256((assets / name).read_bytes()).hexdigest()}  {name}\n"
-        for name in PAYLOADS
+        for name in PAYLOADS if name != "install.ps1"
     ))
     return assets, venvs, log
 
@@ -119,7 +119,7 @@ def run_install(assets):
                           check=False)
 
 
-@pytest.mark.parametrize("name", PAYLOADS)
+@pytest.mark.parametrize("name", [name for name in PAYLOADS if name != "install.ps1"])
 def test_bad_checksum_stops_before_pipx(bundle, name):
     assets, venvs, log = bundle
     with (assets / name).open("ab") as output:
@@ -251,6 +251,7 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
     shutil.copytree(ROOT / "tools", tmp_path / "tools")
     shutil.copytree(ROOT / "program/contract", tmp_path / "program/contract")
     shutil.copyfile(ROOT / "install.sh", tmp_path / "install.sh")
+    shutil.copyfile(ROOT / "install.ps1", tmp_path / "install.ps1")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "python").symlink_to(sys.executable)
@@ -304,7 +305,10 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
     assert (dist / WINDOWS_ZIP).is_file()
     assert (dist / f"{WINDOWS_ZIP}.sha256").is_file()
     assert {p.name for p in dist.iterdir()} == set(PAYLOADS) | {WINDOWS_ZIP, WINDOWS_ZIP + ".sha256", "SHA256SUMS"}
-    assert (dist / "SHA256SUMS").read_text().splitlines() == earlier_sums + [zip_sha_line]
+    assert (dist / "SHA256SUMS").read_text().splitlines() == earlier_sums + [
+        zip_sha_line,
+        f"{hashlib.sha256((dist / (WINDOWS_ZIP + '.sha256')).read_bytes()).hexdigest()}  {WINDOWS_ZIP}.sha256",
+    ]
     executable(bin_dir / "gh", """
         #!/usr/bin/env python3
         import json, os, sys
