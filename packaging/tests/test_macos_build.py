@@ -63,6 +63,9 @@ def check_zip(archive, target, scratch=None):
         assert names == sorted(names)
         assert not any('__pycache__' in n.split('/') or n.endswith('.pyc') for n in names)
         assert z.read(root + 'lib/engine/ENGINE') == b'libghostty-vt.dylib\n'
+        readme = z.read(root + 'README.txt').decode()
+        assert 'Run: ./tsb-tui --broker https://<host>' in readme
+        assert 'Check the engine and TUI versions: ./tsb-tui-check' in readme
         for name in ['tsb-tui', 'tsb-tui-check', 'python/bin/python3', 'python/bin/python3.12']:
             assert (z.getinfo(root + name).external_attr >> 16) & 0o777 == 0o755
             info = subprocess.check_output(['zipinfo', '-l', str(archive), root + name], text=True)
@@ -163,9 +166,14 @@ def test_macos_readme_commands(target, tmp_path, monkeypatch):
 
 @pytest.mark.parametrize('target', ['macos-arm64', 'macos-x64'])
 def test_staged_macos_zips(target, tmp_path):
+    import zipfile
     archives = sorted((HERE / 'out').glob(f'tsb-tui-*-{target}.zip'))
     assert archives, f'missing staged {target} zip'
     for archive in archives:
+        with zipfile.ZipFile(archive) as z:
+            readme = z.read(archive.stem + '/README.txt').decode()
+        assert 'Run: ./tsb-tui --broker https://<host>' in readme
+        assert 'Check the engine and TUI versions: ./tsb-tui-check' in readme
         check_zip(archive, target, tmp_path)
 
 @pytest.mark.parametrize('arch,cpu', [('arm64', 0x100000c), ('x86_64', 0x1000007)])
@@ -180,3 +188,30 @@ def test_macho_interpreter_architecture(tmp_path, arch, cpu):
     result = subprocess.run([*command[:3], wrong, '--executable'], capture_output=True, text=True)
     assert result.returncode != 0
     assert 'cputype' in result.stderr
+
+
+def test_staged_macos_zip_missing_readme_commands_fails(tmp_path, monkeypatch):
+    import zipfile
+    out = tmp_path / 'out'
+    out.mkdir()
+    archive = out / 'tsb-tui-0.0.0-macos-arm64.zip'
+    monkeypatch.setattr(sys.modules[__name__], 'HERE', tmp_path)
+    monkeypatch.setattr(sys.modules[__name__], 'check_zip', lambda *args, **kwargs: None)
+    for missing in [
+        'plain text',
+        'Run: ./tsb-tui --broker https://<host>',
+        'Check the engine and TUI versions: ./tsb-tui-check',
+    ]:
+        with zipfile.ZipFile(archive, 'w') as z:
+            z.writestr('tsb-tui-0.0.0-macos-arm64/README.txt', missing + '\n')
+        with pytest.raises(AssertionError):
+            test_staged_macos_zips('macos-arm64', tmp_path)
+    calls = []
+    monkeypatch.setattr(sys.modules[__name__], 'check_zip', lambda *args, **kwargs: calls.append(args))
+    with zipfile.ZipFile(archive, 'w') as z:
+        z.writestr('tsb-tui-0.0.0-macos-arm64/README.txt',
+                   'Run: ./tsb-tui --broker https://<host>\n'
+                   'Check the engine and TUI versions: ./tsb-tui-check\n')
+    test_staged_macos_zips('macos-arm64', tmp_path)
+    assert len(calls) == 1
+
