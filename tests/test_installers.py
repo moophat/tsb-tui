@@ -159,7 +159,9 @@ def test_release_checksums_cover_uploads(tmp_path):
     patterns = set(re.findall(r'dist/([\w.*-]+)', publish))
     names = ['tsb_tui-1-py3-none-any.whl', 'tsb_contract-1-py3-none-any.whl',
              'libghostty-vt-linux-x86_64.tar.gz', 'install.sh', 'install.ps1',
-             'tsb-tui-1-windows-x64.zip', 'tsb-tui-1-windows-x64.zip.sha256']
+             'tsb-tui-1-windows-x64.zip', 'tsb-tui-1-windows-x64.zip.sha256',
+             'tsb-tui-1-macos-arm64.zip', 'tsb-tui-1-macos-arm64.zip.sha256',
+             'tsb-tui-1-macos-x64.zip', 'tsb-tui-1-macos-x64.zip.sha256']
     assert all(any(fnmatch.fnmatch(n, p) for p in patterns) for n in names)
     for name in names:
         (tmp_path / name).write_text(name)
