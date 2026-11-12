@@ -161,4 +161,4 @@ omitted. The final script uses named archive members as macOS component
 evidence. Both tarballs were corrected after compilation with the existing
 hash-pinned simdutf licenses and INDEX entry; the dylib bytes were unchanged.
 No additional component license beyond Windows was needed; MinGW is excluded.
-Run the packaging suite with `python3 -m pytest -q packaging/`; `make lint` checks static constraints.
+Run the engine checks with `python3 -m pytest -q -p no:cacheprovider packaging/engine/tests`; the full `packaging/` suite also requires prebuilt zips and will fail on a clean tree. `make lint` checks static constraints.
