@@ -185,3 +185,19 @@ def test_guard_function_refuses_when_activating_unit_running(tmp_path):
     assert "activating" in result.stderr
     assert "--state=active,activating,reloading" in call_log.read_text()
 
+
+
+# Exercise the actual evidence counter and fail guard without running a build.
+def test_highway_member_guard(tmp_path):
+    source = BUILD_ENGINE.read_text()
+    counter = source[source.index('n_simdutf='):source.index('SIMDUTF_COMMIT=')]
+    guard = next(line for line in source.splitlines() if line.startswith('if [ "$n_hwy"'))
+    evidence = tmp_path / "members.txt"
+    for member in ("libhighway_zcu.o", "hwy_dispatch.o"):
+        evidence.write_text(member + "\n")
+        script = ('set -eu; TARGET=aarch64-macos; declare -A pkg_dir=(); '
+                  'fail() { echo "$*" >&2; exit 1; };\n'
+                  + counter.replace('/build/nm-all.txt', str(evidence)) + guard)
+        result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+        assert result.returncode != 0, member
+        assert "no highway package was fetched" in result.stderr

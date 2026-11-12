@@ -147,7 +147,11 @@ else
   nm -A "$archive" > /build/nm-all.txt
 fi
 n_simdutf="$(grep -ci simdutf /build/nm-all.txt || true)"
-n_hwy="$(grep -ci hwy /build/nm-all.txt || true)"
+if [[ "$TARGET" == *-macos ]]; then
+  n_hwy="$(grep -Eci 'highway|hwy' /build/nm-all.txt || true)"
+else
+  n_hwy="$(grep -ci hwy /build/nm-all.txt || true)"
+fi
 n_wuffs="$(grep -ci wuffs /build/nm-all.txt || true)"
 
 SIMDUTF_COMMIT="ca7acbcea967b5dcbab490066e99e3a6e6925539"
