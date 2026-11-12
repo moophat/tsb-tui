@@ -11,10 +11,10 @@
 # Why one script: the earlier pattern lived only in the workflow, so the hook did not exist and
 # reviewers found leaks by hand (2026-09-18).
 #
-# What it catches: full node addresses on the dev subnet, the Tailscale CGNAT range, the dev
-# domain (bare or with a label), literal secret paths, the dev workstation's checkout, vault, lane
-# and test-venv paths, the agent scratch directory, and the swarm's shared-mount name. What it
-# cannot catch: node shorthand like ".14 to .10"
+# What every mode checks: PATTERN below defines the dev-subnet and CGNAT addresses, dev
+# domain, secret paths, checkout and vault paths, and shared-mount name checked in this repo.
+# Only --push also checks WORKSTATION_PATTERN: lane paths, the toolkit checkout, agent scratch
+# paths, and workstation file URLs. What it cannot catch: node shorthand like ".14 to .10"
 # — any pattern loose enough for that also matches version numbers and section references.
 # Shorthand is prevented by the ops/ split and by review, not by this script.
 set -uo pipefail
@@ -54,28 +54,36 @@ if [ "$push" = 1 ] && [ "$warn" = 1 ]; then
 fi
 
 if [ "$push" = 1 ]; then
-  safe_remote="${remote#*://}"; safe_remote="${safe_remote##*@}"
   # The base: the branch's tip on the remote, falling back to main when it is absent there. A
   # failed ls-remote or two empty answers means the range cannot be resolved — fail closed, never
   # a silent pass (the bug this mode exists to close).
   out="$(git ls-remote "$remote" "refs/heads/$branch" 2>/dev/null)" \
-    || { echo "::error::git ls-remote $safe_remote refs/heads/$branch failed — the scan did not run" >&2; exit 2; }
+    || { echo "::error::git ls-remote the remote refs/heads/$branch failed — the scan did not run" >&2; exit 2; }
   base="$(printf '%s\n' "$out" | head -1 | cut -f1)"
   if [ -z "$base" ]; then
     out="$(git ls-remote "$remote" refs/heads/main 2>/dev/null)" \
-      || { echo "::error::git ls-remote $safe_remote refs/heads/main failed — the scan did not run" >&2; exit 2; }
+      || { echo "::error::git ls-remote the remote refs/heads/main failed — the scan did not run" >&2; exit 2; }
     base="$(printf '%s\n' "$out" | head -1 | cut -f1)"
   fi
   if [ -z "$base" ]; then
-    echo "::error::neither refs/heads/$branch nor refs/heads/main exists at $safe_remote — the scan did not run" >&2
+    echo "::error::neither refs/heads/$branch nor refs/heads/main exists at the remote — the scan did not run" >&2
     exit 2
   fi
   # The base object must be in this repo to diff against; fetch it when it is not.
   if ! git cat-file -e "$base" 2>/dev/null; then
     git fetch -q "$remote" "$base" 2>/dev/null \
-      || { echo "::error::git fetch of $base from $safe_remote failed — the scan did not run" >&2; exit 2; }
+      || { echo "::error::git fetch of $base from the remote failed — the scan did not run" >&2; exit 2; }
   fi
-  tmp="$(mktemp)"; tmp2="$(mktemp)"; tmp3="$(mktemp)"
+  tmp=""; tmp2=""; tmp3=""; scan_tmp=""
+  trap 'rm -f "$tmp" "$tmp2" "$tmp3" "$scan_tmp"' EXIT
+  tmp="$(mktemp)" && [ -n "$tmp" ] \
+    || { echo "::error::temporary diff allocation failed — the scan did not run" >&2; exit 2; }
+  tmp2="$(mktemp)" && [ -n "$tmp2" ] \
+    || { echo "::error::temporary record allocation failed — the scan did not run" >&2; exit 2; }
+  tmp3="$(mktemp)" && [ -n "$tmp3" ] \
+    || { echo "::error::temporary blob allocation failed — the scan did not run" >&2; exit 2; }
+  scan_tmp="$(mktemp)" && [ -n "$scan_tmp" ] \
+    || { echo "::error::added-line/file-name temporary allocation failed — the scan did not run" >&2; exit 2; }
   # The range must contain commits; HEAD equal to the base pushes nothing. Check rev-list itself so
   # a failed range is exit 2, not a false "nothing to push".
   commits="$(git rev-list "$base..HEAD" 2>/dev/null)"; rev_status=$?
@@ -135,7 +143,9 @@ if [ "$push" = 1 ]; then
       case "$line" in
         +*)
           if [ -n "$curfile" ]; then n=$((n+1)); fi
-          grep -qiE "$PATTERN|$WORKSTATION_PATTERN" <<< "$line"; ag=$?
+          printf '%s\n' "$line" > "$scan_tmp" \
+            || { echo "::error::added-line temporary write failed — the scan did not run" >&2; exit 2; }
+          grep -qiE "$PATTERN|$WORKSTATION_PATTERN" "$scan_tmp"; ag=$?
           if [ "$ag" -eq 0 ]; then
             hits="${hits}${short} ${curfile}: ${line}"$'\n'
           elif [ "$ag" -gt 1 ]; then
@@ -181,7 +191,9 @@ if [ "$push" = 1 ]; then
         fi
         # Name scan: added, renamed or copied files, the destination name.
         case "$st" in A|R|C)
-          grep -qiE "$PATTERN|$WORKSTATION_PATTERN" <<< "$dest"; ng=$?
+          printf '%s\n' "$dest" > "$scan_tmp" \
+            || { echo "::error::file-name temporary write failed — the scan did not run" >&2; exit 2; }
+          grep -qiE "$PATTERN|$WORKSTATION_PATTERN" "$scan_tmp"; ng=$?
           if [ "$ng" -eq 0 ]; then
             hits="${hits}${short} ${dest}: (file name)"$'\n'
           elif [ "$ng" -gt 1 ]; then

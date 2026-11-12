@@ -97,12 +97,47 @@ class PushMode(unittest.TestCase):
         # Model an early matching grep closing stdin before its writer finishes.
         grep = shlex.quote(shutil.which("grep"))
         body = (f'if [ "$1" = -qiE ]; then\n'
-                '  IFS= read -r -n 64 prefix\n'
+                '  if [ "$#" -ge 3 ]; then exec < "$3"; fi\n  IFS= read -r -n 64 prefix\n'
                 f'  if [[ "$prefix" == *probe* ]]; then exit 0; fi\n'
                 f'  printf "%s\\n" "$prefix" | {grep} "$@"\n'
                 f'else exec {grep} "$@"; fi\n')
         proc = self._push(env=self._fake_tool("grep", body))
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr[-200:])
+
+    def test_long_line_with_unwritable_tmpdir_never_reports_clean(self):
+        self._commit_one(PATTERN_CONTROL + "x" * (128 * 1024))
+        unwritable = self.root / "unwritable"
+        unwritable.mkdir(mode=0o500)
+        self.addCleanup(unwritable.chmod, 0o700)
+        # Bash here-string storage still succeeds here; root also bypasses mode bits.
+        # Use the permitted fake-tool fallback to force a temporary allocation failure.
+        env = self._fake_tool("mktemp", "exit 1\n")
+        env["TMPDIR"] = str(unwritable)
+        proc = self._push(env=env)
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr[-200:])
+        self.assertNotIn("clean", proc.stdout)
+        self.assertIn("temporary", proc.stderr)
+
+    def test_added_line_write_failure_fails_closed(self):
+        self._commit_one(PATTERN_CONTROL + "x" * (128 * 1024))
+        real_mktemp = shlex.quote(shutil.which("mktemp"))
+        full = self.root / "full"
+        full.symlink_to("/dev/full")
+        counter = shlex.quote(str(self.root / "allocations"))
+        body = (f'count=0; [ ! -f {counter} ] || read -r count < {counter}\n'
+                f'count=$((count+1)); echo "$count" > {counter}\n'
+                f'if [ "$count" -eq 4 ]; then echo {shlex.quote(str(full))}; exit 0; fi\n'
+                f'exec {real_mktemp} "$@"\n')
+        proc = self._push(env=self._fake_tool("mktemp", body))
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr[-200:])
+        self.assertIn("added-line", proc.stderr)
+        self.assertNotIn("clean", proc.stdout)
+
+    def test_mktemp_failure_fails_closed(self):
+        self._commit_one("clean")
+        proc = self._push(env=self._fake_tool("mktemp", "exit 1\n"))
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn("temporary", proc.stderr)
 
     def test_added_line_grep_error_fails_closed(self):
         self._commit_one("clean")
@@ -134,12 +169,16 @@ class PushMode(unittest.TestCase):
         body = (f'if [ "$1" = ls-remote ]; then\n'
                 '  echo "$2" >&2\n  exit 2\nfi\n'
                 f'exec {git} "$@"\n')
-        for credentials in ("user:secret", "secret"):
+        for credentials in ("user:secret", "secret", "query"):
             with self.subTest(credentials=credentials):
-                url = "https://" + credentials + "@" + "invalid" + "/repo"
+                authority = "invalid"
+                url = ("https://" + authority + "/repo?access_token=SECRET"
+                       if credentials == "query"
+                       else "https://" + credentials + "@" + authority + "/repo")
                 proc = self._push(remote=url, env=self._fake_tool("git", body))
                 self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
                 self.assertNotIn("secret", proc.stderr)
+                self.assertNotIn("SECRET", proc.stderr)
 
     def test_a_clean_push_exits_zero_and_names_the_base(self):
         self._commit_one("relative/place is fine")
