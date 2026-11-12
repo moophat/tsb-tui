@@ -13,6 +13,8 @@ unittest, so pytest collects it with nothing installed beyond the standard libra
 
 from __future__ import annotations
 
+import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -75,12 +77,108 @@ class PushMode(unittest.TestCase):
         _git("add", "-A", cwd=self.work)
         _git("commit", "-q", "--amend", "-m", "change", cwd=self.work)
 
-    def _push(self, branch: str = "main", *extra: str, remote: str | None = None) -> subprocess.CompletedProcess[str]:
+    def _push(self, branch: str = "main", *extra: str, remote: str | None = None, env: dict | None = None) -> subprocess.CompletedProcess[str]:
         url = str(self.remote if remote is None else remote)
         return subprocess.run(
             ["bash", str(self.script), "--push", url, branch, *extra],
-            cwd=self.work, capture_output=True, text=True,
+            cwd=self.work, capture_output=True, text=True, env=env,
         )
+
+    def _fake_tool(self, name: str, body: str) -> dict:
+        tools = self.root / "tools"
+        tools.mkdir(exist_ok=True)
+        tool = tools / name
+        tool.write_text("#!/usr/bin/env bash\n" + body)
+        tool.chmod(0o755)
+        return {**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"]}
+
+    def test_long_added_line_is_a_hit(self):
+        self._commit_one(PATTERN_CONTROL + "x" * (1024 * 1024))
+        # Model an early matching grep closing stdin before its writer finishes.
+        grep = shlex.quote(shutil.which("grep"))
+        body = (f'if [ "$1" = -qiE ]; then\n'
+                '  if [ "$#" -ge 3 ]; then exec < "$3"; fi\n  IFS= read -r -n 64 prefix\n'
+                f'  if [[ "$prefix" == *probe* ]]; then exit 0; fi\n'
+                f'  printf "%s\\n" "$prefix" | {grep} "$@"\n'
+                f'else exec {grep} "$@"; fi\n')
+        proc = self._push(env=self._fake_tool("grep", body))
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr[-200:])
+
+    def test_long_line_with_unwritable_tmpdir_never_reports_clean(self):
+        self._commit_one(PATTERN_CONTROL + "x" * (128 * 1024))
+        unwritable = self.root / "unwritable"
+        unwritable.mkdir(mode=0o500)
+        self.addCleanup(unwritable.chmod, 0o700)
+        # Bash here-string storage still succeeds here; root also bypasses mode bits.
+        # Use the permitted fake-tool fallback to force a temporary allocation failure.
+        env = self._fake_tool("mktemp", "exit 1\n")
+        env["TMPDIR"] = str(unwritable)
+        proc = self._push(env=env)
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr[-200:])
+        self.assertNotIn("clean", proc.stdout)
+        self.assertIn("temporary", proc.stderr)
+
+    def test_added_line_write_failure_fails_closed(self):
+        self._commit_one(PATTERN_CONTROL + "x" * (128 * 1024))
+        real_mktemp = shlex.quote(shutil.which("mktemp"))
+        full = self.root / "full"
+        full.symlink_to("/dev/full")
+        counter = shlex.quote(str(self.root / "allocations"))
+        body = (f'count=0; [ ! -f {counter} ] || read -r count < {counter}\n'
+                f'count=$((count+1)); echo "$count" > {counter}\n'
+                f'if [ "$count" -eq 4 ]; then echo {shlex.quote(str(full))}; exit 0; fi\n'
+                f'exec {real_mktemp} "$@"\n')
+        proc = self._push(env=self._fake_tool("mktemp", body))
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr[-200:])
+        self.assertIn("added-line", proc.stderr)
+        self.assertNotIn("clean", proc.stdout)
+
+    def test_mktemp_failure_fails_closed(self):
+        self._commit_one("clean")
+        proc = self._push(env=self._fake_tool("mktemp", "exit 1\n"))
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn("temporary", proc.stderr)
+
+    def test_added_line_grep_error_fails_closed(self):
+        self._commit_one("clean")
+        proc = self._push(env=self._fake_tool("grep", "exit 2\n"))
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn("added-line", proc.stderr)
+
+    def test_file_name_grep_error_fails_closed(self):
+        (self.work / "empty").touch()
+        self._commit_plain("empty file")
+        proc = self._push(env=self._fake_tool("grep", "exit 2\n"))
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn("file-name", proc.stderr)
+
+    def test_partial_rev_list_failure_fails_closed(self):
+        self._commit_one("clean")
+        git = shlex.quote(shutil.which("git"))
+        body = (f'if [ "$1" = rev-list ] && [ "$2" != --merges ]; then\n'
+                f'  if [ /dev/stdout -ef /dev/null ]; then exec {git} "$@"; fi\n'
+                f'  {git} rev-parse HEAD\n  exit 2\nfi\nexec {git} "$@"\n')
+        proc = self._push(env=self._fake_tool("git", body))
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertIn("rev-list", proc.stderr)
+
+    def test_remote_credentials_are_not_in_errors(self):
+        self._commit_one("clean")
+        # A wrapper models git repeating its argument in a transport failure.
+        git = shlex.quote(shutil.which("git"))
+        body = (f'if [ "$1" = ls-remote ]; then\n'
+                '  echo "$2" >&2\n  exit 2\nfi\n'
+                f'exec {git} "$@"\n')
+        for credentials in ("user:secret", "secret", "query"):
+            with self.subTest(credentials=credentials):
+                authority = "invalid"
+                url = ("https://" + authority + "/repo?access_token=SECRET"
+                       if credentials == "query"
+                       else "https://" + credentials + "@" + authority + "/repo")
+                proc = self._push(remote=url, env=self._fake_tool("git", body))
+                self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+                self.assertNotIn("secret", proc.stderr)
+                self.assertNotIn("SECRET", proc.stderr)
 
     def test_a_clean_push_exits_zero_and_names_the_base(self):
         self._commit_one("relative/place is fine")
