@@ -23,7 +23,7 @@ PATTERN='10\.98\.10\.[0-9]|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.[0-9]+\
 # A second pattern, applied to a push range only, never to the full-tree scan. Older tracked files
 # already hold some of these strings, so adding them to $PATTERN would fail CI on lines no push
 # touches; cleaning those files is a separate issue. The full-tree scan keeps $PATTERN alone.
-WORKSTATION_PATTERN='/opt/lanes/|/opt/agentoolkit|/tmp/claude-|/root/\.claude|file:///(opt|root|tmp)/'
+WORKSTATION_PATTERN='/opt/lanes/|/opt/agentoolkit|/tmp/claude-|/root/\.claude|file://(localhost)?/(opt|root|tmp)/'
 
 # Paths the scan skips, each with a reason. Keep this list short and every entry justified:
 # an exclusion is a place to park a leak.

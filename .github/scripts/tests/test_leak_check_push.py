@@ -121,6 +121,21 @@ class PushMode(unittest.TestCase):
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
         self.assertIn(probe, proc.stderr)
 
+    def test_a_file_url_with_a_localhost_authority_into_a_workstation_path_exits_one_and_is_named(
+        self,
+    ):
+        # The ruling (2026-11-12, Qodo round 1) makes the file:// alternative match both an empty
+        # authority and a `localhost` authority: file://(localhost)?/(opt|root|tmp)/. A file URL
+        # naming `localhost` is the same leak. The probe uses a made-up scratch directory under the
+        # root (rig-diag-), so no other alternative matches it, and both the authority and the path
+        # are assembled so this file never holds the literal probe.
+        authority = "local" + "host"
+        probe = "file:" + "//" + authority + "/" + "root/" + "rig-diag-" + "probe"
+        self._commit_one(probe)
+        proc = self._push()
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn(probe, proc.stderr)
+
     def test_a_branch_absent_on_the_remote_is_checked_against_main(self):
         self._commit_one("relative/place is fine")
         proc = self._push("feature")
