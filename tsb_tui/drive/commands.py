@@ -357,19 +357,26 @@ class Commands:
         typed = op in ("type", "keys", "press", "click")
         lock = self.d.screen_lock
         was_locked = lock.check()
+        locked_why = lock.lock_reason
         if was_locked and (content or typed):
             if not await lock.resume():
                 raise DriveError("screen_locked", sent=False, **lock.fields())
             if typed:
                 slot = self._slot(cmd)
-                self._refuse(slot, "screen_locked", lock.why + "; look again before sending")
+                self._refuse(slot, "screen_locked", locked_why + "; look again before sending")
         if op in ("new", "attach"):
             self._refresh_locks()
         result = await getattr(self, f"op_{op}")(cmd)
         if op in ("read", "snapshot", "new", "attach", "switch", "type", "keys") and lock.check():
+            if op in ("new", "attach") and result.get("session"):
+                for key in ("screen", "look", "look_kind", "no_look_yet"):
+                    result.pop(key, None)
+                return {**result, **lock.fields()}
             if not await lock.resume():
                 raise DriveError("screen_locked", sent=bool(result.get("sent")), **lock.fields())
-            if op != "snapshot":
+            result.pop("locked", None)
+            result.pop("why", None)
+            if op not in ("snapshot", "new", "attach"):
                 slot = self._slot(cmd)
                 with slot.canvas.backend.lock():
                     result.update(self.screen_answer(slot, nested=op != "read"))
@@ -377,10 +384,15 @@ class Commands:
 
     def _refresh_locks(self) -> None:
         app = self.d.app
+        generation = app._login_gen
+        client = app.client
         def failed(exc: Any) -> None:
-            if isinstance(exc, ApiError) and exc.status == 401:
+            if generation == app._login_gen and client is app.client and isinstance(exc, ApiError) and exc.status == 401:
                 app.notify_api_error(exc)
-        app.call_api(app.client.me, on_done=lambda me: app.screen_lock.apply(me.get("locks")), on_error=failed)
+        def done(me: Any) -> None:
+            if generation == app._login_gen and client is app.client:
+                app.screen_lock.apply(me.get("locks"))
+        app.call_api(client.me, on_done=done, on_error=failed)
 
     # -- helpers --
 
@@ -430,11 +442,18 @@ class Commands:
         path = _field(cmd, "password_file", str)
         if path == "-":
             raise DriveError("bad_request", "password_file: - is for the command line; stdin carries commands here")
+        password = await asyncio.to_thread(read_password_file, path)
         if self.d.screen() is not None and self.d.screen_lock.check():
-            await self.op_logout({})
+            await self.d.app.sign_out()
+            await self.d.wait_for_login_screen()
+            self.d.screen_lock.reset()
         if self.d.screen() is not None:
+            del password
             raise DriveError("bad_request", f"already logged in as {self.d.app.username}; one driver is one login")
-        return {"principal": await self.d.log_in(user, await asyncio.to_thread(read_password_file, path), password_path=path)}
+        try:
+            return {"principal": await self.d.log_in(user, password, password_path=path)}
+        finally:
+            del password
 
     async def op_sessions(self, cmd: dict[str, Any]) -> dict[str, Any]:
         screen = self._screen()
@@ -1001,8 +1020,12 @@ class Commands:
         return out
 
     def _refuse(self, slot: SessionSlot, code: str, why: str, **extra: Any) -> None:
-        raise DriveError(code, why + "; nothing was sent", sent=False,
-                         **self.screen_answer(slot, refusal=True), **extra)
+        if self.d.screen_lock.check():
+            raise DriveError("screen_locked", self.d.screen_lock.why, sent=False, locked=True, **extra)
+        screen = self.screen_answer(slot, refusal=True)
+        if screen.get("locked"):
+            raise DriveError("screen_locked", screen["why"], sent=False, locked=True, **extra)
+        raise DriveError(code, why + "; nothing was sent", sent=False, **screen, **extra)
 
     async def _read_prompt(self, slot: SessionSlot) -> None:
         state = slot.pump.state
@@ -1091,7 +1114,7 @@ class Commands:
         if ident == "last":
             ident = self._last_look.get(slot.session_id) or self.d.screen_lock.void_last.get(slot.session_id)
         if self._void_look(ident):
-            self._refuse(slot, "screen_locked", self.d.screen_lock.why)
+            self._refuse(slot, "screen_locked", self.d.screen_lock.lock_reason or "the screen lock voided that look")
         seen = self._looks.get(ident)
         if seen is None:
             try:
@@ -1164,6 +1187,8 @@ class Commands:
             before = replace(history)
             shell_marks = state.shell_marks
             exit_serial = shell_marks.exit_serial
+            if self.d.screen_lock.check():
+                raise DriveError("screen_locked", self.d.screen_lock.why, sent=False, locked=True)
             self._record_send(slot)
         if not await screen.send_input(SOURCE_KEY, data, slot, drive_gate=_DRIVE_GATE):
             with slot.canvas.backend.lock():
@@ -1412,7 +1437,11 @@ class Commands:
             # click that did nothing and answered ok would be a lie.
             raise DriveError("not_available", "mouse.enabled is off in this profile, so clicks do nothing; "
                              "use press, or start with --set mouse.enabled=true")
-        return await self.d.click_label(label)
+        blocked = self.d.screen_lock.blocked_inputs
+        result = await self.d.click_label(label)
+        if self.d.screen_lock.blocked_inputs != blocked:
+            raise DriveError("screen_locked", self.d.screen_lock.why, sent=False, locked=True)
+        return result
 
     async def op_press(self, cmd: dict[str, Any]) -> dict[str, Any]:
         names = cmd.get("keys")
@@ -1420,8 +1449,11 @@ class Commands:
             raise DriveError("bad_request", "keys: expected a list of Textual key names such as [\"ctrl+backslash\"]")
         screen = self.d.screen()
         before = screen.dropped_inputs if screen is not None else 0
+        blocked = self.d.screen_lock.blocked_inputs
         await self.d.pilot.press(*names)
         await self.d.pilot.pause()
+        if self.d.screen_lock.blocked_inputs != blocked:
+            raise DriveError("screen_locked", self.d.screen_lock.why, sent=False, locked=True)
         return {"dropped": (screen.dropped_inputs - before) if screen is not None else 0}
 
     async def op_resize(self, cmd: dict[str, Any]) -> dict[str, Any]:

@@ -21,6 +21,8 @@ class DriveScreenLock:
         self.path: str | None = None
         self.failure = ""
         self.why = ""
+        self.lock_reason = ""
+        self.blocked_inputs = 0
         self.void_serial = 0
         self.void_last: dict[str, str] = {}
 
@@ -31,6 +33,7 @@ class DriveScreenLock:
         self.path = None
         self.failure = ""
         self.why = ""
+        self.lock_reason = ""
         if path is not None and path != "-":
             parts = os.path.abspath(path).split("/")
             descriptor = (path in ("/dev/stdin", "/dev/stdout", "/dev/stderr")
@@ -59,6 +62,7 @@ class DriveScreenLock:
             return
         self.locked = True
         self.why = why
+        self.lock_reason = why
         commands = self.d.commands
         self.void_serial = commands._look_serial
         self.void_last = dict(commands._last_look)
@@ -124,5 +128,6 @@ class DriveScreenLock:
         if generation != self.d.app._login_gen or client is not self.d.app.client:
             return False
         self.locked = False
+        self.why = ""
         self.last_command = self.d.app.idle_clock()
         return True

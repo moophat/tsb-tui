@@ -148,3 +148,65 @@ Final focused screen-lock command: `python -m pytest -q tests/test_drive_screen_
 The drive-test command completed with exit 0: `413 passed in 396.85s (0:06:36)`.
 
 Only `tsb_tui/drive/screen_lock.py`, `tests/test_drive_screen_lock.py` and this report changed during this correction. No plan, ledger, ruling or pinned program file was edited. No commit, push, real core, target or rig run.
+
+## Qodo round 1
+
+**AI-Model:** gpt-6.1-sol
+
+The eight review findings are implemented in the drive lock path:
+
+- Typed sends and UI key/mouse delivery re-check the lock at delivery time (`tsb_tui/drive/commands.py`, `tsb_tui/drive/runner.py`, `tsb_tui/app.py`). Regression tests cover prompt preparation, gate-off sends, press, and click.
+- Lock refresh callbacks are generation/client scoped, so answers from an ended login are discarded (`tsb_tui/drive/commands.py`).
+- Replacement login passwords are read and validated before signing out the existing locked session (`tsb_tui/drive/commands.py`).
+- Held waits re-check their predicate and matched values on the fresh screen after unlock, within the original deadline (`tsb_tui/drive/runner.py`).
+- Completed `new` and `attach` retain their session identifier and success metadata while locked, without screen content (`tsb_tui/drive/commands.py`).
+- Successful post-operation re-checks remove stale `locked` and `why` fields before adding fresh screen data (`tsb_tui/drive/commands.py`).
+- Locked refusals use one `why` value and return `screen_locked` with `sent: false` and no session content (`tsb_tui/drive/commands.py`).
+- Successful retry re-checks clear transient failure text while preserving the idle-lock reason used for invalidated looks (`tsb_tui/drive/screen_lock.py`, `tsb_tui/drive/commands.py`).
+
+### Red-first tests
+
+The twelve new regression tests in `tests/test_drive_screen_lock.py` were run against the rebased head before the fixes. Exit: 1.
+
+```text
+12 failed, 17 deselected in 18.33s
+```
+
+### Green verification
+
+Focused screen-lock and drive-lock tests:
+
+```text
+51 passed in 84.87s (0:01:24)
+```
+
+Exit: 0. The full drive test command completed with exit 0: `425 passed in 427.58s (0:07:07)`. `make lint PYTHON=python` completed with exit 0, including the lint gates, import check, docs guard, leak check, and engine verification. No tests were skipped.
+
+The complete `make test` target was not run in this round; the authorized focused screen-lock and drive test suites were run instead. No plans, ledgers, rulings, contract files, commits, or pushes were changed. The final working tree contains changes only under the allowed source/tests/report paths.
+
+
+| Finding | Regression tests (all in `tests/test_drive_screen_lock.py`) |
+|---|---|
+| Input delivery | `test_a_send_rechecks_the_lock_after_preparing_the_prompt`, `test_a_gate_off_send_checks_the_lock_immediately_before_delivery`, `test_ui_delivery_stops_when_the_lock_engages_during_press`, `test_ui_delivery_stops_when_the_lock_engages_during_click` |
+| Stale refresh | `test_a_lock_refresh_from_an_ended_login_is_discarded` |
+| Replacement file | `test_an_unreadable_replacement_login_preserves_the_locked_session` |
+| Fresh wait match | `test_a_wait_rechecks_its_condition_after_unlocking`, `test_a_wait_returns_values_matched_after_the_password_recheck` |
+| Completed session | `test_a_completed_new_or_attach_keeps_its_identifier_when_locked` |
+| Stale answer fields | `test_a_successful_post_send_recheck_removes_locked_fields` |
+| Locked refusal | `test_a_refusal_while_locked_has_no_duplicate_why` |
+| Retry message | `test_a_successful_retry_clears_the_transient_failure_reason` |
+
+Final `git status --short`:
+
+```text
+ M plans/reports/build-261112-drive-send-gate-p4.md
+ M tests/test_drive_screen_lock.py
+ M tsb_tui/app.py
+ M tsb_tui/drive/commands.py
+ M tsb_tui/drive/runner.py
+ M tsb_tui/drive/screen_lock.py
+```
+
+`git diff --check`: exit 0. The attached TUI screen-lock test files remain unchanged.
+
+Status: DONE_WITH_CONCERNS

@@ -280,6 +280,12 @@ class TsbTuiApp(App):
         """Every input from the user (a key, a paste, a click, a wheel turn) is the idle time starting again, and the
         activity signal's trigger (`ScreenLock.note_input`)."""
         if isinstance(event, INPUT_EVENTS):
+            drive_lock = getattr(self, "drive_screen_lock", None)
+            if self.under_drive and not event.is_forwarded and drive_lock is not None and drive_lock.check():
+                drive_lock.blocked_inputs += 1
+                event.stop()
+                event.prevent_default()
+                return
             self.screen_lock.note_input()
         await super().on_event(event)
 

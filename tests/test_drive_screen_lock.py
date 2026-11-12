@@ -389,3 +389,199 @@ async def test_a_transport_failure_retries_the_recheck_on_the_next_refused_comma
         assert answer["ok"] and answer["look"]
         assert len(attempts) == 2 and server.unlocks == before + 1
         assert not rig.driver.screen_lock.locked
+
+
+@scenario
+async def test_a_send_rechecks_the_lock_after_preparing_the_prompt(rig, server, sid, clock, path, record, monkeypatch):
+    commands = rig.driver.commands
+    async def prepare(slot):
+        await expire(rig, clock)
+    monkeypatch.setattr(commands, "_prepare_prompt", prepare)
+    rig.driver.cfg._values["drive.send_gate"] = True
+    before = server.received(rig.driver.screen().front.pump.state.client_id)
+    answer = await rig.cmd("type", text="x\r", look=await rig.look(), timeout_ms=1)
+    assert answer.get("error") == "screen_locked" and answer.get("sent") is False, answer
+    locked(answer)
+    assert server.received(rig.driver.screen().front.pump.state.client_id) == before
+
+
+@scenario
+async def test_ui_delivery_stops_when_the_lock_engages_during_press(rig, server, sid, clock, path, record, monkeypatch):
+    from textual import events
+    app = rig.app
+    original = app.on_event
+    delivered = []
+    async def on_event(event):
+        if isinstance(event, events.Key) and event.key == "x":
+            await expire(rig, clock)
+        await original(event)
+    monkeypatch.setattr(app, "on_event", on_event)
+    screen = rig.driver.screen()
+    original_key = screen.on_key
+    async def key(event):
+        if event.key == "x":
+            delivered.append(True)
+        await original_key(event)
+    monkeypatch.setattr(screen, "on_key", key)
+    answer = await rig.cmd("press", keys=["x"])
+    assert answer.get("error") == "screen_locked" and answer.get("sent") is False, answer
+    assert not delivered
+
+
+@scenario
+async def test_a_lock_refresh_from_an_ended_login_is_discarded(rig, server, sid, clock, path, record, monkeypatch):
+    callbacks = []
+    original = rig.app.call_api
+    def call(func, *args, **kwargs):
+        if func == rig.app.client.me:
+            callbacks.append(kwargs["on_done"])
+        else:
+            original(func, *args, **kwargs)
+    monkeypatch.setattr(rig.app, "call_api", call)
+    rig.driver.commands._refresh_locks()
+    monkeypatch.setattr(rig.app, "call_api", original)
+    await rig.cmd("logout")
+    await rig.cmd("login", user=_serve.USER, password_file=path)
+    settings = dict(rig.app.screen_lock.settings)
+    await rig.app_call(callbacks[0], {"locks": {"screen_lock_after": 999}})
+    assert rig.app.screen_lock.settings == settings
+
+
+@scenario
+async def test_an_unreadable_replacement_login_preserves_the_locked_session(rig, server, sid, clock, path, *rest):
+    screen = rig.driver.screen()
+    await expire(rig, clock)
+    before = server.calls("POST", "/auth/logout")
+    answer = await rig.cmd("login", user=_serve.USER, password_file=path + "-missing")
+    assert answer.get("error") == "bad_request", answer
+    assert rig.driver.screen() is screen and screen.slot_for(sid) is not None
+    assert rig.driver.screen_lock.locked
+    assert server.calls("POST", "/auth/logout") == before
+
+
+@scenario
+async def test_a_wait_rechecks_its_condition_after_unlocking(rig, server, sid, clock, path, record, monkeypatch):
+    from tsb_tui.drive import waits
+    probe = rig.driver.probe(rig.driver.screen().front)
+    text = ["before"]
+    monkeypatch.setattr(probe, "screen_text", lambda: text[0])
+    monkeypatch.setattr(rig.driver, "probe", lambda slot: probe)
+    original = rig.driver.screen_lock.resume
+    async def resume():
+        result = await original()
+        text[0] = "after"
+        return result
+    monkeypatch.setattr(rig.driver.screen_lock, "resume", resume)
+    await expire(rig, clock)
+    # Exercise the held wait's completion, beyond the command admission check.
+    done, _elapsed = await rig.driver.run_wait(rig.driver.screen().front,
+                                             waits.parse_until({"screen": "before"}, default_settled_ms=800), 50)
+    assert not done.ok and done.error == "timeout", done
+
+
+@scenario
+async def test_a_completed_new_or_attach_keeps_its_identifier_when_locked(rig, server, sid, clock, path, record, monkeypatch):
+    server.unlock_status = 429
+    for op in ("new", "attach"):
+        rig.driver.screen_lock.locked = False
+        rig.driver.screen_lock.last_command = clock[0]
+        async def complete(cmd):
+            await expire(rig, clock)
+            return {"session": sid, "chip": 1, "screen": {"lines": ["hidden"]}, "look": "hidden"}
+        monkeypatch.setattr(rig.driver.commands, "op_" + op, complete)
+        answer = await rig.cmd(op, session=sid)
+        assert answer.get("ok") is True and answer.get("session") == sid, answer
+        locked(answer)
+
+
+@scenario
+async def test_a_successful_post_send_recheck_removes_locked_fields(rig, server, sid, clock, path, record, monkeypatch):
+    async def finish(cmd):
+        await expire(rig, clock)
+        return {"sent": True, **rig.driver.screen_lock.fields()}
+    monkeypatch.setattr(rig.driver.commands, "op_type", finish)
+    answer = await rig.cmd("type", text="x")
+    assert answer["ok"] and answer.get("look"), answer
+    assert "locked" not in answer and "why" not in answer, answer
+
+
+@scenario
+async def test_a_refusal_while_locked_has_no_duplicate_why(rig, server, sid, clock, *rest):
+    from tsb_tui.drive.commands import DriveError
+    await expire(rig, clock)
+    try:
+        rig.driver.commands._refuse(rig.driver.screen().front, "screen_changed", "screen changed")
+    except DriveError as exc:
+        assert exc.code == "screen_locked" and exc.extra.get("sent") is False
+        locked({"why": exc.why, **exc.extra})
+    else:
+        raise AssertionError("no refusal")
+
+
+@scenario
+async def test_a_successful_retry_clears_the_transient_failure_reason(rig, server, sid, clock, *rest):
+    old = (await rig.cmd("read", what="screen"))["look"]
+    server.unlock_status = 429
+    await expire(rig, clock)
+    locked(await rig.cmd("read", what="screen"))
+    server.unlock_status = 204
+    assert (await rig.cmd("read", what="screen"))["ok"]
+    assert not rig.driver.screen_lock.why
+    answer = await rig.cmd("type", text="x", look=old)
+    assert answer["error"] == "screen_locked"
+    assert "idle" in answer["why"] and "could not complete" not in answer["why"]
+
+
+@scenario
+async def test_ui_delivery_stops_when_the_lock_engages_during_click(rig, server, sid, clock, path, record, monkeypatch):
+    rig.driver.cfg._values["mouse.enabled"] = True
+    pilot = rig.pilot._pilot
+    original = pilot.pause
+    expired = []
+    async def pause(*args, **kwargs):
+        if not expired:
+            expired.append(True)
+            await expire(rig, clock)
+        return await original(*args, **kwargs)
+    monkeypatch.setattr(pilot, "pause", pause)
+    answer = await rig.cmd("click", label="Menu")
+    assert answer.get("error") == "screen_locked" and answer.get("sent") is False, answer
+    assert rig.app.screen is rig.driver.screen()
+
+
+@scenario
+async def test_a_gate_off_send_checks_the_lock_immediately_before_delivery(rig, server, sid, clock, path, record, monkeypatch):
+    rig.driver.cfg._values["drive.send_gate"] = False
+    commands = rig.driver.commands
+    original = commands._to_front
+    def front(slot):
+        result = original(slot)
+        clock[0] += 11
+        return result
+    monkeypatch.setattr(commands, "_to_front", front)
+    slot = rig.driver.screen().front
+    before = commands.history(sid).count
+    received = list(server.received(slot.pump.state.client_id))
+    answer = await rig.cmd("type", text="x", timeout_ms=1)
+    assert answer.get("error") == "screen_locked" and answer.get("sent") is False, answer
+    assert commands.history(sid).count == before
+    assert server.received(slot.pump.state.client_id) == received
+
+
+@scenario
+async def test_a_wait_returns_values_matched_after_the_password_recheck(rig, server, sid, clock, path, record, monkeypatch):
+    from tsb_tui.drive import waits
+    probe = rig.driver.probe(rig.driver.screen().front)
+    text = ["before"]
+    monkeypatch.setattr(probe, "screen_text", lambda: text[0])
+    monkeypatch.setattr(rig.driver, "probe", lambda slot: probe)
+    original = rig.driver.screen_lock.resume
+    async def resume():
+        result = await original()
+        text[0] = "after"
+        return result
+    monkeypatch.setattr(rig.driver.screen_lock, "resume", resume)
+    await expire(rig, clock)
+    done, _elapsed = await rig.driver.run_wait(rig.driver.screen().front,
+                                             waits.parse_until({"screen": "before|after"}, default_settled_ms=800), 1000)
+    assert done.ok and done.matched == {"screen": "after"}
