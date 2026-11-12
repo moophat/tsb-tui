@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the pinned Windows engine on the integration node. AI-Model: codex
+# Build the pinned Windows or macOS engine on the integration node. AI-Model: codex
 set -euo pipefail
 fail() { echo "build-engine.sh: $*" >&2; exit 1; }
 note() { echo "build-engine.sh: $*"; }
@@ -31,9 +31,9 @@ fi
 
 inside=0
 if [ "${1:-}" = --inside ]; then inside=1; shift; fi
-TARGET="${1:?usage: build-engine.sh x86_64-windows-gnu}"
+TARGET="${1:?usage: build-engine.sh TARGET}"
 [ "$#" = 1 ] || fail "expected exactly one target"
-[ "$TARGET" = x86_64-windows-gnu ] || fail "only x86_64-windows-gnu is qualified"
+case "$TARGET" in x86_64-windows-gnu|aarch64-macos|x86_64-macos) ;; *) fail "unsupported target" ;; esac
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 pin="${TSB_ENGINE_PIN:-$repo/vendor/libghostty-vt/PIN}"
@@ -76,7 +76,7 @@ if [ "$inside" = 0 ]; then
   out="${TSB_ENGINE_BUILD_OUT:-$PWD}"
   mkdir -p "$out"
   out="$(cd "$out" && pwd)"
-  work="$(mktemp -d /tmp/tsb-engine-win-XXXXXXXX)"
+  work="$(mktemp -d /tmp/tsb-engine-${TARGET%%-*}-XXXXXXXX)"
   container="tsb-engine-build-$$"
   cleanup() { docker stop "$container" >/dev/null 2>&1 || true; rm -rf "$work"; }
   trap cleanup EXIT
@@ -116,17 +116,36 @@ started=$SECONDS
   "-Doptimize=$OPTIMIZE" "-Dtarget=$TARGET" "-Dversion-string=$VERSION" --prefix /build/prefix)
 echo "zig build wall time: $((SECONDS - started)) seconds"
 find /build/prefix -type f -printf '%P %s bytes\n' | sort
-mapfile -t dlls < <(find /build/prefix -type f -iname '*.dll')
-[ "${#dlls[@]}" = 1 ] || fail "expected one installed Windows DLL; stop without patching upstream"
-objdump -p "${dlls[0]}" | sed -n '/DLL Name/p'
-stage=/build/stage
-mkdir -p "$stage/lib"
-cp "${dlls[0]}" "$stage/lib/"
-cp /build/prefix/lib/ghostty-vt.lib "$stage/lib/"
-cp -R /build/prefix/include "$stage/include"
+if [[ "$TARGET" == *-macos ]]; then
+  mapfile -t dylibs < <(find /build/prefix -type f -iname 'libghostty-vt*.dylib')
+  [ "${#dylibs[@]}" = 1 ] || fail "expected one installed macOS dylib"
+  find /build/prefix -type l -iname '*ghostty-vt*.dylib' -printf 'symlink %P -> %l\n'
+  stage=/build/stage
+  mkdir -p "$stage/lib"
+  cp "${dylibs[0]}" "$stage/lib/libghostty-vt.dylib"
+  cp -R /build/prefix/include "$stage/include"
+  # macOS shared libraries do not ship an import library.
+else
+  mapfile -t dlls < <(find /build/prefix -type f -iname '*.dll')
+  [ "${#dlls[@]}" = 1 ] || fail "expected one installed Windows DLL; stop without patching upstream"
+  objdump -p "${dlls[0]}" | sed -n '/DLL Name/p'
+  stage=/build/stage
+  mkdir -p "$stage/lib"
+  cp "${dlls[0]}" "$stage/lib/"
+  cp /build/prefix/lib/ghostty-vt.lib "$stage/lib/"
+  cp -R /build/prefix/include "$stage/include"
+fi
 # The static archive supplies component evidence; it is not shipped in the TUI.
-"$ZIG" ar t /build/prefix/lib/ghostty-vt-static.lib > /build/member-names.txt
-nm -A /build/prefix/lib/ghostty-vt-static.lib > /build/nm-all.txt
+archive=/build/prefix/lib/ghostty-vt-static.lib
+if [[ "$TARGET" == *-macos ]]; then archive=/build/prefix/lib/libghostty-vt.a; fi
+"$ZIG" ar t "$archive" > /build/member-names.txt
+if [[ "$TARGET" == *-macos ]]; then
+  # GNU nm cannot read Mach-O objects. Named archive members are component
+  # evidence under package_evidence below, including vendored simdutf.o.
+  cp /build/member-names.txt /build/nm-all.txt
+else
+  nm -A "$archive" > /build/nm-all.txt
+fi
 n_simdutf="$(grep -ci simdutf /build/nm-all.txt || true)"
 n_hwy="$(grep -ci hwy /build/nm-all.txt || true)"
 n_wuffs="$(grep -ci wuffs /build/nm-all.txt || true)"
@@ -294,7 +313,9 @@ for name in "${comp_names[@]}"; do
 done | sort > "$lic/INDEX"
 
 # Windows runtime support comes from Zig's bundled MinGW sources as well.
-cp "$ZIG_DIR/lib/libc/mingw/COPYING" "$lic/zig/mingw-COPYING"
+if [ "$TARGET" = x86_64-windows-gnu ]; then
+  cp "$ZIG_DIR/lib/libc/mingw/COPYING" "$lic/zig/mingw-COPYING"
+fi
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +
 name="libghostty-vt-${GHOSTTY_COMMIT}-${TARGET}.tar"

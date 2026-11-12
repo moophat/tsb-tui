@@ -1,0 +1,13 @@
+Zig 0.16.0 runtime support compiled into libghostty-vt.a (compiler_rt, and the standard library code
+compiled into the library's own object). The ubsan runtime is requested by the build but is not in the archive
+at ReleaseFast.
+
+LICENSE            Zig itself, MIT (Expat).
+musl-COPYRIGHT     musl's licence file as shipped in the Zig release. Parts of compiler_rt (floating-point
+                   math such as sin, cos, exp, log, fma, fmod, round, trunc, sqrt, rem_pio2) are ports of
+                   musl, which their source headers state is MIT licensed.
+llvm-LICENSE.TXT   The LLVM Project licence file as shipped in the Zig release. Parts of compiler_rt
+                   follow LLVM's compiler-rt (Apache-2.0 with LLVM Exceptions; releases up to 8.0
+                   were MIT / UIUC), which their source headers name.
+
+Source: https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz (sha256 70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00).
