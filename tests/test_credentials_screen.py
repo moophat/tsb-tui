@@ -128,7 +128,11 @@ def test_a_refresh_press_while_a_load_is_running_is_not_overwritten_by_the_stale
             await wait_until(pilot, lambda: "core switches" in screen_text(app), "the label from the refresh", 30.0)
             # Release the held first load. It finishes after the refresh and rebuilds the table from the older data.
             block.set()
-            await pilot.pause(0.5)
+            # Wait, bounded, for the released first load's worker to finish and its callback to run on the UI thread
+            # (the same `_run_blocking` pattern as the torn-down-table test): a fixed pause can assert before the stale
+            # answer lands under CI load and pass even when the bug is present.
+            await wait_until(pilot, lambda: not any(w.name == "_run_blocking" and not w.is_finished
+                                                    for w in app.workers), "the first load's worker to finish", 30.0)
             assert "core switches" in screen_text(app), \
                 "the newest refresh's label must survive a stale load that finishes after it"
 
