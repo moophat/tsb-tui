@@ -585,3 +585,65 @@ async def test_a_wait_returns_values_matched_after_the_password_recheck(rig, ser
     done, _elapsed = await rig.driver.run_wait(rig.driver.screen().front,
                                              waits.parse_until({"screen": "before|after"}, default_settled_ms=800), 1000)
     assert done.ok and done.matched == {"screen": "after"}
+
+
+# -- round-2 fixes (findings 2, 3, 4) --
+
+@scenario
+async def test_press_or_click_while_locked_with_no_session_answers_screen_locked(
+        rig, server, sid, clock, path, *rest):
+    # Finding 2: a locked press/click with no attached session must answer screen_locked,
+    # not not_attached; it is refused before the slot lookup.
+    # Test press and click in separate lock cycles: resume() unlocks after each refused typed op.
+    await rig.cmd("detach")                 # no session attached
+    for op, fields in [("press", {"keys": ["x"]}), ("click", {"label": "Menu"})]:
+        rig.driver.screen_lock.locked = False
+        rig.driver.screen_lock.last_command = clock[0]
+        await expire(rig, clock)           # engage the screen lock
+        # server leaves unlock_status=204 so resume() will succeed, exposing the slot-lookup path
+        answer = await rig.cmd(op, **fields)
+        # Bug: currently the slot lookup raises not_attached before the screen_locked refusal.
+        assert answer.get("error") == "screen_locked", \
+            f"{op}: expected screen_locked, got {answer.get('error')!r}"
+        assert answer.get("sent") is False, answer
+
+
+@scenario
+async def test_last_look_after_unlock_resolves_to_no_look_not_void(
+        rig, server, sid, clock, path, *rest):
+    # Finding 3: after a successful re-check, look:"last" must follow the ordinary path
+    # (_last_look, or no_look when empty) rather than falling back to void_last.
+    old = (await rig.cmd("read", what="screen"))["look"]
+    await expire(rig, clock)               # lock — clears _last_look, saves old to void_last
+    # First type triggers re-check (204), resume succeeds, then refuses screen_locked with fresh look.
+    answer = await rig.cmd("type", text="x", look=old)
+    assert answer.get("error") == "screen_locked", answer
+    fresh = answer.get("look")
+    assert fresh and fresh != old, answer   # a fresh look was minted
+    # Now drive is unlocked but _last_look is empty (the fresh look was a refusal look).
+    # Sending look:"last" should give no_look, not screen_locked from void_last.
+    answer2 = await rig.cmd("type", text="x", look="last")
+    # Bug: currently resolves to void_last → screen_locked with the stale idle reason.
+    assert answer2.get("error") == "no_look", \
+        f"expected no_look, got {answer2.get('error')!r}: {answer2.get('why')}"
+
+
+@scenario
+async def test_login_already_logged_in_and_not_locked_refuses_before_reading_file(
+        rig, server, sid, clock, path, record, monkeypatch):
+    # Finding 4: op_login must decide "already logged in (not locked)" before reading
+    # the password file.  A FIFO with no writer would block the event loop; the check
+    # must come first.
+    from tsb_tui.drive import commands as cmd_module
+    reads = []
+    original = cmd_module.read_password_file
+    def recording(*args, **kwargs):
+        reads.append(args[0])
+        return original(*args, **kwargs)
+    monkeypatch.setattr(cmd_module, "read_password_file", recording)
+    # Drive is logged in and not locked — this is the "already logged in" branch.
+    answer = await rig.cmd("login", user=_serve.USER, password_file=path)
+    assert answer.get("error") == "bad_request", answer
+    assert "already logged in" in answer.get("why", ""), answer
+    # Bug: the current code reads the file before the already-logged-in check fires.
+    assert reads == [], f"read_password_file was called before the already-logged-in check: {reads}"

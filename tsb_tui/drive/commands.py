@@ -362,6 +362,11 @@ class Commands:
             if not await lock.resume():
                 raise DriveError("screen_locked", sent=False, **lock.fields())
             if typed:
+                if op in ("press", "click"):
+                    # press and click are UI-layer sends with no session attachment requirement:
+                    # refuse screen_locked directly without a slot lookup (D65-R2 finding 2).
+                    raise DriveError("screen_locked", locked_why + "; look again before sending",
+                                     sent=False, locked=True)
                 slot = self._slot(cmd)
                 self._refuse(slot, "screen_locked", locked_why + "; look again before sending")
         if op in ("new", "attach"):
@@ -442,6 +447,8 @@ class Commands:
         path = _field(cmd, "password_file", str)
         if path == "-":
             raise DriveError("bad_request", "password_file: - is for the command line; stdin carries commands here")
+        if self.d.screen() is not None and not self.d.screen_lock.check():
+            raise DriveError("bad_request", f"already logged in as {self.d.app.username}; one driver is one login")
         password = await asyncio.to_thread(read_password_file, path)
         if self.d.screen() is not None and self.d.screen_lock.check():
             await self.d.app.sign_out()
@@ -1112,7 +1119,9 @@ class Commands:
             self._refuse(slot, "stale", "a stale choice is pending")
         ident = cmd.get("look")
         if ident == "last":
-            ident = self._last_look.get(slot.session_id) or self.d.screen_lock.void_last.get(slot.session_id)
+            ident = self._last_look.get(slot.session_id)
+            if ident is None and self.d.screen_lock.locked:
+                ident = self.d.screen_lock.void_last.get(slot.session_id)
         if self._void_look(ident):
             self._refuse(slot, "screen_locked", self.d.screen_lock.lock_reason or "the screen lock voided that look")
         seen = self._looks.get(ident)
