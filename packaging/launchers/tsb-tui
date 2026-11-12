@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+launcher=$0
+case "$launcher" in
+    */*) ;;
+    *) launcher=$(command -v "$launcher") ;;
+esac
+while :; do
+    folder=$(CDPATH= cd -P -- "$(dirname -- "$launcher")" && pwd)
+    launcher=$folder/$(basename -- "$launcher")
+    [ -L "$launcher" ] || break
+    link=$(readlink "$launcher")
+    case "$link" in
+        /*) launcher=$link ;;
+        *) launcher=$folder/$link ;;
+    esac
+done
+PYTHONNOUSERSITE=1
+PYTHONPATH=$folder/lib/site
+TSB_TUI_TERM_LIBRARY=$folder/lib/engine/libghostty-vt.dylib
+TSB_TUI_HOME=$folder
+PATH=$folder/lib/engine:$PATH
+export PYTHONNOUSERSITE PYTHONPATH TSB_TUI_TERM_LIBRARY TSB_TUI_HOME PATH
+exec "$folder/python/bin/python3" -m tsb_tui "$@"

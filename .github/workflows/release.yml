@@ -129,6 +129,17 @@ jobs:
             -v "$RUNNER_TEMP/winzip:/work/packaging/out:ro" \
             ci-tui-py python -m pytest packaging/tests/test_packaging.py::test_built_zip -p no:cacheprovider
 
+      - name: Build the macOS zips
+        run: |
+          set -euo pipefail
+          for target in macos-arm64 macos-x64; do
+            docker run --rm -i \
+              --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
+              -v "$GITHUB_WORKSPACE:/work" -w /work -e RELEASE_TAG \
+              ci-tui-py bash -euo pipefail -c "packaging/build-zips.sh $target"
+            cp packaging/out/tsb-tui-${RELEASE_TAG#v}-$target.zip packaging/out/tsb-tui-${RELEASE_TAG#v}-$target.zip.sha256 "$RUNNER_TEMP/"
+          done
+
       - name: Stamp the version and build the release assets offline
         run: |
           set -euo pipefail
@@ -173,7 +184,9 @@ jobs:
         run: |
           set -euo pipefail
           cp "$RUNNER_TEMP/winzip/tsb-tui-${RELEASE_TAG#v}-windows-x64.zip" "$RUNNER_TEMP/winzip/tsb-tui-${RELEASE_TAG#v}-windows-x64.zip.sha256" dist/
+          cp "$RUNNER_TEMP"/tsb-tui-*-macos-*.zip "$RUNNER_TEMP"/tsb-tui-*-macos-*.zip.sha256 dist/
           cd dist
+          sha256sum tsb-tui-*-macos-*.zip tsb-tui-*-macos-*.zip.sha256 >> SHA256SUMS
           sha256sum tsb-tui-*-windows-x64.zip tsb-tui-*-windows-x64.zip.sha256 >> SHA256SUMS
           sha256sum --check SHA256SUMS
 
@@ -191,15 +204,15 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null; then
             gh release upload "$RELEASE_TAG" --clobber \
               dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
-              dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/SHA256SUMS
+              dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/tsb-tui-*-macos-*.zip dist/tsb-tui-*-macos-*.zip.sha256 dist/SHA256SUMS
           else
             gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-from-tag \
               dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
-              dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/SHA256SUMS
+              dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/tsb-tui-*-macos-*.zip dist/tsb-tui-*-macos-*.zip.sha256 dist/SHA256SUMS
           fi
           assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           for asset in dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
-            dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/SHA256SUMS; do
+            dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/tsb-tui-*-macos-*.zip dist/tsb-tui-*-macos-*.zip.sha256 dist/SHA256SUMS; do
             asset_name="$(basename "$asset")"
             grep -Fxq -- "$asset_name" <<< "$assets" || {
               echo "::error::release asset $asset_name is missing"; exit 1;

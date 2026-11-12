@@ -17,11 +17,12 @@ assemble = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(assemble)
 
 
-def test_corrupt_cached_input(tmp_path):
+@pytest.mark.parametrize('target', ['windows-x64', 'macos-arm64', 'macos-x64'])
+def test_corrupt_cached_input(tmp_path, target):
     original = b'pinned input'
     digest = hashlib.sha256(original).hexdigest()
     lock = tmp_path / 'inputs.lock'
-    lock.write_text(f'wheel windows-x64 https://example.invalid/input {digest} {len(original)}\n')
+    lock.write_text(f'wheel {target} https://example.invalid/input {digest} {len(original)}\n')
     cached = tmp_path / digest
     cached.write_bytes(original)
     command = [str(HERE / 'verify-inputs.sh'), '--lock', str(lock), '--cache', str(tmp_path)]
@@ -75,7 +76,7 @@ def leak_pattern():
 
 def assert_no_authored_leaks(archive, root):
     pattern = leak_pattern()
-    files = {'tsb-tui.cmd', 'tsb-tui-check.cmd', 'README.txt', 'VERSION', 'lib/engine/ENGINE'}
+    files = {'tsb-tui', 'tsb-tui-check', 'tsb-tui.cmd', 'tsb-tui-check.cmd', 'README.txt', 'VERSION', 'lib/engine/ENGINE'}
     trees = ('lib/site/tsb_tui/', 'lib/site/tsb_contract_client/', 'lib/site/tsbc/')
     for name in archive.namelist():
         if not name.startswith(root) or name.endswith('/'):
@@ -102,9 +103,11 @@ def test_authored_leak_fails(tmp_path):
         assert_no_authored_leaks(z, root)
 
 
-def test_built_zip():
+def test_built_zip(tmp_path, monkeypatch):
     archives = sorted((HERE / 'out').glob('tsb-tui-*-windows-x64.zip'))
-    assert archives, 'Run the full dummy-engine build before these tests'
+    if not archives:
+        from test_macos_build import build_cached
+        archives = [build_cached('windows-x64', tmp_path, monkeypatch)]
     for archive in archives:
         with zipfile.ZipFile(archive) as z:
             names = z.namelist()
@@ -310,7 +313,7 @@ def test_missing_launcher_fails_before_the_zip(assembly_inputs):
 
 
 def test_assembled_bundle_holds_the_exe_and_never_a_config(assembly_inputs, monkeypatch):
-    packaging, engine = assembly_inputs
+    _packaging, engine = assembly_inputs
     seen = {}
     run = assemble.run
 

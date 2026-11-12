@@ -1,4 +1,4 @@
-# Windows x64 zip assembler
+# Windows x64 and macOS zip assembler
 
 Requires Linux, Python 3.12+, pip, git, tar support and the system
 `zip` tool. No target code runs on the build machine.
@@ -34,8 +34,8 @@ packaging/verify-inputs.sh
 
 CPython 3.12.16 comes from PBS release 20261026; its hash was taken from that
 release's SHA256SUMS and checked locally. Wheel hashes were checked against
-PyPI's release metadata and the downloaded bytes. The requirements file pins the
-complete Windows CPython 3.12 dependency closure, including ABI3 wheels accepted
+PyPI's release metadata and the downloaded bytes. Each target requirements file pins the
+complete CPython 3.12 dependency closure, including ABI3 wheels accepted
 by CPython 3.12. No source distributions are accepted. Setuptools is a separately pinned host-only
 build input, installed into the disposable build directory.
 
@@ -62,3 +62,33 @@ tsb_contract_client and tsbc package trees under lib/site. Third-party trees are
 excluded; a regression test proves a planted leak in tsb_tui fails the scan.
 Dummy engines prove assembly
 only; run `tsb-tui-check.cmd` with the real engine on Windows for runtime proof.
+
+## macOS zips
+
+Build either Apple target on Linux with `packaging/build-zips.sh macos-arm64` or
+`packaging/build-zips.sh macos-x64`. The engine is taken from the vendored
+`engine/macos-arm64` or `engine/macos-x64` directory; no operator engine input is
+used. The archive contains POSIX launchers and the PBS CPython runtime. The
+bundles are not release-signed or notarised. For a zip downloaded in a browser,
+clear quarantine after extraction with `xattr -dr com.apple.quarantine <folder>`;
+files downloaded with `curl` carry no quarantine flag.
+
+The macOS wheel tags are `macosx_11_0_arm64` and `macosx_10_15_x86_64` (the
+Intel cffi wheel needs 10.15), accepted by the orchestrator on 2026-11-12.
+Both engines require macOS 13 or later. Outputs
+are `out/tsb-tui-<version>-macos-arm64.zip` and `-macos-x64.zip`, each with a
+`.zip.sha256`. Execute permissions are retained on `python/bin/python3*` and
+both launchers. Launchers resolve symlinks, including links from a PATH folder.
+`install.sh` still refuses macOS until a real Mac runtime check passes.
+
+For an untagged or modified development checkout, fill the cache explicitly
+with `packaging/verify-inputs.sh --fetch`, then run
+`python3 -m pytest packaging/tests/test_macos_build.py -p no:cacheprovider -q`.
+The end-to-end harness answers only the clean-status and exact-version-tag git
+queries (`v0.0.0`), and runs real assembly into pytest temporary directories.
+It never downloads: it skips naming any missing pinned input. Corrupt cached
+inputs fail. The release assembler keeps its clean-tree and tag requirements.
+The macOS tests inspect Mach-O headers without executing target code, exercise
+launchers on Linux with a shell interpreter stub, and check zip structure,
+modes with zipinfo, LF launchers, bytecode exclusion, authored-text leaks and
+checksums. Third-party text is excluded from the leak check, as for Windows.

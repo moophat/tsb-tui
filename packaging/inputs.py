@@ -8,23 +8,24 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
-def entries(lock):
+def entries(lock, target=None):
     for number, line in enumerate(lock.read_text().splitlines(), 1):
         if not line.strip() or line.startswith('#'):
             continue
         fields = line.split()
         if len(fields) != 5:
             raise ValueError(f'{lock.name}:{number}: expected kind target URL sha256 size')
-        kind, target, url, digest, size = fields
-        if kind not in {'python', 'wheel', 'build'} or target != 'windows-x64':
+        kind, target_name, url, digest, size = fields
+        if kind not in {'python', 'wheel', 'build'} or target_name not in {'windows-x64', 'macos-arm64', 'macos-x64'}:
             raise ValueError(f'{lock.name}:{number}: unsupported kind or target')
         if len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
             raise ValueError(f'{lock.name}:{number}: invalid sha256')
-        yield number, kind, url, digest, int(size)
+        if target is None or target_name == target:
+            yield number, kind, url, digest, int(size)
 
 
-def verify(lock, cache, fetch=False):
-    rows = list(entries(lock))
+def verify(lock, cache, fetch=False, target=None):
+    rows = list(entries(lock, target))
     cache.mkdir(parents=True, exist_ok=True)
     for number, kind, url, digest, size in rows:
         path = cache / digest
