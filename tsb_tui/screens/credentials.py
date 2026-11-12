@@ -178,6 +178,7 @@ class CredentialsScreen(Screen):
         super().__init__()
         self.loaded = False
         self._references: list[str] = []
+        self._generation = 0
 
     def compose(self) -> ComposeResult:
         with Vertical(id="credentials-panel"):
@@ -203,12 +204,17 @@ class CredentialsScreen(Screen):
 
     def action_refresh(self) -> None:
         self.loaded = False
-        self.app.call_api(self.app.client.credentials, on_done=self._listed, on_error=self._failed)
+        self._generation += 1
+        generation = self._generation
+        self.app.call_api(self.app.client.credentials, on_done=lambda entries: self._listed(generation, entries),
+                          on_error=lambda exc: self._failed(generation, exc))
 
-    def _listed(self, credentials: list[dict]) -> None:
-        if not self.is_attached:
+    def _listed(self, generation: int, credentials: list[dict]) -> None:
+        if generation != self._generation:   # a newer load started since this one; its answer wins, drop this stale one
             return
-        table = self.query_one("#credentials-table", DataTable)
+        table = self._live_table()
+        if table is None:   # the screen's table is gone (it was replaced/torn down); drop this answer, no exception
+            return
         table.clear()
         self._references = []
         for entry in credentials:
@@ -217,13 +223,23 @@ class CredentialsScreen(Screen):
                           Text(as_text(entry.get("label"))))
         self.loaded = True
 
-    def _failed(self, exc: ApiError | HttpError | OSError) -> None:
+    def _failed(self, generation: int, exc: ApiError | HttpError | OSError) -> None:
+        if generation != self._generation:   # a newer load started since this one; drop this stale failure
+            return
+        if self._live_table() is None:   # the screen's table is gone (it was replaced/torn down); drop this failure
+            return
         if isinstance(exc, ApiError) and exc.status == 401:
             self.app.notify_api_error(exc)
             return
         if self.is_attached:
             self.query_one("#cred-status", Static).update(failure_message(exc))
             self.loaded = True
+
+    def _live_table(self) -> DataTable | None:
+        """The screen's table, or None when it is gone: the answer of a load that arrives after the screen was
+        replaced has nowhere to go, so it is dropped — success and failure alike — with no exception."""
+        nodes = self.query("#credentials-table")
+        return nodes[0] if nodes else None
 
     def _selected(self) -> str | None:
         table = self.query_one("#credentials-table", DataTable)
