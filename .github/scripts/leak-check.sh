@@ -4,6 +4,7 @@
 # Two callers, one pattern:
 #   .pre-commit-config.yaml   → leak-check.sh --staged --warn   (local, WARNING only, never blocks)
 #   .github/workflows/*.yml   → leak-check.sh                   (CI, fails the PR)
+#   the orchestrator's push:  → leak-check.sh --push <url> <branch> && git push <url> HEAD:refs/heads/<branch>
 #
 # Why warn locally and fail in CI: a blocking local hook gets bypassed with --no-verify the first
 # time it is inconvenient; a warning that names the line is read, and the PR still cannot merge.
@@ -53,32 +54,35 @@ if [ "$push" = 1 ] && [ "$warn" = 1 ]; then
 fi
 
 if [ "$push" = 1 ]; then
+  safe_remote="${remote#*://}"; safe_remote="${safe_remote##*@}"
   # The base: the branch's tip on the remote, falling back to main when it is absent there. A
   # failed ls-remote or two empty answers means the range cannot be resolved — fail closed, never
   # a silent pass (the bug this mode exists to close).
-  out="$(git ls-remote "$remote" "refs/heads/$branch")" \
-    || { echo "::error::git ls-remote $remote refs/heads/$branch failed — the scan did not run" >&2; exit 2; }
+  out="$(git ls-remote "$remote" "refs/heads/$branch" 2>/dev/null)" \
+    || { echo "::error::git ls-remote $safe_remote refs/heads/$branch failed — the scan did not run" >&2; exit 2; }
   base="$(printf '%s\n' "$out" | head -1 | cut -f1)"
   if [ -z "$base" ]; then
-    out="$(git ls-remote "$remote" refs/heads/main)" \
-      || { echo "::error::git ls-remote $remote refs/heads/main failed — the scan did not run" >&2; exit 2; }
+    out="$(git ls-remote "$remote" refs/heads/main 2>/dev/null)" \
+      || { echo "::error::git ls-remote $safe_remote refs/heads/main failed — the scan did not run" >&2; exit 2; }
     base="$(printf '%s\n' "$out" | head -1 | cut -f1)"
   fi
   if [ -z "$base" ]; then
-    echo "::error::neither refs/heads/$branch nor refs/heads/main exists at $remote — the scan did not run" >&2
+    echo "::error::neither refs/heads/$branch nor refs/heads/main exists at $safe_remote — the scan did not run" >&2
     exit 2
   fi
   # The base object must be in this repo to diff against; fetch it when it is not.
   if ! git cat-file -e "$base" 2>/dev/null; then
-    git fetch -q "$remote" "$base" \
-      || { echo "::error::git fetch of $base from $remote failed — the scan did not run" >&2; exit 2; }
+    git fetch -q "$remote" "$base" 2>/dev/null \
+      || { echo "::error::git fetch of $base from $safe_remote failed — the scan did not run" >&2; exit 2; }
   fi
   tmp="$(mktemp)"; tmp2="$(mktemp)"; tmp3="$(mktemp)"
   # The range must contain commits; HEAD equal to the base pushes nothing. Check rev-list itself so
   # a failed range is exit 2, not a false "nothing to push".
-  git rev-list "$base..HEAD" >/dev/null 2>&1 \
-    || { echo "::error::git rev-list $base..HEAD failed — the scan did not run" >&2; rm -f "$tmp" "$tmp2" "$tmp3"; exit 2; }
-  commits="$(git rev-list "$base..HEAD")"
+  commits="$(git rev-list "$base..HEAD" 2>/dev/null)"; rev_status=$?
+  if [ "$rev_status" -ne 0 ]; then
+    echo "::error::git rev-list $base..HEAD failed — the scan did not run" >&2
+    rm -f "$tmp" "$tmp2" "$tmp3"; exit 2
+  fi
   if [ -z "$commits" ]; then
     echo "nothing to push against $base" >&2
     rm -f "$tmp" "$tmp2" "$tmp3"
@@ -131,8 +135,11 @@ if [ "$push" = 1 ]; then
       case "$line" in
         +*)
           if [ -n "$curfile" ]; then n=$((n+1)); fi
-          if printf '%s\n' "$line" | grep -qiE "$PATTERN|$WORKSTATION_PATTERN"; then
+          grep -qiE "$PATTERN|$WORKSTATION_PATTERN" <<< "$line"; ag=$?
+          if [ "$ag" -eq 0 ]; then
             hits="${hits}${short} ${curfile}: ${line}"$'\n'
+          elif [ "$ag" -gt 1 ]; then
+            echo "::error::added-line grep failed — the scan did not run" >&2; rm -f "$tmp" "$tmp2" "$tmp3"; exit 2
           fi
           ;;
       esac
@@ -174,8 +181,11 @@ if [ "$push" = 1 ]; then
         fi
         # Name scan: added, renamed or copied files, the destination name.
         case "$st" in A|R|C)
-          if printf '%s\n' "$dest" | grep -qiE "$PATTERN|$WORKSTATION_PATTERN"; then
+          grep -qiE "$PATTERN|$WORKSTATION_PATTERN" <<< "$dest"; ng=$?
+          if [ "$ng" -eq 0 ]; then
             hits="${hits}${short} ${dest}: (file name)"$'\n'
+          elif [ "$ng" -gt 1 ]; then
+            echo "::error::file-name grep failed — the scan did not run" >&2; rm -f "$tmp" "$tmp2" "$tmp3"; exit 2
           fi
           ;;
         esac
