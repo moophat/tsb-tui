@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from test_vault_unlock import _answer, _prompt
 from textual.widgets import Button, DataTable, Input, Select
+from tsb_contract_client import ApiError
 from tsbc import _serve
 from vault_support import CHAIN, RECORDING_LINE, VaultServe, flat
 from workspace_support import fixture_login
@@ -393,3 +394,33 @@ def test_read_key_file_without_o_noctty_or_o_nonblock(monkeypatch: pytest.Monkey
     assert non_reg is None
     assert err == "That path is not a regular file."
 
+
+
+def test_a_current_generation_401_after_the_table_is_gone_still_routes_to_login(
+        serve, wait_until) -> None:
+    """Qodo finding on PR #68 (fix/credentials-unlock-wait): `_failed` checked for a live table before checking
+    for a 401, so a list request that returned 401 after the table was torn down skipped `notify_api_error()` and
+    silently missed the session-expiry redirect. Fix: a current-generation 401 goes to `notify_api_error` before the
+    table check; an older generation's 401 is still dropped first by the generation guard."""
+
+    async def check() -> None:
+        _serve_app, url = serve(VaultServe())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await fixture_login(app, pilot)
+            await app.workspace().run_action_id("credentials")
+            await wait_until(pilot, lambda: isinstance(app.screen, CredentialsScreen)
+                             and bool(app.screen.query("#credentials-table")), "the mounted credentials screen", 30.0)
+            screen = app.screen
+            generation = screen._generation
+            # Tear the table down: simulates the screen being replaced while a list load was in flight.
+            screen.query_one("#credentials-table", DataTable).remove()
+            await pilot.pause()   # let Textual process the removal before the pre-condition check
+            assert screen._live_table() is None, "pre-condition: the table is gone"
+            # A current-generation 401 arrives after the table is gone.
+            screen._failed(generation, ApiError(401, "unauthenticated", "login gone"))
+            # `notify_api_error` -> `_to_login` must have been called: the workspace is popped.
+            await wait_until(pilot, lambda: app.workspace() is None,
+                             "the workspace to be gone (login redirect from the 401)", 10.0)
+
+    asyncio.run(check())

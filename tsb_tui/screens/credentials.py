@@ -226,10 +226,13 @@ class CredentialsScreen(Screen):
     def _failed(self, generation: int, exc: ApiError | HttpError | OSError) -> None:
         if generation != self._generation:   # a newer load started since this one; drop this stale failure
             return
-        if self._live_table() is None:   # the screen's table is gone (it was replaced/torn down); drop this failure
-            return
         if isinstance(exc, ApiError) and exc.status == 401:
+            # A session-expiry 401 must reach notify_api_error regardless of whether the table is still live.
+            # The generation check above already dropped an older load's 401; this one belongs to the current
+            # load, so the redirect applies even if the screen's table was torn down in the meantime.
             self.app.notify_api_error(exc)
+            return
+        if self._live_table() is None:   # the screen's table is gone (it was replaced/torn down); drop this failure
             return
         if self.is_attached:
             self.query_one("#cred-status", Static).update(failure_message(exc))
