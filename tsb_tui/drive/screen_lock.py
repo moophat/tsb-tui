@@ -48,7 +48,7 @@ class DriveScreenLock:
                 pass
 
     def check(self) -> bool:
-        if self.generation != self.d.app._login_gen:
+        if self.generation != self.d.app._login_gen or self.d.screen() is None:
             self.reset()
         settings = self.d.app.screen_lock.settings
         after = settings.get("screen_lock_after") if settings else None

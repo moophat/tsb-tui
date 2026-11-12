@@ -647,3 +647,108 @@ async def test_login_already_logged_in_and_not_locked_refuses_before_reading_fil
     assert "already logged in" in answer.get("why", ""), answer
     # Bug: the current code reads the file before the already-logged-in check fires.
     assert reads == [], f"read_password_file was called before the already-logged-in check: {reads}"
+
+
+@scenario
+async def test_removed_lock_rules_disable_the_old_idle_timeout(rig, server, sid, clock, path, record, monkeypatch):
+    for me in ({}, {"locks": None}):
+        await rig.app_call(rig.app.screen_lock.apply, {"screen_lock_after": 10})
+        def call(func, *args, _me=me, **kwargs):
+            kwargs["on_done"](_me)
+        monkeypatch.setattr(rig.app, "call_api", call)
+        await rig.app_call(rig.driver.commands._refresh_locks)
+        clock[0] += 11
+        assert not rig.driver.screen_lock.check()
+        assert rig.app.screen_lock.settings is None
+
+
+@scenario
+async def test_logout_clears_a_locked_login_before_the_next_command(rig, server, sid, clock, *rest):
+    await expire(rig, clock)
+    assert (await rig.cmd("logout"))["ok"]
+    before = server.unlocks
+    answer = await rig.cmd("read", what="screen")
+    assert answer.get("error") == "not_logged_in", answer
+    assert not rig.driver.screen_lock.check()
+    assert rig.driver.screen_lock.path is None
+    assert server.unlocks == before
+
+
+@scenario
+async def test_unauthenticated_clears_a_locked_login_before_the_next_command(rig, server, sid, clock, *rest):
+    server.unlock_status = 401
+    await expire(rig, clock)
+    await rig.cmd("read", what="screen")
+    await rig.driver.wait_for_login_screen()
+    before = server.unlocks
+    answer = await rig.cmd("read", what="screen")
+    assert answer.get("error") == "not_logged_in", answer
+    assert not rig.driver.screen_lock.check()
+    assert rig.driver.screen_lock.path is None
+    assert server.unlocks == before
+
+
+@scenario
+async def test_target_edit_refuses_a_lock_during_the_definition_request(
+        rig, server, sid, clock, path, record, monkeypatch):
+    client = rig.app.client
+    original = client.get_target_definition
+    def definition(target):
+        result = original(target)
+        rig.driver.screen_lock.engage("during definition")
+        return result
+    monkeypatch.setattr(client, "get_target_definition", definition)
+    before = server.calls("PUT", "/targets/round3-edit")
+    made = await rig.app_call(rig.driver.execute,
+                               {"op": "target_new", "id": "round3-edit", "type": "ssh", "host": "example"})
+    assert made["ok"], made
+    answer = await rig.cmd("target_edit", target="round3-edit", name="Must not save")
+    assert answer.get("error") == "not_available", answer
+    assert "screen is locked" in answer["why"]
+    assert server.calls("PUT", "/targets/round3-edit") == before
+
+
+@scenario
+async def test_target_create_refuses_a_lock_while_mounting_the_form(
+        rig, server, sid, clock, path, record, monkeypatch):
+    from tsb_tui.screens.target_form import TargetFormScreen
+    original = TargetFormScreen.fill
+    def fill(form, definition):
+        original(form, definition)
+        rig.driver.screen_lock.engage("during form")
+    monkeypatch.setattr(TargetFormScreen, "fill", fill)
+    before = server.calls("POST", "/targets")
+    answer = await rig.app_call(rig.driver.execute,
+                               {"op": "target_new", "id": "round3", "type": "ssh", "host": "example"})
+    assert answer.get("error") == "not_available", answer
+    assert "screen is locked" in answer["why"]
+    assert server.calls("POST", "/targets") == before
+
+
+@scenario
+async def test_target_delete_rechecks_the_lock_before_dispatch(
+        rig, server, sid, clock, path, record, monkeypatch):
+    from tsb_tui.drive import commands
+    original = commands._field
+    def field(cmd, name, kind):
+        value = original(cmd, name, kind)
+        if name == "target":
+            rig.driver.screen_lock.engage("before delete")
+        return value
+    monkeypatch.setattr(commands, "_field", field)
+    before = server.calls("DELETE", "/targets/normal")
+    answer = await rig.cmd("target_delete", target="normal", confirm=True)
+    assert answer.get("error") == "not_available", answer
+    assert "screen is locked" in answer["why"]
+    assert server.calls("DELETE", "/targets/normal") == before
+
+
+@scenario
+async def test_a_new_login_starts_without_the_previous_lock(rig, server, sid, clock, path, *rest):
+    await expire(rig, clock)
+    assert (await rig.cmd("login", user=_serve.USER, password_file=path))["ok"]
+    assert not rig.driver.screen_lock.check()
+    assert rig.driver.screen_lock.path == path
+    before = server.unlocks
+    assert (await rig.cmd("read", what="screen"))["error"] == "not_attached"
+    assert server.unlocks == before

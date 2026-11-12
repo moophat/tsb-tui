@@ -396,7 +396,10 @@ class Commands:
                 app.notify_api_error(exc)
         def done(me: Any) -> None:
             if generation == app._login_gen and client is app.client:
-                app.screen_lock.apply(me.get("locks"))
+                if me.get("locks") is None:
+                    app.screen_lock.clear()
+                else:
+                    app.screen_lock.apply(me["locks"])
         app.call_api(client.me, on_done=done, on_error=failed)
 
     # -- helpers --
@@ -522,6 +525,8 @@ class Commands:
             self.d.app.pop_screen()
         await self.d.app.push_screen(form, screen.target_saved)
         form.fill(definition)
+        if self.d.app.screen_lock.locked or self.d.screen_lock.check():
+            raise DriveError("not_available", "the screen is locked")
         try:
             record = await form.save()
         except ApiError as exc:
@@ -592,6 +597,8 @@ class Commands:
         if cmd.get("confirm") is not True:
             raise DriveError("bad_request", "deletion cannot be undone; send confirm: true; open sessions stay open")
         target = _field(cmd, "target", str)
+        if self.d.app.screen_lock.locked or self.d.screen_lock.check():
+            raise DriveError("not_available", "the screen is locked")
         try:
             await screen.delete_target(target)
         except ApiError as exc:
@@ -1423,6 +1430,7 @@ class Commands:
         self._screen()
         result = await self.d.app.sign_out()
         await self.d.wait_for_login_screen()
+        self.d.screen_lock.reset()
         return {"detached": result.detached, "broker": result.broker}
 
     # -- the UI itself --
