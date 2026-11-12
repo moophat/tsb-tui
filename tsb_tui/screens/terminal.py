@@ -1139,6 +1139,9 @@ class TerminalScreen(Screen):
         if self.targets.apply(generation, query, page, append=more):
             self._mark_fleet_dirty()
             if self._target_select is not None and self.fleet_view is not None:
+                # Publish the new rows before selecting the saved target. A relayout
+                # between this callback and the deferred flush must see that row.
+                self._refresh_view_clocks()
                 if self.targets.row(self._target_select) is not None:
                     self.fleet_view.selected = (GROUP_TARGETS, self._target_select)
                     self._target_select = None

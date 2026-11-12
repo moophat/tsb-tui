@@ -218,3 +218,43 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
                              timeout_s=TARGET_FORM_WAIT_S)
             assert view.selected_session == "query-target"
     asyncio.run(check())
+
+
+def test_saved_target_selection_survives_relayout_before_fleet_flush(serve, wait_until, monkeypatch):
+    """A delayed fleet rebuild must not let a resize discard the saved selection."""
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen, view = await open_targets(app, pilot, wait_until)
+            screen._stop_targets_timer()
+            original_reply = screen._targets_reply
+            dirty = screen._mark_fleet_dirty
+            interleaved = False
+
+            def reply(*args):
+                nonlocal interleaved
+                if screen._target_select != "delayed-target":
+                    return original_reply(*args)
+                # Hold the after-refresh model rebuild until a resize has laid out
+                # the view using its previous rows, as on a slow event loop.
+                with monkeypatch.context() as patch:
+                    patch.setattr(screen, "_mark_fleet_dirty", lambda: None)
+                    original_reply(*args)
+                    assert view.selected_session == "delayed-target"
+                    assert screen._target_select is None
+                    view._relayout()
+                    interleaved = True
+                dirty()
+
+            monkeypatch.setattr(screen, "_targets_reply", reply)
+            await pilot.press("n")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form")
+            app.screen.fill({"id": "delayed-target", "type": "ssh", "host": "example"})
+            app.screen.query_one("#target-save", Button).press()
+            await wait_for_target_workers(app, pilot, "saved row")
+            await wait_until(pilot, lambda: interleaved and screen.targets.row("delayed-target") is not None,
+                             "delayed reply")
+            screen._sync_fleet_widgets()
+            assert view.selected_session == "delayed-target"
+    asyncio.run(check())
