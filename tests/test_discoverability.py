@@ -19,7 +19,6 @@ from input_server import InputRecordingApp, attached, make_session, other_client
 from stub_server import create_owner_session
 from textual.command import CommandList, CommandPalette
 from textual.css.query import NoMatches
-from textual.widgets import Input
 from tsbc import _serve
 from workspace_support import rail_row
 
@@ -285,11 +284,10 @@ def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, w
                 await dialog(DevicesScreen, A.BY_ID["devices"].label)
                 reached.append("devices")
                 await _click_menu_entry(rig, A.BY_ID["lock_now"].label)
-                await _settle(rig, lambda: isinstance(app.screen, LockScreen), "Lock now to cover the screen")
-                box = app.screen.query_one("#lock-password", Input)
-                await rig.app_call(setattr, box, "value", _serve.PASSWORD)
-                assert (await rig.cmd("press", keys=["enter"]))["ok"]
-                await _settle(rig, lambda: app.screen is screen, "the password to resume the screen")
+                assert not isinstance(app.screen, LockScreen)
+                assert app.screen is screen
+                assert (await rig.cmd("read", what="screen"))["ok"]
+                assert not rig.driver.screen_lock.locked
                 reached.append("lock_now")
 
                 assert not screen.pump.state.holds_keyboard, "another client of the owner's holds the keyboard"

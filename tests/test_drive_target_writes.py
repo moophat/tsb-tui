@@ -122,7 +122,8 @@ def test_drive_target_writes_while_locked_send_nothing_and_queue_no_form(serve, 
             await rig.app_call(rig.app.screen_lock.lock)
             await rig.pilot.pause()
             lock = await rig.app_call(lambda: rig.app.screen)
-            assert isinstance(lock, LockScreen)
+            assert not isinstance(lock, LockScreen)
+            assert rig.driver.screen_lock.locked
             before = list(server.requests)
             for command in (
                 {"op": "target_new", "id": "locked-target", "type": "ssh", "host": "example"},
@@ -136,7 +137,7 @@ def test_drive_target_writes_while_locked_send_nothing_and_queue_no_form(serve, 
                 assert await rig.app_call(lambda: len(rig.app.screen_lock._held)) == 0
                 assert await rig.app_call(lambda: len(rig.app.screen_lock._after)) == 0
                 assert server.requests == before, "a locked target command sent a request to TSB"
-            await rig.app_call(lock._resumed, rig.app._login_gen)
+            await rig.cmd("snapshot")
             await rig.pilot.pause()
             assert not await rig.app_call(lambda: isinstance(rig.app.screen, TargetFormScreen))
             assert "locked-target" not in server.targets

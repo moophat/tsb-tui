@@ -98,6 +98,11 @@ class ScreenLock:
     # -- locking --
 
     def _tick(self) -> None:
+        if self._app.under_drive:
+            drive = getattr(self._app, "drive_screen_lock", None)
+            if drive is not None:
+                drive.check()
+            return
         settings = self.settings
         if settings is None or self.locked:
             return
@@ -107,6 +112,11 @@ class ScreenLock:
 
     def lock(self, note: str = "") -> None:
         """Cover every screen. Idempotent."""
+        if self._app.under_drive:
+            drive = getattr(self._app, "drive_screen_lock", None)
+            if drive is not None:
+                drive.engage(note or "screen locked now")
+            return
         if self.locked:
             return
         from .screens.lock import LockScreen

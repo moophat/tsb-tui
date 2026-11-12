@@ -14,6 +14,8 @@
 
 ## 2. Starting
 
+The screen lock is the core-resolved `screen_lock_after` time. Every command from the sender restarts its idle clock. After the time passes, drive voids all looks, withholds session content, and refuses typed input until it re-checks the login password with `POST /auth/screen-unlock`. The password is read again only from the login's regular password file; stdin and pipes stay locked until a new `login` names a regular file. A 403 or unreadable file requires a new login; a 429 keeps drive locked and retries at the next refused command. A successful re-check does not make a typed send valid: read again for a fresh look first. The check proves access to the password source, not who is sending commands. Runs expected to outlast the lock should use an owner-only regular file with mode 0600.
+
 The send gate is a **guardrail**, not a control. It holds only while drive is your one door to TSB: you hand drive the
 TSB password on a descriptor or in an owner-only file and never use it to reach TSB another way. The `login` command's
 password path follows the same rule.
@@ -68,6 +70,8 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 
 ## 5. Commands
 
+While screen-locked, session-content commands (`read`, `wait`, `snapshot`, `new`, `attach`, `switch`) trigger the password re-check. Typed sends, `press` and `click` are refused; after a successful re-check their refusal carries a fresh look. Commands without session content continue. The send-gate switch does not disable the lock.
+
 | `op` | Fields | Answers |
 |---|---|---|
 | `login` | `user`, `password_file` | `principal`. One driver is one login |
@@ -120,7 +124,7 @@ the device-login events above. There is no Remember offer under drive.
   arrive in time, the command returns `bad_request` and sends no answer round. Regular files and devices are refused. `answers` in a command is refused and redacted from the transcript.
 - `login_cancel {device_login}` cancels a pending login.
 
-The look rule gates `type` and `keys` only; it does not gate these three login commands. The attached TUI's existing screen-lock behavior remains until the headless lock contract release. After `connected`, the ordinary session input and recording gates apply. On a lost socket, a session may have
+The screen lock gates every session-content answer and typed input. The look rule gates `type` and `keys` only; it does not gate these three login commands. The screen lock withholds content and typed input until the login password re-check succeeds. After `connected`, the ordinary session input and recording gates apply. On a lost socket, a session may have
 opened: refresh `sessions` before deciding whether to start again.
 
 Every read is made in your own client, from what it already received. TSB itself never serves screen content.
@@ -194,7 +198,7 @@ drive never acts on it.
   `TSB_TUI_DRIVE_SEND_GATE`, `--set drive.send_gate=...` and all `[profiles.*]` settings refuse it. With it off,
   `ready`, every send answer (including errors) and the record show `send_gate: false`. No rig switches it off.
   It is removed one release after the lab rig and staging have run with it on and no rig needs it.
-- The attached screen lock is unchanged in this release; drive's look-based screen lock awaits its contract release.
+- A wait held across the lock moment re-checks the login password before answering with session content. No look is minted while locked.
 - **A wait fails at once,** with the reason, when one of these happens, unless the wait is for that very thing:
 
 | Happens | Answer's `error` |
@@ -316,6 +320,8 @@ The owner, not you, is asked "Kill the session?" when your input gets no answer 
 
 ## 11. Errors
 
+`screen_locked` means the sender was idle past the core screen-lock time, lock-now was used, or the named look was voided. While locked, the answer contains no session content; after a successful re-check the refusal carries the screen and a fresh look.
+
 When `new` gets a front's HTTP 502, 503 or 504 instead of TSB's answer, its error code stays the
 same and `why` says the front answered while TSB did not (TSB may be restarting). If the create
 got it, whether a session was created is not known: send `sessions` to list your sessions before
@@ -327,6 +333,7 @@ close code afterwards.
 
 | `error` | Means |
 |---|---|
+| `screen_locked` | idle lock or a void look; while locked no session content is returned. Drive re-checks the login password file; after a 204 the refusal carries a fresh look for your next send |
 | `no_look` | missing, unknown, used-up or wrong-session/attachment look; take a new screen look |
 | `screen_changed` | output bytes or a `token`, `size` or `stale` frame followed the look; `changed` lists only the actual causes (`output`, `keyboard`, `size`, `stale`). Clients, notices and prompt frames do not count as changes |
 | `unsettled` | the named look permits only a brake while output is arriving or synchronized output is on |
@@ -384,6 +391,10 @@ close code afterwards.
 - **Asking for the keyboard** (`ask_to_type`).
 - **Seeing only the sessions lent to you:** today you may see every session on a device you were granted. How lending works is still to be designed.
 - **Files and scroll back beyond what your client holds** arrive later.
+
+## What the screen lock does not guarantee
+
+The screen lock is a client guardrail. It does not prove who is behind the command sender; anyone who can read the password file can pass the re-check. It does not revoke the login or stop sessions running on the core.
 
 ## 14. What the gate does not guarantee
 
