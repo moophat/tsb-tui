@@ -24,6 +24,27 @@ def check(path, expected):
         raise ValueError(f"unexpected CPU subtype {sub:#x} for {expected}")
     if 32 + sz > len(d):
         raise ValueError("truncated load command region")
+    # All command kinds that introduce a dylib dependency.
+    # LC_LOAD_DYLIB 0xC is the only one allowed by policy; the rest must be
+    # detected and rejected so they cannot smuggle in an extra dependency.
+    _DYLIB_DEP_CMDS = frozenset({
+        0xC,          # LC_LOAD_DYLIB
+        0x80000018,   # LC_LOAD_WEAK_DYLIB
+        0x8000001F,   # LC_REEXPORT_DYLIB
+        0x20,         # LC_LAZY_LOAD_DYLIB
+        0x80000023,   # LC_LOAD_UPWARD_DYLIB
+    })
+    # Human-readable names for error messages.
+    _DYLIB_CMD_NAMES = {
+        0xC:          "LC_LOAD_DYLIB",
+        0x80000018:   "LC_LOAD_WEAK_DYLIB",
+        0x8000001F:   "LC_REEXPORT_DYLIB",
+        0x20:         "LC_LAZY_LOAD_DYLIB",
+        0x80000023:   "LC_LOAD_UPWARD_DYLIB",
+    }
+    # macOS deployment floor: engine is built for 13.0 (Ventura).
+    _MINOS_FLOOR = 13 << 16  # major=13, minor=0, patch=0
+
     off = 32
     build = None
     sig = False
@@ -38,7 +59,7 @@ def check(path, expected):
         if cmd == 0x32 and cmdsz >= 24:
             platform, version = struct.unpack_from("<II", d, off + 8)[0:2]
             build = (platform, version)
-        if cmd in (0xD, 0xC):
+        if cmd in frozenset({0xD}) | _DYLIB_DEP_CMDS:
             if cmdsz < 24:
                 raise ValueError("truncated dylib command")
             nameoff = struct.unpack_from("<I", d, off + 8)[0]
@@ -51,8 +72,8 @@ def check(path, expected):
             )
         if cmd == 0xD:
             ident.append(name)
-        if cmd == 0xC:
-            loads.append(name)
+        if cmd in _DYLIB_DEP_CMDS:
+            loads.append((cmd, name))
         if cmd == 0x1D:
             if cmdsz < 16:
                 raise ValueError("truncated code signature command")
@@ -63,21 +84,34 @@ def check(path, expected):
         raise ValueError("load command size mismatch")
     if not build or build[0] != 1:
         raise ValueError("missing LC_BUILD_VERSION for macOS")
-    minos = f"{build[1] >> 16}.{(build[1] >> 8) & 255}.{build[1] & 255}"
+    minos_raw = build[1]
+    minos = f"{minos_raw >> 16}.{(minos_raw >> 8) & 255}.{minos_raw & 255}"
+    if minos_raw > _MINOS_FLOOR:
+        raise ValueError(
+            f"minos {minos} exceeds the macOS 13.0 floor; rebuild against the correct SDK"
+        )
     if expected == "arm64":
         if not sig:
             raise ValueError("arm64 dylib signature is missing or empty")
     if ident != ["@rpath/libghostty-vt.dylib"]:
         raise ValueError(f"wrong install name {ident!r}; expected @rpath/libghostty-vt.dylib")
-    if loads != ["/usr/lib/libSystem.B.dylib"]:
-        extra = repr(loads)
-        raise ValueError(f"extra or wrong dependency: {extra}")
+    # Only LC_LOAD_DYLIB 0xC is permitted; any other load kind is an unexpected dependency.
+    bad = [(cmd, name) for cmd, name in loads if cmd != 0xC]
+    good = [name for cmd, name in loads if cmd == 0xC]
+    if bad:
+        descriptions = ", ".join(
+            f"{_DYLIB_CMD_NAMES.get(cmd, f'cmd 0x{cmd:08X}')} {name!r}"
+            for cmd, name in bad
+        )
+        raise ValueError(f"extra or wrong dependency (unexpected load kind): {descriptions}")
+    if good != ["/usr/lib/libSystem.B.dylib"]:
+        raise ValueError(f"extra or wrong dependency: {good!r}")
     print(
         f"Mach-O {expected}: cputype {cpu:#010x}, minos {minos}, signature {'present' if sig else 'absent'}"
     )
     for x in ident:
         print(f"LC_ID_DYLIB {x}")
-    for x in loads:
+    for _, x in loads:
         print(f"LC_LOAD_DYLIB {x}")
 
 

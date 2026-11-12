@@ -161,4 +161,4 @@ omitted. The final script uses named archive members as macOS component
 evidence. Both tarballs were corrected after compilation with the existing
 hash-pinned simdutf licenses and INDEX entry; the dylib bytes were unchanged.
 No additional component license beyond Windows was needed; MinGW is excluded.
-The packaging suite passed once: **74 passed in 1.25s**. `make lint` exited **0**.
+Run the packaging suite with `python3 -m pytest -q packaging/`; `make lint` checks static constraints.

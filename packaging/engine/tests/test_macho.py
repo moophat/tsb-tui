@@ -32,7 +32,13 @@ def test_real_dylib(folder, arch):
 
 def minimal(cpu=0x100000C, subtype=0, signature=True, build=True, filetype=6,
             signature_range=(0, 0), ident="@rpath/libghostty-vt.dylib",
-            loads=("/usr/lib/libSystem.B.dylib",)):
+            loads=("/usr/lib/libSystem.B.dylib",),
+            extra_load_cmds=()):
+    """Build a minimal Mach-O dylib in memory.
+
+    extra_load_cmds: sequence of (cmd_int, name_str) pairs emitted with that
+    command kind instead of the default 0xC (LC_LOAD_DYLIB).
+    """
     commands = b""
     count = 0
     if build:
@@ -49,9 +55,39 @@ def minimal(cpu=0x100000C, subtype=0, signature=True, build=True, filetype=6,
         load_b = load.encode() + b"\0"
         commands += struct.pack("<IIIIII", 0xC, 24 + len(load_b), 24, 0, 0, 0) + load_b
         count += 1
+    for cmd_kind, name in extra_load_cmds:
+        name_b = name.encode() + b"\0"
+        commands += struct.pack("<IIIIII", cmd_kind, 24 + len(name_b), 24, 0, 0, 0) + name_b
+        count += 1
     return (
         struct.pack(
             "<IiiIIIII", 0xFEEDFACF, cpu, subtype, filetype, count, len(commands), 0, 0
+        )
+        + commands
+    )
+
+
+def minimal_with_minos(minos_packed, cpu=0x100000C, subtype=0, signature_range=(64, 1),
+                       ident="@rpath/libghostty-vt.dylib",
+                       loads=("/usr/lib/libSystem.B.dylib",)):
+    """Like minimal() but with a custom minos value packed into LC_BUILD_VERSION."""
+    commands = b""
+    count = 0
+    # LC_BUILD_VERSION with custom minos
+    commands += struct.pack("<IIIIII", 0x32, 24, 1, minos_packed, minos_packed, 0)
+    count += 1
+    commands += struct.pack("<IIII", 0x1D, 16, *signature_range)
+    count += 1
+    ident_b = ident.encode() + b"\0"
+    commands += struct.pack("<IIIIII", 0xD, 24 + len(ident_b), 24, 0, 0, 0) + ident_b
+    count += 1
+    for load in loads:
+        load_b = load.encode() + b"\0"
+        commands += struct.pack("<IIIIII", 0xC, 24 + len(load_b), 24, 0, 0, 0) + load_b
+        count += 1
+    return (
+        struct.pack(
+            "<IiiIIIII", 0xFEEDFACF, cpu, subtype, 6, count, len(commands), 0, 0
         )
         + commands
     )
@@ -125,3 +161,62 @@ def test_accepts_generic_subtype_with_capability_bits(tmp_path, arch, cpu, subty
     path.write_bytes(minimal(cpu=cpu, subtype=subtype, signature_range=(64, 1)))
     result = run_check(path, arch)
     assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Finding 1: every dylib load command kind must be counted (red-first)
+# ---------------------------------------------------------------------------
+
+# Map of all dylib-dependency command kinds the checker must recognise.
+_DYLIB_LOAD_CMDS = {
+    "LC_LOAD_WEAK_DYLIB":   0x80000018,
+    "LC_REEXPORT_DYLIB":    0x8000001F,
+    "LC_LAZY_LOAD_DYLIB":   0x20,
+    "LC_LOAD_UPWARD_DYLIB": 0x80000023,
+}
+
+
+@pytest.mark.parametrize("cmd_name,cmd_kind", list(_DYLIB_LOAD_CMDS.items()))
+def test_rejects_extra_weak_or_reexport_load(tmp_path, cmd_name, cmd_kind):
+    """A dylib that pulls in an extra dependency via any non-LC_LOAD_DYLIB kind
+    must fail the checker.  On abe266c it passes (red gate)."""
+    path = tmp_path / "extra-dep.dylib"
+    path.write_bytes(
+        minimal(
+            signature_range=(64, 1),
+            extra_load_cmds=[(cmd_kind, "/usr/lib/libz.1.dylib")],
+        )
+    )
+    result = run_check(path, "arm64")
+    assert result.returncode != 0, (
+        f"{cmd_name} (0x{cmd_kind:08X}) extra dep was not rejected"
+    )
+    assert "extra" in result.stderr or "dependency" in result.stderr, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Finding 2: macOS floor (minos <= 13.0) enforced (red-first)
+# ---------------------------------------------------------------------------
+
+def _pack_minos(major, minor=0, patch=0):
+    """Pack a macOS version into the 32-bit LC_BUILD_VERSION minos field."""
+    return (major << 16) | (minor << 8) | patch
+
+
+@pytest.mark.parametrize("folder,arch", [("macos-arm64", "arm64"), ("macos-x64", "x86_64")])
+def test_real_dylib_minos_exact(folder, arch):
+    """Real dylibs must report exactly minos 13.0.0."""
+    result = run_check(ENGINE / folder / "libghostty-vt.dylib", arch)
+    assert result.returncode == 0, result.stderr
+    assert "minos 13.0.0" in result.stdout, (
+        f"expected 'minos 13.0.0' in output; got: {result.stdout!r}"
+    )
+
+
+def test_rejects_minos_above_floor(tmp_path):
+    """A dylib built for macOS 14.0 (above the 13.0 floor) must be rejected."""
+    path = tmp_path / "minos-14.dylib"
+    path.write_bytes(minimal_with_minos(_pack_minos(14, 0, 0)))
+    result = run_check(path, "arm64")
+    assert result.returncode != 0, "minos 14.0.0 was not rejected (red gate)"
+    assert "14" in result.stderr, result.stderr
