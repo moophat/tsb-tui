@@ -369,7 +369,7 @@ class Commands:
                                      sent=False, locked=True)
                 slot = self._slot(cmd)
                 self._refuse(slot, "screen_locked", locked_why + "; look again before sending")
-        if op in ("new", "attach"):
+        if op in ("new", "attach") and self.d.screen() is not None:
             self._refresh_locks()
         result = await getattr(self, f"op_{op}")(cmd)
         if op in ("read", "snapshot", "new", "attach", "switch", "type", "keys") and lock.check():

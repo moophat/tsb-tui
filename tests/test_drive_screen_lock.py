@@ -752,3 +752,21 @@ async def test_a_new_login_starts_without_the_previous_lock(rig, server, sid, cl
     before = server.unlocks
     assert (await rig.cmd("read", what="screen"))["error"] == "not_attached"
     assert server.unlocks == before
+
+
+@scenario
+async def test_new_and_attach_while_logged_out_send_no_auth_me_and_raise_no_toast(
+        rig, server, sid, clock, path, *rest):
+    # Finding 5: _refresh_locks() fires GET /auth/me on the unauthenticated client,
+    # whose 401 reaches notify_api_error and raises a "Request failed" toast.
+    await rig.cmd("logout")
+    server.me_started.clear()
+    for op, fields in [("new", {"target": _serve.TARGET}), ("attach", {"session": sid})]:
+        answer = await rig.cmd(op, **fields)
+        assert answer.get("error") == "not_logged_in", f"{op}: {answer}"
+        await asyncio.sleep(.1)  # give the async /auth/me call time to reach the server
+        assert not server.me_started.is_set(), \
+            f"{op} sent GET /auth/me while logged out"
+    toasts = [n.message for n in rig.app._notifications._notifications.values()]
+    assert not any("Request failed" in t for t in toasts), \
+        f"toast raised for a logged-out new/attach: {toasts}"
