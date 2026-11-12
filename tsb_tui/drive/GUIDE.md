@@ -6,7 +6,7 @@
 
 ## 1. What you have, and what you do not
 
-- **Your own TSB login,** supplied by whoever runs drive, and no password for that login available to you. You hold no fleet credentials. `new` opens a session on a target only where TSB resolves a credential for your login; otherwise it answers `no_resolving_credential`.
+- **Your own TSB login,** whose password you may know but never print, log, type into a session or forward; you use it only through drive. You hold no fleet credentials. `new` opens a session on a target only where TSB resolves a credential for your login; otherwise it answers `no_resolving_credential`.
 - **Sessions someone lends you.** A person (the owner) opens a session to a router, a server or a k8s node with their own credentials and lets you work in it. You never see their password or key.
 - **The keyboard, only when it is handed to you.** One client types at a time. You start as a viewer, and the owner hands you the keyboard, or you take it from no one when nobody holds it.
 - **The owner's brake.** The owner can take the keyboard back at any moment, even mid-command. From that instant another login’s input is refused. An owner’s own client can take it back by typing, subject to the send gate, or with `take` without typing.
@@ -14,9 +14,9 @@
 
 ## 2. Starting
 
-The send gate is a **guardrail**, not a control. Its deployment precondition is that something other than the agent
-starts drive and hands it the TSB password on a descriptor, and the agent can read neither that password nor a file
-containing it. The `login` command's password path is subject to the same precondition.
+The send gate is a **guardrail**, not a control. It holds only while drive is your one door to TSB: you hand drive the
+TSB password on a descriptor or in an owner-only file and never use it to reach TSB another way. The `login` command's
+password path follows the same rule.
 
 
 ```text

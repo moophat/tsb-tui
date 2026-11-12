@@ -23,14 +23,12 @@ Placeholders used below: `<broker>` (the broker's web address), `<your-login>` (
 - Network reach to `<broker>` over HTTPS. If the broker's certificate is signed by a private authority, you also
   need that authority's PEM file and pass it as `--ca-file <PEM>`.
 - **A TSB login of your own.** Ask the operator for one. Do not share another person's. The audit names who typed.
-- **A way to give the password to `tsb-tui` without you reading it.** This is a rule, not a nicety. `drive`'s
-  send gate (section 5) is a guardrail, not a lock. It only means something if something other than the agent
-  starts `drive` and hands it the password on a file descriptor (a numbered open file, such as `/dev/fd/N`) or
-  from a root-only file. The agent must not be able to read the password or a file that holds it. Never put the
-  password on the command line or in an environment variable: no flag takes one.
-  The operator, or whoever runs the orchestrator, puts the login's password in a root-only file, and `drive`
-  reads it with `--password-file <file>`. For an agent that runs as root this is a guardrail, not a control
-  (GUIDE.md section 2).
+- **A way to give the password to `tsb-tui` without printing it.** This is a rule, not a nicety. You may know your
+  login's password, as a person knows theirs; you never print, log, type into a session or forward it, and you use it
+  only through `drive`. Hand it to `drive` on a file descriptor (a numbered open file, such as `/dev/fd/N`) or in an
+  owner-only file, fetched straight into that descriptor or file, never through your own output. Never put the
+  password on the command line, in an environment variable or in a command: no flag or command takes one. Protecting
+  that file is yours, as any credential you hold is. `drive`'s send gate (section 5) is a guardrail, not a lock.
 - Know that **every byte you type is recorded**, passwords included. Never type a secret you were not given
   for that purpose.
 
@@ -156,7 +154,7 @@ use `--config`. The TUI never writes `config.toml`. Themes and schemes remain un
 (`themes/` and `schemes/`), and saved themes and other state remain in the OS state directory, even with a config
 beside the program. Moving that program folder therefore carries its broker address, not per-user state.
 
-The password arrives on a descriptor that the launcher opened. The launcher is the thing that is not the agent:
+The password arrives on a descriptor or an owner-only file. Whoever starts drive, the agent included, fetches it straight into that descriptor or file, never through its own output:
 
     tsb-tui drive --profile drive --broker https://<broker> --user <your-login> \
       --password-file /dev/fd/N --set size.auto_request=true
