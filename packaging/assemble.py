@@ -174,7 +174,8 @@ def assemble(engine=None, target='windows-x64'):
         (bundle / 'README.txt').write_text(
             ('Extract this entire folder, then open Windows Terminal here.\n' if windows else
              'Extract this entire folder, then open Terminal here.\n') +
-            'Run: tsb-tui --broker https://<host>\n'
+            ('Run: tsb-tui --broker https://<host>\n' if windows else
+             'Run: ./tsb-tui --broker https://<host>\n') +
             'To type tsb-tui from any folder, put this folder on your PATH.\n' +
             ('Check the engine and TUI versions: tsb-tui-check.cmd\n' if windows else
              'Check the engine and TUI versions: ./tsb-tui-check\n'

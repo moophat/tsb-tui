@@ -3,7 +3,17 @@ set -eu
 launcher=$0
 case "$launcher" in
     */*) ;;
-    *) launcher=$(command -v "$launcher") ;;
+    *)
+        if [ -f "./$launcher" ]; then
+            launcher=./$launcher
+        else
+            launcher=$(command -v "$launcher" || true)
+            if [ -z "$launcher" ]; then
+                echo 'Run ./tsb-tui-check from the unzipped folder.' >&2
+                exit 1
+            fi
+        fi
+        ;;
 esac
 while :; do
     folder=$(CDPATH= cd -P -- "$(dirname -- "$launcher")" && pwd)

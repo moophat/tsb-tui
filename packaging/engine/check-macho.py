@@ -6,15 +6,15 @@ import sys
 from pathlib import Path
 
 
-def check(path, expected):
+def check(path, expected, executable=False):
     d = Path(path).read_bytes()
     if len(d) < 32 or d[:4] != b"\xcf\xfa\xed\xfe":
         raise ValueError("expected 64-bit Mach-O (little-endian)")
     _magic, cpu, sub, filetype, ncmds, sz, _flags, _res = struct.unpack_from(
         "<IiiIIIII", d, 0
     )
-    if filetype != 6:
-        raise ValueError("file is not MH_DYLIB")
+    if filetype != (2 if executable else 6):
+        raise ValueError("file is not MH_EXECUTE" if executable else "file is not MH_DYLIB")
     want = {"arm64": 0x100000C, "x86_64": 0x1000007}[expected]
     if cpu != want:
         raise ValueError(f"expected cputype {expected}, got {cpu:#x}")
@@ -22,6 +22,9 @@ def check(path, expected):
     subtype_want = {"arm64": 0, "x86_64": 3}[expected]
     if subtype_base != subtype_want:
         raise ValueError(f"unexpected CPU subtype {sub:#x} for {expected}")
+    if executable:
+        print(f"Mach-O executable {expected}: cputype {cpu:#010x}")
+        return
     if 32 + sz > len(d):
         raise ValueError("truncated load command region")
     # All command kinds that introduce a dylib dependency.
@@ -116,9 +119,10 @@ def check(path, expected):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3 or sys.argv[2] not in ("arm64", "x86_64"):
-        sys.exit("usage: check-macho.py PATH arm64|x86_64")
+    if (len(sys.argv) not in (3, 4) or sys.argv[2] not in ("arm64", "x86_64")
+            or (len(sys.argv) == 4 and sys.argv[3] != "--executable")):
+        sys.exit("usage: check-macho.py PATH arm64|x86_64 [--executable]")
     try:
-        check(sys.argv[1], sys.argv[2])
+        check(sys.argv[1], sys.argv[2], executable=len(sys.argv) == 4)
     except (OSError, ValueError) as e:
         sys.exit(str(e))

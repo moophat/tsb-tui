@@ -88,13 +88,15 @@ jobs:
       - name: Packaging tests
         run: |
           set -euo pipefail
-          # The built-zip check needs a full release build, which the release job runs; everything else runs here.
+          # PR CI fetches no packaging inputs; the release job builds the zips from the pinned inputs
+          # and checks them before publishing. Both built-zip checks run there.
           docker run --rm \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e PYTEST_ADDOPTS='-rsx --runxfail' \
             ci-tui-py python -m pytest packaging/tests -p no:cacheprovider \
-              --deselect packaging/tests/test_packaging.py::test_built_zip 2>&1 | tee "$RUNNER_TEMP/tsb-tui-packaging.log"
+              --deselect packaging/tests/test_packaging.py::test_built_zip \
+              --deselect packaging/tests/test_macos_build.py 2>&1 | tee "$RUNNER_TEMP/tsb-tui-packaging.log"
           if grep -E '^SKIPPED|[0-9]+ (skipped|xfailed|xpassed)' "$RUNNER_TEMP/tsb-tui-packaging.log"; then
             echo '::error::the packaging tests must run without skips'
             exit 1

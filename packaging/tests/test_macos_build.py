@@ -46,7 +46,7 @@ def test_macos_zip_end_to_end(target, monkeypatch, tmp_path):
     print(f'{target}: {archive.stat().st_size} bytes; ' + archive.with_suffix('.zip.sha256').read_text())
 
 
-def check_zip(archive, target):
+def check_zip(archive, target, scratch=None):
     import hashlib
     import struct
     import zipfile
@@ -73,7 +73,13 @@ def check_zip(archive, target):
         cpu = struct.unpack_from('<I', z.read(root + 'python/bin/python3.12'), 4)[0]
         assert cpu == {'macos-arm64': 0x100000c, 'macos-x64': 0x1000007}[target]
         print(f'{target} python/bin/python3.12 cputype: {cpu:#010x}')
-        engine = archive.parent / (target + '.dylib')
+        for name in ['python3', 'python3.12']:
+            interpreter = (scratch or archive.parent) / (target + '-' + name)
+            interpreter.write_bytes(z.read(root + 'python/bin/' + name))
+            subprocess.run([sys.executable, '-I', str(HERE / 'engine/check-macho.py'),
+                            str(interpreter), 'arm64' if target == 'macos-arm64' else 'x86_64',
+                            '--executable'], check=True)
+        engine = (scratch or archive.parent) / (target + '.dylib')
         engine.write_bytes(z.read(root + 'lib/engine/libghostty-vt.dylib'))
         subprocess.run([sys.executable, '-I', str(HERE / 'engine/check-macho.py'), str(engine),
                         'arm64' if target == 'macos-arm64' else 'x86_64'], check=True)
@@ -81,7 +87,7 @@ def check_zip(archive, target):
 
 
 @pytest.mark.parametrize('launcher', ['tsb-tui', 'tsb-tui-check'])
-@pytest.mark.parametrize('launch', ['direct', 'symlink', 'spaces'])
+@pytest.mark.parametrize('launch', ['direct', 'symlink', 'spaces', 'shell', 'shell-decoy'])
 def test_posix_launcher(tmp_path, launcher, launch):
     import os
     import shutil
@@ -103,7 +109,18 @@ def test_posix_launcher(tmp_path, launcher, launch):
     arguments = ['a b', '', '"quoted"', '$literal', 'a\nb', '*', '--flag']
     env = {**os.environ, 'PYTHONNOUSERSITE': 'wrong', 'PYTHONPATH': 'wrong',
            'TSB_TUI_HOME': 'wrong', 'TSB_TUI_TERM_LIBRARY': 'wrong'}
-    result = subprocess.run([str(entry), *arguments], env=env, cwd=tmp_path, check=True, capture_output=True)
+    command = [str(entry), *arguments]
+    cwd = tmp_path
+    if launch in {'shell', 'shell-decoy'}:
+        cwd = folder
+        command = ['sh', launcher, *arguments]
+        if launch == 'shell-decoy':
+            decoy = tmp_path / 'decoy'
+            decoy.mkdir()
+            (decoy / launcher).write_text('#!/bin/sh\nexit 99\n')
+            (decoy / launcher).chmod(0o755)
+            env['PATH'] = str(decoy) + ':' + env['PATH']
+    result = subprocess.run(command, env=env, cwd=cwd, check=True, capture_output=True)
     values = result.stdout.decode().split('\0')[:-1]
     assert values[:5] == ['1', str(folder / 'lib/site'), str(folder / 'lib/engine/libghostty-vt.dylib'),
                           str(folder), str(folder / 'lib/engine') + ':' + env['PATH']]
@@ -114,3 +131,52 @@ def test_posix_launcher(tmp_path, launcher, launch):
         assert values[5] == '-c'
         command = (HERE / 'launchers/tsb-tui-check.cmd').read_text().split(' -c "', 1)[1].split('"', 1)[0]
         assert values[6] == command
+
+@pytest.mark.parametrize('launcher', ['tsb-tui', 'tsb-tui-check'])
+def test_posix_launcher_bare_name_from_bundle(tmp_path, launcher):
+    import shutil
+    folder = tmp_path / 'bundle'
+    (folder / 'python/bin').mkdir(parents=True)
+    for name in ['tsb-tui', 'tsb-tui-check']:
+        shutil.copy2(HERE / 'launchers' / name, folder / name)
+    stub = folder / 'python/bin/python3'
+    stub.write_text('#!/bin/sh\necho invoked\n')
+    stub.chmod(0o755)
+    result = subprocess.run(['sh', launcher], cwd=folder, env={'PATH': '/usr/bin:/bin'}, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+@pytest.mark.parametrize('launcher', ['tsb-tui', 'tsb-tui-check'])
+def test_posix_launcher_missing_name_explains_run_command(tmp_path, launcher):
+    result = subprocess.run(['sh', '-c', (HERE / 'launchers' / launcher).read_text(), launcher], cwd=tmp_path, env={'PATH': '/usr/bin:/bin'}, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert f'./{launcher} from the unzipped folder.' in result.stderr
+
+
+@pytest.mark.parametrize('target', ['macos-arm64', 'macos-x64'])
+def test_macos_readme_commands(target, tmp_path, monkeypatch):
+    import zipfile
+    archive = build_cached(target, tmp_path, monkeypatch)
+    with zipfile.ZipFile(archive) as z:
+        readme = z.read(archive.stem + '/README.txt').decode()
+    assert 'Run: ./tsb-tui --broker https://<host>' in readme
+    assert 'Check the engine and TUI versions: ./tsb-tui-check' in readme
+
+@pytest.mark.parametrize('target', ['macos-arm64', 'macos-x64'])
+def test_staged_macos_zips(target, tmp_path):
+    archives = sorted((HERE / 'out').glob(f'tsb-tui-*-{target}.zip'))
+    assert archives, f'missing staged {target} zip'
+    for archive in archives:
+        check_zip(archive, target, tmp_path)
+
+@pytest.mark.parametrize('arch,cpu', [('arm64', 0x100000c), ('x86_64', 0x1000007)])
+def test_macho_interpreter_architecture(tmp_path, arch, cpu):
+    import struct
+    interpreter = tmp_path / 'python'
+    interpreter.write_bytes(struct.pack('<IIIIIIII', 0xfeedfacf, cpu, 0 if arch == 'arm64' else 3, 2, 0, 0, 0, 0))
+    command = [sys.executable, str(HERE / 'engine/check-macho.py'), str(interpreter), arch, '--executable']
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    wrong = 'x86_64' if arch == 'arm64' else 'arm64'
+    result = subprocess.run([*command[:3], wrong, '--executable'], capture_output=True, text=True)
+    assert result.returncode != 0
+    assert 'cputype' in result.stderr

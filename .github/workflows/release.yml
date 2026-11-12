@@ -134,11 +134,22 @@ jobs:
           set -euo pipefail
           for target in macos-arm64 macos-x64; do
             docker run --rm -i \
-              --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro \
+              --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
               -v "$GITHUB_WORKSPACE:/work" -w /work -e RELEASE_TAG \
               ci-tui-py bash -euo pipefail -c "packaging/build-zips.sh $target"
             cp packaging/out/tsb-tui-${RELEASE_TAG#v}-$target.zip packaging/out/tsb-tui-${RELEASE_TAG#v}-$target.zip.sha256 "$RUNNER_TEMP/"
           done
+
+      - name: Test the macOS zips
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/maczips"
+          cp "$RUNNER_TEMP"/tsb-tui-*-macos-*.zip "$RUNNER_TEMP"/tsb-tui-*-macos-*.zip.sha256 "$RUNNER_TEMP/maczips/"
+          docker run --rm \
+            --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -v "$RUNNER_TEMP/maczips:/work/packaging/out:ro" \
+            ci-tui-py python -m pytest packaging/tests/test_macos_build.py::test_staged_macos_zips -p no:cacheprovider
 
       - name: Stamp the version and build the release assets offline
         run: |
