@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import contextlib
 import json
+import math
 import sys
 import threading
 import time
@@ -232,7 +233,7 @@ class Driver:
         while True:
             pending = _Pending(slot.session_id, check, loop.create_future(),
                                settled_in=wait.settled_in if until.settled_ms is not None else None)
-            remaining_ms = max(0, int((deadline - loop.time()) * 1000))
+            remaining_ms = max(0, math.ceil((deadline - loop.time()) * 1000))
             done = await self._await(pending, remaining_ms, lambda: waits.Done(
                 False, "timeout", f"nothing matched within {timeout_ms} ms"))
             if not self.screen_lock.check():
