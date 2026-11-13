@@ -15,11 +15,13 @@ Map acts on every marked target; the selected row is used only when nothing is m
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 import pytest
 from test_vault_unlock import _answer, _prompt
 from textual.widgets import Button, DataTable, Input, Select
+from tsb_contract_client import ApiError
 from tsbc import _serve
 from vault_support import CHAIN, RECORDING_LINE, VaultServe, flat
 from workspace_support import fixture_login
@@ -29,6 +31,24 @@ from tsb_tui.screens.credentials import CredentialsScreen, MapScreen, SaveLoginS
 from tsb_tui.screens.fleet_view import TAB_TARGETS
 
 HOSTILE_LABEL = "[bold red]lab[/bold red] \x1b[31mred\x1b[0m [link=https://x.invalid]click[/link]"
+
+
+class _SlowFirstLoad(VaultServe):
+    """The first `GET /vault/credentials` blocks on an event, so a test can do work while that load is still running.
+    Every later request answers as the server normally does. `seen` fires when the first request arrives."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.block = threading.Event()
+        self.seen = threading.Event()
+        self._first = False
+
+    def vault_http(self, method, path, headers, body, query, user):  # type: ignore[no-untyped-def, override]
+        if (method, path) == ("GET", "/vault/credentials") and not self._first:
+            self._first = True
+            self.seen.set()
+            self.block.wait()
+        return super().vault_http(method, path, headers, body, query, user)
 
 
 async def _open(app, pilot, wait_until) -> CredentialsScreen:
@@ -64,6 +84,115 @@ def test_the_list_shows_references_and_kinds_and_labels_only_while_unlocked(serv
             screen.query_one("#cred-refresh", Button).press()
             # The list re-renders after the unlock; read the label once it is on screen.
             await wait_until(pilot, lambda: "core switches" in screen_text(app), "the label once unlocked", 30.0)
+
+    asyncio.run(check())
+
+
+def test_unlocked_label_is_rendered_before_idle(serve, wait_until, monkeypatch) -> None:
+    """A refresh must size the new label before DataTable receives an Idle event."""
+    from textual import events
+
+    async def check() -> None:
+        serve_app, url = serve(VaultServe())
+        serve_app.hold_credential(_serve.USER, "core-sw", kind="password", label="core switches")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(app, pilot, wait_until)
+            table = screen.query_one("#credentials-table", DataTable)
+            await pilot.pause()
+            assert "core-sw" in table.render_line(1).text
+            assert table.ordered_columns[2].get_render_width(table) - 2 * table.cell_padding == 5
+            serve_app.unlocked.update(serve_app.logins)
+            # Deliver the real client's unlocked answer synchronously at the refresh boundary.
+            # No await from action_refresh through the first render: no Idle can intervene.
+            entries = await asyncio.to_thread(app.client.credentials)
+            monkeypatch.setattr(app, "call_api", lambda _fn, *, on_done, on_error: on_done(entries))
+            screen.action_refresh()
+            assert screen.loaded
+            before = (table.ordered_columns[2].get_render_width(table) - 2 * table.cell_padding, table.render_line(1).text)
+            await table._on_idle(events.Idle())
+            after = (table.ordered_columns[2].get_render_width(table) - 2 * table.cell_padding, table.render_line(1).text)
+            print(f"before Idle: {before!r}\nafter one Idle: {after!r}")
+            assert "core switches" in before[1], "the rebuilt label must fit before Idle"
+
+    asyncio.run(check())
+
+
+def test_a_refresh_press_while_a_load_is_running_is_not_overwritten_by_the_stale_load(
+        serve, wait_until, screen_text) -> None:
+    """#19 reproduction of the product defect: the mount's first list load is held open, so the refresh press lands
+    while it is still running. The press starts a second load, which answers with the label; when the held first load
+    then finishes it rebuilds the table from the older, locked data and erases the label. The newest load's answer must
+    win — a stale load that arrives later is dropped — so this asserts the label is still on screen after the stale
+    load lands, which fails on the current code."""
+
+    async def check() -> None:
+        _serve_app, url = serve(VaultServe())
+        app = TsbTuiApp(url)
+        # The server holds no unlock, so a load answers the locked list; once unlocked it answers the label. The first
+        # load is held on `block`, so the refresh press lands while it is running and its answer arrives after.
+        locked = [{"reference": "core-sw", "kind": "password"}, {"reference": "lab-key", "kind": "key"}]
+        unlocked = [{"reference": "core-sw", "kind": "password", "label": "core switches"},
+                    {"reference": "lab-key", "kind": "key"}]
+        block = threading.Event()
+        seen = threading.Event()
+        calls = []
+
+        def credentials():
+            calls.append(len(calls) + 1)
+            if len(calls) == 1:
+                seen.set()
+                block.wait()
+                return locked
+            return unlocked
+        app.client.credentials = credentials
+        async with app.run_test(size=(120, 40)) as pilot:
+            await fixture_login(app, pilot)
+            await app.workspace().run_action_id("credentials")
+            # The screen is mounted and the first load is in flight (held on `block`); do NOT wait for loaded.
+            await wait_until(pilot, lambda: isinstance(app.screen, CredentialsScreen)
+                             and bool(app.screen.query("#cred-refresh")), "the mounted credentials screen", 30.0)
+            await wait_until(pilot, seen.is_set, "the first load to be running", 30.0)
+            app.screen.query_one("#cred-refresh", Button).press()
+            # The press starts a second load; it answers at once with the label. Read the label while it is on screen.
+            await wait_until(pilot, lambda: "core switches" in screen_text(app), "the label from the refresh", 30.0)
+            # Release the held first load. It finishes after the refresh and rebuilds the table from the older data.
+            block.set()
+            # Wait, bounded, for the released first load's worker to finish and its callback to run on the UI thread
+            # (the same `_run_blocking` pattern as the torn-down-table test): a fixed pause can assert before the stale
+            # answer lands under CI load and pass even when the bug is present.
+            await wait_until(pilot, lambda: not any(w.name == "_run_blocking" and not w.is_finished
+                                                    for w in app.workers), "the first load's worker to finish", 30.0)
+            assert "core switches" in screen_text(app), \
+                "the newest refresh's label must survive a stale load that finishes after it"
+
+    asyncio.run(check())
+
+
+def test_a_load_answer_after_the_table_is_gone_is_dropped_without_an_exception(serve, wait_until) -> None:
+    """#19 second race: a list load is held at the server while the credentials screen's table is removed (the screen
+    is replaced). When the held load's answer arrives, the table is gone: the answer must be dropped — success or
+    failure — with no exception and no worker failure. On the current file the answer raises `NoMatches` on the
+    torn-down table, which fails the worker and sets `app._exception`; this asserts that does not happen."""
+
+    async def check() -> None:
+        serve_app, url = serve(_SlowFirstLoad())
+        serve_app.hold_credential(_serve.USER, "core-sw", kind="password", label="core switches")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await fixture_login(app, pilot)
+            await app.workspace().run_action_id("credentials")
+            # The screen is mounted and the first load is in flight (held at the server); do NOT wait for loaded.
+            await wait_until(pilot, lambda: isinstance(app.screen, CredentialsScreen)
+                             and bool(app.screen.query("#cred-refresh")), "the mounted credentials screen", 30.0)
+            await wait_until(pilot, serve_app.seen.is_set, "the server to be holding the first load", 30.0)
+            # Replace the screen's table while that load is held: the answer will arrive with the table gone.
+            app.screen.query_one("#credentials-table", DataTable).remove()
+            serve_app.block.set()
+            # The held load's answer arrives on the torn-down table. It must be dropped, not raised.
+            await wait_until(pilot, lambda: not any(w.name == "_run_blocking" and not w.is_finished
+                                                    for w in app.workers), "the api worker to finish", 30.0)
+            assert app._exception is None, f"a load on a torn-down table raised: {app._exception!r}"
 
     asyncio.run(check())
 
@@ -299,3 +428,33 @@ def test_read_key_file_without_o_noctty_or_o_nonblock(monkeypatch: pytest.Monkey
     assert non_reg is None
     assert err == "That path is not a regular file."
 
+
+
+def test_a_current_generation_401_after_the_table_is_gone_still_routes_to_login(
+        serve, wait_until) -> None:
+    """Qodo finding on PR #68 (fix/credentials-unlock-wait): `_failed` checked for a live table before checking
+    for a 401, so a list request that returned 401 after the table was torn down skipped `notify_api_error()` and
+    silently missed the session-expiry redirect. Fix: a current-generation 401 goes to `notify_api_error` before the
+    table check; an older generation's 401 is still dropped first by the generation guard."""
+
+    async def check() -> None:
+        _serve_app, url = serve(VaultServe())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await fixture_login(app, pilot)
+            await app.workspace().run_action_id("credentials")
+            await wait_until(pilot, lambda: isinstance(app.screen, CredentialsScreen)
+                             and bool(app.screen.query("#credentials-table")), "the mounted credentials screen", 30.0)
+            screen = app.screen
+            generation = screen._generation
+            # Tear the table down: simulates the screen being replaced while a list load was in flight.
+            screen.query_one("#credentials-table", DataTable).remove()
+            await pilot.pause()   # let Textual process the removal before the pre-condition check
+            assert screen._live_table() is None, "pre-condition: the table is gone"
+            # A current-generation 401 arrives after the table is gone.
+            screen._failed(generation, ApiError(401, "unauthenticated", "login gone"))
+            # `notify_api_error` -> `_to_login` must have been called: the workspace is popped.
+            await wait_until(pilot, lambda: app.workspace() is None,
+                             "the workspace to be gone (login redirect from the 401)", 10.0)
+
+    asyncio.run(check())
