@@ -159,7 +159,9 @@ def test_release_checksums_cover_uploads(tmp_path):
     patterns = set(re.findall(r'dist/([\w.*-]+)', publish))
     names = ['tsb_tui-1-py3-none-any.whl', 'tsb_contract-1-py3-none-any.whl',
              'libghostty-vt-linux-x86_64.tar.gz', 'install.sh', 'install.ps1',
-             'tsb-tui-1-windows-x64.zip', 'tsb-tui-1-windows-x64.zip.sha256']
+             'tsb-tui-1-windows-x64.zip', 'tsb-tui-1-windows-x64.zip.sha256',
+             'tsb-tui-1-macos-arm64.zip', 'tsb-tui-1-macos-arm64.zip.sha256',
+             'tsb-tui-1-macos-x64.zip', 'tsb-tui-1-macos-x64.zip.sha256']
     assert all(any(fnmatch.fnmatch(n, p) for p in patterns) for n in names)
     for name in names:
         (tmp_path / name).write_text(name)
@@ -319,3 +321,41 @@ def test_windows_loopback_redirect_refused(release, asset):
     assert 'redirect' in result.stderr.lower()
     assert '/latest.json' in result.stderr
     assert '/redirect-target' not in release[5]
+
+
+def test_release_checks_macos_before_publish():
+    workflow = (ROOT / '.github/workflows/release.yml').read_text()
+    steps = workflow.split('      - name: ')
+    check = next(s for s in steps if s.startswith('Test the macOS zips'))
+    assert workflow.index('Test the macOS zips') < workflow.index('Publish the release assets and checksums')
+    assert 'test_macos_build.py::test_staged_macos_zips' in check
+    assert 'macos' in check and 'packaging/out' in check
+
+
+def test_release_containers_have_home_override():
+    workflow = (ROOT / '.github/workflows/release.yml').read_text()
+    for step in workflow.split('      - name: '):
+        if 'ci-tui-py' in step and 'docker run' in step:
+            for container in step.split('docker run')[1:]:
+                command = container.split('ci-tui-py', 1)[0]
+                assert '-e HOME=/tmp/home' in command, step.splitlines()[0]
+
+
+def test_pr_macos_build_deselection():
+    workflow = (ROOT / '.github/workflows/test.yml').read_text()
+    section = workflow.split('      - name: Packaging tests', 1)[1].split('      - name: No test skips', 1)[0]
+    assert '--deselect packaging/tests/test_packaging.py::test_built_zip' in section
+    for case in (
+        'packaging/tests/test_macos_build.py::test_macos_zip_end_to_end[macos-arm64]',
+        'packaging/tests/test_macos_build.py::test_macos_zip_end_to_end[macos-x64]',
+        'packaging/tests/test_macos_build.py::test_macos_readme_commands[macos-arm64]',
+        'packaging/tests/test_macos_build.py::test_macos_readme_commands[macos-x64]',
+        'packaging/tests/test_macos_build.py::test_staged_macos_zips[macos-arm64]',
+        'packaging/tests/test_macos_build.py::test_staged_macos_zips[macos-x64]',
+    ):
+        assert f'--deselect "{case}"' in section, case
+    for not_deselected in ('test_posix_launcher', 'test_macho_interpreter_architecture'):
+        assert not any(not_deselected in line for line in section.splitlines() if '--deselect' in line), not_deselected
+    assert "grep -E '^SKIPPED" in section
+    assert 'release job builds the zips from the pinned inputs' in section
+    assert 'checks them before publishing' in section

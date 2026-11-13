@@ -18,6 +18,7 @@ TUI = "tsb_tui-1.2.3-py3-none-any.whl"
 CONTRACT = "tsb_contract-0.12.1-py3-none-any.whl"
 ENGINE = "libghostty-vt-linux-x86_64.tar.gz"
 WINDOWS_ZIP = "tsb-tui-1.2.3-windows-x64.zip"
+MACOS_ZIPS = ["tsb-tui-1.2.3-macos-arm64.zip", "tsb-tui-1.2.3-macos-x64.zip"]
 PAYLOADS = [TUI, CONTRACT, ENGINE, "install.sh", "install.ps1"]
 
 
@@ -294,6 +295,13 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
     zip_digest = hashlib.sha256(zip_bytes).hexdigest()
     zip_sha_line = f"{zip_digest}  {WINDOWS_ZIP}"
     (winzip / f"{WINDOWS_ZIP}.sha256").write_text(f"{zip_sha_line}\n")
+    for name in MACOS_ZIPS:
+        data = f"{name} test double".encode()
+        (runner_temp / name).write_bytes(data)
+        digest = hashlib.sha256(data).hexdigest()
+        (runner_temp / f"{name}.sha256").write_text(f"{digest}  {name}\n")
+    zip_assets = {name for archive in [WINDOWS_ZIP, *MACOS_ZIPS]
+                  for name in (archive, archive + ".sha256")}
     monkeypatch.setenv("RUNNER_TEMP", str(runner_temp))
     earlier_sums = (dist / "SHA256SUMS").read_text().splitlines()
 
@@ -304,8 +312,13 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
     assert result.returncode == 0, result.stdout + result.stderr
     assert (dist / WINDOWS_ZIP).is_file()
     assert (dist / f"{WINDOWS_ZIP}.sha256").is_file()
-    assert {p.name for p in dist.iterdir()} == set(PAYLOADS) | {WINDOWS_ZIP, WINDOWS_ZIP + ".sha256", "SHA256SUMS"}
+    assert {p.name for p in dist.iterdir()} == set(PAYLOADS) | zip_assets | {"SHA256SUMS"}
+    for name in zip_assets:
+        assert (dist / name).is_file()
+    macos_order = [*sorted(MACOS_ZIPS), *(name + ".sha256" for name in sorted(MACOS_ZIPS))]
     assert (dist / "SHA256SUMS").read_text().splitlines() == earlier_sums + [
+        f"{hashlib.sha256((dist / name).read_bytes()).hexdigest()}  {name}" for name in macos_order
+    ] + [
         zip_sha_line,
         f"{hashlib.sha256((dist / (WINDOWS_ZIP + '.sha256')).read_bytes()).hexdigest()}  {WINDOWS_ZIP}.sha256",
     ]
@@ -331,4 +344,4 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
     calls = [json.loads(line) for line in (tmp_path / "calls.jsonl").read_text().splitlines()]
     assert len(calls) == 1
     assert calls[0][1] == ("upload" if existing == "yes" else "create")
-    assert {Path(arg).name for arg in calls[0] if arg.startswith("dist/")} == set(PAYLOADS) | {WINDOWS_ZIP, WINDOWS_ZIP + ".sha256", "SHA256SUMS"}
+    assert {Path(arg).name for arg in calls[0] if arg.startswith("dist/")} == set(PAYLOADS) | zip_assets | {"SHA256SUMS"}

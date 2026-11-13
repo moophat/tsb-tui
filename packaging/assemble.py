@@ -1,4 +1,4 @@
-"""Assemble the Windows x64 distribution without executing target code."""
+"""Assemble target distributions without executing target code."""
 import argparse
 import hashlib
 import os
@@ -67,7 +67,7 @@ def notices(site, engine):
     return '\n'.join(parts)
 
 
-def assemble(engine):
+def assemble(engine=None, target='windows-x64'):
     run('bash', 'tools/contract-pin.sh', 'check', cwd=ROOT)
     tracked = subprocess.check_output(
         ['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, text=True)
@@ -77,7 +77,10 @@ def assemble(engine):
         ['git', 'ls-files', '--others', '--', 'tsb_tui', ':(exclude)**/__pycache__/**', ':(exclude)**/*.pyc'], cwd=ROOT, text=True)
     if untracked:
         raise ValueError(f'untracked files under tsb_tui: {untracked.rstrip()}')
-    rows = verify(HERE / 'inputs.lock', HERE / 'cache', fetch=True)
+    rows = verify(HERE / 'inputs.lock', HERE / 'cache', fetch=True, target=target)
+    platform = {'windows-x64': 'win_amd64', 'macos-arm64': 'macosx_11_0_arm64',
+                'macos-x64': 'macosx_10_15_x86_64'}[target]
+    windows = target == 'windows-x64'
     runtimes = [row for row in rows if row[1] == 'python']
     if len(runtimes) != 1:
         raise ValueError('inputs.lock must name exactly one Python runtime')
@@ -94,12 +97,13 @@ def assemble(engine):
     out.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='assemble-', dir=HERE / 'cache') as temp:
         work = Path(temp)
-        bundle = work / f'tsb-tui-{version}-windows-x64'
+        bundle = work / f'tsb-tui-{version}-{target}'
         bundle.mkdir()
         with tarfile.open(HERE / 'cache' / runtimes[0][3]) as archive:
             archive.extractall(bundle, filter='data')
-        if not (bundle / 'python' / 'python.exe').is_file():
-            raise ValueError('Python archive does not contain python/python.exe')
+        interpreter = 'python/python.exe' if windows else 'python/bin/python3.12'
+        if not (bundle / interpreter).is_file():
+            raise ValueError(f'Python archive does not contain {interpreter}')
         wheels = work / 'wheels'
         wheels.mkdir()
         for _, kind, url, digest, _ in rows:
@@ -108,14 +112,14 @@ def assemble(engine):
                 shutil.copyfile(HERE / 'cache' / digest, wheels / name)
         # Offline hash-required download also proves the pinned dependency closure.
         run(sys.executable, '-m', 'pip', 'download', '--no-index', '--find-links', wheels,
-            '--dest', work / 'checked-wheels', '--platform', 'win_amd64', '--python-version', '3.12',
+            '--dest', work / 'checked-wheels', '--platform', platform, '--python-version', '3.12',
             '--implementation', 'cp', '--abi', 'cp312', '--only-binary=:all:', '--require-hashes',
-            '-r', HERE / 'requirements-windows-x64.txt')
+            '-r', HERE / f'requirements-{target}.txt')
         site = bundle / 'lib' / 'site'
         install = [sys.executable, '-m', 'pip', 'install', '--no-deps', '--no-index', '--no-compile',
-                   '--find-links', wheels, '--target', site, '--platform', 'win_amd64',
+                   '--find-links', wheels, '--target', site, '--platform', platform,
                    '--python-version', '3.12', '--implementation', 'cp', '--abi', 'cp312', '--only-binary=:all:']
-        run(*install, '--require-hashes', '-r', HERE / 'requirements-windows-x64.txt')
+        run(*install, '--require-hashes', '-r', HERE / f'requirements-{target}.txt')
         source = work / 'source'
         source.mkdir()
         shutil.copytree(ROOT / 'tsb_tui', source / 'tsb_tui', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
@@ -141,27 +145,43 @@ def assemble(engine):
         for name, relative in [('tsb_contract_client', 'client/tsb_contract_client'), ('tsbc', 'tsbc')]:
             shutil.copytree(ROOT / 'program' / 'contract' / relative, site / name,
                             ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-        if engine.is_dir():
-            engine_dir = engine
+        if windows:
+            if engine.is_dir():
+                engine_dir = engine
+            else:
+                engine_dir = work / 'engine-input'
+                engine_dir.mkdir()
+                with tarfile.open(engine) as archive:
+                    archive.extractall(engine_dir, filter='data')
+            copy_engine(engine_dir, bundle / 'lib' / 'engine', bundle / 'licenses' / 'engine')
+            launcher = HERE / 'cache' / 'tsb-tui.exe'
+            if not launcher.is_file():
+                raise ValueError(f'{launcher} is missing; run packaging/build-launcher.sh first')
+            shutil.copyfile(launcher, bundle / 'tsb-tui.exe')
+            launchers = ['tsb-tui.cmd', 'tsb-tui-check.cmd']
         else:
-            engine_dir = work / 'engine-input'
-            engine_dir.mkdir()
-            with tarfile.open(engine) as archive:
-                archive.extractall(engine_dir, filter='data')
-        copy_engine(engine_dir, bundle / 'lib' / 'engine', bundle / 'licenses' / 'engine')
+            engine_dir = HERE / 'engine' / target
+            destination = bundle / 'lib' / 'engine'
+            destination.mkdir(parents=True)
+            shutil.copyfile(engine_dir / 'libghostty-vt.dylib', destination / 'libghostty-vt.dylib')
+            (destination / 'ENGINE').write_text('libghostty-vt.dylib\n')
+            shutil.copytree(engine_dir / 'licenses', bundle / 'licenses' / 'engine')
+            launchers = ['tsb-tui', 'tsb-tui-check']
         (bundle / 'THIRD_PARTY_NOTICES').write_text(notices(site, bundle / 'licenses' / 'engine'))
-        launcher = HERE / 'cache' / 'tsb-tui.exe'
-        if not launcher.is_file():
-            raise ValueError(f'{launcher} is missing; run packaging/build-launcher.sh first')
-        shutil.copyfile(launcher, bundle / 'tsb-tui.exe')
-        for name in ['tsb-tui.cmd', 'tsb-tui-check.cmd']:
+        for name in launchers:
             shutil.copyfile(HERE / 'launchers' / name, bundle / name)
         (bundle / 'VERSION').write_text(version + '\n')
         (bundle / 'README.txt').write_text(
-            'Extract this entire folder, then open Windows Terminal here.\n'
-            'Run: tsb-tui --broker https://<host>\n'
-            'To type tsb-tui from any folder, put this folder on your PATH.\n'
-            'Check the engine and TUI versions: tsb-tui-check.cmd\n')
+            ('Extract this entire folder, then open Windows Terminal here.\n' if windows else
+             'Extract this entire folder, then open Terminal here.\n') +
+            ('Run: tsb-tui --broker https://<host>\n' if windows else
+             'Run: ./tsb-tui --broker https://<host>\n') +
+            'To type tsb-tui from any folder, put this folder on your PATH.\n' +
+            ('Check the engine and TUI versions: tsb-tui-check.cmd\n' if windows else
+             'Check the engine and TUI versions: ./tsb-tui-check\n'
+             'Unsigned and not notarised. For browser downloads, clear quarantine:\n'
+             'xattr -dr com.apple.quarantine <folder>\n'
+             'curl downloads carry no quarantine flag.\n'))
         for path in list(bundle.rglob('__pycache__')):
             shutil.rmtree(path)
         for path in bundle.rglob('*.pyc'):
@@ -170,6 +190,10 @@ def assemble(engine):
             if not path.is_symlink():
                 path.chmod(0o755 if path.is_dir() else 0o644)
             os.utime(path, (epoch, epoch), follow_symlinks=False)
+        if not windows:
+            for path in [*(bundle / 'python' / 'bin').glob('python3*'),
+                         *(bundle / name for name in launchers)]:
+                path.chmod(0o755)
         archive_path = work / (bundle.name + '.zip')
         files = sorted(p.relative_to(work).as_posix() for p in bundle.rglob('*') if p.is_file())
         for path in files:
@@ -186,11 +210,15 @@ def assemble(engine):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('target', choices=['windows-x64'])
-    parser.add_argument('--engine', required=True, type=Path)
+    parser.add_argument('target', choices=['windows-x64', 'macos-arm64', 'macos-x64'])
+    parser.add_argument('--engine', type=Path)
     args = parser.parse_args()
+    if args.target == 'windows-x64' and args.engine is None:
+        parser.error('--engine is required for windows-x64')
+    if args.target != 'windows-x64' and args.engine is not None:
+        parser.error('--engine is only supported for windows-x64')
     try:
-        assemble(args.engine.resolve())
+        assemble(args.engine.resolve() if args.engine else None, args.target)
     except (ValueError, OSError, subprocess.CalledProcessError, tarfile.TarError) as exc:
         parser.exit(1, f'Build failed: {exc}\n')
 
