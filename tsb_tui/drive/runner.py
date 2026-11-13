@@ -181,6 +181,10 @@ class Driver:
     def _evaluate_one(self, pending: _Pending) -> None:
         if pending.future.done():
             return
+        # Read the remaining quiet period before checking: if time crosses the deadline
+        # during the check, a positive period still schedules a wake-up. Other unmet
+        # predicates with an already-quiet screen must wait for model events, not spin.
+        delay = pending.settled_in() if pending.settled_in is not None and pending.settle is None else 0
         try:
             done = pending.check()
         except DriveError as exc:
@@ -189,10 +193,8 @@ class Driver:
         if done is not None:
             pending.future.set_result(done)
             return
-        if pending.settled_in is not None and pending.settle is None:
-            delay = pending.settled_in()
-            if delay > 0:
-                pending.settle = asyncio.get_running_loop().call_later(delay + 0.001, self._settle_due, pending)
+        if delay > 0:
+            pending.settle = asyncio.get_running_loop().call_later(delay + 0.001, self._settle_due, pending)
 
     def _settle_due(self, pending: _Pending) -> None:
         pending.settle = None
