@@ -278,16 +278,32 @@ def test_cache_permissions_and_failed_replace_cleanup(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("previous", [None, "0.10.0"])
-def test_timeout_retains_latest_and_caches_attempt(tmp_path, previous):
+def test_timeout_retains_latest_and_caches_attempt(tmp_path, previous, monkeypatch):
     path = tmp_path / "cache"
+    broker = "https://broker.example"
+    resolved = cfg(tmp_path)
+    url = update.manifest_url(broker, resolved)
+    if previous:
+        path.write_text(json.dumps({"checked_at": 1, "latest": previous, "url": url}))
+    calls = []
+
+    def fake_fetch(_url, *_args, **_kwargs):
+        calls.append(_url)
+
+    monkeypatch.setattr(update, "fetch_latest", fake_fetch)
+    assert update.decide(broker, resolved, "0.4.3", cache_path=path, now=100000) == previous
+    assert json.loads(path.read_text()) == {"checked_at": 100000, "latest": previous, "url": url}
+    assert calls == [url]
+
+
+def test_fetch_latest_returns_none_when_the_answer_comes_after_its_timeout(tmp_path, monkeypatch):
     with manifest_server(delay=5) as (broker, requests):
+        monkeypatch.setattr(update, "TIMEOUT_S", 0.2)
         url = update.manifest_url(broker, cfg(tmp_path))
-        if previous:
-            path.write_text(json.dumps({"checked_at": 1, "latest": previous, "url": url}))
-        started = time.monotonic()
-        assert update.decide(broker, cfg(tmp_path), "0.4.3", cache_path=path, now=100000) == previous
-        assert time.monotonic() - started < 2
-        assert json.loads(path.read_text()) == {"checked_at": 100000, "latest": previous, "url": url}
+        assert update.fetch_latest(url, version="0.4.3") is None
+        deadline = time.monotonic() + 5
+        while not requests and time.monotonic() < deadline:
+            time.sleep(0.01)
         assert len(requests) == 1
 
 
