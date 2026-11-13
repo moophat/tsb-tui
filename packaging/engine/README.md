@@ -43,7 +43,7 @@ and licenses, plus a separate tar SHA256 file.
 
 [`build-engine.sh`](build-engine.sh) codifies that build and the post-build
 license collection performed on the completed run. It accepts a target argument;
-only `x86_64-windows-gnu` is qualified in this cut. As in tsb-core's build script,
+`x86_64-windows-gnu`, `aarch64-macos` and `x86_64-macos` are accepted. As in tsb-core's build script,
 it requires `TSB_VT_BUILD_HOST_ROLE=integration-node`. Set that role only on the
 integration node, never on a workstation. It checks active build/loop services,
 holds a node lock, uses a fresh temporary directory, and removes its container
@@ -108,3 +108,57 @@ The PE checker verifies the DOS/PE headers, machine `0x8664`, and DLL flag witho
 loading the library. Tests verify exact file coverage, SHA256, byte size, target,
 and rejection of damaged or wrong-architecture DLLs. `make lint` currently
 covers the repository's existing gates; run the packaging tests separately.
+
+## macOS engines
+
+The macOS engines use the same Ghostty commit, Zig 0.16.0 archive and digest-pinned
+build image as the Windows cut. Each was built once with one visible CPU using:
+
+```sh
+taskset -c <first-allowed-cpu> zig build -j1 -Demit-lib-vt \
+  -Doptimize=ReleaseFast -Dtarget=aarch64-macos \
+  -Dversion-string=1.3.2-dev+34f3900 --prefix /build/prefix
+
+taskset -c <first-allowed-cpu> zig build -j1 -Demit-lib-vt \
+  -Doptimize=ReleaseFast -Dtarget=x86_64-macos \
+  -Dversion-string=1.3.2-dev+34f3900 --prefix /build/prefix
+```
+
+The arm64 compile took 517 seconds (575 seconds including setup); x86_64 took
+558 seconds (about 618 seconds including setup). Each install contained `lib/libghostty-vt.0.1.0.dylib` (2,195,512 bytes
+for arm64; 2,370,391 bytes for x86_64), `lib/libghostty-vt.a` (11,149,392
+and 12,093,448 bytes respectively), 35 headers, `share/man/.placeholder`
+(34 bytes), and `share/pkgconfig/libghostty-vt-static.pc` (292 bytes) and
+`libghostty-vt.pc` (275 bytes). The symlinks were `libghostty-vt.dylib` to
+`libghostty-vt.0.dylib`, then to `libghostty-vt.0.1.0.dylib`. The tarball stages the dylib as `lib/libghostty-vt.dylib` with headers and
+licenses. The vendored artifact contains `libghostty-vt.dylib` and the
+license tree; no import library is shipped. The archive-member evidence added
+simdutf, highway, wuffs and uucode licenses.
+
+The byte checker reports:
+
+```text
+Mach-O arm64: cputype 0x0100000c, minos 13.0.0, signature present
+LC_ID_DYLIB @rpath/libghostty-vt.dylib
+LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib
+Mach-O x86_64: cputype 0x01000007, minos 13.0.0, signature absent
+LC_ID_DYLIB @rpath/libghostty-vt.dylib
+LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib
+```
+
+A real Mac proof loading through `tsb_tui.term.ghostty.load` and the ABI
+manifest check remains owed.
+
+For each target, launch the script with the systemd example above, using
+`unit=tsb-engine-mac-<target>-<timestamp>` and replacing the final command with
+`bash "$PWD/packaging/engine/build-engine.sh" aarch64-macos` or
+`bash "$PWD/packaging/engine/build-engine.sh" x86_64-macos`. Set the same three
+environment variables shown there. Build one target at a time.
+
+GNU `nm` could not read the Mach-O static archive in the first packaging pass;
+it returned success despite diagnostics, so simdutf licenses were initially
+omitted. The final script uses named archive members as macOS component
+evidence. Both tarballs were corrected after compilation with the existing
+hash-pinned simdutf licenses and INDEX entry; the dylib bytes were unchanged.
+No additional component license beyond Windows was needed; MinGW is excluded.
+Run the engine checks with `python3 -m pytest -q -p no:cacheprovider packaging/engine/tests`; the full `packaging/` suite also requires prebuilt zips and will fail on a clean tree. `make lint` checks static constraints.

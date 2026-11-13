@@ -1,0 +1,6 @@
+ghostty	34f39002c6e3974b54e6a6d400bd83777c5ea558	MIT	https://github.com/ghostty-org/ghostty at 34f39002c6e3974b54e6a6d400bd83777c5ea558
+highway	66486a10623fa0d72fe91260f96c892e41aceb06	Apache-2.0 OR BSD-3-Clause	https://deps.files.ghostty.org/highway-66486a10623fa0d72fe91260f96c892e41aceb06.tar.gz
+simdutf	9.0.0	MIT OR Apache-2.0	pkg/simdutf/vendor in the ghostty tree; licences from github.com/simdutf/simdutf at ca7acbcea967b5dcbab490066e99e3a6e6925539
+uucode	0.2.0	MIT (data: Unicode-3.0; utf-8 decoder: MIT)	https://github.com/jacobsandlund/uucode/archive/9d55524551411b493cca41ca06363625d90aff1e.tar.gz
+wuffs	7411f488fe2e2c205c3d3b3d28638b7356522930	MIT OR Apache-2.0	https://deps.files.ghostty.org/wuffs-7411f488fe2e2c205c3d3b3d28638b7356522930.tar.gz
+zig	0.16.0	MIT (musl parts: MIT; LLVM-derived parts: Apache-2.0 WITH LLVM-exception)	https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz
