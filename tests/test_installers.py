@@ -345,6 +345,17 @@ def test_pr_macos_build_deselection():
     workflow = (ROOT / '.github/workflows/test.yml').read_text()
     section = workflow.split('      - name: Packaging tests', 1)[1].split('      - name: No test skips', 1)[0]
     assert '--deselect packaging/tests/test_packaging.py::test_built_zip' in section
-    assert '--deselect packaging/tests/test_macos_build.py' in section
+    for case in (
+        'packaging/tests/test_macos_build.py::test_macos_zip_end_to_end[macos-arm64]',
+        'packaging/tests/test_macos_build.py::test_macos_zip_end_to_end[macos-x64]',
+        'packaging/tests/test_macos_build.py::test_macos_readme_commands[macos-arm64]',
+        'packaging/tests/test_macos_build.py::test_macos_readme_commands[macos-x64]',
+        'packaging/tests/test_macos_build.py::test_staged_macos_zips[macos-arm64]',
+        'packaging/tests/test_macos_build.py::test_staged_macos_zips[macos-x64]',
+    ):
+        assert f'--deselect "{case}"' in section, case
+    for not_deselected in ('test_posix_launcher', 'test_macho_interpreter_architecture'):
+        assert not any(not_deselected in line for line in section.splitlines() if '--deselect' in line), not_deselected
+    assert "grep -E '^SKIPPED" in section
     assert 'release job builds the zips from the pinned inputs' in section
     assert 'checks them before publishing' in section
