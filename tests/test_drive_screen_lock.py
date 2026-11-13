@@ -770,3 +770,85 @@ async def test_new_and_attach_while_logged_out_send_no_auth_me_and_raise_no_toas
     toasts = [n.message for n in rig.app._notifications._notifications.values()]
     assert not any("Request failed" in t for t in toasts), \
         f"toast raised for a logged-out new/attach: {toasts}"
+
+
+async def held_wait_recheck(rig, server, sid, clock, monkeypatch, predicate, still_matches):
+    from tsb_tui.drive import waits
+    driver = rig.driver
+    slot = driver.screen().front
+    backend = slot.canvas.backend
+    backend.feed(b"\x1b[2J\x1b[Hwaiting")
+    reply = [""]
+    if predicate == "reply":
+        probe = driver.probe(slot)
+        monkeypatch.setattr(probe, "reply_text", lambda: reply[0])
+        monkeypatch.setattr(driver, "probe", lambda _slot: probe)
+    original_await = driver._await
+    original_resume = driver.screen_lock.resume
+    calls = []
+    minted = []
+    original_answer = driver.commands.screen_answer
+    def screen_answer(*args, **kwargs):
+        assert not driver.screen_lock.locked
+        assert server.unlocks == 1
+        answer = original_answer(*args, **kwargs)
+        minted.append(answer)
+        return answer
+    monkeypatch.setattr(driver.commands, "screen_answer", screen_answer)
+    async def held(pending, timeout_ms, on_timeout):
+        calls.append(timeout_ms)
+        if len(calls) == 1:
+            # The wait is held before A arrives; its next evaluation crosses the idle boundary.
+            assert pending.check() is None
+            backend.feed(b"\x1b[2J\x1b[Hmatch-A")
+            reply[0] = "match-A"
+            clock[0] += 11
+            return await original_await(pending, timeout_ms, on_timeout)
+        # Advance only this wait's timeout callback, with no wall-clock sleep.
+        assert pending.check() is None
+        assert 0 < timeout_ms <= calls[0]
+        return on_timeout()
+    monkeypatch.setattr(driver, "_await", held)
+    async def resume():
+        assert driver.screen_lock.locked
+        assert not minted
+        backend.feed(b"\x1b[2J\x1b[H" + (b"match-B" if still_matches else b"gone"))
+        return await original_resume()
+    monkeypatch.setattr(driver.screen_lock, "resume", resume)
+    done, _elapsed = await driver.run_wait(
+        slot, waits.parse_until({predicate: "match-[AB]"}, default_settled_ms=800), 10000)
+    assert server.unlocks == 1
+    if still_matches or predicate == "reply":
+        assert done.ok and done.matched == {predicate: "match-A" if predicate == "reply" else "match-B"}
+        assert len(minted) == 1 and done.extra == minted[0]
+        assert done.extra["look"]
+        assert "match-B" in "\n".join(done.extra["screen"]["lines"])
+    else:
+        assert len(calls) == 2
+        assert not done.ok and done.error == "timeout" and not done.matched
+        assert not minted
+
+
+@scenario
+async def test_held_screen_matches_fresh_value(rig, server, sid, clock, path, record, monkeypatch):
+    await held_wait_recheck(rig, server, sid, clock, monkeypatch, "screen", True)
+
+
+@scenario
+async def test_held_prompt_matches_fresh_value(rig, server, sid, clock, path, record, monkeypatch):
+    await held_wait_recheck(rig, server, sid, clock, monkeypatch, "prompt", True)
+
+
+@scenario
+async def test_held_screen_no_longer_matches_times_out(rig, server, sid, clock, path, record, monkeypatch):
+    await held_wait_recheck(rig, server, sid, clock, monkeypatch, "screen", False)
+
+
+@scenario
+async def test_held_prompt_no_longer_matches_times_out(rig, server, sid, clock, path, record, monkeypatch):
+    await held_wait_recheck(rig, server, sid, clock, monkeypatch, "prompt", False)
+
+
+@scenario
+async def test_held_reply_history_answers_with_post_recheck_look(rig, server, sid, clock, path, record, monkeypatch):
+    await held_wait_recheck(rig, server, sid, clock, monkeypatch, "reply", True)
