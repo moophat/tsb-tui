@@ -44,6 +44,7 @@ from ..widgets.canvas import Canvas
 from . import waits
 from .commands import Commands, DriveError, SlotProbe, parse_size, read_password_file
 from .events import OutputCounter, public, translate
+from .screen_lock import DriveScreenLock
 
 GUIDE = Path(__file__).with_name("GUIDE.md")
 PROFILES = ("drive", "harness")
@@ -94,6 +95,8 @@ class Driver:
         self._output = (OutputCounter(emit, time.monotonic) if self.cfg["drive.output_events"] == "counts"
                         else None)
         self.commands = Commands(self)
+        self.screen_lock = DriveScreenLock(self)
+        app.drive_screen_lock = self.screen_lock
         app.taps.append(self.tap)
 
     def ready(self, size: tuple[int, int]) -> dict[str, Any]:
@@ -219,16 +222,30 @@ class Driver:
         def check() -> waits.Done | None:
             with slot.canvas.backend.lock():
                 done = wait.check(self._events_since(slot.session_id, since))
-                if done is not None and done.ok and any(getattr(until, name) is not None
+                if not self.screen_lock.check() and done is not None and done.ok and any(getattr(until, name) is not None
                                                        for name in ("prompt", "screen", "reply")):
                     done = replace(done, extra=self.commands.screen_answer(slot))
                 return done
 
-        pending = _Pending(slot.session_id, check,
-                           asyncio.get_running_loop().create_future(),
-                           settled_in=wait.settled_in if until.settled_ms is not None else None)
-        done = await self._await(pending, timeout_ms, lambda: waits.Done(
-            False, "timeout", f"nothing matched within {timeout_ms} ms"))
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_ms / 1000
+        while True:
+            pending = _Pending(slot.session_id, check, loop.create_future(),
+                               settled_in=wait.settled_in if until.settled_ms is not None else None)
+            remaining_ms = max(0, int((deadline - loop.time()) * 1000))
+            done = await self._await(pending, remaining_ms, lambda: waits.Done(
+                False, "timeout", f"nothing matched within {timeout_ms} ms"))
+            if not self.screen_lock.check():
+                break
+            if not await self.screen_lock.resume():
+                raise DriveError("screen_locked", **self.screen_lock.fields())
+            if loop.time() >= deadline:
+                done = waits.Done(False, "timeout", f"nothing matched within {timeout_ms} ms")
+                break
+            fresh = check()
+            if fresh is not None:
+                done = fresh
+                break
         return done, int((probe.now() - started) * 1000)
 
     async def wait_after_send(self, slot: SessionSlot, timeout_ms: int) -> dict[str, Any]:
@@ -295,7 +312,7 @@ class Driver:
 
         await self._until_screen(showing, "the login screen")
 
-    async def log_in(self, user: str, password: str) -> str:
+    async def log_in(self, user: str, password: str, *, password_path: str | None = None) -> str:
         """The login screen, filled in and its button clicked, as a person does (honesty rule 1)."""
         from textual.widgets import Button, Input, Static
 
@@ -307,8 +324,10 @@ class Driver:
         # A screen that is pushed but not composed yet has no fields: wait for the form `log_in` needs.
         await self.wait_for_login_screen()
         login = self.app.screen
+        self.screen_lock.reset()
         login.query_one("#username", Input).value = user
         login.query_one("#password", Input).value = password
+        del password
         # The form keeps the last refusal until an attempt clears it: clear it first, so a refusal read below is this
         # attempt's.
         login.query_one("#login-error", Static).update("")
@@ -337,6 +356,7 @@ class Driver:
 
         if await self._until_screen(outcome, "the login result") == "refused":
             raise DriveError("login_failed", str(login.query_one("#login-error", Static).content))
+        self.screen_lock.reset(password_path)
         return str(self.app.username)
 
     async def refresh_fleet(self) -> None:
@@ -431,8 +451,18 @@ class Driver:
                 x = cell_len(line[:start])
                 widget = screen.get_widget_at(x, y)[0]
                 if not isinstance(widget, Canvas):
-                    await self.pilot.click(offset=(x + cell_len(label) // 2, y))
-                    await self.pilot.pause()
+                    forward = screen._forward_event
+                    def guarded(event: Any, forward=forward) -> None:
+                        if self.screen_lock.check():
+                            self.screen_lock.blocked_inputs += 1
+                            return
+                        forward(event)
+                    screen._forward_event = guarded
+                    try:
+                        await self.pilot.click(offset=(x + cell_len(label) // 2, y))
+                        await self.pilot.pause()
+                    finally:
+                        screen._forward_event = forward
                     return {}
                 start = line.find(label, start + 1)
         raise DriveError("bad_request", f"nothing on screen is labelled {label!r}")
@@ -452,6 +482,7 @@ class Driver:
         try:
             if not isinstance(cmd, dict):
                 raise DriveError("bad_request", "a command is a JSON object with an op")
+            self.screen_lock.command()
             self._mark_slots()
             answer: dict[str, Any] = {"ok": True, **await self.commands.run(cmd)}
         except DriveError as exc:
@@ -466,6 +497,7 @@ class Driver:
         return answer
 
     async def execute_line(self, line: str) -> dict[str, Any]:
+        self.screen_lock.command()
         try:
             cmd = json.loads(line)
         except ValueError as exc:
@@ -647,8 +679,10 @@ def main(argv: list[str]) -> int:
             parser.error("--password-file: the password is empty")
     record = open(args.record, "w", encoding="utf-8") if args.record else None  # noqa: SIM115 — closed in _run
     try:
-        return asyncio.run(_run(args, cfg, size or (cfg["drive.default_cols"], cfg["drive.default_rows"]), password,
-                                script, record))
+        run = _run(args, cfg, size or (cfg["drive.default_cols"], cfg["drive.default_rows"]), password,
+                   script, record)
+        del password
+        return asyncio.run(run)
     finally:
         if record is not None:
             record.close()
@@ -672,7 +706,8 @@ async def _run(args: argparse.Namespace, cfg: config.Config, size: tuple[int, in
         try:
             if password is not None:
                 try:
-                    await driver.log_in(args.user, password)
+                    await driver.log_in(args.user, password, password_path=args.password_file)
+                    password = None
                 except DriveError as exc:
                     print(f"tsb-tui drive: login failed: {exc.why}", file=sys.stderr)
                     return 1
