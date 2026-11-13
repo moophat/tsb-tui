@@ -88,6 +88,36 @@ def test_the_list_shows_references_and_kinds_and_labels_only_while_unlocked(serv
     asyncio.run(check())
 
 
+def test_unlocked_label_is_rendered_before_idle(serve, wait_until, monkeypatch) -> None:
+    """A refresh must size the new label before DataTable receives an Idle event."""
+    from textual import events
+
+    async def check() -> None:
+        serve_app, url = serve(VaultServe())
+        serve_app.hold_credential(_serve.USER, "core-sw", kind="password", label="core switches")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await _open(app, pilot, wait_until)
+            table = screen.query_one("#credentials-table", DataTable)
+            await pilot.pause()
+            assert "core-sw" in table.render_line(1).text
+            assert table.ordered_columns[2].get_render_width(table) - 2 * table.cell_padding == 5
+            serve_app.unlocked.update(serve_app.logins)
+            # Deliver the real client's unlocked answer synchronously at the refresh boundary.
+            # No await from action_refresh through the first render: no Idle can intervene.
+            entries = await asyncio.to_thread(app.client.credentials)
+            monkeypatch.setattr(app, "call_api", lambda _fn, *, on_done, on_error: on_done(entries))
+            screen.action_refresh()
+            assert screen.loaded
+            before = (table.ordered_columns[2].get_render_width(table) - 2 * table.cell_padding, table.render_line(1).text)
+            await table._on_idle(events.Idle())
+            after = (table.ordered_columns[2].get_render_width(table) - 2 * table.cell_padding, table.render_line(1).text)
+            print(f"before Idle: {before!r}\nafter one Idle: {after!r}")
+            assert "core switches" in before[1], "the rebuilt label must fit before Idle"
+
+    asyncio.run(check())
+
+
 def test_a_refresh_press_while_a_load_is_running_is_not_overwritten_by_the_stale_load(
         serve, wait_until, screen_text) -> None:
     """#19 reproduction of the product defect: the mount's first list load is held open, so the refresh press lands

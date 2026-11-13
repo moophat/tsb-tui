@@ -215,12 +215,17 @@ class CredentialsScreen(Screen):
         table = self._live_table()
         if table is None:   # the screen's table is gone (it was replaced/torn down); drop this answer, no exception
             return
-        table.clear()
-        self._references = []
-        for entry in credentials:
-            self._references.append(str(entry.get("reference", "")))
-            table.add_row(Text(as_text(entry.get("reference"))), Text(as_text(entry.get("kind"))),
-                          Text(as_text(entry.get("label"))))
+        rows = [(Text(as_text(entry.get("reference"))), Text(as_text(entry.get("kind"))),
+                 Text(as_text(entry.get("label")))) for entry in credentials]
+        # DataTable's automatic widths wait for Idle; size the rebuilt columns now so
+        # an unlocked label cannot be rendered (and cached) at the locked list's width.
+        table.clear(columns=True)
+        for index, heading in enumerate(("Reference", "Kind", "Label")):
+            width = max([len(heading), *(row[index].cell_len for row in rows)])
+            table.add_column(heading, width=width)
+        self._references = [str(entry.get("reference", "")) for entry in credentials]
+        for row in rows:
+            table.add_row(*row)
         self.loaded = True
 
     def _failed(self, generation: int, exc: ApiError | HttpError | OSError) -> None:
