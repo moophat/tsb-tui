@@ -191,6 +191,25 @@ def test_hot_policy_refusal_keeps_the_form(serve, wait_until):
     asyncio.run(check())
 
 
+def test_target_edit_refusal_keeps_the_form(serve, wait_until):
+    """With every other permission kept, a missing target.edit still refuses the write and keeps the form."""
+    async def check():
+        server, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await open_targets(app, pilot, wait_until)
+            await pilot.press("n")
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
+            form = app.screen
+            form.fill({"id": "revoked-edit", "host": "example", "type": "ssh"})
+            server._permissions = lambda user: [p for p in ServeApp._permissions(user) if p != "target.edit"]
+            form.query_one("#target-save", Button).press()
+            await wait_until(pilot, lambda: bool(form.query_one("#target-error", Static).content), "403", timeout_s=TARGET_FORM_WAIT_S)
+            assert str(form.query_one("#target-error", Static).content) == "target.edit is required"
+            assert form.query_one("#target-id", Input).value == "revoked-edit"
+    asyncio.run(check())
+
+
 def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
     """Saving still selects the changed row when its type no longer matches the opening query."""
     async def check():
