@@ -162,3 +162,59 @@ Summary: All four Qodo findings are fixed with red-first tests (six new, all gre
 is exit 0 and the full `make test` is green (2127 passed), apart from one pre-existing flaky
 alert-window test that also fails on the untouched base. No commit, no push; release/CI/deployed-core
 proof stay orchestrator dependencies.
+
+## Round 3 — a 4017 refusing the first attach must not be treated as attached (2026-11-14)
+
+Branch `feat/e4b-accounts`, head `7617c0e` kept. The orchestrator ruled the fix 2026-11-14 19:0x.
+Red first, then the code. Only `tsb_tui/` (two files) and `tests/` (two files) were written, plus this
+section. No plan, ledger, ruling, contract source, client package, broker code or wheel pin was touched.
+No commit, no push. Gate output went to its own file in the system temporary directory; exit codes were
+checked directly, never through a pipe.
+
+**The defect (Qodo).** Round 2's `start()` caught a first-attach `AttachRefused(4017)`, applied the
+account-ended close, fired `on_login_needed` and **returned normally**, so `_attach_and_pump` carried on
+as if attached: `_sync_size`, `_sync_typist`, `_after_attached`, then `_show_end` set `slot.ended` and
+parked an end dialog on a workspace `_to_login` is tearing down. And `account_login_ended` marked only
+slots with a `client_id` as leaving, so this never-attached slot was not marked.
+
+**The ruled fix.** `start()` re-raises the `AttachRefused` after applying the outcome and firing the hook;
+`_attach_and_pump`'s `AttachRefused` handling returns at once for a code whose close outcome has
+`go_login`; `account_login_ended` marks every slot of the login as leaving, a slot that never attached
+included. The established-socket 4017 path, the one-shot retry and the backoff stay as round 2 made them.
+
+**Code.** In `tsb_tui/model/attachment.py`, `start()` now applies the close and fires `on_login_needed`
+for a `go_login` row, then re-raises the refusal (both branches raise). In `tsb_tui/screens/terminal.py`,
+the `except AttachRefused` branch in `_attach_and_pump` returns at once when `close_outcome(exc.code).go_login`
+(`close_outcome` added to the module's `attachment` import); `account_login_ended` sets `slot.leaving = True`
+for every slot and applies the end close only to an attached, not-yet-closed slot.
+
+**Red first.** `tests/test_attach_and_close.py::test_first_attach_4017_goes_to_login_without_an_end_view_on_the_workspace`
+drives a first attach refused with 4017 through the slot's own attach path (spy `_sync_size` and
+`_after_attached`) and asserts no size/typist sync, no `_after_attached`, no `slot.ended`, no end dialog
+(`slot.ended_dialog_shown` false, `_deferred_end_slot` None, no `EndedScreen`), the slot marked leaving, and
+Login reached once. On `7617c0e` it fails at the size-sync assertion (`['stub-session-1'] == []`) — the
+carry-on. Red run: `e4b-accounts-red3.log`, exit 1.
+
+**Round 2 test adjustment.** `tests/test_model_closes.py::test_first_attach_4017_goes_login_without_retry_or_record`
+drives `pump.start()` directly and previously asserted it returns; the ruling makes `start()` re-raise, so the
+test now asserts `pytest.raises(AttachRefused)` around `start()` and keeps every outcome assertion (close applied,
+login fired once, no retry, no record read).
+
+**Green focused run.** `e4b-accounts-green3.log`: exit 0, the new test passes. Focused set
+(`e4b-accounts-focused3.log`): exit 0, 124 passed across attach/close, reattach-login, drive-accounts,
+accounts-screen and ended/reattach.
+
+**Gate (Round 3).** `make lint` exit 0 (`e4b-accounts-lint-r3.log`): gate self-tests (110), import lint
+clean (191 files), docs-branch/leak and engine checks completed; no step skipped. `ruff check tsb_tui tests
+bench tools` is exit 0, "All checks passed" (`e4b-accounts-ruff-r3.log`) — the venv's ruff is not on `PATH`, so
+the `make lint` target itself reports `SKIP: ruff` (ruff is optional outside CI); it was run separately to prove
+style. Full `make test` (`e4b-accounts-test-r3.log`): 1 failed, 2127 passed, 3 skipped. The one failure is the
+pre-existing alert-stream flake `tests/test_alerts_popup.py::test_a_dismissed_alert_resent_after_a_reopen_stays_dismissed`
+(a popup dismiss/reopen timing race in the alert stream, unrelated to the attach path); its focused rerun
+passed (`e4b-accounts-alertflake.log`, exit 0). No process started by this lane was stopped.
+
+Status: DONE_WITH_CONCERNS
+Summary: The first-attach 4017 no longer carries `_attach_and_pump` on as if attached — `start()` re-raises
+after applying the outcome, the attach path returns at once for a `go_login` code, and every slot of the login
+is marked leaving; red-first test green, `make lint` exit 0 (ruff clean run separately), full `make test` green
+apart from one pre-existing alert-stream flake that passes on rerun. No commit, no push.

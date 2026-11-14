@@ -405,14 +405,16 @@ def test_first_attach_4017_goes_login_without_retry_or_record():
     """A 4017 met on the first attach applies the account-ended outcome, not an attach refusal: no
     retry, no record read, and the app goes to Login through `go_login` (the same as a 4017 on an
     established socket). A first-attach 4017 that only left "attach refused" kept the operator on a
-    login the account change had already ended."""
+    login the account change had already ended. `start()` applies the outcome and fires the login hook,
+    then re-raises the refusal so the caller does not carry on as if attached."""
     from tsb_contract_client import AttachRefused
 
     client = FakeClient([AttachRefused(4017, "account ended")])
     pump, logins = _login_pump(client)
 
     async def go() -> None:
-        await pump.start()
+        with pytest.raises(AttachRefused):
+            await pump.start()
         await pump.wait_closed()
 
     asyncio.run(go())

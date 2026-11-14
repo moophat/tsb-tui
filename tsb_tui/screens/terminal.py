@@ -54,7 +54,7 @@ from tsb_contract_client import ApiError, AttachRefused
 from .. import glyphs
 from .._transport import ConnectionClosed, HandshakeError, HttpError, ProtocolError
 from ..model import actions as A
-from ..model.attachment import AttachmentPump, AttachmentState, PumpHooks
+from ..model.attachment import AttachmentPump, AttachmentState, PumpHooks, close_outcome
 from ..model.countdown import format_duration, parse_timestamp
 from ..model.events import TAP_RECORD, TAP_SLOT_CLOSED, EventLog
 from ..model.fleet import (
@@ -1767,6 +1767,12 @@ class TerminalScreen(Screen):
             try:
                 await pump.start(attachment)
             except AttachRefused as exc:
+                if close_outcome(exc.code).go_login:
+                    # The account-ended outcome (4017) was already applied by `start()` and routed to
+                    # Login through `on_login_needed`, which marked every slot of this login leaving.
+                    # Return at once: no size/typist sync, no `_after_attached`, no end view, no dialog
+                    # parked on the workspace `_to_login` is tearing down.
+                    return
                 self._leave(slot, f"attach refused: {exc.reason or 'close ' + str(exc.code)}", cancel=False)
                 return
             except ApiError as exc:
@@ -1944,11 +1950,12 @@ class TerminalScreen(Screen):
         from .accounts import LOGIN_ENDED
 
         for slot in self.slots:
-            if slot.pump is not None and slot.pump.state.client_id is not None:
-                state = slot.pump.state
-                if not state.closed:
-                    state.apply_close(CLOSE_ACCOUNT_LOGIN_ENDED)
-                slot.leaving = True
+            # Every slot of this login leaves, a slot that never attached included (its close was
+            # already applied by the 4017 path). The end is applied to an attached slot that is not
+            # closed yet, so drive observes each attachment before the stack is removed.
+            slot.leaving = True
+            if slot.pump is not None and slot.pump.state.client_id is not None and not slot.pump.state.closed:
+                slot.pump.state.apply_close(CLOSE_ACCOUNT_LOGIN_ENDED)
         self.app.notify_api_error(ApiError(401, "unauthenticated", LOGIN_ENDED))
 
     def _on_login_needed(self, slot: SessionSlot) -> None:

@@ -609,12 +609,13 @@ class AttachmentPump:
                 await self._attach()
             except AttachRefused as exc:
                 # A 4017 on the first attach is the account-ended outcome, not an attach refusal: the
-                # same as a 4017 on an established socket. No retry, no record read, and Login.
+                # same as a 4017 on an established socket. No retry, no record read, and Login. The
+                # close is applied and the login hook fired here, then the refusal is re-raised so the
+                # caller does not carry on as if attached (no size/typist sync, no end view, no dialog).
                 if close_outcome(exc.code).go_login:
                     self.state.apply_close(exc.code, exc.reason)
                     if self._hooks.on_login_needed is not None:
                         self._hooks.on_login_needed()
-                    return
                 raise
         else:
             self.attach_attempts += 1
