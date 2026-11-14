@@ -328,3 +328,19 @@ def test_password_change_bad_password_file_names_field(serve, tmp_path):
             assert res_new["why"].startswith(f"new_password_file {bad_new}")
     asyncio.run(check())
 
+
+def test_non_admin_account_list_gets_refusal_and_no_closed_notice(serve, tmp_path):
+    class NonAdmin(_serve.ServeApp):
+        def _permissions(self, user):
+            return [p for p in super()._permissions(user) if p != "account.admin"]
+
+    async def check():
+        _, url = serve(NonAdmin())
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            result = await rig.cmd("account_list")
+            assert not result.get("ok")
+            assert result.get("error") == "forbidden"
+            await rig.pilot.pause()
+            assert not any("Accounts closed" in str(n.message) for n in rig.app._notifications)
+    asyncio.run(check())

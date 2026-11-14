@@ -90,9 +90,12 @@ async def refresh_permissions(app) -> bool:
                 return
             if app._perm_seq.get(generation) != seq:     # a newer refresh issued while the screen was locked
                 return
+            closed = False
             while isinstance(app.screen, (AccountsScreen, AccountFormScreen)):
                 app.pop_screen()
-            app.notify("Account administration permission is gone; Accounts closed.", markup=False)
+                closed = True
+            if closed:
+                app.notify("Account administration permission is gone; Accounts closed.", markup=False)
 
         if app.screen_lock.locked:
             app.screen_lock.after_unlock(close_accounts)

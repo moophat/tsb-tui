@@ -237,7 +237,12 @@ class DeviceLoginPane(VerticalScroll):
                         try:
                             attachment = await self.login.attachment()
                         except (AttachRefused, HttpError, OSError, ConnectionClosed, HandshakeError,
-                                ProtocolError, TimeoutError):
+                                ProtocolError, TimeoutError) as exc:
+                            if (isinstance(exc, AttachRefused)
+                                    and exc.code in (4015, 4017)):
+                                self.app.notify_api_error(
+                                    ApiError(401, "unauthenticated", "Your TSB login ended."))
+                                return
                             await self._connected_without_attachment()
                             return
                         self.terminal.adopt_device_attachment(self.slot, attachment)

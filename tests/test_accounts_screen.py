@@ -234,6 +234,9 @@ def test_permissions_refreshed_on_open_and_after_forbidden(serve, wait_until):
             screen.action_refresh()
             await wait_until(pilot, lambda: app.screen is workspace, "permission lost closes accounts")
             assert "account.admin" not in app.permissions
+            await wait_until(pilot, lambda: any(
+                "Account administration permission is gone; Accounts closed." in str(n.message)
+                for n in app._notifications), "permission lost notice")
     asyncio.run(check())
 
 
