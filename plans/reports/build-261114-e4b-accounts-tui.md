@@ -314,3 +314,49 @@ Summary: Round 4's newest-refresh rule now covers both error paths — a stale r
 `notify_api_error`, and a stale load's failure message is written only when it is the current load; red-first tests fail
 on `bc73ad5` and pass after the fix, `make lint` exit 0 (ruff clean run separately), the touched and named test files
 whole green (44 passed). No commit, no push.
+
+## Round 6 — a pending submission cannot be cancelled away, and an own password change says so (2026-11-15)
+
+Branch `feat/e4b-accounts`, head `0454033` kept. The orchestrator ruled both fixes 2026-11-15 00:3x, as Qodo
+recommended. Red first, then the code. Only `tsb_tui/screens/accounts.py`, `tsb_tui/screens/terminal.py` and
+`tests/test_accounts_screen.py` were written, plus this section. No plan, ledger, ruling, contract source, client
+package, broker code or wheel pin was touched. No commit, no push. Gate output went to its own file in the system
+temporary directory; exit codes were checked directly, never through a pipe.
+
+**1 — Cancel and Escape cannot dismiss a form whose request is in flight.** `AccountFormScreen.action_back()`
+dismissed the modal whenever it was the current screen, and the Cancel button stayed enabled, so while `busy` a person
+could close the form; its answer then settled into a dismiss that no longer showed the result, and the Accounts list did
+not refresh. Fix: `action_back()` returns at once while `busy` (so both Escape and Cancel are inert), `submit()` disables
+the Cancel button with Confirm, and the `finally` re-enables both. In `tsb_tui/screens/accounts.py`. Test:
+`tests/test_accounts_screen.py::test_cancel_and_escape_do_not_dismiss_a_pending_submission` — a fixture server holds the
+create's `POST /accounts` answer; the test presses Confirm, waits for the request to be pending, asserts the form is
+busy and Cancel disabled, presses Escape and Cancel and asserts the form stays, then releases the answer and asserts the
+form dismisses with its result (the Accounts list gains the new username and says `Created`). On `0454033` it fails: the
+Cancel button is not disabled (and Escape would dismiss the form).
+
+**2 — A successful own password change notifies, a cancel stays silent.** `do_password_change()` pushed
+`AccountFormScreen("own")` with no result callback, so a successful change returned to the workspace with no word about
+the other logins it ended. Fix: it pushes with a callback that calls `app.notify("Password changed. Your other logins
+ended; this one stays.", markup=False)` for a non-None result; a cancel's `None` notifies nothing. In
+`tsb_tui/screens/terminal.py`. Test:
+`tests/test_accounts_screen.py::test_own_change_notice_on_success_and_silent_cancel` — cancel first and assert no such
+notice, then submit a successful own change with the fixture's current password and assert the exact notice arrives. On
+`0454033` it fails: no notice is ever raised.
+
+**Red evidence.** `e4b-accounts-red6.log`: exit 1, both tests failed on `0454033` for the right reasons (the Cancel
+button was enabled while busy; the own-change notice never appeared).
+
+**Green focused run.** `e4b-accounts-green6.log`: exit 0, both new tests pass.
+
+**Gate (Round 6).** `make lint PYTHON=<test venv>` exit 0 (`e4b-accounts-lint-r6.log`): ruff "All checks passed", 110
+gate self-tests passed, import lint clean (191 files), docs-branch/leak and engine checks completed; no step skipped.
+`env -u NO_COLOR pytest -q tests/test_accounts_screen.py tests/test_drive_accounts.py` exit 0
+(`e4b-accounts-tests-r6.log`): 46 passed. Both gate commands used the shared test environment's Python through the
+process environment only; no interpreter path was written into a file. No process started by this lane was stopped. The
+orchestrator runs the full suite.
+
+Status: DONE_WITH_CONCERNS
+Summary: A pending account submission now ignores Escape and Cancel until its request settles, then dismisses with its
+result and refreshes the list, and a successful own password change raises the ruled notice while a cancel stays silent;
+red-first tests fail on `0454033` and pass after the fix, `make lint` exit 0 and the two touched test files green (46
+passed). No commit, no push; full-suite and release proof stay with the orchestrator.

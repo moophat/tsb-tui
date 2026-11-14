@@ -2866,7 +2866,11 @@ class TerminalScreen(Screen):
     def do_password_change(self) -> None:
         from .accounts import AccountFormScreen
 
-        self.app.push_screen(AccountFormScreen("own"))
+        def changed(result) -> None:
+            if result is not None:
+                self.app.notify("Password changed. Your other logins ended; this one stays.", markup=False)
+
+        self.app.push_screen(AccountFormScreen("own"), changed)
 
     def do_devices(self) -> None:
         from .devices import DevicesScreen

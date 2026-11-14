@@ -463,3 +463,71 @@ def test_a_stale_list_failure_does_not_overwrite_the_newer_result(serve, wait_un
         finally:
             second_done.set()
     asyncio.run(check())
+
+
+def test_cancel_and_escape_do_not_dismiss_a_pending_submission(serve, wait_until, screen_text):
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+
+    class Delayed(_serve.ServeApp):
+        def http(self, method, path, headers, body):
+            result = super().http(method, path, headers, body)
+            if method == "POST" and path == "/accounts":
+                entered.set()
+                assert release.wait(10)
+            return result
+
+    async def check():
+        server, url = serve(Delayed())
+        app = TsbTuiApp(url)
+        try:
+            async with app.run_test(size=(140, 40)) as pilot:
+                _, screen = await open_accounts(app, pilot, wait_until)
+                screen.query_one("#account-new", Button).press()
+                await wait_until(pilot, lambda: bool(app.screen.query("#account-confirm")), "form")
+                form = app.screen
+                form.query_one("#account-username", Input).value = "while-busy"
+                form.query_one("#account-password", Input).value = SECRET
+                form.query_one("#account-confirm", Button).press()
+                await wait_until(pilot, entered.is_set, "request pending")
+                assert form.busy
+                assert form.query_one("#account-cancel", Button).disabled
+                await pilot.press("escape")
+                await pilot.pause()
+                assert app.screen is form
+                form.query_one("#account-cancel", Button).press()
+                await pilot.pause()
+                assert app.screen is form
+                release.set()
+                await wait_until(pilot, lambda: app.screen is screen, "form dismissed with its result")
+                await wait_until(pilot, lambda: "while-busy" in [r["username"] for r in screen.accounts],
+                                 "list refreshed")
+                assert "while-busy" in server.users
+                assert "Created" in screen_text(app)
+        finally:
+            release.set()
+    asyncio.run(check())
+
+
+def test_own_change_notice_on_success_and_silent_cancel(serve, wait_until):
+    notice = "Password changed. Your other logins ended; this one stays."
+
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(140, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            await workspace.run_action_id("password_change")
+            await wait_until(pilot, lambda: bool(app.screen.query("#account-cancel")), "form")
+            app.screen.query_one("#account-cancel", Button).press()
+            await wait_until(pilot, lambda: app.screen is workspace, "cancel dismissed the form")
+            await pilot.pause()
+            assert all(notice not in str(n.message) for n in app._notifications), app._notifications
+            await workspace.run_action_id("password_change")
+            await submit_form(app, pilot, wait_until, **{"account-current-password": _serve.PASSWORD,
+                                                         "account-password": SECRET})
+            await wait_until(pilot, lambda: app.screen is workspace, "own change dismissed the form")
+            await wait_until(pilot, lambda: any(notice in str(n.message) for n in app._notifications),
+                             "the change notice")
+    asyncio.run(check())

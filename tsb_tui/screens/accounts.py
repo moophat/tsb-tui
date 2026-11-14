@@ -262,6 +262,8 @@ class AccountFormScreen(ModalScreen[dict | None]):
         self.clear_passwords()
 
     def action_back(self):
+        if self.busy:
+            return
         self.clear_passwords()
         if self.app.screen is self:
             self.dismiss(None)
@@ -283,6 +285,7 @@ class AccountFormScreen(ModalScreen[dict | None]):
         username = self.query_one("#account-username", Input).value if self.operation == "new" else self.username
         self.clear_passwords()
         self.query_one("#account-confirm", Button).disabled = True
+        self.query_one("#account-cancel", Button).disabled = True
         try:
             result = await account_request(self.app, self.operation, username, password, current)
             def completed():
@@ -301,3 +304,4 @@ class AccountFormScreen(ModalScreen[dict | None]):
             self.busy = False
             if self.is_attached:
                 self.query_one("#account-confirm", Button).disabled = False
+                self.query_one("#account-cancel", Button).disabled = False
