@@ -399,3 +399,56 @@ All gate commands used the shared test environment's Python through the process 
 
 Status: DONE
 Summary: `OPS` in commands.py now matches the GUIDE table's command order, and `read_password_file` parameterizes the field name so `current_password_file` and `new_password_file` errors name the field that was read; red-first tests fail on 5141f51 and pass after the fixes, full drive suite (471 tests) and `make lint` green.
+
+## Round 8 — a refresh never moves an account action to another account (2026-11-15)
+
+Branch `feat/e4b-accounts`, head `c1b9263` kept. The orchestrator ruled the fix 2026-11-15 03:1x, as Qodo
+recommended. Red first, then the code. Only `tsb_tui/screens/accounts.py` and `tests/test_accounts_screen.py` were
+written, plus this section. No plan, ledger, ruling, contract source, client package, broker code or wheel pin
+was touched. No commit, no push. Gate output went to its own file in the system temporary directory; exit codes
+were checked directly, never through a pipe.
+
+**The defect (Qodo).** `AccountsScreen._refresh()` replaced sorted rows and cleared the table without keeping
+the selection, and `selected()` named the target by cursor position only (`self.accounts[row]` where `row` was
+`cursor_row`). After a refresh that changed the list ordering, Disable, Enable or Set password could open a
+confirmation for a different account, or remain enabled for row 0 if the selected account was deleted.
+
+**The ruled fix.** `_refresh()` saves the selected username before rows are replaced (`target = self.selected()`),
+suppresses highlight updates during table rebuild (`self._rebuilding = True`), sorts and rebuilds rows, and puts the
+cursor back on that username (`table.move_cursor(row=index)`) after the table is rebuilt. If that username is gone,
+it clears the selection (`self._selected = None`) and disables the actions that need a target (`disable`, `enable`,
+`password`). `self.call_after_refresh` clears the rebuild flag once queued table events settle. `selected()` returns
+the username of the selected row (`str | None`), never a position. When a row is chosen via cursor movement
+(`on_data_table_row_highlighted`) or row selection (`on_data_table_row_selected`), `self._selected` updates to that
+row's username and `_buttons()` re-enables allowed actions. `on_button_pressed` uses the username string directly
+and refuses target-dependent actions when `user is None`.
+
+**Red evidence.** `e4b-accounts-red8.log`: exit 1, both new tests failed on `c1b9263` for the right reasons (test (a)
+failed because `selected()` returned a dict and cursor did not follow the selected user after insertion; test (b)
+failed because `selected()` returned row 0's dict instead of None, keeping target actions enabled).
+
+**Green focused run.** `e4b-accounts-green8.log`: exit 0, both new tests pass.
+
+**Gate (Round 8).**
+- New tests: exit 0, 2 passed (`e4b-accounts-green8.log`).
+- `env -u NO_COLOR python3 -m pytest tests/test_accounts_screen.py -p no:cacheprovider`: exit 0, 22 passed (`e4b-accounts-tests-r8.log`).
+- `make lint PYTHON=python3`: exit 0 (`e4b-accounts-lint-r8.log`): gate self-tests (110 passed), import lint clean (191 files), docs-branch/leak and engine checks completed; no step skipped.
+All gate commands used the shared test environment's Python through the process environment only; no interpreter path was written into a file. No process started by this lane was stopped.
+
+Status: DONE
+Summary: `AccountsScreen._refresh()` now preserves the selected username across rebuilds and restores the cursor, or clears selection and disables target-dependent actions when that user is gone; red-first tests fail on `c1b9263` and pass after the fix, full screen suite (22 passed) and `make lint` green.
+
+## Round 8b — the selection follows the cursor, restored by name (2026-11-15)
+
+Ruled 2026-11-15 03:4x (the orchestrator): a data table always shows a cursor row, so the selection is the username under the cursor, never a separate state that can disagree with the screen. `selected()` returns the username of the cursor row (or None when the table is empty). `_refresh()` saves that username before replacing rows and restores cursor to that username after rebuild; if that username is not in the new list, cursor goes to the first row. Removed `_selected`, `_rebuilding`, and `call_after_refresh`. Replaced test (b) with: after a refresh where the selected username is no longer listed, the cursor is on the first row and Disable's confirmation names that row's user, never the vanished one.
+
+**Red evidence.** `e4b-accounts-red8b.log`: exit 1, both new tests failed on `c1b9263` for the right reasons (selected returned a dict instead of string; cursor did not restore after rebuild).
+
+**Gate (Round 8b).**
+- Five consecutive test runs: `env -u NO_COLOR python3 -m pytest tests/test_accounts_screen.py tests/test_drive_accounts.py -p no:cacheprovider`: exit 0 across all five runs (50 passed each run; `e4b-accounts-gate-run1.log` through `e4b-accounts-gate-run5.log`).
+- `make lint PYTHON=python3`: exit 0 (`e4b-accounts-lint-r8b.log`): gate self-tests (110 passed), import lint clean (191 files), docs-branch/leak and engine checks completed; no step skipped.
+All gate commands used the shared test environment's Python through the process environment only; no interpreter path was written into a file. All processes started were stopped.
+
+Status: DONE
+Summary: Selection follows cursor directly, restored by username across refresh with fallback to row 0; red tests fail on c1b9263, five consecutive test runs (50 passed each) and make lint green.
+

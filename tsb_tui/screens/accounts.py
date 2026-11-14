@@ -148,12 +148,16 @@ class AccountsScreen(Screen):
             records = await account_request(self.app, "list")
             if not self.is_attached or load != self._load:
                 return
+            target = self.selected()
             self.accounts = sorted(records, key=lambda r: r["username"])
             table = self.query_one(DataTable)
             table.clear()
             for row in self.accounts:
                 table.add_row(Text(as_text(row["username"])), Text(as_text(row["created_at"])),
                               Text("disabled" if row["disabled"] else "enabled"))
+            if self.accounts:
+                index = next((i for i, r in enumerate(self.accounts) if r["username"] == target), 0)
+                table.move_cursor(row=index)
             self._buttons()
         except (ApiError, HttpError, OSError, ValueError) as exc:
             if self.is_attached and load == self._load:     # a stale load's failure never overwrites the newer result
@@ -166,12 +170,14 @@ class AccountsScreen(Screen):
         if self.is_attached:
             self.query_one("#account-status", Static).update(as_text(text))
 
-    def selected(self):
-        row = self.query_one(DataTable).cursor_row
-        return self.accounts[row] if 0 <= row < len(self.accounts) else None
+    def selected(self) -> str | None:
+        table = self.query_one(DataTable)
+        row = table.cursor_row
+        return self.accounts[row]["username"] if row is not None and 0 <= row < len(self.accounts) else None
 
     def _buttons(self):
-        row = self.selected()
+        user = self.selected()
+        row = next((r for r in self.accounts if r["username"] == user), None) if user else None
         for operation in ("disable", "enable", "password"):
             allowed = row is not None and (row["disabled"] if operation == "enable" else not row["disabled"])
             if operation == "disable" and row and row["username"] == self.app.username:
@@ -189,11 +195,11 @@ class AccountsScreen(Screen):
         elif operation == "back":
             self.action_back()
         else:
-            row = self.selected()
-            if operation != "new" and row is None:
+            user = self.selected()
+            if operation != "new" and user is None:
                 self.say("Select an account first.")
                 return
-            self.app.push_screen(AccountFormScreen(operation, row["username"] if row else ""), self._changed)
+            self.app.push_screen(AccountFormScreen(operation, user or ""), self._changed)
 
     def _changed(self, result):
         if result is not None and self.is_attached:

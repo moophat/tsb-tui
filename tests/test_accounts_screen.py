@@ -531,3 +531,70 @@ def test_own_change_notice_on_success_and_silent_cancel(serve, wait_until):
             await wait_until(pilot, lambda: any(notice in str(n.message) for n in app._notifications),
                              "the change notice")
     asyncio.run(check())
+
+
+def test_refresh_inserts_earlier_sorted_username_keeps_cursor_and_selection(serve, wait_until, screen_text):
+    async def check():
+        server, url = serve()
+        server.users["subject"] = dict(server.users[_serve.USER], username="subject", disabled=False)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(140, 40)) as pilot:
+            _, screen = await open_accounts(app, pilot, wait_until)
+            index = next(i for i, r in enumerate(screen.accounts) if r["username"] == "subject")
+            screen.query_one(DataTable).move_cursor(row=index)
+            await pilot.pause()
+            assert screen.selected() == "subject"
+
+            server.users["aaa"] = dict(server.users[_serve.USER], username="aaa", disabled=False)
+            screen.action_refresh()
+            await wait_until(pilot, lambda: screen.loaded and any(r["username"] == "aaa" for r in screen.accounts),
+                             "refresh")
+            await pilot.pause()
+
+            table = screen.query_one(DataTable)
+            subject_idx = next(i for i, r in enumerate(screen.accounts) if r["username"] == "subject")
+            assert table.cursor_row == subject_idx
+            assert screen.selected() == "subject"
+
+            screen.query_one("#account-disable", Button).press()
+            await wait_until(pilot, lambda: bool(app.screen.query("#account-confirm")), "confirmation")
+            await pilot.pause()
+            assert app.screen.username == "subject"
+            assert "subject" in screen_text(app)
+            assert "Disable account: subject" in screen_text(app)
+    asyncio.run(check())
+
+
+def test_refresh_selected_user_gone_moves_cursor_to_first_row_and_confirmation_names_that_user(
+        serve, wait_until, screen_text):
+    async def check():
+        server, url = serve()
+        server.users["subject"] = dict(server.users[_serve.USER], username="subject", disabled=False)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(140, 40)) as pilot:
+            _, screen = await open_accounts(app, pilot, wait_until)
+            index = next(i for i, r in enumerate(screen.accounts) if r["username"] == "subject")
+            screen.query_one(DataTable).move_cursor(row=index)
+            await pilot.pause()
+            assert screen.selected() == "subject"
+
+            del server.users["subject"]
+            screen.action_refresh()
+            await wait_until(pilot, lambda: screen.loaded and not any(r["username"] == "subject" for r in screen.accounts),
+                             "refresh")
+            await pilot.pause()
+
+            table = screen.query_one(DataTable)
+            first_user = screen.accounts[0]["username"]
+            assert table.cursor_row == 0
+            assert screen.selected() == first_user
+            assert screen.selected() != "subject"
+
+            screen.query_one("#account-disable", Button).press()
+            await wait_until(pilot, lambda: bool(app.screen.query("#account-confirm")), "confirmation")
+            await pilot.pause()
+            assert app.screen.username == first_user
+            assert "subject" not in screen_text(app)
+            assert f"Disable account: {first_user}" in screen_text(app)
+    asyncio.run(check())
+
