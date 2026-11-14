@@ -68,6 +68,8 @@ async def account_request(app, operation: str, username: str = "", password: str
 
 async def refresh_permissions(app) -> bool:
     client, generation = app.client, app._login_gen
+    seq = app._perm_seq.get(generation, 0) + 1
+    app._perm_seq[generation] = seq          # the newest issued for this login
     try:
         me = await call(app, client.me)
     except ApiError as exc:
@@ -76,12 +78,16 @@ async def refresh_permissions(app) -> bool:
         raise
     if client is not app.client or generation != app._login_gen or app.workspace() is None:
         raise ValueError("the login changed")
+    if app._perm_seq.get(generation) != seq:     # a newer refresh already issued for this login: drop this answer
+        return "account.admin" in app.permissions
     app.permissions = frozenset(me.get("permissions", ()))
     app.screen_lock.apply(me.get("locks"))
     permitted = "account.admin" in app.permissions
     if not permitted:
         def close_accounts():
             if client is not app.client or generation != app._login_gen:
+                return
+            if app._perm_seq.get(generation) != seq:     # a newer refresh issued while the screen was locked
                 return
             while isinstance(app.screen, (AccountsScreen, AccountFormScreen)):
                 app.pop_screen()

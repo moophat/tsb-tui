@@ -265,6 +265,9 @@ class TsbTuiApp(App):
         # `_login_gen` so a sign-out that is still running never discards a login made after it began.
         self._sign_out_task: asyncio.Task[SignedOut] | None = None
         self._login_gen = 0
+        # Permission refreshes are ordered per login (per `_login_gen`): each issued refresh records the newest number
+        # for this login, so a stale answer is dropped and an answer to a previous login never applies.
+        self._perm_seq: dict[int, int] = {}
         # The screen lock and the activity signal (phase 12 § F, § G): this instance's own, from the core's settings.
         # `idle_clock` and `screen_lock_poll` are what a test replaces to move time without waiting for it.
         self.idle_clock: Callable[[], float] = time.monotonic

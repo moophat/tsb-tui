@@ -316,3 +316,52 @@ def test_lock_during_pending_account_request_defers_completion(serve, wait_until
         finally:
             release.set()
     asyncio.run(check())
+
+
+def test_only_the_newest_permission_refresh_applies(serve, wait_until):
+    import threading
+
+    from tsb_tui.screens.accounts import AccountsScreen
+
+    first_entered, second_done = threading.Event(), threading.Event()
+
+    class Overlap(_serve.ServeApp):
+        def __init__(self):
+            super().__init__()
+            self.me_calls = 0
+
+        def http(self, method, path, headers, body):
+            if method == "GET" and path == "/auth/me":
+                result = super().http(method, path, headers, body)
+                self.me_calls += 1
+                if self.me_calls == 2:          # refresh on open: the older answer, without account.admin
+                    first_entered.set()
+                    assert second_done.wait(10)
+                    perms = result[2].get("permissions", [])
+                    result = (result[0], result[1], {**result[2], "permissions": [p for p in perms if p != "account.admin"]})
+                elif self.me_calls == 3:        # the newer refresh answers first, granting account.admin
+                    second_done.set()
+                return result
+            return super().http(method, path, headers, body)
+
+    async def check():
+        server, url = serve(Overlap())
+        app = TsbTuiApp(url)
+        try:
+            async with app.run_test(size=(140, 40)) as pilot:
+                workspace = await fixture_login(app, pilot)
+                await workspace.run_action_id("accounts")
+                await wait_until(pilot, first_entered.is_set, "first refresh in flight")
+                screen = app.screen
+                assert isinstance(screen, AccountsScreen)
+                screen.action_refresh()          # the newer refresh: grants account.admin, answers first
+                await wait_until(pilot, second_done.is_set, "newer refresh answered")
+                await wait_until(pilot, lambda: server.me_calls >= 3, "older refresh answered")
+                for _ in range(15):
+                    await pilot.pause()
+                assert "account.admin" in app.permissions, app.permissions
+                assert isinstance(app.screen, AccountsScreen), app.screen
+                assert app.workspace() is workspace
+        finally:
+            second_done.set()
+    asyncio.run(check())

@@ -218,3 +218,51 @@ Summary: The first-attach 4017 no longer carries `_attach_and_pump` on as if att
 after applying the outcome, the attach path returns at once for a `go_login` code, and every slot of the login
 is marked leaving; red-first test green, `make lint` exit 0 (ruff clean run separately), full `make test` green
 apart from one pre-existing alert-stream flake that passes on rerun. No commit, no push.
+
+## Round 4 — only the newest permission refresh applies (2026-11-14)
+
+Branch `feat/e4b-accounts`, head `8f3d420` kept. The orchestrator ruled the fix 2026-11-14 22:0x, as Qodo
+recommended. Red first, then the code. Only `tsb_tui/` (two files) and `tests/` (one file) were written, plus this
+section. No plan, ledger, ruling, contract source, client package, broker code or wheel pin was touched. No commit,
+no push. Gate output went to its own file in the system temporary directory; exit codes were checked directly, never
+through a pipe.
+
+**The defect (Qodo).** `refresh_permissions()` applied every `GET /auth/me` answer to `app.permissions` and closed
+the Accounts screen when that answer lacked `account.admin`, without checking whether a newer refresh had already
+completed. Two refreshes overlap — the screen opening, and a refused act's 403 — so an older answer lacking
+`account.admin` arriving after a newer one that grants it overwrites the current permissions and closes a screen the
+newer answer permits.
+
+**The ruled fix.** Each refresh takes a sequence number from a counter kept per app, keyed by login (`_login_gen`):
+a sign-in bumps the generation so a new login starts a fresh count, and an answer to a previous login already fails
+the existing generation check. An answer applies its permissions, lock settings and any screen close only when its
+number is the newest issued for this login; else it is dropped. A close deferred until after a screen unlock rechecks
+that it is still the newest before it runs. Nothing else about refresh changes.
+
+**Code.** In `tsb_tui/app.py` `__init__`, added `self._perm_seq: dict[int, int] = {}` beside `_login_gen` — the newest
+issued number per login. In `tsb_tui/screens/accounts.py`, `refresh_permissions()` issues `seq = app._perm_seq.get(generation, 0) + 1`
+and records it as the newest before the request; after the answer, if `app._perm_seq.get(generation) != seq` it returns
+the current effective permission without applying permissions, locks or a close. The deferred `close_accounts()` rechecks
+`app._perm_seq.get(generation) == seq` before popping the screens.
+
+**Red first.** `tests/test_accounts_screen.py::test_only_the_newest_permission_refresh_applies`: a fixture server whose
+first refresh `/auth/me` (the screen-open answer) is held until the second refresh's `/auth/me` has answered, and whose
+held answer has `account.admin` stripped; the second (newer) refresh answers first granting `account.admin`. The test
+opens Accounts, triggers the older refresh, then `action_refresh()` for the newer one, settles both workers, and asserts
+`app.permissions` keeps `account.admin` and the Accounts screen stays open. On `8f3d420` it fails: the older answer applied
+last, so `account.admin` is gone from `app.permissions`. Red run: `e4b-accounts-red4.log`, exit 1.
+
+**Green focused run.** `e4b-accounts-green4.log`: exit 0, the new test passes. The touched and named test files whole
+(`e4b-accounts-tests-r4.log`): exit 0, 42 passed across `tests/test_accounts_screen.py` and `tests/test_drive_accounts.py`.
+
+**Gate (Round 4).** `make lint` exit 0 (`e4b-accounts-lint-r4.log`): gate self-tests (110), import lint clean (191
+files), docs-branch/leak and engine checks completed; no step skipped. The venv's ruff is not on `PATH`, so the `make
+lint` target reports `SKIP: ruff` (ruff is optional outside CI); `ruff check tsb_tui tests` run separately is exit 0,
+"All checks passed" (`e4b-accounts-ruff-r4.log`). No process started by this lane was stopped. The orchestrator runs the
+full suite.
+
+Status: DONE_WITH_CONCERNS
+Summary: A per-login, per-app refresh sequence number makes an answer apply its permissions, locks and screen close only
+when it is the newest issued for this login, and a close deferred past an unlock rechecks it is still newest; red-first
+test green, `make lint` exit 0 (ruff clean run separately), the touched and named test files whole green (42 passed). No
+commit, no push.
