@@ -360,3 +360,42 @@ Summary: A pending account submission now ignores Escape and Cancel until its re
 result and refreshes the list, and a successful own password change raises the ruled notice while a cancel stays silent;
 red-first tests fail on `0454033` and pass after the fix, `make lint` exit 0 and the two touched test files green (46
 passed). No commit, no push; full-suite and release proof stay with the orchestrator.
+
+## Round 7 — Qodo's two findings on 5141f51 (2026-11-15)
+
+Branch `feat/e4b-accounts`, head `5141f51` kept. The orchestrator ruled both fixes 2026-11-15 02:0x, as Qodo
+recommended. Red first, then the code. Only `tsb_tui/drive/commands.py` and `tests/test_drive_accounts.py` were
+written, plus this section. No plan, ledger, ruling, contract source, client package, broker code or wheel pin
+was touched. No commit, no push. Gate output went to its own file in the system temporary directory; exit codes
+were checked directly, never through a pipe.
+
+**1 — The op list follows the guide's order.** In `tsb_tui/drive/commands.py`, `OPS` put the six account ops ahead of
+`login`, while its comment states "Every op, in the order the guide lists them". Fix: moved the six account ops
+(`account_list`, `account_new`, `account_disable`, `account_enable`, `account_password`, `password_change`) to after
+`targets` and before `target_new`, exactly matching the order in the `tsb_tui/drive/GUIDE.md` command table, and
+aligned `quit` at the end after `login_cancel`. Test: `tests/test_drive_accounts.py::test_ops_order_equals_guide_table`
+parses every command op from the GUIDE table in `tsb_tui/drive/GUIDE.md` and asserts `commands.OPS == tuple(ops_in_guide)`.
+On `5141f51` it fails at index 0 (`account_list != login`).
+
+**2 — A password-file error names the field that was read.** `read_password_file` previously always hardcoded
+`password_file` in its error messages; `_account` reads `current_password_file` and `new_password_file` through it.
+Fix: added an optional `field: str = "password_file"` parameter to `read_password_file`, used `{field}` in every error
+raised by `read_password_file`, and passed the actual field name from `_account` (`"new_password_file"` when
+`operation == "own"`, `"current_password_file"` for the current password, and `"password_file"` otherwise).
+Test: `tests/test_drive_accounts.py::test_password_change_bad_password_file_names_field` asserts that a
+`password_change` with a bad `current_password_file` gets a `bad_request` error naming `current_password_file`, and one
+with a bad `new_password_file` names `new_password_file`. On `5141f51` it fails because the error named `password_file`.
+
+**Red evidence.** `e4b-accounts-red7.log`: exit 1, both new tests failed on `5141f51` for the right reasons
+(`account_list` instead of `login` in `OPS`; `password_file` instead of `current_password_file`).
+
+**Green focused run.** `e4b-accounts-green7.log`: exit 0, both new tests pass.
+
+**Gate (Round 7).**
+- New tests: exit 0, 2 passed (`e4b-accounts-green7.log`).
+- `env -u NO_COLOR python3 -m pytest tests/test_drive_accounts.py tests/test_drive*.py -p no:cacheprovider`: exit 0, 471 passed (`e4b-accounts-drive-tests-r7.log`).
+- `make lint PYTHON=python3`: exit 0 (`e4b-accounts-lint-r7.log`): gate self-tests (110 passed), import lint clean (191 files), docs-branch/leak and engine checks completed; no step skipped.
+All gate commands used the shared test environment's Python through the process environment only; no interpreter path was written into a file. No process started by this lane was stopped.
+
+Status: DONE
+Summary: `OPS` in commands.py now matches the GUIDE table's command order, and `read_password_file` parameterizes the field name so `current_password_file` and `new_password_file` errors name the field that was read; red-first tests fail on 5141f51 and pass after the fixes, full drive suite (471 tests) and `make lint` green.

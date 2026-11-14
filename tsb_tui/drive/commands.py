@@ -51,9 +51,11 @@ if TYPE_CHECKING:
     from .runner import Driver
 
 # Every op, in the order the guide lists them.
-OPS = ("account_list", "account_new", "account_disable", "account_enable", "account_password", "password_change", "login", "sessions", "targets", "target_new", "target_edit", "target_delete", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "take", "ask_to_type",
-       "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize", "quit",
-       "login_hostkey", "login_answer", "login_cancel")
+OPS = ("login", "sessions", "targets",
+       "account_list", "account_new", "account_disable", "account_enable", "account_password", "password_change",
+       "target_new", "target_edit", "target_delete", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "take", "ask_to_type",
+       "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize",
+       "login_hostkey", "login_answer", "login_cancel", "quit")
 READS = ("screen", "reply", "history", "who")
 
 ASK_TO_TYPE_WHY = ("TSB has no way to ask for the keyboard yet; ask the owner another way, then wait for "
@@ -134,7 +136,7 @@ def read_answer_pipe(path: str, count: int, timeout: float = 30.0) -> list[str]:
             os.close(fd)
 
 
-def read_password_file(path: str, *, regular_only: bool = False) -> str:
+def read_password_file(path: str, *, regular_only: bool = False, field: str = "password_file") -> str:
     """The password in a file: its first line, without the line end, at most `PASSWORD_MAX` bytes. The path may name
     a regular file or a pipe (`/dev/fd/N`, what a process substitution is), so nothing need rest on disk; a device or
     anything else is refused before it is opened (`/dev/zero` has no first line to end). At most one byte more than
@@ -147,9 +149,9 @@ def read_password_file(path: str, *, regular_only: bool = False) -> str:
     except OSError:
         mode = None
     if mode is None or stat.S_ISDIR(mode):
-        raise DriveError("bad_request", f"password_file {path} does not name a file")
+        raise DriveError("bad_request", f"{field} {path} does not name a file")
     if not (stat.S_ISREG(mode) or stat.S_ISFIFO(mode)):
-        raise DriveError("bad_request", f"password_file {path} is not a regular file or a pipe")
+        raise DriveError("bad_request", f"{field} {path} is not a regular file or a pipe")
     if stat.S_ISREG(mode):
         if sys.platform == "win32":
             print("NOTICE: password file mode check skipped on Windows; stdin is the safer door", file=sys.stderr)
@@ -160,22 +162,22 @@ def read_password_file(path: str, *, regular_only: bool = False) -> str:
             fd = os.open(file, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
             with os.fdopen(fd, "rb") as stream:
                 if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                    raise DriveError("bad_request", "password_file is no longer a regular file")
+                    raise DriveError("bad_request", f"{field} is no longer a regular file")
                 data = stream.read(PASSWORD_MAX + 1)
         else:
             with file.open("rb") as stream:
                 data = stream.read(PASSWORD_MAX + 1)
     except OSError as exc:
-        raise DriveError("bad_request", f"password_file {path} could not be read: {exc.strerror}") from None
+        raise DriveError("bad_request", f"{field} {path} could not be read: {exc.strerror}") from None
     line = data.split(b"\n", 1)[0].rstrip(b"\r")
     if len(line) > PASSWORD_MAX:
-        raise DriveError("bad_request", f"password_file {path} holds a password longer than {PASSWORD_MAX} bytes")
+        raise DriveError("bad_request", f"{field} {path} holds a password longer than {PASSWORD_MAX} bytes")
     try:
         value = line.decode("utf-8")
     except UnicodeDecodeError:
-        raise DriveError("bad_request", f"password_file {path} is not UTF-8 text") from None
+        raise DriveError("bad_request", f"{field} {path} is not UTF-8 text") from None
     if not value:
-        raise DriveError("bad_request", f"password_file {path} is empty")
+        raise DriveError("bad_request", f"{field} {path} is empty")
     return value
 
 
@@ -579,10 +581,11 @@ class Commands:
         password = current = ""
         try:
             if operation not in ("list", "disable"):
-                path = _field(cmd, "new_password_file" if operation == "own" else "password_file", str)
-                password = await asyncio.to_thread(read_password_file, path)
+                field_name = "new_password_file" if operation == "own" else "password_file"
+                path = _field(cmd, field_name, str)
+                password = await asyncio.to_thread(read_password_file, path, field=field_name)
             if operation == "own":
-                current = await asyncio.to_thread(read_password_file, _field(cmd, "current_password_file", str))
+                current = await asyncio.to_thread(read_password_file, _field(cmd, "current_password_file", str), field="current_password_file")
             if self.d.screen_lock.check():
                 raise DriveError("not_available", "the screen is locked")
             if generation != self.d.app._login_gen or client is not self.d.app.client:

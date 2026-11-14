@@ -276,3 +276,55 @@ def test_own_change_preserves_attached_caller_and_ends_other_login(serve, tmp_pa
             assert not other.events("ended")
             assert server.sessions[sid]["state"] not in ("killed", "terminated")
     asyncio.run(check())
+
+
+def test_ops_order_equals_guide_table() -> None:
+    """The op list follows the GUIDE's order. In commands.py, OPS lists every op in the exact order
+    the GUIDE's table lists them."""
+    import re
+
+    from tsb_tui.drive import commands, runner
+
+    guide = runner.GUIDE.read_text(encoding="utf-8")
+    table_of_commands = guide.split("## 5. Commands")[1].split("**Key names**")[0]
+    ops_in_guide: list[str] = []
+    for line in table_of_commands.splitlines():
+        if line.startswith("| `") and not line.startswith("| `op`"):
+            cell = line.split("|")[1].strip()
+            ops_in_guide.extend(re.findall(r"`([a-z0-9_]+)`", cell))
+    assert commands.OPS == tuple(ops_in_guide)
+
+
+def test_password_change_bad_password_file_names_field(serve, tmp_path):
+    """A password-file error names the field that was read: current_password_file or new_password_file."""
+    async def check():
+        _, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            good_file = rig.password_file()
+            bad_cur = str(tmp_path / "nonexistent-current-password-file")
+            bad_new = str(tmp_path / "nonexistent-new-password-file")
+
+            # Bad current_password_file, valid new_password_file
+            res_cur = await rig.cmd(
+                "password_change",
+                current_password_file=bad_cur,
+                new_password_file=good_file,
+                confirm=True,
+            )
+            assert res_cur["error"] == "bad_request"
+            assert "current_password_file" in res_cur["why"]
+            assert res_cur["why"].startswith(f"current_password_file {bad_cur}")
+
+            # Valid current_password_file, bad new_password_file
+            res_new = await rig.cmd(
+                "password_change",
+                current_password_file=good_file,
+                new_password_file=bad_new,
+                confirm=True,
+            )
+            assert res_new["error"] == "bad_request"
+            assert "new_password_file" in res_new["why"]
+            assert res_new["why"].startswith(f"new_password_file {bad_new}")
+    asyncio.run(check())
+
