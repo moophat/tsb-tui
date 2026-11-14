@@ -365,3 +365,101 @@ def test_only_the_newest_permission_refresh_applies(serve, wait_until):
         finally:
             second_done.set()
     asyncio.run(check())
+
+
+def test_a_stale_refresh_401_does_not_end_the_current_login(serve, wait_until):
+    import threading
+
+    from tsb_tui.screens.accounts import AccountsScreen
+
+    first_entered, second_done = threading.Event(), threading.Event()
+
+    class Stale401(_serve.ServeApp):
+        def __init__(self):
+            super().__init__()
+            self.me_calls = 0
+
+        def http(self, method, path, headers, body):
+            if method == "GET" and path == "/auth/me":
+                self.me_calls += 1
+                n = self.me_calls
+                if n == 2:                        # the older refresh answers 401 after the newer succeeded
+                    first_entered.set()
+                    assert second_done.wait(10)
+                    return self._err(401, "unauthenticated", "log in first")
+                result = super().http(method, path, headers, body)
+                if n == 3:                        # the newer refresh succeeds first, granting account.admin
+                    second_done.set()
+                return result
+            return super().http(method, path, headers, body)
+
+    async def check():
+        server, url = serve(Stale401())
+        app = TsbTuiApp(url)
+        try:
+            async with app.run_test(size=(140, 40)) as pilot:
+                workspace = await fixture_login(app, pilot)
+                await workspace.run_action_id("accounts")
+                await wait_until(pilot, first_entered.is_set, "older refresh in flight")
+                screen = app.screen
+                assert isinstance(screen, AccountsScreen)
+                screen.action_refresh()          # the newer refresh, succeeds first
+                await wait_until(pilot, second_done.is_set, "newer refresh answered")
+                await wait_until(pilot, lambda: server.me_calls >= 3, "older refresh answered")
+                for _ in range(15):
+                    await pilot.pause()
+                assert app.workspace() is workspace, app.screen
+                assert isinstance(app.screen, AccountsScreen), app.screen
+                assert "account.admin" in app.permissions, app.permissions
+        finally:
+            second_done.set()
+    asyncio.run(check())
+
+
+def test_a_stale_list_failure_does_not_overwrite_the_newer_result(serve, wait_until, screen_text):
+    import threading
+
+    from tsb_tui.screens.accounts import AccountsScreen
+
+    first_entered, second_done = threading.Event(), threading.Event()
+    MARKER = "STALE-LIST-FAILURE-429"
+
+    class StaleList(_serve.ServeApp):
+        def __init__(self):
+            super().__init__()
+            self.list_calls = 0
+
+        def http(self, method, path, headers, body):
+            if method == "GET" and path == "/accounts":
+                self.list_calls += 1
+                n = self.list_calls
+                if n == 1:                        # the earlier load's list fails after the later one succeeded
+                    first_entered.set()
+                    assert second_done.wait(10)
+                    return self._err(429, "rate_limited", MARKER)
+                result = super().http(method, path, headers, body)
+                if n == 2:                        # the later load's list succeeds first
+                    second_done.set()
+                return result
+            return super().http(method, path, headers, body)
+
+    async def check():
+        server, url = serve(StaleList())
+        app = TsbTuiApp(url)
+        try:
+            async with app.run_test(size=(140, 40)) as pilot:
+                workspace = await fixture_login(app, pilot)
+                await workspace.run_action_id("accounts")
+                await wait_until(pilot, first_entered.is_set, "earlier load in flight")
+                screen = app.screen
+                assert isinstance(screen, AccountsScreen)
+                screen.action_refresh()          # the later load, succeeds first
+                await wait_until(pilot, second_done.is_set, "later list answered")
+                await wait_until(pilot, lambda: server.list_calls >= 2, "earlier list answered")
+                for _ in range(15):
+                    await pilot.pause()
+                assert [r["username"] for r in screen.accounts] == sorted(server.users)
+                assert MARKER not in screen_text(app), screen_text(app)
+        finally:
+            second_done.set()
+    asyncio.run(check())

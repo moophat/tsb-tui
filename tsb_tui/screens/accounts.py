@@ -73,7 +73,8 @@ async def refresh_permissions(app) -> bool:
     try:
         me = await call(app, client.me)
     except ApiError as exc:
-        if client is app.client and generation == app._login_gen and exc.status == 401:
+        if (client is app.client and generation == app._login_gen and exc.status == 401
+                and app._perm_seq.get(generation) == seq):     # a stale refresh's 401 is dropped, not notified
             app.notify_api_error(exc)
         raise
     if client is not app.client or generation != app._login_gen or app.workspace() is None:
@@ -155,7 +156,8 @@ class AccountsScreen(Screen):
                               Text("disabled" if row["disabled"] else "enabled"))
             self._buttons()
         except (ApiError, HttpError, OSError, ValueError) as exc:
-            self.say(failure_message(exc))
+            if self.is_attached and load == self._load:     # a stale load's failure never overwrites the newer result
+                self.say(failure_message(exc))
         finally:
             if load == self._load:
                 self.loaded = True

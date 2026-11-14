@@ -266,3 +266,51 @@ Summary: A per-login, per-app refresh sequence number makes an answer apply its 
 when it is the newest issued for this login, and a close deferred past an unlock rechecks it is still newest; red-first
 test green, `make lint` exit 0 (ruff clean run separately), the touched and named test files whole green (42 passed). No
 commit, no push.
+
+## Round 5 — round 4's rule carried to the two error paths (2026-11-14)
+
+Branch `feat/e4b-accounts`, head `bc73ad5` kept. The orchestrator ruled both fixes 2026-11-14 23:0x, as Qodo
+recommended. Red first, then the code. Only `tsb_tui/screens/accounts.py` and `tests/` (one file) were written, plus this
+section; `app.py`'s round-4 counter needed no change. No plan, ledger, ruling, contract source, client package, broker
+code or wheel pin was touched. No commit, no push. Gate output went to its own file in the system temporary directory;
+exit codes were checked directly, never through a pipe.
+
+**1 — A stale refresh's 401 does not end the current login.** `refresh_permissions()`'s 401 handler checked the client
+and login generation but not the refresh's sequence before `notify_api_error()`, so an older refresh's 401 arriving after
+a newer refresh succeeded for the same login still tore down the workspace and sent the user to Login. Fix: the 401 is
+notified only when this refresh's number is still the newest issued for this login (the round-4 success guard), so a
+stale failure is dropped; the current refresh's 401 is handled exactly as before. In `tsb_tui/screens/accounts.py`, the
+`except ApiError` branch adds `and app._perm_seq.get(generation) == seq` to the notify condition. Test:
+`tests/test_accounts_screen.py::test_a_stale_refresh_401_does_not_end_the_current_login` — a fixture server whose older
+refresh `/auth/me` answers 401 only after the newer refresh's `/auth/me` has succeeded (granting `account.admin`); the
+test opens Accounts, triggers the newer refresh, settles both, and asserts the workspace stays, the Accounts screen is
+open and `account.admin` is kept. On `bc73ad5` it fails: the older 401 sent the app to Login (`app.workspace()` is
+`LoginScreen`).
+
+**2 — A stale list failure does not overwrite the newer result.** `AccountsScreen._refresh()` checked its load number
+before replacing the account list but called `say()` for failures without that check, so an earlier load failing after a
+later one populated the list wrote its stale error over the newer result. Fix: apply the same load-number (and
+attachment) check before writing a failure's message; the latest load's error is still shown. In
+`tsb_tui/screens/accounts.py`, `_refresh()`'s `except` writes the failure only `if self.is_attached and load == self._load`.
+Test: `tests/test_accounts_screen.py::test_a_stale_list_failure_does_not_overwrite_the_newer_result` — a fixture server
+whose earlier load's `GET /accounts` fails (429, marker message) only after the later load's list succeeded; the test
+opens Accounts, triggers the later load, settles both, and asserts the account list keeps the later result and the status
+line does not show the stale marker. On `bc73ad5` it fails: the marker appears over the populated list.
+
+**Red evidence.** `e4b-accounts-red5.log`: exit 1, both tests failed on `bc73ad5` for the right reasons (the older 401
+reached Login; the stale 429 marker was written over the populated list).
+
+**Green focused run.** `e4b-accounts-green5.log`: exit 0, both new tests pass. The touched and named test files whole
+(`e4b-accounts-tests-r5.log`): exit 0, 44 passed across `tests/test_accounts_screen.py` and `tests/test_drive_accounts.py`.
+
+**Gate (Round 5).** `make lint` exit 0 (`e4b-accounts-lint-r5.log`): gate self-tests (110), import lint clean (191
+files), docs-branch/leak and engine checks completed; no step skipped. The venv's ruff is not on `PATH`, so the `make
+lint` target reports `SKIP: ruff` (ruff is optional outside CI); `ruff check tsb_tui tests` run separately is exit 0,
+"All checks passed" (`e4b-accounts-ruff-r5.log`). No process started by this lane was stopped. The orchestrator runs the
+full suite.
+
+Status: DONE_WITH_CONCERNS
+Summary: Round 4's newest-refresh rule now covers both error paths — a stale refresh's 401 is dropped before
+`notify_api_error`, and a stale load's failure message is written only when it is the current load; red-first tests fail
+on `bc73ad5` and pass after the fix, `make lint` exit 0 (ruff clean run separately), the touched and named test files
+whole green (44 passed). No commit, no push.
