@@ -186,7 +186,7 @@ def test_hot_policy_refusal_keeps_the_form(serve, wait_until):
             server._permissions = lambda user: []
             form.query_one("#target-save", Button).press()
             await wait_until(pilot, lambda: bool(form.query_one("#target-error", Static).content), "403", timeout_s=TARGET_FORM_WAIT_S)
-            assert str(form.query_one("#target-error", Static).content) == "target.edit is required"
+            assert str(form.query_one("#target-error", Static).content) == "a session or target permission is required"
             assert form.query_one("#target-id", Input).value == "revoked"
     asyncio.run(check())
 
