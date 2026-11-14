@@ -4,11 +4,12 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from textual.widgets import Button, DataTable, Input
+from textual.widgets import Button, DataTable, Input, Static
 from tsbc import _serve
 from workspace_support import fixture_login
 
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.accounts import AccountFormScreen
 from tsb_tui.screens.login import LoginScreen
 
 SECRET = "canary-account-password-7462"
@@ -600,4 +601,54 @@ def test_refresh_selected_user_gone_moves_cursor_to_first_row_and_confirmation_n
             assert "subject" not in screen_text(app)
             assert f"Disable account: {first_user}" in screen_text(app)
     asyncio.run(check())
+
+
+def test_create_dialog_not_titled_with_selected_account_and_disable_names_it(serve, wait_until, screen_text):
+    async def check():
+        server, url = serve()
+        server.users["subject"] = dict(server.users[_serve.USER], username="subject", disabled=False)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(140, 40)) as pilot:
+            _, screen = await open_accounts(app, pilot, wait_until)
+            index = next(i for i, r in enumerate(screen.accounts) if r["username"] == "subject")
+            screen.query_one(DataTable).move_cursor(row=index)
+            await pilot.pause()
+            assert screen.selected() == "subject"
+
+            screen.query_one("#account-new", Button).press()
+            await wait_until(pilot, lambda: bool(app.screen.query("#account-confirm")), "create form")
+            await pilot.pause()
+            form = app.screen
+            assert str(form.query(Static).first().render()) == "Create account"
+            assert "Create account: subject" not in screen_text(app)
+            assert "Create account" in screen_text(app)
+            assert form.query_one("#account-username", Input).value == ""
+            assert form.username == ""
+
+            form.query_one("#account-cancel", Button).press()
+            await wait_until(pilot, lambda: app.screen is screen, "accounts screen")
+            await pilot.pause()
+
+            app.push_screen(AccountFormScreen("new", "subject"))
+            await wait_until(pilot, lambda: bool(app.screen.query("#account-confirm")), "direct create form")
+            await pilot.pause()
+            assert str(app.screen.query(Static).first().render()) == "Create account"
+            assert "Create account: subject" not in screen_text(app)
+            app.pop_screen()
+            await wait_until(pilot, lambda: app.screen is screen, "accounts screen")
+            await pilot.pause()
+
+            screen.query_one("#account-disable", Button).press()
+            await wait_until(pilot, lambda: bool(app.screen.query("#account-confirm")), "disable form")
+            await pilot.pause()
+            disable_form = app.screen
+            assert str(disable_form.query(Static).first().render()) == "Disable account: subject"
+            assert "Disable account: subject" in screen_text(app)
+            assert disable_form.username == "subject"
+
+            disable_form.query_one("#account-cancel", Button).press()
+            await wait_until(pilot, lambda: app.screen is screen, "accounts screen")
+            await pilot.pause()
+    asyncio.run(check())
+
 

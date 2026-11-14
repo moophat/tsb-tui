@@ -202,7 +202,7 @@ class AccountsScreen(Screen):
             if operation != "new" and user is None:
                 self.say("Select an account first.")
                 return
-            self.app.push_screen(AccountFormScreen(operation, user or ""), self._changed)
+            self.app.push_screen(AccountFormScreen(operation, "" if operation == "new" else (user or "")), self._changed)
 
     def _changed(self, result):
         if result is not None and self.is_attached:
@@ -240,7 +240,8 @@ class AccountFormScreen(ModalScreen[dict | None]):
         title = {"new": "Create account", "disable": "Disable account", "enable": "Enable account",
                  "password": "Set account password", "own": "Change my password"}[self.operation]
         with Vertical(classes="panel"):
-            yield Static(f"{title}: {as_text(self.username)}" if self.username else title, markup=False)
+            yield Static(f"{title}: {as_text(self.username)}" if self.username and self.operation != "new" else title,
+                         markup=False)
             if self.operation == "new":
                 yield Input(placeholder="Username", id="account-username")
             if self.operation == "disable":
