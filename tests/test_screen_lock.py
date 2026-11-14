@@ -42,6 +42,14 @@ class RecordingVaultServe(VaultServe, InputRecordingApp):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.screen_limited = False
+        self.screen_unlock_bodies: list[dict] = []
+
+    def http(self, method, path, headers, body):
+        # The server redacts a password from the recorded request body (v0.18.0), so calls() cannot
+        # show what was sent; capture the raw body here to prove both unlocks reached the core.
+        if (method, path) == ("POST", "/auth/screen-unlock") and isinstance(body, dict):
+            self.screen_unlock_bodies.append(dict(body))
+        return super().http(method, path, headers, body)
 
     def vault_http(self, method, path, headers, body, query, user):
         if (method, path) == ("POST", "/auth/screen-unlock") and self.screen_limited:
@@ -174,7 +182,7 @@ def test_a_wrong_password_keeps_the_lock_and_the_login_and_the_right_one_resumes
             assert app.client.me()["username"] == _serve.USER, "the login is in place"
             await _unlock_with(lock, _serve.PASSWORD)
             await wait_until(pilot, lambda: app.screen is workspace, "the right password resumes")
-            assert [b["password"] for b in serve_app.calls("POST", "/auth/screen-unlock")] == [
+            assert [b["password"] for b in serve_app.screen_unlock_bodies] == [
                 "not the password", _serve.PASSWORD]
             assert serve_app.unlock_bodies == [] and not serve_app.calls("GET", "/vault/salt"), (
                 "the screen-lock password never unlocks the vault")
