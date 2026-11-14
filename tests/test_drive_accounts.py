@@ -27,6 +27,42 @@ def test_account_writes_need_confirmation_and_refuse_inline_secrets(serve, tmp_p
     asyncio.run(check())
 
 
+def test_account_list_is_sorted_by_username(serve, tmp_path):
+    """`account_list` answers `accounts` sorted by username, as the GUIDE promises and the Accounts
+    screen sorts, whatever order the client returned. A drive that echoed the client's order would
+    hand U11 a list the screen's own sort disagrees with."""
+    async def check():
+        _, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+            unsorted = [{"username": "zeta", "created_at": "2026-01-03", "disabled": False},
+                        {"username": "alpha", "created_at": "2026-01-01", "disabled": True},
+                        {"username": "mid", "created_at": "2026-01-02", "disabled": False}]
+
+            def fake_accounts():
+                return unsorted
+            await rig.app_call(lambda: setattr(rig.app.client, "accounts", fake_accounts))
+            listed = await rig.cmd("account_list")
+            assert listed["ok"]
+            assert [a["username"] for a in listed["accounts"]] == ["alpha", "mid", "zeta"]
+    asyncio.run(check())
+
+
+def test_rejected_account_list_password_is_redacted(serve, tmp_path):
+    """Under `--record`, the password fields are redacted for every `account_*` command, a rejected
+    one included: a refused `account_list` that carried a `password` leaves no trace of it in the
+    transcript. A redaction keyed on the five writes alone left this `account_list` verbatim."""
+    async def check():
+        _, url = serve()
+        record = io.StringIO()
+        async with Rig(url, tmp_path=tmp_path, record=record) as rig:
+            await rig.login()
+            result = await rig.cmd("account_list", password=SECRET)
+            assert result["error"] == "bad_request"
+            assert SECRET not in record.getvalue()
+    asyncio.run(check())
+
+
 def test_all_six_account_commands_and_secret_canary(serve, tmp_path):
     async def check():
         server, url = serve()

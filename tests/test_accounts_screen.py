@@ -178,6 +178,45 @@ def test_cancel_drops_password_and_lock_covers_form(serve, wait_until, screen_te
     asyncio.run(check())
 
 
+def test_refused_account_act_keeps_its_code_when_refresh_fails(serve, wait_until, screen_text):
+    """A refused account act (403) keeps its own code: the permissions refresh it runs after a 403
+    swallows its own failure, so the original 403 is always what is re-raised. A refresh that raised
+    straight through replaced the operator's refusal with the refresh's error."""
+
+    class Refuse(_serve.ServeApp):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.arm = False
+
+        def http(self, method, path, headers, body):
+            if (method, path) == ("GET", "/auth/me") and self.arm:
+                return self._err(500, "server_error", "REFRESH-FAILED")
+            return super().http(method, path, headers, body)
+
+        def _account_action(self, actor, name, action, body, keep=None):
+            if action == "disable":
+                return self._err(403, "forbidden", "DISABLE-REFUSED")
+            return super()._account_action(actor, name, action, body, keep)
+
+    async def check():
+        server, url = serve(Refuse())
+        server.users["subject"] = dict(server.users[_serve.USER], username="subject", disabled=False)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(140, 40)) as pilot:
+            workspace, screen = await open_accounts(app, pilot, wait_until)
+            index = next(i for i, r in enumerate(screen.accounts) if r["username"] == "subject")
+            screen.query_one(DataTable).move_cursor(row=index)
+            await pilot.pause()
+            server.arm = True
+            screen.query_one("#account-disable", Button).press()
+            await submit_form(app, pilot, wait_until)
+            await pilot.pause()
+            assert "DISABLE-REFUSED" in screen_text(app)
+            assert "REFRESH-FAILED" not in screen_text(app)
+            assert app.workspace() is workspace
+    asyncio.run(check())
+
+
 def test_permissions_refreshed_on_open_and_after_forbidden(serve, wait_until):
     class Revoked(_serve.ServeApp):
         admin = True

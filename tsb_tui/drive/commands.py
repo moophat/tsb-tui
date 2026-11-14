@@ -598,7 +598,7 @@ class Commands:
         finally:
             password = current = ""
         if operation == "list":
-            return {"accounts": result}
+            return {"accounts": sorted(result, key=lambda a: a["username"])}
         if operation == "new":
             return result
         return {}

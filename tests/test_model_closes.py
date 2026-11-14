@@ -390,3 +390,77 @@ def test_account_close_never_reattaches_reads_no_record_and_goes_login():
     pump = asyncio.run(_run_pump(client, code=4017))
     assert client.attempts == 1 and pump.reattach_attempts == 0
     assert close_outcome(4998) == close_outcome(4010)
+
+
+def _login_pump(client: FakeClient) -> tuple[AttachmentPump, list[bool]]:
+    """A pump that records every `on_login_needed` call, with no wall clock."""
+    logins: list[bool] = []
+    pump = AttachmentPump(client, "sess-1", sink=lambda *_: None,
+                          hooks=PumpHooks(on_login_needed=lambda: logins.append(True)),
+                          sleep=_no_sleep)
+    return pump, logins
+
+
+def test_first_attach_4017_goes_login_without_retry_or_record():
+    """A 4017 met on the first attach applies the account-ended outcome, not an attach refusal: no
+    retry, no record read, and the app goes to Login through `go_login` (the same as a 4017 on an
+    established socket). A first-attach 4017 that only left "attach refused" kept the operator on a
+    login the account change had already ended."""
+    from tsb_contract_client import AttachRefused
+
+    client = FakeClient([AttachRefused(4017, "account ended")])
+    pump, logins = _login_pump(client)
+
+    async def go() -> None:
+        await pump.start()
+        await pump.wait_closed()
+
+    asyncio.run(go())
+    assert client.attempts == 1
+    assert pump.reattach_attempts == 0
+    assert pump.state.record_state is None
+    assert pump.state.close.show == "login_ended" and pump.state.close.go_login
+    assert logins == [True]
+
+
+def test_4001_retry_that_hits_4017_goes_login():
+    """A 4017 met on the one-shot 4001 retry applies the account-ended outcome: no further retry, no
+    record read, and Login. A retry that only closed the socket lost the login the account ended."""
+    from tsb_contract_client import AttachRefused
+
+    first = FakeAttachment(close_code=CLOSE_TICKET_INVALID)
+    client = FakeClient([first, AttachRefused(4017, "account ended")])
+    pump, logins = _login_pump(client)
+
+    async def go() -> None:
+        await pump.start()
+        await pump.wait_closed()
+
+    asyncio.run(go())
+    assert client.attempts == 2
+    assert pump.reattach_attempts == 1
+    assert pump.state.record_state is None
+    assert pump.state.close.show == "login_ended" and pump.state.close.go_login
+    assert logins == [True]
+
+
+def test_reattach_backoff_4017_goes_login():
+    """A 4017 met during the backoff's reattach applies the account-ended outcome: no further
+    reattach, no record read, and Login. A backoff that only recorded the close left the operator on
+    a login the account had ended."""
+    from tsb_contract_client import AttachRefused
+
+    first = FakeAttachment(close_code=CLOSE_DETACHED_BY_SERVER)
+    client = FakeClient([first, AttachRefused(4017, "account ended")])
+    pump, logins = _login_pump(client)
+
+    async def go() -> None:
+        await pump.start()
+        await pump.wait_closed()
+
+    asyncio.run(go())
+    assert client.attempts == 2
+    assert pump.reattach_attempts == 1
+    assert pump.state.record_state is None
+    assert pump.state.close.show == "login_ended" and pump.state.close.go_login
+    assert logins == [True]

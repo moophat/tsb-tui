@@ -94,3 +94,71 @@ configuration or deployed U2 behavior.
 
 Status: DONE_WITH_CONCERNS
 Summary: Implementation and focused checks are complete; final gates are in progress on the latest revision. Release, CI and deployed-core proof remain orchestrator dependencies.
+
+## Round 2 — Qodo's four findings (2026-11-14)
+
+Branch `feat/e4b-accounts`, head `a91fec9` kept. The orchestrator ruled each finding as
+Qodo recommended. Red first: six new tests, each failing on `a91fec9`; then the code. Only
+`tsb_tui/` (the four files) and `tests/` were written, plus this section. No plan, ledger,
+ruling, contract source, client package, broker code or wheel pin was touched. No commit, no
+push. Gate output went to its own file in the system temporary directory; exit codes checked
+directly, never through a pipe.
+
+**1 — A 4017 refusing an attach applies the account-ended outcome.** A close with 4017 met on
+the first attach, on the one-shot 4001 retry, or during the backoff's reattach now applies the
+same outcome as a 4017 on an established socket: no retry, no session record read, and the app
+goes to Login through `CloseOutcome.go_login`. In `tsb_tui/model/attachment.py`: `start()`
+catches a first-attach `AttachRefused` whose row has `go_login`, applies the close and fires
+`on_login_needed` (other codes re-raise untouched); `_reattach_once` splits `AttachRefused` out
+of the `(AttachRefused, ApiError, OSError)` catch and handles a `go_login` row; and the backoff's
+final branch calls `on_login_needed` when the applied outcome has `go_login`. Tests:
+`tests/test_model_closes.py::test_first_attach_4017_goes_login_without_retry_or_record`,
+`::test_4001_retry_that_hits_4017_goes_login`, `::test_reattach_backoff_4017_goes_login` — each
+drives the fake client to raise `AttachRefused(4017)` on that path and asserts `login_ended`,
+no reattach, no record read, and the login hook fired.
+
+**2 — `drive`'s `account_list` is sorted by username.** `tsb_tui/drive/commands.py` returns
+`{"accounts": sorted(result, key=username)}`, as the GUIDE promises and the Accounts screen
+sorts, whatever order the client returned. Test:
+`tests/test_drive_accounts.py::test_account_list_is_sorted_by_username`, whose fake client
+returns an unsorted list and the answer is asserted in username order.
+
+**3 — Transcript redaction covers every `account_*` command.** Under `--record`,
+`tsb_tui/drive/runner.py` redacts `password`, `current_password` and `new_password` for every
+`account_*` op plus `password_change` (the prefix check added the missing `account_list`),
+rejected commands included. Test:
+`tests/test_drive_accounts.py::test_rejected_account_list_password_is_redacted`, which records a
+refused `account_list` carrying a `password` and finds no trace of it in the transcript.
+
+**4 — A refused act keeps its code.** In `tsb_tui/screens/accounts.py`, after a 403 on a
+non-own act, `refresh_permissions(app)` runs inside `try/except (ApiError, HttpError, OSError,
+ValueError)` that swallows its own failure, so the original 403 is always what is re-raised.
+Test: `tests/test_accounts_screen.py::test_refused_account_act_keeps_its_code_when_refresh_fails`,
+where the account act answers 403 and the permissions refresh (`GET /auth/me`) fails; the
+screen shows the 403's message, not the refresh's, and the login is kept.
+
+**Red evidence.** `e4b-accounts-red2.log`: exit 1, the six new tests failed on `a91fec9` for the
+right reasons (first attach raised the 4017 through; the retry recorded `ticket_refused` and no
+login; the backoff recorded `login_ended` with no login hook; `account_list` echoed the client's
+unsorted order; the refused `account_list` wrote its password verbatim; the 403 was replaced by
+the refresh's error). The finding-4 red run (`e4b-accounts-red4.log`) showed the refresh's
+message, not the 403's.
+
+**Green focused run.** `e4b-accounts-green2.log`: exit 0, all six new tests pass.
+
+**Gate (Round 2).** `make lint` exit 0 (`e4b-accounts-lint-r2.log`): ruff clean, gate self-tests,
+import lint, docs-branch/leak and engine checks completed; no step skipped. `make test` full run
+(`e4b-accounts-test-r2b.log`): exit 0 — 2127 passed, 3 skipped, every account, attach, close and
+drive test green. A first full run (`e4b-accounts-test-r2.log`) caught the pre-existing flaky
+`tests/test_new_session_login.py::test_the_activity_signal_in_a_counted_window_is_not_what_nothing_reached_the_core_counts`,
+whose counted activity window can catch the background `GET /alerts` poll (1 failed, 2126 passed,
+3 skipped); it passed on the second run. This flake is not caused by this work: with these changes
+stashed on `a91fec9` the same test is flaky too (it passed on one run and failed on three with the
+identical `('GET', '/alerts', None)` race). Report it to the orchestrator as a known issue; it was
+not fixed here (out of scope).
+
+Status: DONE_WITH_CONCERNS
+Summary: All four Qodo findings are fixed with red-first tests (six new, all green); `make lint`
+is exit 0 and the full `make test` is green (2127 passed), apart from one pre-existing flaky
+alert-window test that also fails on the untouched base. No commit, no push; release/CI/deployed-core
+proof stay orchestrator dependencies.

@@ -605,7 +605,17 @@ class AttachmentPump:
         """Attach and begin the reader and processor. Raises `AttachRefused`/`ApiError` for a
         first-attach refusal, exactly as `Client.async_attach` does."""
         if attachment is None:
-            await self._attach()
+            try:
+                await self._attach()
+            except AttachRefused as exc:
+                # A 4017 on the first attach is the account-ended outcome, not an attach refusal: the
+                # same as a 4017 on an established socket. No retry, no record read, and Login.
+                if close_outcome(exc.code).go_login:
+                    self.state.apply_close(exc.code, exc.reason)
+                    if self._hooks.on_login_needed is not None:
+                        self._hooks.on_login_needed()
+                    return
+                raise
         else:
             self.attach_attempts += 1
             self._apply_attached(attachment)
@@ -828,7 +838,16 @@ class AttachmentPump:
         try:
             await self._attach()
             return True
-        except (AttachRefused, ApiError, OSError):
+        except AttachRefused as exc:
+            # A 4017 met on the one-shot retry is the account-ended outcome, not a closed socket.
+            if close_outcome(exc.code).go_login:
+                self.state.apply_close(exc.code, exc.reason)
+                if self._hooks.on_login_needed is not None:
+                    self._hooks.on_login_needed()
+                return False
+            self.state.closed = True
+            return False
+        except (ApiError, OSError):
             self.state.closed = True
             return False
 
@@ -861,8 +880,11 @@ class AttachmentPump:
                 if close_outcome(exc.code).reattach == "backoff":
                     continue  # the broker detached us again (4011): keep backing off
                 # The session ended, or this client was removed, while it was away: that is the state
-                # to show, and nothing is tried again (4010, 4012, 4014, 4000).
-                self.state.apply_close(exc.code, exc.reason)
+                # to show, and nothing is tried again (4010, 4012, 4014, 4000). A 4017 is the same
+                # account-ended outcome as on an established socket: no reattach, no record read, Login.
+                outcome = self.state.apply_close(exc.code, exc.reason)
+                if outcome.go_login and self._hooks.on_login_needed is not None:
+                    self._hooks.on_login_needed()
                 return False
             except ApiError as exc:
                 if exc.status == 401:

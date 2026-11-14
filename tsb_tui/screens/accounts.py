@@ -47,7 +47,10 @@ async def account_request(app, operation: str, username: str = "", password: str
             if exc.status == 401:
                 app.notify_api_error(exc)
             elif exc.status == 403 and operation != "own":
-                await refresh_permissions(app)
+                try:
+                    await refresh_permissions(app)
+                except (ApiError, HttpError, OSError, ValueError):
+                    pass
         raise
     finally:
         password = current_password = ""
