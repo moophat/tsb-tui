@@ -223,7 +223,7 @@ class DeviceLoginPane(VerticalScroll):
             while self._live():
                 frame = await self.login.recv()
                 if frame is None:
-                    if self.login.close_code == 4015:
+                    if self.login.close_code in (4015, 4017):
                         self.app.notify_api_error(ApiError(401, "unauthenticated", "Your TSB login ended."))
                     elif not self.ended:
                         self.finish(LOST)

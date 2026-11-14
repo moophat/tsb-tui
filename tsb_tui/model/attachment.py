@@ -63,6 +63,7 @@ from .events import (
 )
 
 # The close codes this client acts on (ws-frames.schema.json#/x-close-codes).
+CLOSE_ACCOUNT_LOGIN_ENDED = 4017
 CLOSE_KILLED = 4010
 CLOSE_TERMINATED = 4012
 CLOSE_REMOVED = 4014
@@ -112,6 +113,7 @@ class CloseOutcome:
 
 # DT13's close table, one row per code. Unknown 4xxx reads as 4010 (V3).
 _CLOSE_TABLE: dict[int, CloseOutcome] = {
+    CLOSE_ACCOUNT_LOGIN_ENDED: CloseOutcome("login_ended", "never", go_login=True),
     CLOSE_KILLED: CloseOutcome("ended_killed", "never"),
     CLOSE_TERMINATED: CloseOutcome("ended_terminated", "never"),
     CLOSE_REMOVED: CloseOutcome("removed", "never"),
@@ -481,6 +483,8 @@ class AttachmentState:
         self._add_event(KIND_OUTPUT, bytes=len(data))
 
     def apply_close(self, code: int | None, reason: str = "") -> CloseOutcome:
+        if code == CLOSE_ACCOUNT_LOGIN_ENDED and self.close_code == code and self.close is not None:
+            return self.close
         self.closed = True
         self.close_code = code
         self.close = close_outcome(code)
@@ -793,6 +797,10 @@ class AttachmentPump:
         """Apply the close. Return True if the caller should keep reading (a reattach happened)."""
         outcome = self.state.apply_close(code, reason)
         if self._stop:
+            return False
+        if outcome.go_login:
+            if self._hooks.on_login_needed is not None:
+                self._hooks.on_login_needed()
             return False
         if outcome.read_record:
             # The close alone does not say how the session stands: the record does (4004, a dead socket).

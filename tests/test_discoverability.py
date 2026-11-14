@@ -24,6 +24,7 @@ from workspace_support import rail_row
 
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model import actions as A
+from tsb_tui.screens.accounts import AccountFormScreen, AccountsScreen
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen, TextScreen
 from tsb_tui.screens.credentials import CredentialsScreen
@@ -63,6 +64,7 @@ def test_the_menu_and_the_fleet_are_on_screen_and_one_click_away_at_each_size(se
         app = TsbTuiApp(url)
         async with app.run_test(size=(width, height)) as pilot:
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
+            app.permissions = frozenset(app.client.me().get("permissions", ()))
             screen = await attached(pilot, app, session_id, wait_until)
             screen.close_sidebar()
             await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
@@ -100,6 +102,7 @@ def test_the_menu_lists_every_action_of_the_table_at_each_size(serve, wait_until
         app = TsbTuiApp(url)
         async with app.run_test(size=(width, height)) as pilot:
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
+            app.permissions = frozenset(app.client.me().get("permissions", ()))
             screen = await attached(pilot, app, session_id, wait_until)
             await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
             await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
@@ -127,6 +130,7 @@ def test_closing_a_dialog_the_menu_opened_gives_the_status_row_its_hints_back(
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
+            app.permissions = frozenset(app.client.me().get("permissions", ()))
             screen = await attached(pilot, app, session_id, wait_until)
             await screen.run_action_id(action_id)
             await wait_until(pilot, lambda: app.screen is not screen and screen.dialogs
@@ -283,6 +287,10 @@ def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, w
                 reached.append("credentials")
                 await dialog(DevicesScreen, A.BY_ID["devices"].label)
                 reached.append("devices")
+                await dialog(AccountsScreen, A.BY_ID["accounts"].label)
+                reached.append("accounts")
+                await dialog(AccountFormScreen, A.BY_ID["password_change"].label)
+                reached.append("password_change")
                 await _click_menu_entry(rig, A.BY_ID["lock_now"].label)
                 assert not isinstance(app.screen, LockScreen)
                 assert app.screen is screen

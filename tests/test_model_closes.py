@@ -380,3 +380,13 @@ def test_stub_4001_on_a_reattach_is_retried_exactly_once() -> None:
         pump = asyncio.run(_stub_pump(app, url, until=lambda p: False))
     assert app.attaches == 3
     assert pump.state.close.show == "ticket_refused"
+
+
+def test_account_close_never_reattaches_reads_no_record_and_goes_login():
+    row = close_outcome(4017)
+    assert row.reattach == "never" and row.go_login and not row.read_record
+    att = FakeAttachment(close_code=4017)
+    client = FakeClient([att])
+    pump = asyncio.run(_run_pump(client, code=4017))
+    assert client.attempts == 1 and pump.reattach_attempts == 0
+    assert close_outcome(4998) == close_outcome(4010)

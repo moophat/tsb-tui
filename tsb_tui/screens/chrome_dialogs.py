@@ -300,13 +300,14 @@ def settings_lines(cfg: Any) -> list[str]:
     return lines
 
 
-def keys_lines(cfg: Any) -> list[str]:
+def keys_lines(cfg: Any, facts: A.Facts | None = None) -> list[str]:
     """Every action's key from the one table, then the keys of the sidebar, the full view and Pan."""
     leader = A.leader_label(cfg["keys.leader"])
     keys = A.leader_keys(cfg.leader_overrides())
     lines = [f"{leader} alone opens the Menu; {leader} {leader} sends {leader} to the session.", ""]
     for group in A.GROUPS:
-        entries = [a for a in A.ACTIONS if a.scope == A.SCOPE_SESSION and a.group == group]
+        entries = [a for a in A.ACTIONS if a.scope == A.SCOPE_SESSION and a.group == group
+                   and A.permitted(a, facts or A.Facts(None))]
         if not entries:
             continue
         lines.append(group)

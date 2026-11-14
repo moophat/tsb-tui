@@ -494,6 +494,10 @@ def ended_view(state: AttachmentState, target: str) -> EndedView | None:
     if close is None:
         return None
     show, code = close.show, state.close_code
+    if show == "login_ended":
+        return EndedView("Login ended by an account change",
+                         "Your account was disabled or given a new password. The session keeps running.",
+                         f"{target} · login ended; session keeps running", False)
     if show in ("ended_killed", "ended_terminated"):
         word = "killed" if show == "ended_killed" else "terminated"
         return _ended(word, target, f"Session ended · {word} (close {code})")

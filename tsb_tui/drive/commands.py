@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from .runner import Driver
 
 # Every op, in the order the guide lists them.
-OPS = ("login", "sessions", "targets", "target_new", "target_edit", "target_delete", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "take", "ask_to_type",
+OPS = ("account_list", "account_new", "account_disable", "account_enable", "account_password", "password_change", "login", "sessions", "targets", "target_new", "target_edit", "target_delete", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "take", "ask_to_type",
        "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize", "quit",
        "login_hostkey", "login_answer", "login_cancel")
 READS = ("screen", "reply", "history", "who")
@@ -562,6 +562,64 @@ class Commands:
                 raise DriveError("bad_request", "type: expected ssh or telnet")
             fields[key] = value
         return fields
+
+    async def _account(self, cmd: dict[str, Any], operation: str) -> dict[str, Any]:
+        from ..screens.accounts import account_request
+
+        if self.d.app.screen_lock.locked or self.d.screen_lock.check():
+            raise DriveError("not_available", "the screen is locked")
+        self._screen()
+        if operation != "list" and cmd.get("confirm") is not True:
+            raise DriveError("bad_request", "send confirm: true to confirm the account change")
+        if any(key in cmd for key in ("password", "current_password", "new_password")):
+            raise DriveError("bad_request", "a password is never given in a command: use password files")
+        generation = self.d.app._login_gen
+        client = self.d.app.client
+        username = _field(cmd, "username", str) if operation not in ("list", "own") else ""
+        password = current = ""
+        try:
+            if operation not in ("list", "disable"):
+                path = _field(cmd, "new_password_file" if operation == "own" else "password_file", str)
+                password = await asyncio.to_thread(read_password_file, path)
+            if operation == "own":
+                current = await asyncio.to_thread(read_password_file, _field(cmd, "current_password_file", str))
+            if self.d.screen_lock.check():
+                raise DriveError("not_available", "the screen is locked")
+            if generation != self.d.app._login_gen or client is not self.d.app.client:
+                raise DriveError("not_logged_in", "the login changed")
+            self._screen()
+            result = await account_request(self.d.app, operation, username, password, current)
+        except ApiError as exc:
+            raise DriveError(exc.code, exc.message) from None
+        except ValueError as exc:
+            raise DriveError("not_available", str(exc)) from None
+        except (HttpError, OSError) as exc:
+            raise DriveError("request_failed", str(exc)) from None
+        finally:
+            password = current = ""
+        if operation == "list":
+            return {"accounts": result}
+        if operation == "new":
+            return result
+        return {}
+
+    async def op_account_list(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        return await self._account(cmd, "list")
+
+    async def op_account_new(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        return await self._account(cmd, "new")
+
+    async def op_account_disable(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        return await self._account(cmd, "disable")
+
+    async def op_account_enable(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        return await self._account(cmd, "enable")
+
+    async def op_account_password(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        return await self._account(cmd, "password")
+
+    async def op_password_change(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        return await self._account(cmd, "own")
 
     async def op_target_new(self, cmd: dict[str, Any]) -> dict[str, Any]:
         if self.d.app.screen_lock.locked or self.d.screen_lock.check():

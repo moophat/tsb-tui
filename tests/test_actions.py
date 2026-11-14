@@ -55,7 +55,7 @@ def _viewer() -> AttachmentState:
 # design does not name (mockup F3 prints `^\\ ?` for All keys and `:q` for Quit only). Sign out is Menu-only:
 # a costly slip must never be one keystroke away. New session on this connection is menu-only too: it lives in the
 # session menu.
-MENU_ONLY = frozenset({"settings", "about", "sign_out", "new_on_connection"})
+MENU_ONLY = frozenset({"settings", "about", "sign_out", "new_on_connection", "accounts", "password_change"})
 
 
 def test_every_action_has_a_label_a_description_a_group_and_a_key() -> None:
