@@ -351,8 +351,11 @@ class Commands:
         self._look_serial = 0
         self._prompts: dict[str, PromptCheck] = {}
         self._ended_login: Any | None = None
+        self._logging_out = False
 
     def note_login_ended(self, client: Any | None = None) -> None:
+        if self._logging_out or getattr(self.d.app, "signing_out", False):
+            return
         if self._ended_login is None:
             self._ended_login = self.d.app.client if client is None else client
 
@@ -1519,10 +1522,15 @@ class Commands:
         the logout: this client holds no login either way."""
         self._ended_login = None
         self._screen()
-        result = await self.d.app.sign_out()
-        await self.d.wait_for_login_screen()
-        self.d.screen_lock.reset()
-        return {"detached": result.detached, "broker": result.broker}
+        self._logging_out = True
+        try:
+            result = await self.d.app.sign_out()
+            await self.d.wait_for_login_screen()
+            self.d.screen_lock.reset()
+            return {"detached": result.detached, "broker": result.broker}
+        finally:
+            self._logging_out = False
+            self._ended_login = None
 
     # -- the UI itself --
 

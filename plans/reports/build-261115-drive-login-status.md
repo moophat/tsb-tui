@@ -63,3 +63,16 @@ Ruling by the orchestrator (2026-11-15) addressing Qodo's review finding on comm
 2. **Tests (`tests/test_drive_login_status.py`)**:
    - `test_login_status_poller_401_retains_client`: verifies that when fake core session invalidation occurs with no attachment event and no probe, the poller meets the 401 first, returning the app to Login; `login_status` answers `status: 401` (rather than `not_logged_in`), subsequent session commands answer `not_logged_in`, and calling `logout` clears the retained client. Failed on `a8ff3a8`.
    - `test_login_status_replaced_client_does_not_end_active_login`: verifies that a stale 401 on an old replaced client does not tear down the active workspace or overwrite the live login.
+
+## Round 4 — Qodo's finding on 3e647ae
+
+Ruling by the orchestrator (2026-11-15 21:5x) addressing Qodo's review finding on commit `3e647ae`:
+
+1. **Logout leaves no retained login whatever happens during it**:
+   - `note_login_ended` ignores calls while a logout is in progress (`self._logging_out` on `Commands` or `signing_out` on `TsbTuiApp`).
+   - `op_logout` sets `self._logging_out = True` around `sign_out()`, and clears the retained login again in a `finally` block after `sign_out` completes or fails on its error path.
+   - Any `login_ended` event or 401 callback received while `sign_out()` awaits is ignored and cannot retain an ended client.
+
+2. **Tests (`tests/test_drive_login_status.py`)**:
+   - `test_login_status_login_ended_during_sign_out`: fires a `login_ended` event during `sign_out`'s await, verifying that `login_status` answers `not_logged_in` after logout. Fails on `3e647ae` (where `login_status` probed the client retained mid-logout and returned `{"status": 401}`).
+

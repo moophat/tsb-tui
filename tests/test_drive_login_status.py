@@ -225,3 +225,36 @@ def test_login_status_replaced_client_does_not_end_active_login(serve, tmp_path)
 
     asyncio.run(check())
 
+
+def test_login_status_login_ended_during_sign_out(serve, tmp_path) -> None:
+    async def check() -> None:
+        _server, url = serve()
+        sid = make_session(url, _serve.USER, 80, 24, target="normal")
+        async with Rig(url, tmp_path=tmp_path, overrides=("drive.events=login_ended,ended",)) as rig:
+            await rig.login()
+            await rig.attach(sid)
+
+            live = await rig.cmd("login_status")
+            assert live["ok"] is True and live["status"] == 200
+
+            real_sign_out = rig.app.sign_out
+
+            async def sign_out_with_login_ended():
+                task = asyncio.create_task(real_sign_out())
+                await asyncio.sleep(0.01)
+                assert rig.app.signing_out
+                rig.driver.emit_event({"ev": "login_ended", "session": sid, "reason": "account"})
+                return await task
+
+            rig.app.sign_out = sign_out_with_login_ended
+
+            logout_res = await rig.cmd("logout")
+            assert logout_res["ok"] is True
+
+            post_logout = await rig.cmd("login_status")
+            assert post_logout["ok"] is False
+            assert post_logout["error"] == "not_logged_in"
+
+    asyncio.run(check())
+
+
