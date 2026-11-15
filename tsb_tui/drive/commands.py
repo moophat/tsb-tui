@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from .runner import Driver
 
 # Every op, in the order the guide lists them.
-OPS = ("login", "sessions", "targets",
+OPS = ("login", "login_status", "sessions", "targets",
        "account_list", "account_new", "account_disable", "account_enable", "account_password", "password_change",
        "target_new", "target_edit", "target_delete", "new", "attach", "switch", "read", "type", "keys", "wait", "hand_back", "hand", "take", "ask_to_type",
        "answer", "size", "detach", "end", "logout", "snapshot", "click", "press", "resize",
@@ -350,6 +350,14 @@ class Commands:
         self._last_look: dict[str, str] = {}
         self._look_serial = 0
         self._prompts: dict[str, PromptCheck] = {}
+        self._ended_login: Any | None = None
+
+    def note_login_ended(self) -> None:
+        if self._ended_login is None:
+            self._ended_login = self.d.app.client
+
+    def clear_ended_login(self) -> None:
+        self._ended_login = None
 
     async def run(self, cmd: dict[str, Any]) -> dict[str, Any]:
         op = cmd.get("op")
@@ -465,7 +473,20 @@ class Commands:
         try:
             return {"principal": await self.d.log_in(user, password, password_path=path)}
         finally:
+            self._ended_login = None
             del password
+
+    async def op_login_status(self, cmd: dict[str, Any]) -> dict[str, Any]:
+        client = self.d.app.client if self.d.screen() is not None else self._ended_login
+        if client is None:
+            raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
+        try:
+            await asyncio.to_thread(client.me)
+            return {"status": 200}
+        except ApiError as exc:
+            return {"status": exc.status}
+        except (HttpError, OSError) as exc:
+            raise DriveError("request_failed", str(exc)) from None
 
     async def op_sessions(self, cmd: dict[str, Any]) -> dict[str, Any]:
         screen = self._screen()
@@ -1488,6 +1509,7 @@ class Commands:
         """The Menu's Sign out: every session open here is detached (each lives on), then the broker is told, and drive
         is back at Login, where a `login` is accepted again. `broker` is `unconfirmed` when the broker did not take
         the logout: this client holds no login either way."""
+        self._ended_login = None
         self._screen()
         result = await self.d.app.sign_out()
         await self.d.wait_for_login_screen()

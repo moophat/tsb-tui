@@ -129,6 +129,8 @@ class Driver:
         self._signals.append((self._seq, event.get("session", ""), event))
         if len(self._signals) > SIGNAL_LIMIT:
             del self._signals[: len(self._signals) - SIGNAL_LIMIT]
+        if event.get("ev") == "login_ended":
+            self.commands.note_login_ended()
         if event["ev"] in self._enabled or event["ev"] == "ready":
             self._emit(public(event))
         self._poke()
@@ -360,6 +362,7 @@ class Driver:
         if await self._until_screen(outcome, "the login result") == "refused":
             raise DriveError("login_failed", str(login.query_one("#login-error", Static).content))
         self.screen_lock.reset(password_path)
+        self.commands.clear_ended_login()
         return str(self.app.username)
 
     async def refresh_fleet(self) -> None:

@@ -75,13 +75,14 @@ While screen-locked, session-content commands (`read`, `wait`, `snapshot`, `new`
 | `op` | Fields | Answers |
 |---|---|---|
 | `login` | `user`, `password_file` | `principal`. One driver is one login |
+| `login_status` | No fields | `status`: the HTTP status integer from `GET /auth/me` with the login drive holds (200 live, 401 after `login_ended`), and nothing else. Never the cookie, the principal or any header. `not_logged_in` when never logged in |
 | `sessions` | optional `live` (bool, default false), `own` (bool, default false) | `sessions`: each with `session`, `target`, `state`, `owner`, `holder` (a login or null), `rec`, `ends_in`. Sessions open here come first. `live` keeps only sessions that have not ended (no end state); `own` keeps only sessions whose owner is this login. Both may be given |
 | `targets` | optional `query` | `targets`: the targets this login may see, each with `id`, `type`, `name`, `group`, `tags`, `discovered_by`, in id order, one page of them. The answer also carries `more`: true, and only then, when TSB has a next page that this command does not fetch. `query` is the Targets tab's: `type:`, `tag:` (repeatable), `group:` and `source:` words, matched by TSB; a word with no `field:` is `bad_request`. Every string is text: a control character in it (an escape included) is replaced by its picture, and a type you do not know is shown as it is |
 | `account_list` | No fields | `accounts`, sorted by username: `username`, `created_at`, `disabled`. Needs `account.admin` |
-| `account_new` | `username`, `password_file`, `confirm: true` | `account` and its existing `permissions`. Empty permissions means no rights yet; rights come from host policy. Needs `account.admin` |
-| `account_disable` | `username`, `confirm: true` | Success envelope. Its logins end at once while its sessions run on. Self-disable is refused. Needs `account.admin` |
-| `account_enable` | `username`, `password_file`, `confirm: true` | Success envelope. Enables a disabled account with a new password. Needs `account.admin` |
-| `account_password` | `username`, `password_file`, `confirm: true` | Success envelope. Sets an enabled account's password; all its logins end, including the caller when acting on itself. Sessions run on. Needs `account.admin` |
+| `account_new` | `username`, `password_file`, `confirm: true` | `account` and its existing `permissions`. Empty permissions means no rights yet; rights come from host policy. Needs `account.admin`. A refusal answers the core's error code: `user_exists` for a taken name (a disabled one too), `invalid_request` for a name or password the core refuses, `forbidden` without `account.admin`. |
+| `account_disable` | `username`, `confirm: true` | Success envelope. Its logins end at once while its sessions run on. Self-disable is refused. Needs `account.admin`. A refusal answers the core's error code. |
+| `account_enable` | `username`, `password_file`, `confirm: true` | Success envelope. Enables a disabled account with a new password. Needs `account.admin`. A refusal answers the core's error code. |
+| `account_password` | `username`, `password_file`, `confirm: true` | Success envelope. Sets an enabled account's password; all its logins end, including the caller when acting on itself. Sessions run on. Needs `account.admin`. A refusal answers the core's error code. |
 | `password_change` | `current_password_file`, `new_password_file`, `confirm: true` | Success envelope. Every login may change its own password. This login stays; its other logins end. Wrong current password (403) and rate limiting (429) keep this login |
 | `target_new` | `id`, `type` (`ssh` or `telnet`), `host`; optional `name`, `group`, `tags` (list), `port`, `user` (SSH only) | `target`: the record the core returned. The definition fields are top-level command fields; here `id` is the target id and is also echoed as the command correlation id. Drives the target form; a refusal keeps its fields and answers the core's error code and message. Credentials are saved separately with Save a login on the Targets tab |
 | `target_edit` | `target` (id); optional `type`, `name`, `group`, `tags` (list), `host`, `port`, `user` | `target`: the record the core returned. Reads the editable definition, fills the same form, applies supplied fields and submits the whole. Absent fields keep their values; `null` clears `name`, `group`, `tags`, `port` or `user`; `null` for `type` or `host` is `bad_request`. The target id never changes. Switching to telnet drops `user`. A refusal answers the core's error code and message |
@@ -440,6 +441,16 @@ attached session, when enabled in `drive.events`. It never emits `ended`: the
 session keeps running. There is no reattach or ticket retry, and later commands
 see the same logged-out state as after HTTP 401. An in-flight device-login socket
 closed with 4017 returns to Login without a fabricated device-login result.
+
+`login_status` sends `GET /auth/me` with the login drive holds, through the contract
+client, and answers `status` with the HTTP status integer (200 live, 401 after
+`login_ended`) and nothing else: never the cookie, the principal or any header.
+After a `login_ended` event (an account act closed the attachment 4017, or any
+other end of the login drive already reports as `login_ended`), drive keeps that
+ended login only so `login_status` can show the core's answer (401), until `logout`
+or exit; every other command keeps answering exactly as it does today
+(`not_logged_in`). A drive that never logged in answers `login_status` with the
+existing `not_logged_in` error.
 
 In the interactive Menu, Accounts… is visible only with `account.admin` and
 refreshes permissions when opened. It lists enabled and disabled accounts and
