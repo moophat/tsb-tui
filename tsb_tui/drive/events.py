@@ -26,7 +26,7 @@ from ..model.events import (
 
 # The events `drive.events` may name, and the values `drive.output_events` may hold.
 EVENT_NAMES = ("gate", "token", "input_refused", "clients", "stale", "notice", "size", "ended", "removed", "detached",
-               "device_login_hostkey", "device_login_prompt", "device_login_result", "request_refused")
+               "login_ended", "device_login_hostkey", "device_login_prompt", "device_login_result", "request_refused")
 OUTPUT_MODES = ("off", "counts")
 # At most one `output` count a second per session (D53).
 OUTPUT_PERIOD_S = 1.0
@@ -92,6 +92,8 @@ def translate(session: str, event: Event, state: AttachmentState, *, own_handoff
         return _stale_events(session, state, detail)
     if kind == KIND_CLOSE:
         show = detail.get("show")
+        if show == "login_ended":
+            return [{"ev": "login_ended", "session": session, "reason": "account"}]
         if show in _ENDED_STATE:
             return [{"ev": "ended", "session": session, "state": _ENDED_STATE[show]}]
         if show == "removed":

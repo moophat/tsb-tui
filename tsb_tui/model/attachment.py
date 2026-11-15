@@ -63,6 +63,7 @@ from .events import (
 )
 
 # The close codes this client acts on (ws-frames.schema.json#/x-close-codes).
+CLOSE_ACCOUNT_LOGIN_ENDED = 4017
 CLOSE_KILLED = 4010
 CLOSE_TERMINATED = 4012
 CLOSE_REMOVED = 4014
@@ -112,6 +113,7 @@ class CloseOutcome:
 
 # DT13's close table, one row per code. Unknown 4xxx reads as 4010 (V3).
 _CLOSE_TABLE: dict[int, CloseOutcome] = {
+    CLOSE_ACCOUNT_LOGIN_ENDED: CloseOutcome("login_ended", "never", go_login=True),
     CLOSE_KILLED: CloseOutcome("ended_killed", "never"),
     CLOSE_TERMINATED: CloseOutcome("ended_terminated", "never"),
     CLOSE_REMOVED: CloseOutcome("removed", "never"),
@@ -481,6 +483,8 @@ class AttachmentState:
         self._add_event(KIND_OUTPUT, bytes=len(data))
 
     def apply_close(self, code: int | None, reason: str = "") -> CloseOutcome:
+        if code == CLOSE_ACCOUNT_LOGIN_ENDED and self.close_code == code and self.close is not None:
+            return self.close
         self.closed = True
         self.close_code = code
         self.close = close_outcome(code)
@@ -601,7 +605,18 @@ class AttachmentPump:
         """Attach and begin the reader and processor. Raises `AttachRefused`/`ApiError` for a
         first-attach refusal, exactly as `Client.async_attach` does."""
         if attachment is None:
-            await self._attach()
+            try:
+                await self._attach()
+            except AttachRefused as exc:
+                # A 4017 on the first attach is the account-ended outcome, not an attach refusal: the
+                # same as a 4017 on an established socket. No retry, no record read, and Login. The
+                # close is applied and the login hook fired here, then the refusal is re-raised so the
+                # caller does not carry on as if attached (no size/typist sync, no end view, no dialog).
+                if close_outcome(exc.code).go_login:
+                    self.state.apply_close(exc.code, exc.reason)
+                    if self._hooks.on_login_needed is not None:
+                        self._hooks.on_login_needed()
+                raise
         else:
             self.attach_attempts += 1
             self._apply_attached(attachment)
@@ -794,6 +809,10 @@ class AttachmentPump:
         outcome = self.state.apply_close(code, reason)
         if self._stop:
             return False
+        if outcome.go_login:
+            if self._hooks.on_login_needed is not None:
+                self._hooks.on_login_needed()
+            return False
         if outcome.read_record:
             # The close alone does not say how the session stands: the record does (4004, a dead socket).
             state = await self._record_state()
@@ -820,7 +839,16 @@ class AttachmentPump:
         try:
             await self._attach()
             return True
-        except (AttachRefused, ApiError, OSError):
+        except AttachRefused as exc:
+            # A 4017 met on the one-shot retry is the account-ended outcome, not a closed socket.
+            if close_outcome(exc.code).go_login:
+                self.state.apply_close(exc.code, exc.reason)
+                if self._hooks.on_login_needed is not None:
+                    self._hooks.on_login_needed()
+                return False
+            self.state.closed = True
+            return False
+        except (ApiError, OSError):
             self.state.closed = True
             return False
 
@@ -853,8 +881,11 @@ class AttachmentPump:
                 if close_outcome(exc.code).reattach == "backoff":
                     continue  # the broker detached us again (4011): keep backing off
                 # The session ended, or this client was removed, while it was away: that is the state
-                # to show, and nothing is tried again (4010, 4012, 4014, 4000).
-                self.state.apply_close(exc.code, exc.reason)
+                # to show, and nothing is tried again (4010, 4012, 4014, 4000). A 4017 is the same
+                # account-ended outcome as on an established socket: no reattach, no record read, Login.
+                outcome = self.state.apply_close(exc.code, exc.reason)
+                if outcome.go_login and self._hooks.on_login_needed is not None:
+                    self._hooks.on_login_needed()
                 return False
             except ApiError as exc:
                 if exc.status == 401:

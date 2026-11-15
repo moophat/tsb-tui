@@ -62,6 +62,7 @@ class Facts:
     open_sessions: int = 1
     under_drive: bool = False
     alternate_screen: bool = False  # the session in front is on its alternate screen (no scrollback there)
+    permissions: frozenset[str] = frozenset()
     target_type: str | None = None  # the type of the session in front's target, as the inventory knows it
 
 
@@ -80,6 +81,7 @@ class Action:
     blocked: Blocked
     glyph: str = ""  # the mark that leads its hint (`≡ Menu ^\`), when it has one
     in_menu: bool = True
+    permission: str | None = None
 
 
 def _attached(facts: Facts) -> str | None:
@@ -282,6 +284,10 @@ ACTIONS: tuple[Action, ...] = (
            SCOPE_SESSION, None, _always),
     Action("devices", "Devices…", "your trusted devices: list and revoke", "V", GROUP_SETTINGS, SCOPE_SESSION, None,
            _always),
+    Action("accounts", "Accounts…", "list, create, disable, enable and set passwords", None, GROUP_SETTINGS,
+           SCOPE_SESSION, None, _always, permission="account.admin"),
+    Action("password_change", "Change my password…", "prove your current password and set a new one", None,
+           GROUP_SETTINGS, SCOPE_SESSION, None, _always),
     Action("lock_now", "Lock now", "lock your vault everywhere and this screen", "L", GROUP_SETTINGS, SCOPE_SESSION,
            None, _always),
     Action("sign_out", "Sign out", "detach everything here and sign out; every session keeps running", None,
@@ -371,9 +377,16 @@ def action_for_chord(first: str, second: str, overrides: Mapping[str, str] | Non
 
 def blocked(action_id: str, facts: Facts) -> str | None:
     """Why this action is not available now, or None when it is."""
-    return BY_ID[action_id].blocked(facts)
+    action = BY_ID[action_id]
+    if not permitted(action, facts):
+        return "not permitted"
+    return action.blocked(facts)
 
 
 def menu_actions() -> tuple[Action, ...]:
     """What the Menu lists, in the design's groups."""
     return tuple(sorted((a for a in ACTIONS if a.in_menu), key=lambda a: GROUPS.index(a.group)))
+
+
+def permitted(action: Action, facts: Facts) -> bool:
+    return action.permission is None or action.permission in facts.permissions

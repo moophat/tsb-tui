@@ -41,6 +41,7 @@ def _env(monkeypatch, **extra: str) -> None:
 
 async def _open(pilot, app, serve_app, wait_until):
     session_id = create_owner_session(app, _serve.TARGET, 80, 24)
+    app.permissions = frozenset(app.client.me().get("permissions", ()))
     screen = await attached(pilot, app, session_id, wait_until)
     return screen, screen.pump.state.client_id
 

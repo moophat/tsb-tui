@@ -70,13 +70,19 @@ A theme and a scheme are chosen with `--set theme.name=… --set theme.term.sche
 
 ## 5. Commands
 
-While screen-locked, session-content commands (`read`, `wait`, `snapshot`, `new`, `attach`, `switch`) trigger the password re-check. Typed sends, `press` and `click` are refused; after a successful re-check their refusal carries a fresh look. Commands without session content continue. The send-gate switch does not disable the lock.
+While screen-locked, session-content commands (`read`, `wait`, `snapshot`, `new`, `attach`, `switch`) trigger the password re-check. Typed sends, `press` and `click` are refused; after a successful re-check their refusal carries a fresh look. Account commands refuse a locked screen; other commands without session content continue. The send-gate switch does not disable the lock.
 
 | `op` | Fields | Answers |
 |---|---|---|
 | `login` | `user`, `password_file` | `principal`. One driver is one login |
 | `sessions` | optional `live` (bool, default false), `own` (bool, default false) | `sessions`: each with `session`, `target`, `state`, `owner`, `holder` (a login or null), `rec`, `ends_in`. Sessions open here come first. `live` keeps only sessions that have not ended (no end state); `own` keeps only sessions whose owner is this login. Both may be given |
 | `targets` | optional `query` | `targets`: the targets this login may see, each with `id`, `type`, `name`, `group`, `tags`, `discovered_by`, in id order, one page of them. The answer also carries `more`: true, and only then, when TSB has a next page that this command does not fetch. `query` is the Targets tab's: `type:`, `tag:` (repeatable), `group:` and `source:` words, matched by TSB; a word with no `field:` is `bad_request`. Every string is text: a control character in it (an escape included) is replaced by its picture, and a type you do not know is shown as it is |
+| `account_list` | No fields | `accounts`, sorted by username: `username`, `created_at`, `disabled`. Needs `account.admin` |
+| `account_new` | `username`, `password_file`, `confirm: true` | `account` and its existing `permissions`. Empty permissions means no rights yet; rights come from host policy. Needs `account.admin` |
+| `account_disable` | `username`, `confirm: true` | Success envelope. Its logins end at once while its sessions run on. Self-disable is refused. Needs `account.admin` |
+| `account_enable` | `username`, `password_file`, `confirm: true` | Success envelope. Enables a disabled account with a new password. Needs `account.admin` |
+| `account_password` | `username`, `password_file`, `confirm: true` | Success envelope. Sets an enabled account's password; all its logins end, including the caller when acting on itself. Sessions run on. Needs `account.admin` |
+| `password_change` | `current_password_file`, `new_password_file`, `confirm: true` | Success envelope. Every login may change its own password. This login stays; its other logins end. Wrong current password (403) and rate limiting (429) keep this login |
 | `target_new` | `id`, `type` (`ssh` or `telnet`), `host`; optional `name`, `group`, `tags` (list), `port`, `user` (SSH only) | `target`: the record the core returned. The definition fields are top-level command fields; here `id` is the target id and is also echoed as the command correlation id. Drives the target form; a refusal keeps its fields and answers the core's error code and message. Credentials are saved separately with Save a login on the Targets tab |
 | `target_edit` | `target` (id); optional `type`, `name`, `group`, `tags` (list), `host`, `port`, `user` | `target`: the record the core returned. Reads the editable definition, fills the same form, applies supplied fields and submits the whole. Absent fields keep their values; `null` clears `name`, `group`, `tags`, `port` or `user`; `null` for `type` or `host` is `bad_request`. The target id never changes. Switching to telnet drops `user`. A refusal answers the core's error code and message |
 | `target_delete` | `target`, `confirm` (must be `true`) | `target`: the id, after the core answers 204. Without `confirm: true`, `bad_request` and nothing is sent. Open sessions stay open. A refusal answers the core's error code and message |
@@ -420,3 +426,22 @@ are checked, after the other checks; brakes and non-line-ending keys bypass it. 
 checked too. Cover every prompt you answer, including `[confirm]` and `Password:`. I-Regexp has no `\s` or `\d`;
 use `[ \t\n\r]` or `[0-9]` as appropriate. Oversized patterns (over 4,096 NFA states) fail closed with
 `prompt_unusable`. No prompt pattern is accepted on a send command.
+
+Account passwords are read with `read_password_file`, just as `new`'s file input:
+first UTF-8 line, at most 1024 bytes, regular file or pipe. Inline `password`,
+`current_password` and `new_password` fields are refused. Every mutation requires
+literal `confirm: true`; a refusal without it changes nothing. Successful mutations
+other than create return only the normal `id` / `ok` envelope. All account commands
+refuse a locked screen. A real HTTP 401 returns to Login.
+
+An attachment closed with 4017 emits `login_ended`:
+`{"ev":"login_ended","session":"<id>","reason":"account"}` once for that
+attached session, when enabled in `drive.events`. It never emits `ended`: the
+session keeps running. There is no reattach or ticket retry, and later commands
+see the same logged-out state as after HTTP 401. An in-flight device-login socket
+closed with 4017 returns to Login without a fabricated device-login result.
+
+In the interactive Menu, Accounts… is visible only with `account.admin` and
+refreshes permissions when opened. It lists enabled and disabled accounts and
+asks for confirmation for each change. Change my password… is available to every
+login; both password fields are masked and cleared after submission or cancel.

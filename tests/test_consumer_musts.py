@@ -32,6 +32,18 @@ SOURCE = TESTS.parent / "tsb_tui"
 
 # line of the plan's § Consumer MUSTs -> (test file, test name) for each test that proves it.
 CONSUMER_MUSTS: dict[str, list[tuple[str, str]]] = {
+    "account-administration: account-ended attachment closes 4017, never reattaches or ends the session": [
+        ("test_drive_accounts.py", "test_account_login_ended_close_4017"),
+        ("test_drive_accounts.py", "test_account_end_reports_each_attached_session_once"),
+        ("test_model_closes.py", "test_account_close_never_reattaches_reads_no_record_and_goes_login"),
+    ],
+    "account-administration: device login closes 4017 without a result": [
+        ("test_drive_accounts.py", "test_account_device_login_ended_close_4017"),
+    ],
+    "account-administration: own change preserves caller, wrong proof and limiting are not lost login": [
+        ("test_drive_accounts.py", "test_own_change_preserves_attached_caller_and_ends_other_login"),
+        ("test_accounts_screen.py", "test_own_change_errors_by_status_keep_or_end_login"),
+    ],
     "session-attach CR1: the recording text before an attach or any input": [
         ("test_attach_confirm.py", "test_the_host_key_tick_and_the_recording_text_come_before_the_first_attach"),
         ("test_drive_commands.py", "test_attach_prints_the_recording_text_before_it_attaches_then_answers"),

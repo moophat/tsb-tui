@@ -553,6 +553,12 @@ class Transcript:
             if isinstance(command, dict) and command.get("op") == "login_answer" and "answers" in command:
                 command["answers"] = "<refused>"
                 line = json.dumps(command, separators=(",", ":"))
+            op = command.get("op") if isinstance(command, dict) else None
+            if isinstance(op, str) and (op.startswith("account_") or op == "password_change"):
+                for key in ("password", "current_password", "new_password"):
+                    if key in command:
+                        command[key] = "<refused>"
+                line = json.dumps(command, separators=(",", ":"))
             self.record.write(f"> {line}\n")
             self.record.flush()
 

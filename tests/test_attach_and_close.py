@@ -138,6 +138,50 @@ def test_attach_refused_by_a_close_code_leaves_the_workspace_empty() -> None:
     asyncio.run(_check())
 
 
+def test_first_attach_4017_goes_to_login_without_an_end_view_on_the_workspace(monkeypatch) -> None:
+    """A 4017 refusing the *first* attach is the account-ended outcome, not an attach refusal. Round 2
+    applied the close and fired the login hook, then `start()` returned normally, so `_attach_and_pump`
+    carried on as if attached: size and typist sync, `_after_attached`, then `_show_end` set `slot.ended`
+    and parked an end dialog over the workspace `_to_login` is tearing down; and `account_login_ended`
+    marked only slots with a `client_id` as leaving, so this never-attached slot was not marked. The ruled
+    fix re-raises the 4017 after applying the outcome, the attach path returns at once for a `go_login`
+    code, and every slot of the login is marked leaving. This drives the first attach through the slot's
+    own attach path and asserts none of that carry-on happened."""
+
+    async def _check() -> None:
+        stub = SlowChunkedApp(attach_close_code=4017)
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url, target=TARGET_ID)
+            async with app.run_test(size=(120, 40)) as pilot:
+                screen = await fixture_login(app, pilot)
+                session_id = _create_session(app)
+                sync_calls: list[str] = []
+                after_calls: list[str] = []
+                orig_sync, orig_after = screen._sync_size, screen._after_attached
+                monkeypatch.setattr(screen, "_sync_size",
+                                    lambda slot: sync_calls.append(slot.session_id) or orig_sync(slot))
+                monkeypatch.setattr(screen, "_after_attached",
+                                    lambda slot: after_calls.append(slot.session_id) or orig_after(slot))
+                app.gated_sessions.add(session_id)
+                screen.open_session(app.client.session(session_id))
+                await _wait_until(pilot, lambda: screen.slot_for(session_id) is not None)
+                slot = screen.slot_for(session_id)
+                await _wait_until(pilot, lambda: isinstance(app.screen, LoginScreen))
+                assert app.return_code is None
+                assert sync_calls == [], "a refused first attach must not sync size"
+                assert after_calls == [], "a refused first attach must not run _after_attached"
+                assert slot.ended is None, "a refused first attach must not set an end view"
+                assert slot.ended_dialog_shown is False
+                assert screen._deferred_end_slot is None, "no end dialog parked on the torn-down workspace"
+                assert not any(isinstance(s, EndedScreen) for s in app.get_screen_stack())
+                assert slot.leaving, "the never-attached slot must be marked leaving"
+                msgs = _notification_messages(app)
+                assert sum("login ended" in m.lower() for m in msgs) == 1, msgs
+                assert isinstance(app.screen, LoginScreen)
+
+    asyncio.run(_check())
+
+
 def test_an_abrupt_drop_reattaches_and_never_reads_as_an_end() -> None:
     """A dropped WebSocket used to read as "session ended: killed" for any code the app did not
     recognize, including 1006 (no close frame at all) — a client treating its own dropped link as

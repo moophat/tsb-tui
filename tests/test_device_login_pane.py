@@ -459,3 +459,59 @@ def test_bringing_a_device_login_to_the_front_focuses_its_answer(wait_until):
             await pilot.pause()
             assert pane.query(".device-answer").first().has_focus, "the answer box did not take the keys"
     asyncio.run(check())
+
+
+@pytest.mark.parametrize("close_code", [4017, 4015])
+def test_login_ended_during_attachment_ends_at_login(wait_until, monkeypatch, close_code):
+    from tsb_contract_client import AttachRefused
+
+    from tsb_tui import vault_flow
+    from tsb_tui.screens import device_login
+    from tsb_tui.screens.login import LoginScreen
+
+    saves = []
+
+    async def spy_save(*args, **kwargs):
+        saves.append((args, kwargs))
+        return vault_flow.SaveOutcome("saved", "saved")
+
+    monkeypatch.setattr(vault_flow, "save_login", spy_save)
+
+    emitted = []
+
+    async def check():
+        async def closed_attachment(self):
+            self._ws.close_code = close_code
+            raise AttachRefused(close_code, "login ended")
+
+        monkeypatch.setattr(device_login.AsyncDeviceLogin, "attachment", closed_attachment)
+        async with opened(wait_until) as (app, pilot, _, dialog, _):
+            pane = await start(dialog, pilot, wait_until)
+            pane._emit = emitted.append
+            await answer(pane, pilot, wait_until, "my-password", remember=True)
+            await wait_until(pilot, lambda: isinstance(app.screen, LoginScreen), "ends at Login")
+            assert pane.slot.login_status != device_login.UNATTACHED
+            assert not any(e.get("outcome") == "connected" for e in emitted)
+            assert not any(e.get("ev") == "device_login_result" for e in emitted)
+            assert not saves
+            assert pane.candidate is None
+    asyncio.run(check())
+
+
+def test_transport_failure_during_attachment_keeps_unattached_path(wait_until, monkeypatch):
+    from tsb_tui._transport import ConnectionClosed
+    from tsb_tui.screens import device_login
+    emitted = []
+
+    async def check():
+        async def transport_failure(self):
+            raise ConnectionClosed("transport closed")
+        monkeypatch.setattr(device_login.AsyncDeviceLogin, "attachment", transport_failure)
+        async with opened(wait_until) as (_, pilot, _, dialog, _):
+            pane = await start(dialog, pilot, wait_until)
+            pane._emit = emitted.append
+            await answer(pane, pilot, wait_until)
+            await wait_until(pilot, lambda: pane.ended, "the pane ended after transport failure")
+            assert any(e.get("outcome") == "connected" for e in emitted)
+            assert "it is in the sessions list" in str(pane.query_one("#device-status").render())
+    asyncio.run(check())

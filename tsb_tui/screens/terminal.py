@@ -54,7 +54,7 @@ from tsb_contract_client import ApiError, AttachRefused
 from .. import glyphs
 from .._transport import ConnectionClosed, HandshakeError, HttpError, ProtocolError
 from ..model import actions as A
-from ..model.attachment import AttachmentPump, AttachmentState, PumpHooks
+from ..model.attachment import AttachmentPump, AttachmentState, PumpHooks, close_outcome
 from ..model.countdown import format_duration, parse_timestamp
 from ..model.events import TAP_RECORD, TAP_SLOT_CLOSED, EventLog
 from ..model.fleet import (
@@ -1767,6 +1767,12 @@ class TerminalScreen(Screen):
             try:
                 await pump.start(attachment)
             except AttachRefused as exc:
+                if close_outcome(exc.code).go_login:
+                    # The account-ended outcome (4017) was already applied by `start()` and routed to
+                    # Login through `on_login_needed`, which marked every slot of this login leaving.
+                    # Return at once: no size/typist sync, no `_after_attached`, no end view, no dialog
+                    # parked on the workspace `_to_login` is tearing down.
+                    return
                 self._leave(slot, f"attach refused: {exc.reason or 'close ' + str(exc.code)}", cancel=False)
                 return
             except ApiError as exc:
@@ -1938,11 +1944,28 @@ class TerminalScreen(Screen):
             self.refresh_status()
         self._mark_fleet_dirty()
 
+    def account_login_ended(self) -> None:
+        """End this login's views together; drive observes each attachment before the stack is removed."""
+        from ..model.attachment import CLOSE_ACCOUNT_LOGIN_ENDED
+        from .accounts import LOGIN_ENDED
+
+        for slot in self.slots:
+            # Every slot of this login leaves, a slot that never attached included (its close was
+            # already applied by the 4017 path). The end is applied to an attached slot that is not
+            # closed yet, so drive observes each attachment before the stack is removed.
+            slot.leaving = True
+            if slot.pump is not None and slot.pump.state.client_id is not None and not slot.pump.state.closed:
+                slot.pump.state.apply_close(CLOSE_ACCOUNT_LOGIN_ENDED)
+        self.app.notify_api_error(ApiError(401, "unauthenticated", LOGIN_ENDED))
+
     def _on_login_needed(self, slot: SessionSlot) -> None:
         """A 401 on the reattach path (DT13): the same rule as the first attach's 401 above, told through
         `notify_api_error` and routed to Login. The slot is marked leaving here because the pump ends with close
         4003 straight after this hook, and the end dialog must not be put on top of the login page."""
         if self._unmounted or slot.leaving:
+            return
+        if slot.pump is not None and slot.pump.state.close is not None and slot.pump.state.close.go_login:
+            self.account_login_ended()
             return
         exc = ApiError(401, "unauthenticated", REATTACH_LOGIN_GONE)
         slot.leaving = True
@@ -2713,7 +2736,7 @@ class TerminalScreen(Screen):
         row = self.targets.row(state.session.get("target_id")) if state is not None else None
         return A.Facts(state, selected, open_sessions=len(self.slots), under_drive=self.app.under_drive,
                        alternate_screen=self.canvas is not None and self.backend.active_screen() == G.SCREEN_ALTERNATE,
-                       target_type=row.type if row is not None else None)
+                       target_type=row.type if row is not None else None, permissions=self.app.permissions)
 
     async def run_action_id(self, action_id: str) -> None:
         """Run one session action, or say why it is not available now. Every action of the table
@@ -2825,7 +2848,7 @@ class TerminalScreen(Screen):
                                         lambda: settings_lines(self.app.cfg)))
 
     def do_keys(self) -> None:
-        self.app.push_screen(TextScreen(self, "All keys", lambda: keys_lines(self.app.cfg)))
+        self.app.push_screen(TextScreen(self, "All keys", lambda: keys_lines(self.app.cfg, self.facts())))
 
     def do_about(self) -> None:
         self.app.push_screen(TextScreen(self, "About tsb-tui", lambda: about_lines(self.app)))
@@ -2834,6 +2857,20 @@ class TerminalScreen(Screen):
         from .credentials import CredentialsScreen
 
         self.app.push_screen(CredentialsScreen())
+
+    def do_accounts(self) -> None:
+        from .accounts import AccountsScreen
+
+        self.app.push_screen(AccountsScreen())
+
+    def do_password_change(self) -> None:
+        from .accounts import AccountFormScreen
+
+        def changed(result) -> None:
+            if result is not None:
+                self.app.notify("Password changed. Your other logins ended; this one stays.", markup=False)
+
+        self.app.push_screen(AccountFormScreen("own"), changed)
 
     def do_devices(self) -> None:
         from .devices import DevicesScreen
@@ -3261,7 +3298,7 @@ class TerminalScreen(Screen):
         leader = A.leader_label(self.app.cfg["keys.leader"])
         keys = A.leader_keys(self.app.cfg.leader_overrides())
         return [(action, f"{leader} {keys[action.id]}" if action.id in keys else "",
-                 A.blocked(action.id, facts)) for action in A.menu_actions()]
+                 A.blocked(action.id, facts)) for action in A.menu_actions() if A.permitted(action, facts)]
 
     def set_menu_open(self, is_open: bool) -> None:
         self._menu_open = is_open
