@@ -343,6 +343,8 @@ def leader_keys(overrides: Mapping[str, str] | None = None) -> dict[str, str]:
         if len(letter) != 1 or not letter.isprintable() or letter.isspace():
             raise KeymapError(
                 f"keys.leader_map.{action_id}: expected one printable character, got {letter!r}")
+        if letter == "/":
+            raise KeymapError(f"keys.leader_map.{action_id}: '/' is reserved for Menu search")
         keys[action_id] = letter
     seen: dict[str, str] = {}
     for action_id, letter in keys.items():

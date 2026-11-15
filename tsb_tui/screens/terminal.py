@@ -58,6 +58,7 @@ from ..model.attachment import AttachmentPump, AttachmentState, PumpHooks, close
 from ..model.countdown import format_duration, parse_timestamp
 from ..model.events import TAP_RECORD, TAP_SLOT_CLOSED, EventLog
 from ..model.fleet import (
+    ENDED_STATES,
     GROUP_NEEDS_YOU,
     MAX_CHIPS,
     WHO_OTHER,
@@ -391,7 +392,6 @@ class TerminalScreen(Screen):
         self._selection: Selection | None = None
         self._drag_from: int | None = None
         self._dragged = False
-        self._chord: str | None = None  # the first character of a two-character key after the leader (`:` of `:q`)
         # The dialogs open over this screen, innermost last; each has `sync()` and `status_target()`.
         self.dialogs: list[Any] = []
         # A dialog opened for the session in front is recorded here against that session's id, so a session's
@@ -462,7 +462,7 @@ class TerminalScreen(Screen):
     @property
     def leader_pending(self) -> bool:
         """The next key is the leader's (a letter, or the second character of `:q`), not the focused widget's."""
-        return self._leader_pending or self._chord is not None
+        return self._leader_pending
 
     def slot_for(self, session_id: str) -> SessionSlot | None:
         return next((slot for slot in self.slots if slot.session_id == session_id), None)
@@ -1591,7 +1591,7 @@ class TerminalScreen(Screen):
             self.show_front(slot)
             return
         record = self._record_for(session_id)
-        if record is not None and record.get("state") in ("killed", "terminated"):
+        if record is not None and record.get("state") in ENDED_STATES:
             self.app.notify("This session has ended. Start a new one with + New session.",
                             severity="warning", markup=False)
             return
@@ -2566,6 +2566,11 @@ class TerminalScreen(Screen):
 
         Ordinary keys outside the Menu reach the session. A doubled leader sends the literal key.
         """
+        from ..app import MenuPalette
+
+        if isinstance(self.app.screen, MenuPalette):
+            await self.app.screen.handle_menu_key(event)
+            return
         leader = event.key == self.app.cfg["keys.leader"]
         if self.pump is None and not leader and not self._leader_pending:
             return  # nothing to send to yet: the key goes on to the app (Ctrl-Q quits while attaching)
@@ -2584,30 +2589,6 @@ class TerminalScreen(Screen):
             else:
                 self._start_leader()
             return
-        if self._chord is not None:
-            # The second character of a two-character key (`:q`): it runs the action, or the chord is dropped. The
-            # operator typed `^\ :` on purpose, so nothing of it goes to the session.
-            first, self._chord = self._chord, None
-            self.refresh_status()
-            action = (A.action_for_chord(first, event.character, self.app.cfg.leader_overrides())
-                      if event.is_printable and event.character else None)
-            if action is not None:
-                await self.run_action_id(action.id)
-            return
-        if self._leader_pending:
-            self._cancel_leader()
-            letter = event.character if event.is_printable else None
-            if letter is not None and letter in A.chord_starts(self.app.cfg.leader_overrides()):
-                self._chord = letter
-                self.refresh_status()
-                return
-            action = A.action_for_leader_key(letter, self.app.cfg.leader_overrides()) if letter else None
-            if action is not None:
-                await self.run_action_id(action.id)
-                return
-            if letter is not None and letter in "123456789":
-                self.switch_to_number(int(letter))
-                return
         if self._scroll_mode:
             self._scroll_key(event)  # the view's, or dropped: no key reaches the session while the view is open
             return
@@ -3310,8 +3291,6 @@ class TerminalScreen(Screen):
             return self._scroll_keys_target()
         if self._pan_mode:
             return self._pan_keys_target()
-        if self._chord is not None:
-            return KeysTarget("the command", (Hint("q", "Quit"),))
         if self._view_has_keys():
             return self._fleet_view_keys_target()
         if self._sidebar_has_keys():

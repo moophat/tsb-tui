@@ -166,3 +166,112 @@ def test_menu_search_requires_each_name_word_prefix(serve, wait_until, query, ex
             hits = [hit async for hit in MenuProvider(workspace).search(query)]
             assert {hit.text for hit in hits} == expected
     asyncio.run(check())
+
+
+def test_menu_key_state_exists_before_mount() -> None:
+    palette = MenuPalette()
+    assert palette.search_mode is False
+    assert palette.chord == ''
+
+
+def test_unmatched_chord_never_switches_sessions(serve, monkeypatch) -> None:
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            switches = []
+            monkeypatch.setattr(workspace, 'switch_to_number', switches.append)
+            await pilot.press('ctrl+backslash', ':', '1')
+            await pilot.pause()
+            assert switches == []
+            assert isinstance(app.screen, MenuPalette)
+            assert 'no shortcut' in str(app.screen.query_one('#menu-key-message').render()).lower()
+    asyncio.run(check())
+
+
+def test_queued_leader_and_key_run_once_and_close_menu(serve, monkeypatch) -> None:
+    from textual import events
+
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            calls = []
+            original = workspace.run_action_id
+
+            async def run(action):
+                calls.append(action)
+                await original(action)
+
+            monkeypatch.setattr(workspace, 'run_action_id', run)
+            # Both keys are already in the terminal queue when the first pushes the menu.
+            workspace.post_message(events.Key('ctrl+backslash', None))
+            workspace.post_message(events.Key('f', 'f'))
+            await pilot.pause()
+            assert calls == ['fleet']
+            assert app.screen is workspace
+            assert not workspace.leader_pending
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('key', ['ctrl+q', 'ctrl+y'])
+def test_app_binding_closes_menu_and_runs(serve, monkeypatch, key) -> None:
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        if key != 'ctrl+q':
+            app.bind(key, 'quit')
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            calls = []
+            original = app.action_quit
+
+            async def quit_app():
+                calls.append(app.screen)
+                await original()
+
+            monkeypatch.setattr(app, 'action_quit', quit_app)
+            await pilot.press('ctrl+backslash', key)
+            await pilot.pause()
+            assert calls == [workspace]
+            assert not app.is_running
+    asyncio.run(check())
+
+
+def test_drive_guide_describes_creation_size_independent_of_auto_size() -> None:
+    from pathlib import Path
+
+    guide = (Path(__file__).parents[1] / 'tsb_tui' / 'drive' / 'GUIDE.md').read_text()
+    assert 'It needs `size.auto_request` on' not in guide
+    assert '`size.auto_request` must be on' not in guide
+    assert guide.count('window size regardless of `size.auto_request`') == 2
+
+
+@pytest.mark.parametrize('key', ['f', 'z', '/'])
+def test_key_arriving_before_menu_mount_is_preserved(serve, key) -> None:
+    from textual import events
+
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            before = workspace.sidebar_open
+            app.open_menu()
+            palette = app.screen
+            assert isinstance(palette, MenuPalette)
+            assert not palette._mounted_event.is_set()
+            await palette.handle_menu_key(events.Key(key, key))
+            await pilot.pause()
+            if key == 'f':
+                assert app.screen is workspace
+                assert workspace.sidebar_open is not before
+            elif key == 'z':
+                assert app.screen is palette
+                assert 'no shortcut' in str(palette.query_one('#menu-key-message').render()).lower()
+            else:
+                assert palette.search_mode
+                assert palette.query_one(Input).has_focus
+    asyncio.run(check())

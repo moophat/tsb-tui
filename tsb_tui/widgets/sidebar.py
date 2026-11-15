@@ -418,9 +418,9 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
     # The footer: the alerts and a way to a new session.
     footer: list[Line] = [_text_line(SEPARATOR * width, "hairline", width)]
     alert_text = None if model.alerts is None else f"! {model.alerts} alert{'' if model.alerts == 1 else 's'}"
-    new_text = (SELECTED + " " if selected == (CMD_NEW, "") else "") + "+ New session · Tab"
+    new_text = (SELECTED + " " if selected == (CMD_NEW, "") else "") + "+ New session · n"
     alerts_tip = "! TSB's own alerts · opens the Alerts tab"
-    new_tip = "Tab to New session, then Enter to start"
+    new_tip = "n to start a New session"
     if alert_text is not None and wide:
         pad = max(width - len(alert_text) - 3 - len(new_text), 0)
         footer.append(Line((Part(alert_text, "alert" if model.alerts else "muted", CMD_ALERTS, tip=alerts_tip),
@@ -812,8 +812,10 @@ class Sidebar(Widget):
         screen = self.screen
         if event.key == self._leader or getattr(screen, "leader_pending", False):
             return  # on to the screen
-        event.stop()
         key = event.key
+        if not self.editing and key in ("tab", "shift+tab"):
+            return  # Textual moves focus between panels.
+        event.stop()
         if key == "ctrl+q":
             # The app's own quit (D38): sessions keep running. The sidebar has the keys right after login, so it
             # must not swallow the one key that leaves.
@@ -822,10 +824,12 @@ class Sidebar(Widget):
         if self.editing:
             self._editing_key(event)
             return
-        if key in ("down", "j", "tab"):
+        if key in ("down", "j"):
             self._move(1)
-        elif key in ("up", "k", "shift+tab"):
+        elif key in ("up", "k"):
             self._move(-1)
+        elif key == "n":
+            self.post_message(self.Command(CMD_NEW))
         elif key == "enter":
             if self.selected == (CMD_NEW, ""):
                 self.post_message(self.Command(CMD_NEW))

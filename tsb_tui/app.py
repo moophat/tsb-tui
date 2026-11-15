@@ -182,9 +182,12 @@ class MenuPalette(CommandPalette):
     MenuPalette #menu-key-message { height: 1; background: $surface; }
     """
 
-    def on_mount(self) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         self.search_mode = False
         self.chord = ""
+        super().__init__(*args, **kwargs)
+
+    def on_mount(self) -> None:
         self.query_one("#--container").mount(Static("Press a shortcut, or / to search.", id="menu-key-message"))
         # The palette's children are not in the DOM yet when it is mounted: set the icon once they are.
         self.call_after_refresh(self._ascii_icon)
@@ -217,6 +220,18 @@ class MenuPalette(CommandPalette):
                                          if not option.disabled), None)
 
     async def handle_menu_key(self, event: events.Key) -> bool:
+        # A push exposes the screen before its mount has finished. Keep early keys in order
+        # until the calling screen and the search widgets are ready.
+        await self._mounted_event.wait()
+        bindings = self.app._bindings.key_to_bindings.get(event.key, ())
+        if bindings:
+            self._action_escape()
+            event.stop()
+            event.prevent_default()
+            for binding in bindings:
+                if await self.app.run_action(binding.action, self.app):
+                    break
+            return True
         if event.key == "escape":
             event.stop()
             event.prevent_default()
@@ -240,7 +255,8 @@ class MenuPalette(CommandPalette):
         else:
             letter = event.character or ""
             overrides = self.app.cfg.leader_overrides()
-            action = (actions.action_for_chord(self.chord, letter, overrides) if self.chord
+            chord = self.chord
+            action = (actions.action_for_chord(chord, letter, overrides) if chord
                       else actions.action_for_leader_key(letter, overrides))
             if not self.chord and letter in actions.chord_starts(overrides):
                 self.chord = letter
@@ -249,11 +265,11 @@ class MenuPalette(CommandPalette):
             if action is not None:
                 self._action_escape()
                 await screen.run_action_id(action.id)
-            elif letter in "123456789" and letter:
+            elif not chord and letter in "123456789" and letter:
                 self._action_escape()
                 screen.switch_to_number(int(letter))
             else:
-                self.query_one("#menu-key-message", Static).update(f"{event.character or event.key} has no shortcut.")
+                self.query_one("#menu-key-message", Static).update(f"{chord}{event.character or event.key} has no shortcut.")
         return True
 
     def _action_escape(self) -> None:

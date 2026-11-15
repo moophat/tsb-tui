@@ -438,7 +438,7 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
             header.append(Part(" " * max(table_w - used, 0), "blank"))
             body.append(Line(tuple(header)))
             last_target = None
-            per_target = Counter(r.target for r in table) if group_by == "target" else {}
+            per_target = Counter((r.ended, r.target) for r in table) if group_by == "target" else {}
             ended_heading = False
             for row in table:
                 if row.ended and not ended_heading:
@@ -446,7 +446,7 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                     ended_heading = True
                     last_target = None
                 if group_by == "target" and row.target != last_target:
-                    body.append(_text(f"   {row.target} · {per_target[row.target]}", "muted", table_w))
+                    body.append(_text(f"   {row.target} · {per_target[(row.ended, row.target)]}", "muted", table_w))
                 last_target = row.target
                 key = (GROUP_TABLE, row.session_id)
                 row_at[key] = len(body)

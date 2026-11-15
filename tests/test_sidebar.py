@@ -811,12 +811,23 @@ def test_keyboard_reaches_new_session_and_opens_it(serve, wait_until) -> None:
             assert screen.sidebar.selected == rows[-1]
             await pilot.press("down")
             assert screen.sidebar.selected_session is None
+            from textual.widgets import Input
+
+            # The empty workspace has only one focusable panel. Add a second focus
+            # target to verify Tab retains Textual's panel-focus behavior.
+            panel = Input(id="other-panel")
+            await screen.mount(panel)
+            screen.sidebar.focus()
+            selected = screen.sidebar.selected
             await pilot.press("tab")
-            assert screen.sidebar.selected == rows[0]
-            for _ in rows:
-                await pilot.press("tab")
-            assert screen.sidebar.selected_session is None
-            assert "Tab" in screen.sidebar.text and "New session" in screen.sidebar.text
+            assert panel.has_focus
+            assert screen.sidebar.selected == selected
+            await pilot.press("shift+tab")
+            assert screen.sidebar.has_focus
+            assert "+ New session · n" in screen.sidebar.text
+            assert "Tab to New session" not in screen.sidebar.text
+            assert any('n to start a New session' in (part.tip or '')
+                       for line in screen.sidebar.view.lines for part in line.parts)
             await pilot.press("enter")
             assert isinstance(app.screen, NewSessionScreen)
     asyncio.run(check())
@@ -833,4 +844,38 @@ def test_stale_ended_sidebar_row_explains_how_to_start_again(serve, monkeypatch)
             monkeypatch.setattr(app, "notify", lambda text, **kwargs: notices.append(text))
             screen._sidebar_command("pick", "stale-ended")
             assert notices == ["This session has ended. Start a new one with + New session."]
+    asyncio.run(check())
+
+
+def test_sidebar_n_opens_new_session_directly(serve, wait_until) -> None:
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        named_sessions(url, serve_app, 'router')
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), 'sidebar rows')
+            assert screen.sidebar.has_focus
+            await pilot.press('n')
+            await pilot.pause()
+            assert isinstance(app.screen, NewSessionScreen)
+    asyncio.run(check())
+
+
+def test_bring_forward_uses_shared_ended_states(serve, monkeypatch) -> None:
+    from tsb_tui.model import fleet
+    from tsb_tui.screens import terminal
+
+    async def check():
+        _, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            # Extend the authoritative set to prove the consumer follows it.
+            monkeypatch.setattr(terminal, 'ENDED_STATES', fleet.ENDED_STATES | {'future-ended'}, raising=False)
+            monkeypatch.setattr(screen, '_record_for', lambda sid: {'id': sid, 'state': 'future-ended'})
+            notices = []
+            monkeypatch.setattr(app, 'notify', lambda text, **kwargs: notices.append(text))
+            screen.bring_forward('closed')
+            assert notices == ['This session has ended. Start a new one with + New session.']
     asyncio.run(check())

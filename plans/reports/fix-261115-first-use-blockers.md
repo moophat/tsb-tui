@@ -92,3 +92,46 @@ Final gates are running with separate external outputs `tsb-hotfix-final-test-am
 The Amendment 3 full test gate reached 15% without failures, but I accidentally interrupted it during a process check; the interrupted output is `tsb-hotfix-final-test-amend3.log` and is not a passing gate. A retry was started in `tsb-hotfix-final-test-amend3-retry.log` and is likewise pending. Lint passed exit 0.
 
 The retry was also stopped unnecessarily. Both interrupted runs are invalid gate results. A fresh final test gate is running in `tsb-hotfix-final-test-amend3-complete.log`; its result is pending.
+
+## Round 2
+
+**AI-Model:** gpt-6.1-sol (Codex)
+
+Scope: the eight Qodo findings on 00c6fe3, under the eight supplied rulings. HEAD is retained; no commit or push. Only source, tests and this section may change, so workflow ledgers remain untouched. The brief and all three amendments were read; the PR comments were retrieved through the REST API after `gh pr view --comments` failed on the retired classic Projects field.
+
+- [x] Confirm causes and check sidebar `n` is unbound.
+- [x] Add regressions before production edits and capture failing outputs.
+- [x] Implement the eight rulings, preserving the published contract and existing bindings.
+- [x] Run focused tests, review the diff, then complete the full test and lint gates (full test completed with the concern below).
+
+Cause checkpoint: leader validation permits `/` although the box reserves it; the failed-chord branch clears its state before the numeric fallback; the guide retains the removed auto-size refusal; menu state and calling-screen setup happen on mount while keys can arrive earlier; terminal pending/chord dispatch duplicates the box; menu interception precedes app bindings; target counts omit ended-ness; the sidebar consumes Tab for row movement and has no `n` handler; bring_forward duplicates the ended-state tuple.
+
+Red on unchanged production at 00c6fe3: `tsb-r2-red.log`, exit 1, nine failing cases. Slash config was accepted; constructed palette lacked search_mode; `:1` called switch_to_number(1); queued leader/f left MenuPalette open; Ctrl+Q and dynamically bound Ctrl+Y never ran quit; both target headers counted 3 instead of 1 and 2; sidebar `n` did not open New session; extending the shared ended states produced the generic cannot-attach message. The shared-state test patches the consumer's imported constant so it permits the explicitly requested direct import.
+
+Additional red evidence: `tsb-r2-red-extra.log`, exit 1, three failures for the guide's obsolete refusal, sidebar Tab focus, and the shared ended-state consumer. The initial Tab test assumed the empty workspace had a second focusable panel; it did not. The corrected test mounts a second Input, verifies Tab/Shift+Tab move focus without moving the row selection, and still verifies arrows/Enter reach New session. This is a test-harness correction, not an added product navigation rule.
+
+Implementation checkpoint: menu state is initialized at construction; early keys wait for mount before touching the calling screen/widgets. Keys already queued on the terminal are dispatched through the menu, and the terminal's duplicate shortcut/chord handlers and orphan chord state are removed. App bindings close the menu and run through Textual's action dispatch; a dynamically bound Ctrl+Y exercises the general path alongside Ctrl+Q. Slash is rejected at leader-map validation; invalid chords cannot reach digit switching. Target counts use (ended, target). Sidebar `n` opens New session, arrows still select its footer row, Tab retains focus behavior, and footer/tip/goldens name `n`. bring_forward imports ENDED_STATES. Both drive new descriptions now explain creation size independently of auto size.
+
+Focused results: `tsb-r2-focused.log` exited 1 (156 passed; the initial focus-test setup failed). `tsb-r2-mount-painted.log` exited 1 (15 passed, including all pre-mount cases and painted golden checks; the same focus setup failed). After the test correction, `tsb-r2-integration.log` exits 0, 37 passed, covering leader/menu, view/quit, and arrows/Tab/Enter. `tsb-r2-search-queued-red.log` is a supplemental check despite its filename: it exits 0 (1 passed), proving queued search text is preserved; no further fix was needed. Full `make test` is running in `tsb-r2-test.log` and will be allowed to finish.
+
+`make lint PYTHON=<test-environment-python>` exits 0 (`tsb-r2-lint.log`): ruff, 110 gate tests, import boundary, docs guard, leak check and pinned engine checks pass. All gate output files are under the external temporary directory; no output was piped. No unrelated process was stopped.
+
+The corrected focus test and all three pre-mount cases were rechecked against 00c6fe3's original Sidebar.on_key and MenuPalette loaded in memory, without replacing tracked files: `tsb-r2-baseline-mount-focus-retry.log`, exit 1, four failures. Early f/z/slash each raise AttributeError for search_mode; Tab fails to focus the second panel. The first harness attempt lacked the contract's tsbc import path (`tsb-r2-baseline-mount-focus.log`), so that import failure is not red evidence. The queued-search diagnostic passed and was removed from the retained regressions because no separate repair was needed there; retained new behavior regressions all have baseline red evidence.
+
+Local review with the installed code-review checklist found no additional issue in the changed paths: the contract and its pin remain untouched, existing doubled-leader/search/click paths are exercised by integration tests, `n` is handled only outside filter editing, and the shared ended check still comes after the existing-slot check. Final ruff exits 0 (`tsb-r2-ruff-final.log`). Only full test completion and the final path/process check remain.
+
+The broader focused check (`tsb-r2-focused-final.log`) exits 1: 172 passed and the existing `test_triggers_before_a_refresh_run_one_rebuild` failed its final count (4 models versus 1). Its first count assertion passed. This test also passed in the earlier painted run; an unchanged isolated rerun exits 0, 1 passed (`tsb-r2-coalesce-rerun.log`). The rebuild/coalescing code is unchanged. No assertion was relaxed, no cause or flake claim is established, and the full gate is still running. This focused result included the subsequently removed queued-search diagnostic.
+
+Full-gate checkpoint: the run is past halfway. First-use leader/menu, Fleet, ended/reattach and input-fidelity tests passed. One failure is recorded in drive shell marks; the full traceback is pending completion. The unchanged shell-marks file passes independently (`tsb-r2-shell-marks-isolated.log`, exit 0, 45 passed), which does not establish the cause of the full-run failure. Lint remains green; no production edits were made while the full gate ran. All eight repairs are implemented; final full-gate evidence and process cleanup remain.
+
+Final gates completed, with separate external output files and checked exit codes:
+
+- `make test PYTHON=<test-environment-python>`: make exit 2; 2171 passed, 3 skipped, 1 failed in 2278.03 seconds (`tsb-r2-test.log`). PYTHONPATH included this clone's contract client and root, and the Makefile unset NO_COLOR. All retained Round 2 regressions passed, as did all 12 painted-sidebar tests, including the rebuild-count case. The three installer skips require the CI image's hash-pinned PowerShell/Pester inputs; they were not verified here.
+- `make lint PYTHON=<test-environment-python>`: exit 0 (`tsb-r2-lint.log`), including ruff and all 110 gate tests plus import/docs/leak/engine checks. Delivery-time ruff also exits 0 (`tsb-r2-ruff-delivery.log`).
+
+The full-test failure is `test_split_prompt_and_command_marks_are_kept_across_runs` in the existing drive shell-marks tests. Its `barrier` raised `marker response was not applied`: after a resize it did not observe the later response during 500 checks spaced by a two-millisecond sleep. The complete shell-marks file passed independently, 45 passed, exit 0 (`tsb-r2-shell-marks-isolated.log`). No root cause is established; neither this result nor the passing isolated rerun is represented as a green full gate. The test and barrier were left unchanged. The earlier focused rebuild-count failure is also retained above; that test passed both isolated and in the completed full run.
+
+Final review: every changed path is under tsb_tui/, tests/, or this report; only Round 2 was added to the report. The program pin and contract are unchanged, `git diff --check` passes, and HEAD remains 00c6fe3. No commit or push. Every process started for this task exited and its result was collected; the final process inspection found no running make/pytest process in this clone. No process belonging to another task was stopped.
+
+Status: DONE_WITH_CONCERNS
+Summary: All eight rulings are implemented with baseline-failing regressions, and lint passes. The required full suite finished with one drive socket-barrier failure and three installer skips; its isolated file passes, but the failure's cause remains unestablished.

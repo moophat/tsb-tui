@@ -786,3 +786,8 @@ def test_update_knobs_and_profiles(tmp_path, profile, enabled):
 def test_update_interval_minimum(tmp_path):
     with pytest.raises(config.ConfigError, match="update.interval_h"):
         config.load(config_file=tmp_path / "absent", environ={}, overrides=["update.interval_h=0"])
+
+
+def test_slash_is_reserved_for_menu_search() -> None:
+    with pytest.raises(config.ConfigError, match=r"/.*reserved"):
+        _load(**{"keys.leader_map.detach": "/"})
