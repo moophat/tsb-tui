@@ -76,3 +76,14 @@ Ruling by the orchestrator (2026-11-15 21:5x) addressing Qodo's review finding o
 2. **Tests (`tests/test_drive_login_status.py`)**:
    - `test_login_status_login_ended_during_sign_out`: fires a `login_ended` event during `sign_out`'s await, verifying that `login_status` answers `not_logged_in` after logout. Fails on `3e647ae` (where `login_status` probed the client retained mid-logout and returned `{"status": 401}`).
 
+## Round 5 — Qodo's finding on 1858231
+
+Ruling by the orchestrator (2026-11-16 00:2x) addressing Qodo's review finding on commit `1858231`:
+
+1. **Current-client verification on return from in-flight probe**:
+   - After `await asyncio.to_thread(client.me)` returns, whatever it returned (success 200, an `ApiError` such as 401, or network failure), `op_login_status` checks that the captured `client` is still the app's current client (`client is app.client and generation == app._login_gen`).
+   - If not (e.g. a Sign out replaced the client or moved the app to Login while `client.me` was in flight), it raises `DriveError("not_logged_in", ...)` and never reports the status of the replaced or signed-out login.
+
+2. **Tests (`tests/test_drive_login_status.py`)**:
+   - `test_login_status_sign_out_replaces_client_in_flight`: triggers a Sign out that replaces the client while `client.me` is in flight, verifying that `login_status` answers `not_logged_in`. Fails on `1858231` (where `login_status` answered `status: 200` for the old login after the app had moved to Login).
+

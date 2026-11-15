@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 
 from drive_support import Rig
 from input_server import make_session
@@ -257,4 +258,42 @@ def test_login_status_login_ended_during_sign_out(serve, tmp_path) -> None:
 
     asyncio.run(check())
 
+
+def test_login_status_sign_out_replaces_client_in_flight(serve, tmp_path) -> None:
+    async def check() -> None:
+        _server, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+
+            in_flight = threading.Event()
+            signed_out = threading.Event()
+            old_client = rig.app.client
+            original_me = old_client.me
+
+            def intercepted_me():
+                in_flight.set()
+                res = original_me()
+                signed_out.wait(timeout=5.0)
+                return res
+
+            old_client.me = intercepted_me
+
+            status_fut = rig.send("login_status")
+            for _ in range(300):
+                if in_flight.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert in_flight.is_set()
+
+            await rig.app_call(rig.app.sign_out)
+            assert await rig.app_call(lambda: rig.app.client is not old_client)
+            assert await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen))
+            signed_out.set()
+
+            ans = await status_fut
+            assert ans["ok"] is False
+            assert ans["error"] == "not_logged_in"
+            assert "cookie" not in json.dumps(ans).lower()
+
+    asyncio.run(check())
 

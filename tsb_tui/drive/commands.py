@@ -487,8 +487,12 @@ class Commands:
             raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
         try:
             await asyncio.to_thread(client.me)
+            if client is not app.client or generation != app._login_gen:
+                raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
             return {"status": 200}
         except ApiError as exc:
+            if client is not app.client or generation != app._login_gen:
+                raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
             if (exc.status == 401
                     and is_active
                     and client is app.client
@@ -497,6 +501,8 @@ class Commands:
                 app.notify_api_error(exc, client=client)
             return {"status": exc.status}
         except (HttpError, OSError) as exc:
+            if client is not app.client or generation != app._login_gen:
+                raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
             raise DriveError("request_failed", str(exc)) from None
 
     async def op_sessions(self, cmd: dict[str, Any]) -> dict[str, Any]:
