@@ -297,3 +297,98 @@ def test_login_status_sign_out_replaces_client_in_flight(serve, tmp_path) -> Non
 
     asyncio.run(check())
 
+
+def test_login_status_probe_in_flight_when_401_moves_to_login(serve, tmp_path) -> None:
+    async def check() -> None:
+        _server, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+
+            in_flight = threading.Event()
+            moved_to_login = threading.Event()
+            client = rig.app.client
+            original_me = client.me
+
+            def intercepted_me():
+                in_flight.set()
+                res = original_me()
+                moved_to_login.wait(timeout=5.0)
+                return res
+
+            client.me = intercepted_me
+
+            status_fut = rig.send("login_status")
+            for _ in range(300):
+                if in_flight.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert in_flight.is_set()
+
+            # Another request encounters a 401 and moves the app to LoginScreen
+            await rig.app_call(lambda: rig.app.notify_api_error(ApiError(401, "unauthenticated", "Other request 401")))
+            assert await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen))
+            moved_to_login.set()
+
+            ans = await status_fut
+            assert ans["ok"] is False
+            assert ans["error"] == "not_logged_in"
+            assert "cookie" not in json.dumps(ans).lower()
+
+    asyncio.run(check())
+
+
+def test_login_status_old_poll_401_after_sign_out_and_new_login(serve, tmp_path, monkeypatch) -> None:
+    async def check() -> None:
+        from textual.app import App
+
+        _server, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+
+            live = await rig.cmd("login_status")
+            assert live["ok"] is True and live["status"] == 200
+
+            # Under Login 1, an old poll in a background thread schedules its 401 callback
+            delayed_callbacks = []
+            orig_cft = App.call_from_thread
+
+            def defer_cft(self, callback, *args, **kwargs):
+                if self is rig.app and (callback == rig.app.notify_api_error or getattr(callback, "__name__", "") == "notify_callback"):
+                    delayed_callbacks.append((callback, args, kwargs))
+                    return None
+                return orig_cft(self, callback, *args, **kwargs)
+
+            monkeypatch.setattr(App, "call_from_thread", defer_cft)
+
+            poll_err = ApiError(401, "unauthenticated", "Fleet poll session expired")
+            def poll_worker():
+                rig.app.call_from_thread(rig.app.notify_api_error, poll_err)
+
+            t = threading.Thread(target=poll_worker)
+            t.start()
+            t.join()
+            assert len(delayed_callbacks) == 1
+
+            # Sign out and log in with a new login (Login 2)
+            await rig.cmd("logout")
+            assert await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen))
+
+            await rig.login()
+            live2 = await rig.cmd("login_status")
+            assert live2["ok"] is True and live2["status"] == 200
+
+            # Now the old poll's delayed 401 callback runs
+            cb, args, kwargs = delayed_callbacks[0]
+            await rig.app_call(lambda: cb(*args, **kwargs))
+
+            # The new login is not marked ended: workspace is active and login_status is 200
+            assert await rig.app_call(lambda: rig.app.workspace() is not None)
+            assert await rig.app_call(lambda: not isinstance(rig.app.screen, LoginScreen))
+
+            post_cb = await rig.cmd("login_status")
+            assert post_cb["ok"] is True and post_cb["status"] == 200
+            assert rig.driver.commands._ended_login is None
+
+    asyncio.run(check())
+
+

@@ -87,3 +87,23 @@ Ruling by the orchestrator (2026-11-16 00:2x) addressing Qodo's review finding o
 2. **Tests (`tests/test_drive_login_status.py`)**:
    - `test_login_status_sign_out_replaces_client_in_flight`: triggers a Sign out that replaces the client while `client.me` is in flight, verifying that `login_status` answers `not_logged_in`. Fails on `1858231` (where `login_status` answered `status: 200` for the old login after the app had moved to Login).
 
+## Round 6 — Qodo's two findings on 10e8f67, and the class behind them
+
+Ruling by the orchestrator (2026-11-16 01:1x) addressing Qodo's review findings on commit `10e8f67`:
+
+1. **One login generation decides**:
+   - Every transition of the app's login (signing in, signing out, a 401 or a login_ended that moves the app to Login) advances one generation counter (`_login_gen`). Specifically, `TsbTuiApp._to_login()` advances `self._login_gen += 1` on every transition to `LoginScreen`.
+   - Replaced ad-hoc point guards across rounds 3-5 (`self._logging_out`, `signing_out` checks, point-wise client-equality checks) with unified generation checks.
+   - Every asynchronous path that reads or records the login captures the generation when it starts and does nothing if the generation changed by the time it runs or completes:
+     - `op_login_status` captures `generation = app._login_gen` at invocation; when `await asyncio.to_thread(client.me)` returns, if `generation != app._login_gen`, it answers `not_logged_in`.
+     - `call_from_thread` intercepts `notify_api_error` calls from background threads (such as `FleetPoller`), capturing `generation` and `client`; if the generation changed before the callback runs on the UI thread, it drops the callback.
+     - `notify_api_error` fences on `generation` and `client`, dropping stale errors.
+     - `note_login_ended` records only the client of the generation it captured, never defaulting to whatever client the app holds when unmounted or after generation change.
+     - In `_sign_out`, `generation = self._login_gen` is captured after `_to_login()`, preserving the check against subsequent logins while `old.logout` settles.
+     - In `_account_op`, handles own-password change where attachment close 4017 transitions to login during the request.
+
+2. **Tests (`tests/test_drive_login_status.py`)**:
+   - `test_login_status_probe_in_flight_when_401_moves_to_login`: verifies that a 401 on another request moving the app to Login while a probe is in flight makes the probe answer `not_logged_in` (failed on `10e8f67`, where probe returned `status: 200`).
+   - `test_login_status_old_poll_401_after_sign_out_and_new_login`: verifies that an old poll's 401 callback running after sign-out and a new login does not mark the new login ended (failed on `10e8f67`, where the old poll callback tore down the new workspace and retained the new client as ended).
+
+

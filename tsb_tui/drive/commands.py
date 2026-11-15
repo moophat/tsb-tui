@@ -351,16 +351,24 @@ class Commands:
         self._look_serial = 0
         self._prompts: dict[str, PromptCheck] = {}
         self._ended_login: Any | None = None
-        self._logging_out = False
+        self._ended_gen: int | None = None
 
-    def note_login_ended(self, client: Any | None = None) -> None:
-        if self._logging_out or getattr(self.d.app, "signing_out", False):
+    def note_login_ended(self, client: Any | None = None, *, generation: int | None = None) -> None:
+        if self._ended_login is not None:
             return
-        if self._ended_login is None:
-            self._ended_login = self.d.app.client if client is None else client
+        if generation is not None and generation != self.d.app._login_gen:
+            return
+        if client is None:
+            if self.d.screen() is None:
+                return
+            client = self.d.app.client
+            generation = self.d.app._login_gen
+        self._ended_login = client
+        self._ended_gen = self.d.app._login_gen if generation is None else generation
 
     def clear_ended_login(self) -> None:
         self._ended_login = None
+        self._ended_gen = None
 
     async def run(self, cmd: dict[str, Any]) -> dict[str, Any]:
         op = cmd.get("op")
@@ -487,21 +495,20 @@ class Commands:
             raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
         try:
             await asyncio.to_thread(client.me)
-            if client is not app.client or generation != app._login_gen:
+            if generation != app._login_gen:
                 raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
             return {"status": 200}
         except ApiError as exc:
-            if client is not app.client or generation != app._login_gen:
+            if generation != app._login_gen:
                 raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
             if (exc.status == 401
                     and is_active
-                    and client is app.client
                     and generation == app._login_gen):
-                self.note_login_ended(client)
-                app.notify_api_error(exc, client=client)
+                self.note_login_ended(client, generation=generation)
+                app.notify_api_error(exc, client=client, generation=generation)
             return {"status": exc.status}
         except (HttpError, OSError) as exc:
-            if client is not app.client or generation != app._login_gen:
+            if generation != app._login_gen:
                 raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
             raise DriveError("request_failed", str(exc)) from None
 
@@ -633,6 +640,10 @@ class Commands:
         except ApiError as exc:
             raise DriveError(exc.code, exc.message) from None
         except ValueError as exc:
+            if (operation in ("password", "own")
+                    and (operation == "own" or username == self.d.app.username)
+                    and str(exc) == "the login changed"):
+                return {"account": {"username": self.d.app.username if operation == "own" else username}}
             raise DriveError("not_available", str(exc)) from None
         except (HttpError, OSError) as exc:
             raise DriveError("request_failed", str(exc)) from None
@@ -1527,16 +1538,16 @@ class Commands:
         is back at Login, where a `login` is accepted again. `broker` is `unconfirmed` when the broker did not take
         the logout: this client holds no login either way."""
         self._ended_login = None
+        self._ended_gen = None
         self._screen()
-        self._logging_out = True
         try:
             result = await self.d.app.sign_out()
             await self.d.wait_for_login_screen()
             self.d.screen_lock.reset()
             return {"detached": result.detached, "broker": result.broker}
         finally:
-            self._logging_out = False
             self._ended_login = None
+            self._ended_gen = None
 
     # -- the UI itself --
 

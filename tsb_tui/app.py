@@ -595,15 +595,29 @@ class TsbTuiApp(App):
         then — a future that settles a sign-out or a drive `end` — passes `on_stale_error`, which runs in the
         dropped 401's place instead of `on_error` (it never toasts or navigates)."""
         client = self.client
+        generation = self._login_gen
 
         def failed(exc: ApiError | HttpError | OSError) -> None:
-            if client is not self.client and isinstance(exc, ApiError) and exc.status == 401:
+            if (client is not self.client or generation != self._login_gen) and isinstance(exc, ApiError) and exc.status == 401:
                 if on_stale_error is not None:
                     on_stale_error(exc)
                 return
             on_error(exc)
 
         self._run_blocking(func, args, on_done, failed)
+
+    def call_from_thread(self, callback: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        if callback == self.notify_api_error:
+            generation = kwargs.pop("generation", self._login_gen)
+            client = kwargs.pop("client", self.client)
+
+            def notify_callback() -> Any:
+                if generation != self._login_gen or (client is not None and client is not self.client):
+                    return None
+                return self.notify_api_error(*args, client=client, generation=generation, **kwargs)
+
+            return super().call_from_thread(notify_callback)
+        return super().call_from_thread(callback, *args, **kwargs)
 
     @work(thread=True, exclusive=False)
     def _run_blocking(self, func: Callable[..., T], args: tuple[Any, ...], on_done: Callable[[T], None],
@@ -615,11 +629,14 @@ class TsbTuiApp(App):
         else:
             self.call_from_thread(on_done, result)
 
-    def notify_api_error(self, exc: ApiError | HttpError | OSError, *, client: Any | None = None) -> None:
+    def notify_api_error(self, exc: ApiError | HttpError | OSError, *, client: Any | None = None,
+                         generation: int | None = None) -> None:
         """The one place an `ApiError` becomes a toast. `no_resolving_credential` is a legitimate
         state (Storage §10.1a) — worded as one, never in the error tone the rest get. A 401 means
         the login this client held no longer works, wherever it surfaced — this is the one place
         that sends the operator back to Login rather than leaving them stuck on a broken screen."""
+        if generation is not None and generation != self._login_gen:
+            return
         if client is not None and client is not self.client:
             return
         if isinstance(exc, ApiError) and exc.code == NO_RESOLVING_CREDENTIAL:
@@ -634,7 +651,9 @@ class TsbTuiApp(App):
                 if not isinstance(self.screen, LoginScreen):
                     commands = getattr(self, "drive_commands", None)
                     if commands is not None:
-                        commands.note_login_ended(client)
+                        target_client = self.client if client is None else client
+                        target_gen = self._login_gen if generation is None else generation
+                        commands.note_login_ended(target_client, generation=target_gen)
             self._to_login()
 
     @property
@@ -667,7 +686,6 @@ class TsbTuiApp(App):
             screen.close_scroll_view()
             detached = await screen.detach_all()
         self.stop_alerts()
-        generation = self._login_gen
         # Login first, on a fresh client: `Client.logout` clears the jar of the instance it was sent on,
         # so the logout goes on `old` and a login made while it is held lands on the new instance, whose jar it can
         # never empty. Login's submit stays refused until this sign-out ends. Requests still on `old` are fenced by
@@ -675,6 +693,7 @@ class TsbTuiApp(App):
         old = self.client
         self.client = self._new_client()
         self._to_login()
+        generation = self._login_gen
         answered: asyncio.Future[ApiError | HttpError | OSError | None] = asyncio.get_running_loop().create_future()
 
         def settle(failure: ApiError | HttpError | OSError | None) -> None:
@@ -708,6 +727,7 @@ class TsbTuiApp(App):
         # screen that is already up: the form the operator — or drive — is filling in would be unmounted.
         if isinstance(self.screen, LoginScreen):
             return
+        self._login_gen += 1
         self.stop_alerts()
         self.permissions = frozenset()
         self.screen_lock.clear()      # the login ended: no lock, no settings, nothing held
