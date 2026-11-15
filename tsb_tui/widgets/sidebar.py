@@ -814,7 +814,12 @@ class Sidebar(Widget):
             return  # on to the screen
         key = event.key
         if not self.editing and key in ("tab", "shift+tab"):
-            return  # Textual moves focus between panels.
+            event.stop()
+            if key == "tab":
+                self.app.action_focus_next()
+            else:
+                self.app.action_focus_previous()
+            return
         event.stop()
         if key == "ctrl+q":
             # The app's own quit (D38): sessions keep running. The sidebar has the keys right after login, so it

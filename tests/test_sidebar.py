@@ -879,3 +879,37 @@ def test_bring_forward_uses_shared_ended_states(serve, monkeypatch) -> None:
             screen.bring_forward('closed')
             assert notices == ['This session has ended. Start a new one with + New session.']
     asyncio.run(check())
+
+
+@pytest.mark.parametrize("key", ["tab", "shift+tab"])
+def test_sidebar_tab_moves_focus_without_sending_to_attached_session(serve, wait_until, key) -> None:
+    async def check():
+        from textual.widgets import Input
+
+        serve_app, url = serve(InputRecordingApp())
+        (sid,) = named_sessions(url, serve_app, "router")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, sid)
+            panel = Input(id="other-panel")
+            await screen.mount(panel)
+            screen.open_sidebar()
+            await wait_until(pilot, lambda: screen.sidebar.has_focus, "sidebar focus")
+            selected = screen.sidebar.selected
+            client_id = screen.pump.state.client_id
+            await pilot.press(key)
+            assert panel.has_focus
+            assert screen.sidebar.selected == selected
+            assert serve_app.received(client_id) == [], "a sidebar focus key reached the session"
+
+    asyncio.run(check())
+
+
+def test_all_keys_sidebar_names_new_session() -> None:
+    from tsb_tui import config
+    from tsb_tui.screens.chrome_dialogs import keys_lines
+
+    lines = keys_lines(config.load())
+    sidebar = lines[lines.index("In the fleet sidebar") + 1:lines.index("In the full fleet view")]
+    assert any(line.split(maxsplit=1) == ["n", "New session"] for line in sidebar)

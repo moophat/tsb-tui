@@ -163,3 +163,33 @@ Final gate checkpoint: full `make test` completed (exit 2) with 2179 passed, 3 s
 
 Status: DONE_WITH_CONCERNS
 Summary: The three Round 3 findings are fixed with baseline-failing regressions; focused menu tests and lint pass. The full gate had one alert-request counted-window failure (the affected file passes independently) and three installer skips.
+
+
+## Round 4
+
+**AI-Model:** gpt-6.1-sol (Codex)
+
+Scope: the two sidebar findings on c37a7d8 and the alert-stream request-window flake, under the three supplied rulings. Keep HEAD; no commit or push. Checkpoints remain in this section under the explicit write limits.
+
+- [x] Inspect sidebar key bubbling, terminal sending, All keys and the counted window.
+- [x] Add regressions first and record failures on unchanged production.
+- [x] Implement explicit focus dispatch, the sidebar n reference and the test-only alert exclusion.
+- [x] Complete full test and lint gates, review allowed paths and collect all owned command results (full gate has the concerns below).
+
+Baseline red on c37a7d8: `tsb-r4-red.log`, pytest exit 1, all three cases failed. Tab and Shift+Tab both failed to move focus with a session attached; the sidebar section of keys_lines omitted n / New session. The existing empty-workspace focus test passed before edits (1 passed), confirming why it missed the attached-session path.
+
+Implementation checkpoint: sidebar Tab and Shift+Tab stop bubbling and explicitly call the app's next/previous focus actions. All keys lists n / New session. Only the test helper excludes GET /alerts, with a deterministic alert request added to the counted-window regression; its real activity arrival and create-count assertions remain intact. No production request filtering changes.
+
+Focused verification: `tsb-r4-focused.log`, exit 0, 59 passed (the complete sidebar and new-session login files). Both attached-session focus cases and the sidebar-only All keys assertion pass. The counted-window regression deterministically includes GET /alerts while still requiring real activity arrival and a counted create.
+
+Required gates completed with this clone's contract client and root in PYTHONPATH, separate output files outside the tree, no pipes, and checked exit codes:
+
+- `make lint PYTHON=<test-environment-python>`: exit 0 (`tsb-r4-lint.log`). Ruff ran and printed All checks passed; all 110 gate tests, import boundary, leak and pinned-engine checks passed. The docs guard reported its normal no-event no-op.
+- `make test PYTHON=<test-environment-python>`: make exit 2 (`tsb-r4-test.log`), 2181 passed, 3 skipped, 2 failed in 2265.68 seconds. All Round 4 regressions passed. The three installer skips require the CI image's hash-pinned PowerShell/Pester inputs and were not verified here.
+
+Full-suite failures are in unchanged tests: `test_drive_reads_are_live_while_the_view_is_open` failed equality of reads before/after opening the scroll view; `test_a_window_shorter_than_the_grid_pans_to_show_the_match` failed its initial canvas precondition because view_y was 0. Both pass unchanged on isolated rerun (`tsb-r4-failure-rerun.log`, exit 0, 2 passed). Their causes remain unestablished; this rerun does not turn the full gate green. Neither test nor its production path was changed.
+
+Final checkpoint: HEAD remains c37a7d8; only tsb_tui/, tests/ and this Round 4 section differ; git diff --check passes. No absolute machine path was added to a file. All commands and owned test/lint processes have exited and their results were collected; no unrelated process was stopped. No commit or push.
+
+Status: DONE_WITH_CONCERNS
+Summary: The two sidebar findings and the test-only alert-stream exclusion are fixed, with baseline-failing sidebar regressions and passing focused tests and lint. The uninterrupted full gate finished with two failures in unchanged tests (both pass isolated) and three installer skips.
