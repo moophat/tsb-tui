@@ -98,6 +98,7 @@ class Driver:
         self.commands = Commands(self)
         self.screen_lock = DriveScreenLock(self)
         app.drive_screen_lock = self.screen_lock
+        app.drive_commands = self.commands
         app.taps.append(self.tap)
 
     def ready(self, size: tuple[int, int]) -> dict[str, Any]:

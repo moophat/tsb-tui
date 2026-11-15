@@ -615,17 +615,26 @@ class TsbTuiApp(App):
         else:
             self.call_from_thread(on_done, result)
 
-    def notify_api_error(self, exc: ApiError | HttpError | OSError) -> None:
+    def notify_api_error(self, exc: ApiError | HttpError | OSError, *, client: Any | None = None) -> None:
         """The one place an `ApiError` becomes a toast. `no_resolving_credential` is a legitimate
         state (Storage §10.1a) — worded as one, never in the error tone the rest get. A 401 means
         the login this client held no longer works, wherever it surfaced — this is the one place
         that sends the operator back to Login rather than leaving them stuck on a broken screen."""
+        if client is not None and client is not self.client:
+            return
         if isinstance(exc, ApiError) and exc.code == NO_RESOLVING_CREDENTIAL:
             self.notify("This target is visible, but no credential resolves for it.",
                        title="No credential", severity="warning", markup=False)
             return
         self.notify(str(exc), title="Request failed", severity="error", markup=False)
         if isinstance(exc, ApiError) and exc.status == 401:
+            if self.under_drive and self.workspace() is not None:
+                from .screens.login import LoginScreen
+
+                if not isinstance(self.screen, LoginScreen):
+                    commands = getattr(self, "drive_commands", None)
+                    if commands is not None:
+                        commands.note_login_ended(client)
             self._to_login()
 
     @property

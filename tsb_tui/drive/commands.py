@@ -352,9 +352,9 @@ class Commands:
         self._prompts: dict[str, PromptCheck] = {}
         self._ended_login: Any | None = None
 
-    def note_login_ended(self) -> None:
+    def note_login_ended(self, client: Any | None = None) -> None:
         if self._ended_login is None:
-            self._ended_login = self.d.app.client
+            self._ended_login = self.d.app.client if client is None else client
 
     def clear_ended_login(self) -> None:
         self._ended_login = None
@@ -403,7 +403,7 @@ class Commands:
         client = app.client
         def failed(exc: Any) -> None:
             if generation == app._login_gen and client is app.client and isinstance(exc, ApiError) and exc.status == 401:
-                app.notify_api_error(exc)
+                app.notify_api_error(exc, client=client)
         def done(me: Any) -> None:
             if generation == app._login_gen and client is app.client:
                 if me.get("locks") is None:
@@ -490,8 +490,8 @@ class Commands:
                     and is_active
                     and client is app.client
                     and generation == app._login_gen):
-                self.note_login_ended()
-                app.notify_api_error(exc)
+                self.note_login_ended(client)
+                app.notify_api_error(exc, client=client)
             return {"status": exc.status}
         except (HttpError, OSError) as exc:
             raise DriveError("request_failed", str(exc)) from None

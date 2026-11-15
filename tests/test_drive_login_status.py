@@ -5,6 +5,7 @@ import json
 
 from drive_support import Rig
 from input_server import make_session
+from tsb_contract_client import ApiError
 from tsbc import _serve
 
 from tsb_tui.screens.login import LoginScreen
@@ -161,3 +162,66 @@ def test_login_status_active_401_ends_login(serve, tmp_path) -> None:
             assert probe_again["status"] == 401
 
     asyncio.run(check())
+
+
+def test_login_status_poller_401_retains_client(serve, tmp_path) -> None:
+    async def check() -> None:
+        server, url = serve()
+        async with Rig(url, tmp_path=tmp_path, overrides=("fleet_view.refresh_s=1",)) as rig:
+            await rig.login()
+
+            live = await rig.cmd("login_status")
+            assert live["ok"] is True and live["status"] == 200
+
+            # Invalidate the session on the server with no attachment event and no probe
+            server.logins.clear()
+
+            # The poller meets the 401 first, returning the app to LoginScreen
+            for _ in range(300):
+                if await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen)):
+                    break
+                await rig.pilot.pause(0.01)
+            assert await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen))
+
+            # login_status answers 401, not not_logged_in
+            ans = await rig.cmd("login_status")
+            assert ans["ok"] is True
+            assert ans["status"] == 401
+            assert set(ans.keys()) - {"id", "ok"} == {"status"}
+            assert "cookie" not in json.dumps(ans).lower()
+
+            # Other commands keep answering not_logged_in
+            sess = await rig.cmd("sessions")
+            assert sess["ok"] is False
+            assert sess["error"] == "not_logged_in"
+
+            # Kept until logout
+            logout_res = await rig.cmd("logout")
+            assert logout_res["ok"] is False
+            assert logout_res["error"] == "not_logged_in"
+
+            post_logout = await rig.cmd("login_status")
+            assert post_logout["ok"] is False
+            assert post_logout["error"] == "not_logged_in"
+
+    asyncio.run(check())
+
+
+def test_login_status_replaced_client_does_not_end_active_login(serve, tmp_path) -> None:
+    async def check() -> None:
+        _server, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+
+            # A 401 on an old replaced client does not tear down the current workspace
+            old_client = rig.app._new_client()
+            err = ApiError(401, "unauthenticated", "Old login expired")
+            await rig.app_call(lambda: rig.app.notify_api_error(err, client=old_client))
+
+            # The current workspace remains active
+            assert await rig.app_call(lambda: rig.app.workspace() is not None)
+            live = await rig.cmd("login_status")
+            assert live["ok"] is True and live["status"] == 200
+
+    asyncio.run(check())
+

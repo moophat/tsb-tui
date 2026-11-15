@@ -50,3 +50,16 @@ Rulings by the orchestrator (2026-11-15) addressing Qodo's two review findings o
 
 3. **Documentation**:
    - Added one sentence in `tsb_tui/drive/GUIDE.md` documenting that a 401 discovered by the probe on an active login ends it like any other 401, returning the app to Login.
+
+## Round 3 — Qodo's finding on a8ff3a8
+
+Ruling by the orchestrator (2026-11-15) addressing Qodo's review finding on commit `a8ff3a8`:
+
+1. **Every 401 ending active login retains ended login under drive**:
+   - Under drive, every 401 that ends the active login (from the background poller, probe, or any other source) retains that login's client for `login_status` via `commands.note_login_ended()` in `notify_api_error()` before `_to_login()` removes the active workspace screen.
+   - The existing guard protects against a client replaced during the in-flight request (`client is not self.client` drops stale 401s; `isinstance(self.screen, LoginScreen)` and `workspace() is not None` ensure only an active workspace ends).
+   - Hook wiring: `Driver.__init__` attaches `app.drive_commands = self.commands`, and `TsbTuiApp.notify_api_error` calls `drive_commands.note_login_ended()` on 401 before tearing down the workspace.
+
+2. **Tests (`tests/test_drive_login_status.py`)**:
+   - `test_login_status_poller_401_retains_client`: verifies that when fake core session invalidation occurs with no attachment event and no probe, the poller meets the 401 first, returning the app to Login; `login_status` answers `status: 401` (rather than `not_logged_in`), subsequent session commands answer `not_logged_in`, and calling `logout` clears the retained client. Failed on `a8ff3a8`.
+   - `test_login_status_replaced_client_does_not_end_active_login`: verifies that a stale 401 on an old replaced client does not tear down the active workspace or overwrite the live login.
