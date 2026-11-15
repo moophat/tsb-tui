@@ -135,3 +135,31 @@ Final review: every changed path is under tsb_tui/, tests/, or this report; only
 
 Status: DONE_WITH_CONCERNS
 Summary: All eight rulings are implemented with baseline-failing regressions, and lint passes. The required full suite finished with one drive socket-barrier failure and three installer skips; its isolated file passes, but the failure's cause remains unestablished.
+
+## Round 3
+
+**AI-Model:** gpt-6.1-sol (Codex)
+
+Scope: the three Qodo findings on c992c09, under the operator's supplied rulings. Keep HEAD; no commit or push. The explicit write restriction supersedes workflow-ledger updates and rotation; checkpoints stay here. The requested PR-view command failed on GitHub's retired Projects field; review comments were read with the REST API.
+
+- [x] Inspect search, palette, event dispatch, opening paths and existing regressions; confirm each cause.
+- [x] Write regressions first and record baseline failures.
+- [x] Implement shared tokenization, nonblocking action dispatch and click-open search mode.
+- [x] Complete full test and lint gates, inspect final diff and collect every owned process result (full gate has the concern below).
+
+Causes: query whitespace splitting disagreed with name punctuation splitting; App.on_event awaited broker-waiting shortcut and app-binding actions; every palette started in shortcut mode even without a pending leader, contrary to the click menu's hints.
+
+Baseline c992c09: `tsb-r3-red.log`, exit 1: who's and whos returned no Who's here; both shortcut and app-binding waiting actions kept Ctrl+Q queued (four behavioral failures; three passing cases). Its initial click case had an invalid import, then an unexposed rail: these are harness errors, not behavioral evidence. Corrected click regression against c992c09's original app.py fails at search_mode=False (`tsb-r3-click-red-final.log`, exit 1). The fixed source was restored immediately after that check. The click test's expected destination was also corrected to the existing ThemePicker class.
+
+Implementation: one tokenizer lowercases, drops straight/curly apostrophes and splits at non-alphanumerics, retaining original character positions for highlights. Every query token must prefix a name token; descriptions and the search-off option retain their rules. App-owned workers start shortcuts and app bindings without holding the App event queue; the existing action handlers and worker error reporting remain in use. Binding dispatch still stops at the first handled binding. A palette receives search_mode at construction from the workspace's pending-leader state; its local hint matches the mode. Earlier explicit-shortcut tests now open through the leader. The click regression exercises the real rail click, arrow selection, typing and Enter; existing tests cover leader shortcuts and slash search.
+
+Focused menu/leader file: 29 passed, exit 0 (`tsb-r3-focused.log`). The initial focused green attempt had seven passes and only the test's incorrect ThemeScreen class expectation failed. Ruff identified one local import-format issue, corrected before gates. Full gates pending; outputs stay outside the tree, without pipes.
+
+Gate checkpoint: `make lint PYTHON=<test-environment-python>` completed with exit 0 (`tsb-r3-lint.log`). Ruff printed `All checks passed!`; all 110 gate tests and import/docs/leak/pinned-engine checks passed. The complete `make test` gate is running in `tsb-r3-test.log`, with this clone's contract client and root in PYTHONPATH. No production edits will occur during it. `git diff --check` passes. All earlier commands have exited; only the owned full gate remains active.
+
+Full-gate progress checkpoint: past 38%, with no failures reported. Drive screen-lock, send gate and the complete shell-marks file passed in this run. The menu/leader regression file is now running. Lint remains passed, production files remain unchanged during the gate, and the owned gate has not been interrupted.
+
+Final gate checkpoint: full `make test` completed (exit 2) with 2179 passed, 3 skipped and 1 failure in unchanged `tests/test_new_session_login.py`. The failure was a timing-sensitive counted-window assertion: a background `GET /alerts` request landed between the test's baseline and activity request; the complete file rerun passed 13/13 (`tsb-r3-login-rerun.log`). No failure involved the changed menu code. The three installer skips require the CI image's hash-pinned PowerShell/Pester inputs and were not verified here. Lint remains green; `git diff --check` passes; HEAD is still c992c09; only allowed paths are modified. All processes started for this task (focused tests, lint, full test and rerun) have exited; no unrelated process was stopped. No commit or push.
+
+Status: DONE_WITH_CONCERNS
+Summary: The three Round 3 findings are fixed with baseline-failing regressions; focused menu tests and lint pass. The full gate had one alert-request counted-window failure (the affected file passes independently) and three installer skips.

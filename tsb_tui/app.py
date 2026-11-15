@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib.metadata
-import re
 import sys
 import time
 from collections.abc import Callable
@@ -140,20 +139,40 @@ class MenuProvider(Provider):
             run, help_text = self._entry(action, keys, why)
             yield DiscoveryHit(self._label(Content(action.label), why), run, text=action.label, help=help_text)
 
+    @staticmethod
+    def _words(value: str) -> list[tuple[str, list[int]]]:
+        """Name/query tokens with display positions retained for highlighting."""
+        words = []
+        letters = ""
+        positions = []
+        for index, char in enumerate(value):
+            if char in "'’":
+                continue
+            if char.isalnum():
+                lower = char.lower()
+                letters += lower
+                positions.extend([index] * len(lower))
+            elif letters:
+                words.append((letters, positions))
+                letters, positions = "", []
+        if letters:
+            words.append((letters, positions))
+        return words
+
     async def search(self, query: str) -> Hits:
         if not self.app.cfg["menu.search"]:
             async for hit in self.discover():  # search off: the list does not narrow
                 yield hit
             return
-        words = query.casefold().split()
+        words = [word for word, _ in self._words(query)]
         for action, keys, why in self._entries():
-            name_words = list(re.finditer(r"\w+", action.label))
-            if all(any(match.group().casefold().startswith(word) for match in name_words) for word in words):
+            name_words = self._words(action.label)
+            if all(any(name.startswith(word) for name, _ in name_words) for word in words):
                 label = Content(action.label)
-                for match in name_words:
+                for name, positions in name_words:
                     for word in words:
-                        if match.group().casefold().startswith(word):
-                            label = label.stylize("bold underline", match.start(), match.start() + len(word))
+                        if name.startswith(word):
+                            label = label.stylize("bold underline", positions[0], positions[len(word) - 1] + 1)
                 run, help_text = self._entry(action, keys, why)
                 yield Hit(1, self._label(label, why), run, text=action.label, help=help_text)
 
@@ -183,12 +202,13 @@ class MenuPalette(CommandPalette):
     """
 
     def __init__(self, *args, **kwargs) -> None:
-        self.search_mode = False
+        self.search_mode = kwargs.pop("search_mode", False)
         self.chord = ""
         super().__init__(*args, **kwargs)
 
     def on_mount(self) -> None:
-        self.query_one("#--container").mount(Static("Press a shortcut, or / to search.", id="menu-key-message"))
+        self.query_one("#--container").mount(Static("Type to find an action. Enter runs it; Esc closes." if self.search_mode
+                                                  else "Press a shortcut, or / to search.", id="menu-key-message"))
         # The palette's children are not in the DOM yet when it is mounted: set the icon once they are.
         self.call_after_refresh(self._ascii_icon)
 
@@ -228,9 +248,12 @@ class MenuPalette(CommandPalette):
             self._action_escape()
             event.stop()
             event.prevent_default()
-            for binding in bindings:
-                if await self.app.run_action(binding.action, self.app):
-                    break
+            async def run_binding() -> None:
+                for binding in bindings:
+                    if await self.app.run_action(binding.action, self.app):
+                        break
+
+            self.app.run_worker(run_binding(), exclusive=False)
             return True
         if event.key == "escape":
             event.stop()
@@ -264,7 +287,7 @@ class MenuPalette(CommandPalette):
             self.chord = ""
             if action is not None:
                 self._action_escape()
-                await screen.run_action_id(action.id)
+                self.app.run_worker(screen.run_action_id(action.id), exclusive=False)
             elif not chord and letter in "123456789" and letter:
                 self._action_escape()
                 screen.switch_to_number(int(letter))
@@ -667,8 +690,10 @@ class TsbTuiApp(App):
     def open_menu(self) -> None:
         """Open the Menu. Only the leader, `≡ Menu` and a click on it reach this: Ctrl-P stays the session's."""
         if not CommandPalette.is_open(self):
+            workspace = self.workspace()
+            search_mode = workspace is not None and not workspace.leader_pending
             self.push_screen(MenuPalette(providers=[MenuProvider], placeholder="Find an action",
-                                         id="--command-palette"))
+                                         id="--command-palette", search_mode=search_mode))
 
     def workspace(self):
         """The terminal screen under whatever is open over it: where every session lives, with the rail and the
