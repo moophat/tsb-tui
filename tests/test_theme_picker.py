@@ -144,7 +144,7 @@ def test_the_leader_and_T_open_the_picker_and_the_session_stays_visible_beside_i
             row = None
             for _ in range(40):
                 lines = [strip.text for strip in app.screen._compositor.render_strips()]
-                row = next((i for i, line in enumerate(lines) if line.strip().startswith("Theme…")), None)
+                row = next((i for i, line in enumerate(lines) if "Theme…" in line), None)
                 if row is not None:
                     break
                 options.scroll_down(animate=False)

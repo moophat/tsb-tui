@@ -340,12 +340,10 @@ def test_the_sidebar_is_30_32_or_42_columns_by_the_window_and_the_details_come_f
 
 
 @pytest.mark.parametrize("mode, window, closes", [
-    ("always", 120, True), ("never", 65, False), ("phone", 120, False), ("phone", 65, True)])
-def test_close_on_pick_closes_the_sidebar_always_never_or_on_a_phone(
+    ("always", 120, False), ("never", 65, False), ("phone", 120, False), ("phone", 65, False)])
+def test_picking_a_session_keeps_sidebar_open_regardless_of_old_close_setting(
         serve, monkeypatch, wait_until, mode, window, closes) -> None:
-    """`sidebar.close_on_pick`: picking a row brings the session to the front and the sidebar closes per the knob. A
-    phone (a compact window) closes it so the canvas gets the width back; a laptop keeps it open and the keys go
-    back to the session either way."""
+    """Picking a session preserves the sidebar and gives the terminal the keys."""
     monkeypatch.setenv("TSB_TUI_SIDEBAR_CLOSE_ON_PICK", mode)
 
     async def _check() -> None:
@@ -791,4 +789,48 @@ def test_the_status_rows_range_follows_the_canvas_when_it_widens_without_moving(
             await wait_until(pilot, lambda: label in screen.status.text,
                              f"the row to say {label!r}, it says {screen.status.text!r}")
 
+    asyncio.run(check())
+
+
+def test_keyboard_reaches_new_session_and_opens_it(serve, wait_until) -> None:
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        named_sessions(url, serve_app, "router")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), "sidebar rows")
+            rows = screen.sidebar.view.rows
+            screen.sidebar.selected = rows[0]
+            for row in rows[1:]:
+                await pilot.press("down")
+                assert screen.sidebar.selected == row
+            await pilot.press("down")
+            assert screen.sidebar.selected_session is None
+            await pilot.press("up")
+            assert screen.sidebar.selected == rows[-1]
+            await pilot.press("down")
+            assert screen.sidebar.selected_session is None
+            await pilot.press("tab")
+            assert screen.sidebar.selected == rows[0]
+            for _ in rows:
+                await pilot.press("tab")
+            assert screen.sidebar.selected_session is None
+            assert "Tab" in screen.sidebar.text and "New session" in screen.sidebar.text
+            await pilot.press("enter")
+            assert isinstance(app.screen, NewSessionScreen)
+    asyncio.run(check())
+
+
+def test_stale_ended_sidebar_row_explains_how_to_start_again(serve, monkeypatch) -> None:
+    async def check():
+        _serve_app, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            notices = []
+            monkeypatch.setattr(screen, "_record_for", lambda sid: {"id": sid, "state": "terminated"})
+            monkeypatch.setattr(app, "notify", lambda text, **kwargs: notices.append(text))
+            screen._sidebar_command("pick", "stale-ended")
+            assert notices == ["This session has ended. Start a new one with + New session."]
     asyncio.run(check())

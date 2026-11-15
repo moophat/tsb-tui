@@ -153,8 +153,7 @@ def test_an_accepted_hostkey_gate_is_not_asked_again_on_a_later_attach(serve, tm
 
 def test_drive_new_and_targets_refuse_what_the_dialog_would(serve, tmp_path) -> None:
     """A refused create answers with the core's own code and message, a query the broker cannot answer is `bad_request`
-    naming the fields, and a create with auto size off is `not_available` with the dialog's sentence: nothing reaches
-    the broker that the dialog would not have sent."""
+    naming the fields. Auto size being off still lets the creator send the window size."""
 
     async def check() -> None:
         serve_app, url = serve()
@@ -171,8 +170,9 @@ def test_drive_new_and_targets_refuse_what_the_dialog_would(serve, tmp_path) -> 
         async with Rig(url, tmp_path=tmp_path) as plain:
             await plain.login()
             off = await plain.cmd("new", target="normal")
-            assert off["error"] == "not_available" and "auto size is off" in off["why"]
-            assert [b for m, p, b in serve_app.requests if (m, p) == ("POST", "/sessions")] == creates, (
-                "a create the dialog would not send must not reach the broker")
+            assert off["ok"], off
+            sent = [b for m, p, b in serve_app.requests if (m, p) == ("POST", "/sessions")]
+            assert len(sent) == len(creates) + 1
+            assert (sent[-1]["cols"], sent[-1]["rows"]) == (116, 39)
 
     asyncio.run(check())

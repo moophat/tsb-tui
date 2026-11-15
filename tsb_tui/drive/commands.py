@@ -32,7 +32,7 @@ from ..model.attachment import AttachmentState
 from ..model.countdown import format_duration, parse_timestamp
 from ..model.fleet import is_attachable
 from ..model.targets import PAGE_LIMIT, QueryError, as_text, make_row, parse_query
-from ..screens.new_session import CREATE_SIZE_OFF, TERM, create_size
+from ..screens.new_session import TERM, create_size
 from ..screens.terminal import (
     _DRIVE_GATE,
     MARK_INPUT,
@@ -732,8 +732,6 @@ class Commands:
         screen = self._screen()
         await self.d.workspace_ready(screen)
         size = create_size(self.d.app)
-        if size is None:
-            raise DriveError("not_available", CREATE_SIZE_OFF)
         call = functools.partial(self.d.app.client.create_session, target, "new", TERM, size[0], size[1],
                                  login=login)
         try:
@@ -789,8 +787,6 @@ class Commands:
         screen = self._screen()
         await self.d.workspace_ready(screen)
         size = create_size(self.d.app)
-        if size is None:
-            raise DriveError("not_available", CREATE_SIZE_OFF)
         try:
             record = await asyncio.to_thread(self.d.app.client.get_target, target)
             if record.get("type") != "ssh":

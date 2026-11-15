@@ -26,7 +26,7 @@ from workspace_support import (
 )
 
 from tsb_tui import config
-from tsb_tui.app import TsbTuiApp
+from tsb_tui.app import MenuPalette, TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.chrome_dialogs import (
     ENGINE_PIN_COMMIT,
@@ -256,8 +256,7 @@ def test_an_alert_that_arrives_while_the_tui_is_leaving_draws_nothing(serve, wai
 
 def test_a_colon_then_a_letter_that_is_not_a_command_goes_nowhere_and_ctrl_q_still_belongs_to_the_session(
         serve, wait_until) -> None:
-    """D17, D38: `^\\ :` waits for `q`; any other key drops the chord and sends nothing to the session (the operator
-    typed `^\\ :` on purpose), and `Ctrl-Q` in a terminal is the session's: only a full view takes it."""
+    """An unknown chord leaves the menu open; Esc returns keys to the session."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -269,9 +268,12 @@ def test_a_colon_then_a_letter_that_is_not_a_command_goes_nowhere_and_ctrl_q_sti
             screen.close_sidebar()
             state = screen.pump.state
             await pilot.press(LEADER, "colon")
-            await wait_until(pilot, lambda: "keys → the command" in screen.status.text, "the chord to wait")
+            await wait_until(pilot, lambda: isinstance(app.screen, MenuPalette), "the menu to open")
             await pilot.press("z")
-            await wait_until(pilot, lambda: "keys →" not in screen.status.text, "the chord to drop")
+            assert isinstance(app.screen, MenuPalette)
+            assert "no shortcut" in str(app.screen.query_one("#menu-key-message").render())
+            await pilot.press("escape")
+            assert app.screen is screen
             await pilot.press("ctrl+q")
             await wait_until(pilot, lambda: serve_app.received(state.client_id) == [b"\x11"],
                              "Ctrl-Q to reach the session, and nothing else")

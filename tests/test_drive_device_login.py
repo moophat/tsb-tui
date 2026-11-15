@@ -59,20 +59,19 @@ def test_connected_carries_the_attach_fields(tmp_path):
     asyncio.run(check())
 
 
-def test_prompt_mode_needs_size_auto_request_and_takes_recording_acknowledged(tmp_path):
+def test_prompt_mode_with_auto_size_off_still_requires_recording_acknowledgement(tmp_path):
     async def check():
         stub = DeviceLoginApp(rounds=[password()], login_input=True)
         with StubServer(stub) as url:
             async with Rig(url, tmp_path=tmp_path, overrides=("size.auto_request=false",)) as rig:
                 await rig.login()
                 result = await rig.cmd("new", target="normal", login_mode="prompt", login_user="fixture-account")
-                assert result["error"] == "not_available" and not stub.creates
-                await rig.app_call(rig.app.cfg.set_runtime, "size.auto_request", True)
-                result = await rig.cmd("new", target="normal", login_mode="prompt", login_user="fixture-account")
                 assert result["error"] == "login_recording_not_acknowledged" and not stub.sessions
                 result = await rig.cmd("new", target="normal", login_mode="prompt", login_user="fixture-account",
                                        recording_acknowledged=True)
                 assert result["ok"] and stub.creates[-1]["login"]["recording_acknowledged"] is True
+                assert (stub.creates[-1]["cols"], stub.creates[-1]["rows"]) == (116, 39)
+                assert rig.app.cfg["size.auto_request"] is False
     asyncio.run(check())
 
 

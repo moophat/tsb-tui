@@ -185,8 +185,9 @@ def _fit(text: str, width: int) -> str:
 def visible_rows(model: FleetViewModel, filter_text: str, show_ended: bool) -> list[FleetRow]:
     """The table's rows after the filter and "show ended": an ended session is listed only when asked for."""
     needle = filter_text.strip().lower()
-    return [row for row in model.rows
-            if (show_ended or not row.ended) and (not needle or needle in row.search.lower())]
+    return sorted((row for row in model.rows
+                   if (show_ended or not row.ended) and (not needle or needle in row.search.lower())),
+                  key=lambda row: row.ended)
 
 
 def visible_needs(model: FleetViewModel, filter_text: str) -> list[FleetRow]:
@@ -438,7 +439,12 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
             body.append(Line(tuple(header)))
             last_target = None
             per_target = Counter(r.target for r in table) if group_by == "target" else {}
+            ended_heading = False
             for row in table:
+                if row.ended and not ended_heading:
+                    body.append(_text(" Ended", "group", table_w))
+                    ended_heading = True
+                    last_target = None
                 if group_by == "target" and row.target != last_target:
                     body.append(_text(f"   {row.target} · {per_target[row.target]}", "muted", table_w))
                 last_target = row.target

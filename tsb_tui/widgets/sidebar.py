@@ -418,9 +418,9 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
     # The footer: the alerts and a way to a new session.
     footer: list[Line] = [_text_line(SEPARATOR * width, "hairline", width)]
     alert_text = None if model.alerts is None else f"! {model.alerts} alert{'' if model.alerts == 1 else 's'}"
-    new_text = "+ New session"
+    new_text = (SELECTED + " " if selected == (CMD_NEW, "") else "") + "+ New session · Tab"
     alerts_tip = "! TSB's own alerts · opens the Alerts tab"
-    new_tip = "+ New session · c"
+    new_tip = "Tab to New session, then Enter to start"
     if alert_text is not None and wide:
         pad = max(width - len(alert_text) - 3 - len(new_text), 0)
         footer.append(Line((Part(alert_text, "alert" if model.alerts else "muted", CMD_ALERTS, tip=alerts_tip),
@@ -614,7 +614,7 @@ class Sidebar(Widget):
 
     def _relayout(self) -> None:
         view = self._build()
-        if self.selected not in view.rows:
+        if self.selected not in view.rows and self.selected != (CMD_NEW, ""):
             self.selected = self._default_selection(list(view.rows))
             view = self._build()
         self._view = view
@@ -692,7 +692,7 @@ class Sidebar(Widget):
 
     @property
     def selected_session(self) -> str | None:
-        return None if self.selected is None else self.selected[1]
+        return None if self.selected is None or self.selected == (CMD_NEW, "") else self.selected[1]
 
     def select_group(self, group: str) -> bool:
         """Move the selection to the first row of `group` (the `▲n` of the rail opens it at Needs you)."""
@@ -704,9 +704,7 @@ class Sidebar(Widget):
         return False
 
     def _move(self, step: int) -> None:
-        rows = self._view.rows
-        if not rows:
-            return
+        rows = (*self._view.rows, (CMD_NEW, ""))
         index = rows.index(self.selected) if self.selected in rows else -1
         self.selected = rows[(index + step) % len(rows)] if index >= 0 else rows[0 if step > 0 else -1]
         self._relayout()
@@ -824,12 +822,14 @@ class Sidebar(Widget):
         if self.editing:
             self._editing_key(event)
             return
-        if key in ("down", "j"):
+        if key in ("down", "j", "tab"):
             self._move(1)
-        elif key in ("up", "k"):
+        elif key in ("up", "k", "shift+tab"):
             self._move(-1)
         elif key == "enter":
-            if self.selected_session is not None:
+            if self.selected == (CMD_NEW, ""):
+                self.post_message(self.Command(CMD_NEW))
+            elif self.selected_session is not None:
                 self.post_message(self.Command(CMD_PICK, self.selected_session))
         elif key == "escape":
             self.post_message(self.Command(CMD_CLOSE))

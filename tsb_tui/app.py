@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.metadata
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -21,6 +22,7 @@ from textual import events, work
 from textual.app import App
 from textual.binding import Binding
 from textual.command import (
+    Command,
     CommandPalette,
     DiscoveryHit,
     Hit,
@@ -32,6 +34,7 @@ from textual.content import Content
 from textual.geometry import Size
 from textual.markup import escape as markup_escape
 from textual.notifications import Notification
+from textual.widgets import Input, Static
 from tsb_contract_client import ApiError, Client
 
 from . import config as config_mod
@@ -142,22 +145,126 @@ class MenuProvider(Provider):
             async for hit in self.discover():  # search off: the list does not narrow
                 yield hit
             return
-        matcher = self.matcher(query)
+        words = query.casefold().split()
         for action, keys, why in self._entries():
-            score = matcher.match(f"{action.label} {action.description}")
-            if score > 0:
+            name_words = list(re.finditer(r"\w+", action.label))
+            if all(any(match.group().casefold().startswith(word) for match in name_words) for word in words):
+                label = Content(action.label)
+                for match in name_words:
+                    for word in words:
+                        if match.group().casefold().startswith(word):
+                            label = label.stylize("bold underline", match.start(), match.start() + len(word))
                 run, help_text = self._entry(action, keys, why)
-                yield Hit(score, self._label(matcher.highlight(action.label), why), run, text=action.label,
-                          help=help_text)
+                yield Hit(1, self._label(label, why), run, text=action.label, help=help_text)
 
 
 class MenuPalette(CommandPalette):
     """The Menu's palette. Its search icon is the ASCII `/`, which every font has (Textual's own is an emoji that a
     terminal font without it draws as a hole)."""
 
+    DEFAULT_CSS = """
+    MenuPalette #--container {
+        border: round $frame;
+        height: auto;
+        max-height: 90%;
+        background: $surface;
+    }
+    MenuPalette #--results { overlay: none; }
+    MenuPalette CommandList {
+        background: $surface;
+        max-height: 60vh;
+        scrollbar-color: $foreground-muted;
+        scrollbar-color-hover: $foreground-muted;
+        scrollbar-color-active: $foreground-muted;
+    }
+    MenuPalette #--container:dark { background: $surface; }
+    MenuPalette #--input, MenuPalette #--results { background: $surface; }
+    MenuPalette #menu-key-message { height: 1; background: $surface; }
+    """
+
     def on_mount(self) -> None:
+        self.search_mode = False
+        self.chord = ""
+        self.query_one("#--container").mount(Static("Press a shortcut, or / to search.", id="menu-key-message"))
         # The palette's children are not in the DOM yet when it is mounted: set the icon once they are.
         self.call_after_refresh(self._ascii_icon)
+
+    def _refresh_command_list(self, command_list, commands, clear_current):
+        entries = {action.label: (action, keys, why)
+                   for action, keys, why in self._calling_screen.menu_entries()}
+        width = max(12, (command_list.size.width or self.app.size.width - 2) - 4)
+        key_width = min(8, width // 5)
+        name_width = min(30, max(8, width - key_width - 12))
+
+        def fit(value, length):
+            return (value[:max(0, length - 1)] + "…" if len(value) > length else value).ljust(length)
+
+        rendered = []
+        for command in commands:
+            action, keys, why = entries[command.hit.text]
+            description = action.description if why is None else f"Not available: {why}"
+            name = Content.from_markup(command.hit.prompt)
+            if len(name.plain) > name_width:
+                name = name[:name_width - 1] + Content("…")
+            name += Content(" " * (name_width - len(name.plain)))
+            prompt = (Content(f"{fit(keys, key_width)} ") + name
+                      + Content(f" {fit(description, max(1, width - key_width - name_width - 2))}"))
+            if why is not None:
+                prompt = prompt.stylize_before("dim")
+            rendered.append(Command(prompt, command.hit, id=command.id, disabled=why is not None))
+        super()._refresh_command_list(command_list, rendered, clear_current)
+        command_list.highlighted = next((i for i, option in enumerate(command_list.options)
+                                         if not option.disabled), None)
+
+    async def handle_menu_key(self, event: events.Key) -> bool:
+        if event.key == "escape":
+            event.stop()
+            event.prevent_default()
+            self._action_escape()
+            return True
+        if self.search_mode:
+            return False
+        from .model import actions
+
+        screen = self._calling_screen
+        event.stop()
+        event.prevent_default()
+        if event.key == self.app.cfg["keys.leader"]:
+            self._action_escape()
+            await screen._send_key(event)
+        elif event.character == "/":
+            self.search_mode = True
+            screen._cancel_leader()
+            self.query_one(Input).focus()
+            self.query_one("#menu-key-message", Static).update("Type to find an action. Enter runs it; Esc closes.")
+        else:
+            letter = event.character or ""
+            overrides = self.app.cfg.leader_overrides()
+            action = (actions.action_for_chord(self.chord, letter, overrides) if self.chord
+                      else actions.action_for_leader_key(letter, overrides))
+            if not self.chord and letter in actions.chord_starts(overrides):
+                self.chord = letter
+                return True
+            self.chord = ""
+            if action is not None:
+                self._action_escape()
+                await screen.run_action_id(action.id)
+            elif letter in "123456789" and letter:
+                self._action_escape()
+                screen.switch_to_number(int(letter))
+            else:
+                self.query_one("#menu-key-message", Static).update(f"{event.character or event.key} has no shortcut.")
+        return True
+
+    def _action_escape(self) -> None:
+        if self._calling_screen is not None:
+            self._calling_screen._cancel_leader()
+        super()._action_escape()
+
+    async def _on_unmount(self) -> None:
+        if self._calling_screen is not None:
+            self._calling_screen._cancel_leader()
+        await super()._on_unmount()
 
     def _ascii_icon(self) -> None:
         icons = list(self.query(SearchIcon))
@@ -180,6 +287,7 @@ class TsbTuiApp(App):
     # terminal screen now does, for every key it knows a byte for, so ctrl+q reaches the target
     # there instead of quitting from underneath the operator.
     BINDINGS: ClassVar[list[Binding]] = [Binding("ctrl+q", "quit", "Quit", show=False)]
+
     CSS = """
     Screen {
         align: center middle;
@@ -290,6 +398,10 @@ class TsbTuiApp(App):
                 event.prevent_default()
                 return
             self.screen_lock.note_input()
+        if (isinstance(event, events.Key) and not event.is_forwarded
+                and isinstance(self.screen, MenuPalette)
+                and await self.screen.handle_menu_key(event)):
+            return
         await super().on_event(event)
 
     def push_screen(self, screen, callback=None, wait_for_dismiss=False, *, mode=None):  # type: ignore[no-untyped-def,override]

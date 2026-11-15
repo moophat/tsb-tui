@@ -21,6 +21,7 @@ from __future__ import annotations
 import threading
 from typing import Any
 
+from fleet_support import REGISTRY
 from fleet_support import derived as _derived
 from fleet_support import fixture_records as _records
 
@@ -617,3 +618,23 @@ def test_a_poll_of_n_sessions_builds_the_display_ids_once_and_never_rescans_the_
         assert calls["display_id"] == 0 and calls["shortest_prefix"] == 0, (count, calls)
         assert 1 <= calls["map"] <= 1, (count, calls)
         assert calls["ids"] == count + 1, (count, calls)
+
+
+def test_ended_sessions_are_absent_from_every_sidebar_group() -> None:
+    fleet = Fleet(own_user="fixture-user", filter_mode="all")
+    base = _records()[0]
+
+    def ended_record(state, sid):
+        out = {**base, "id": sid, "state": state}
+        for key in ("ends_at", "ends_by", "ending", "clients"):
+            out.pop(key, None)
+        assert not REGISTRY.validate(out, "schemas/session-record.schema.json")
+        return out
+
+    ended = [ended_record("killed", "ended-killed"), ended_record("terminated", "ended-terminated")]
+    assert fleet.apply(1, [base, *ended])
+    groups = fleet.groups(open_here=["ended-killed"],
+                          stale_with_me=["ended-killed", "ended-terminated"],
+                          question_for_me=["ended-killed", "ended-terminated"])
+    assert all(record["state"] not in {"killed", "terminated"}
+               for records in groups.values() for record in records)

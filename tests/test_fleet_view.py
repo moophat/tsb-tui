@@ -463,3 +463,14 @@ def test_open_from_a_row_brings_that_session_forward_and_closes_the_view(serve, 
             assert screen.slot_for(second) is None, "nothing is attached before the gate is passed"
 
     asyncio.run(_check())
+
+
+def test_ended_sessions_follow_live_rows_under_their_own_heading() -> None:
+    model = _model([_row("old", ended=True), _row("live")])
+    layout = _layout(model, show_ended=True)
+    text = _text(layout)
+    heading = next(i for i, line in enumerate(text) if line.strip() == "Ended")
+    live = next(i for i, line in enumerate(text) if "s.live" in line)
+    old = next(i for i, line in enumerate(text) if "s.old" in line)
+    assert live < heading < old
+    assert all(line.strip() != "Ended" for line in _text(_layout(model)))

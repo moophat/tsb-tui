@@ -298,6 +298,8 @@ class Fleet:
             holder = record.get("control_holder")
             columns[sid] = (target, "·" if holder is None else (
                 "you" if holder.get("user") == me else str(holder.get("user"))))
+            if record.get("state") in ENDED_STATES:
+                continue
             mine = record.get("owner") == me
             is_open = sid in open_set
             mine_or_open = mine or is_open
@@ -318,7 +320,8 @@ class Fleet:
                     joinable.append(record)
         full: dict[str, list[dict[str, Any]]] = {
             GROUP_NEEDS_YOU: needing,
-            GROUP_OPEN_HERE: [merged[sid] for sid in open_list if sid in merged],
+            GROUP_OPEN_HERE: [merged[sid] for sid in open_list
+                              if sid in merged and merged[sid].get("state") not in ENDED_STATES],
             GROUP_MINE_HELD_BY_OTHERS: held_by_others,
             GROUP_MINE_AND_JOINABLE: joinable,
         }

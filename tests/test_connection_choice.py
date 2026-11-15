@@ -126,13 +126,9 @@ def test_the_create_carries_the_canvas_the_window_gives_when_auto_size_is_on(wai
 
 
 @pytest.mark.parametrize("profile", ["default", "phone", "drive", "harness"])
-def test_with_auto_size_off_nothing_is_created_and_the_dialog_says_why(
+def test_with_auto_size_off_each_profile_creates_with_the_window_size(
         monkeypatch, wait_until, profile) -> None:
-    """OPEN-1 was ruled on 2026-10-12: auto size is on by default, so a create carries the creator's size.
-    With auto size turned off, nothing says what size to create with, and the dialog refuses to guess: it
-    says why and nothing reaches the broker (a guessed size would be a size request the operator never
-    made). The phone, drive and harness profiles set it off; the default profile ships it on, so the test
-    forces it off here."""
+    """Opening carries the creator's size in every profile; auto size governs later resizes."""
     monkeypatch.setenv("TSB_TUI_PROFILE", profile)
     monkeypatch.setenv("TSB_TUI_SIZE_AUTO_REQUEST", "false")
 
@@ -143,11 +139,10 @@ def test_with_auto_size_off_nothing_is_created_and_the_dialog_says_why(
             async with app.run_test(size=(100, 30)) as pilot:
                 await login(app, pilot)
                 assert app.cfg["size.auto_request"] is False and app.cfg.profile == profile
-                dialog = await open_new_session(app, pilot, auto_size=None)
+                await open_new_session(app, pilot, auto_size=None)
                 await pilot.click("#create-button")
-                await pilot.pause(0.3)
-                assert isinstance(app.screen, NewSessionScreen) and stub.sessions == {}
-                assert "auto size is off" in str(dialog.query_one("#new-session-error").render())
-                assert not dialog.query_one("#create-button").disabled, "the dialog can be tried again"
+                await wait_until(pilot, lambda: len(stub.sessions) == 1, "the session to be created")
+                created = next(iter(stub.sessions.values()))
+                assert (created["cols"], created["rows"]) == (96, 29)
 
     asyncio.run(_check())
