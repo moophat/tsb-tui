@@ -34,3 +34,19 @@ Implemented public drive command `login_status`, ruled by the orchestrator on 20
    - `test_login_status_held_live_login`: verifies `status: 200` with held live login, absence of cookies, principal, or extra fields.
    - `test_login_status_after_close_4017`: verifies 4017 close emits `login_ended`, `login_status` returns `status: 401`, other commands (`account_list`, `sessions`, `targets`) answer `not_logged_in`, and calling `logout` clears the kept login so `login_status` answers `not_logged_in`.
    - Each new test failed on `fd0dd22` prior to the drive implementation.
+
+## Round 2 — Qodo's two findings on c18418a
+
+Rulings by the orchestrator (2026-11-15) addressing Qodo's two review findings on commit `c18418a`:
+
+1. **Refused retry keeps the ended login**:
+   - `op_login` no longer clears `self._ended_login` in its `finally` block; only a successful login (`Driver.log_in`'s clear) or `logout` clears it.
+   - Regression test: `test_login_status_refused_retry_keeps_ended_login` in `tests/test_drive_login_status.py`. After `login_ended`, a login attempt with an invalid password is refused, and `login_status` continues to answer 401 using the retained client.
+
+2. **401 discovered by login_status ends the active login**:
+   - When `client.me` returns 401 and `client` is still the app's active login (`generation == app._login_gen` and `client is app.client` on an active workspace), `op_login_status` runs the app's standard 401 error path on the UI thread (`self.note_login_ended()` and `app.notify_api_error(exc)`), returning `{"status": 401}`.
+   - If the active client was replaced during the in-flight request, no UI state change occurs.
+   - Regression test: `test_login_status_active_401_ends_login` in `tests/test_drive_login_status.py`. Invalidation on the server with no attachment event causes `login_status` to discover 401, moving the app to `LoginScreen`, and subsequent session commands answer `not_logged_in`.
+
+3. **Documentation**:
+   - Added one sentence in `tsb_tui/drive/GUIDE.md` documenting that a 401 discovered by the probe on an active login ends it like any other 401, returning the app to Login.

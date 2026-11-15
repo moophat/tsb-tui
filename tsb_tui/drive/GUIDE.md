@@ -449,7 +449,9 @@ After a `login_ended` event (an account act closed the attachment 4017, or any
 other end of the login drive already reports as `login_ended`), drive keeps that
 ended login only so `login_status` can show the core's answer (401), until `logout`
 or exit; every other command keeps answering exactly as it does today
-(`not_logged_in`). A drive that never logged in answers `login_status` with the
+(`not_logged_in`). A 401 found by the probe on the active login ends it like any
+other 401: the app returns to Login and subsequent commands answer
+`not_logged_in`. A drive that never logged in answers `login_status` with the
 existing `not_logged_in` error.
 
 In the interactive Menu, Accounts… is visible only with `account.admin` and

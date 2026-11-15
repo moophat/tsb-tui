@@ -473,17 +473,25 @@ class Commands:
         try:
             return {"principal": await self.d.log_in(user, password, password_path=path)}
         finally:
-            self._ended_login = None
             del password
 
     async def op_login_status(self, cmd: dict[str, Any]) -> dict[str, Any]:
-        client = self.d.app.client if self.d.screen() is not None else self._ended_login
+        app = self.d.app
+        is_active = self.d.screen() is not None
+        generation = app._login_gen
+        client = app.client if is_active else self._ended_login
         if client is None:
             raise DriveError("not_logged_in", "log in first: the login command, or --user and --password-file")
         try:
             await asyncio.to_thread(client.me)
             return {"status": 200}
         except ApiError as exc:
+            if (exc.status == 401
+                    and is_active
+                    and client is app.client
+                    and generation == app._login_gen):
+                self.note_login_ended()
+                app.notify_api_error(exc)
             return {"status": exc.status}
         except (HttpError, OSError) as exc:
             raise DriveError("request_failed", str(exc)) from None

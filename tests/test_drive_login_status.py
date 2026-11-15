@@ -84,3 +84,80 @@ def test_login_status_after_close_4017(serve, tmp_path) -> None:
             assert post_logout["error"] == "not_logged_in"
 
     asyncio.run(check())
+
+
+def test_login_status_refused_retry_keeps_ended_login(serve, tmp_path) -> None:
+    async def check() -> None:
+        _server, url = serve()
+        sid = make_session(url, _serve.USER, 80, 24, target="normal")
+        async with Rig(url, tmp_path=tmp_path, overrides=("drive.events=login_ended,ended",)) as rig:
+            await rig.login()
+            await rig.attach(sid)
+
+            live = await rig.cmd("login_status")
+            assert live["ok"] is True and live["status"] == 200
+
+            await rig.app_call(rig.app.client.set_account_password, _serve.USER, SECRET)
+            for _ in range(300):
+                if await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen)):
+                    break
+                await rig.pilot.pause(0.01)
+            assert await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen))
+            assert rig.events("login_ended") == [{"ev": "login_ended", "session": sid, "reason": "account"}]
+
+            ans = await rig.cmd("login_status")
+            assert ans["ok"] is True
+            assert ans["status"] == 401
+
+            # A refused retry with wrong password
+            refused = await rig.cmd("login", user=_serve.USER, password_file=rig.password_file("wrong-password"))
+            assert refused["ok"] is False
+            assert refused["error"] == "login_failed"
+
+            # Retained ended login still answers 401
+            still = await rig.cmd("login_status")
+            assert still["ok"] is True
+            assert still["status"] == 401
+            assert set(still.keys()) - {"id", "ok"} == {"status"}
+            assert "cookie" not in json.dumps(still).lower()
+
+    asyncio.run(check())
+
+
+def test_login_status_active_401_ends_login(serve, tmp_path) -> None:
+    async def check() -> None:
+        server, url = serve()
+        async with Rig(url, tmp_path=tmp_path) as rig:
+            await rig.login()
+
+            live = await rig.cmd("login_status")
+            assert live["ok"] is True and live["status"] == 200
+
+            # Invalidate the session on the server with no attachment event
+            server.logins.clear()
+
+            # login_status discovers 401 on the active login
+            ans = await rig.cmd("login_status")
+            assert ans["ok"] is True
+            assert ans["status"] == 401
+            assert set(ans.keys()) - {"id", "ok"} == {"status"}
+            assert "cookie" not in json.dumps(ans).lower()
+
+            # Moves app to the login screen
+            for _ in range(300):
+                if await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen)):
+                    break
+                await rig.pilot.pause(0.01)
+            assert await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen))
+
+            # Next session command answers not_logged_in
+            sess = await rig.cmd("sessions")
+            assert sess["ok"] is False
+            assert sess["error"] == "not_logged_in"
+
+            # Subsequent login_status still answers 401 from ended login until logout
+            probe_again = await rig.cmd("login_status")
+            assert probe_again["ok"] is True
+            assert probe_again["status"] == 401
+
+    asyncio.run(check())
