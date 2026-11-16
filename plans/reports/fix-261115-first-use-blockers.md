@@ -193,3 +193,38 @@ Final checkpoint: HEAD remains c37a7d8; only tsb_tui/, tests/ and this Round 4 s
 
 Status: DONE_WITH_CONCERNS
 Summary: The two sidebar findings and the test-only alert-stream exclusion are fixed, with baseline-failing sidebar regressions and passing focused tests and lint. The uninterrupted full gate finished with two failures in unchanged tests (both pass isolated) and three installer skips.
+
+
+## Round 5
+
+**AI-Model:** gemini-2.5-flash (agy)
+
+Scope: Qodo finding on 8aefc6a (Sidebar._move() makes the New session footer selectable even when sidebar_view() placed it below the visible area, and _relayout() keeps the selection, so Down can select an unseen row and Enter opens New session with no visible marker) under the orchestrator ruling (2026-11-16 03:4x: the selected row is always visible. Moving the selection to any row, the New session footer included, scrolls the sidebar so that row and its marker are on screen, and a relayout that would hide the selected row scrolls to keep it visible). Keep HEAD; no commit or push. Checkpoints remain in this section under explicit write limits.
+
+- [x] Add baseline regression test `test_with_more_session_groups_than_fit_down_scrolls_new_session_onto_screen` in `tests/test_sidebar.py`.
+- [x] Verify baseline failure on unchanged 8aefc6a (`tsb-r5-red.log`, exit 1).
+- [x] Implement viewport scrolling in `tsb_tui/widgets/sidebar.py` (`_scroll_top`, `_selected_line_index`, `_scroll_to_selected`, `render_line`, `text`, mouse handlers).
+- [x] Run focused and full sidebar tests + first use leader tests (`tsb-r5-tests.log`, exit 0, 88 passed).
+- [x] Run lint gate `make lint PYTHON=<test-environment-python>` (`tsb-r5-lint.log`, exit 0, ruff clean, all 110 gate tests passed).
+
+Baseline red on 8aefc6a: `tsb-r5-red.log`, exit 1. The regression test confirmed that with more session groups than fit in the visible height (e.g. 10-row window with sidebar height 9), the New session footer started below the visible window and was omitted from `render_line`. Moving Down selected `(CMD_NEW, "")` without scrolling the footer or its marker `▸` onto the screen on 8aefc6a.
+
+Implementation:
+- Added `self._scroll_top` and `scroll_top` property to `Sidebar`.
+- Added `_selected_line_index()` to map `(CMD_NEW, "")` and session keys `(group, session_id)` to view line indices.
+- Added `_scroll_to_selected()` to keep `_selected_line_index()` within `[scroll_top, scroll_top + height - 1]`, clamped to `[0, max(0, total_lines - height)]`.
+- Called `_scroll_to_selected()` in `_relayout()`, ensuring initial selection, arrow navigation, and layout changes preserve selected row visibility on screen.
+- Updated `render_line(y)` to read from `actual_y = y + self._scroll_top`.
+- Updated `Sidebar.text` property to slice `lines[self._scroll_top : self._scroll_top + height]` so reported text matches what the operator sees.
+- Updated `on_mouse_move()` and `on_click()` to index with `actual_y = event.y + self._scroll_top`.
+- Updated `_title()` to use `GROUP_TITLES.get(group, (group,))` defensively for group heading titles.
+
+Verification & Gates:
+- Sidebar and leader tests gate: `PYTHONPATH=program/contract/client:. <test-environment-python> -m pytest tests/test_sidebar.py tests/test_sidebar_painted_rows.py tests/test_first_use_leader.py` completed with exit 0 (`tsb-r5-tests.log`), 88 passed in 118.78s.
+- `make lint PYTHON=<test-environment-python>` completed with exit 0 (`tsb-r5-lint.log`). Ruff checked `tsb_tui tests bench tools` and reported `All checks passed!`; all 110 pytest gate tests, import lint (192 clean files), leak check, and engine check (shared object and headers verified against PIN) passed.
+- Outputs written to separate files in `/tmp` outside the tree, exit codes checked, no pipes used.
+- No absolute machine paths in tracked files or reports.
+- `git diff --check` passes cleanly. Only `tsb_tui/widgets/sidebar.py`, `tests/test_sidebar.py`, and `plans/reports/fix-261115-first-use-blockers.md` modified. No commit, no push.
+
+Status: DONE
+Summary: The selected sidebar row, including the New session footer, is guaranteed visible on screen via viewport scrolling on selection moves and relayouts; baseline red verified on 8aefc6a, all 88 sidebar and leader tests passed, and make lint passed cleanly.

@@ -180,11 +180,12 @@ def _fit(text: str, width: int) -> str:
 
 
 def _title(group: str, count: int, width: int) -> str:
-    for title in GROUP_TITLES[group]:
+    titles = GROUP_TITLES.get(group, (group,))
+    for title in titles:
         text = f"{title} · {count}"
         if len(text) <= width:
             return text
-    return f"{GROUP_TITLES[group][-1]} · {count}"[:width]
+    return f"{titles[-1]} · {count}"[:width]
 
 
 def entry_matches(entry: SidebarEntry, needle: str) -> bool:
@@ -519,6 +520,7 @@ class Sidebar(Widget):
         self.window_width = 0  # the outer window's width, which decides wide and details
         self.sidebar_width = int(config["sidebar.width"])  # the columns it takes, the hairline included
         self._view = SidebarView((), (), 0)
+        self._scroll_top = 0
         self._front_id: str | None = None
         # The filter and the column widths for the current filter text and model, reused by every relayout that
         # changes neither (`_prepare`).
@@ -575,6 +577,10 @@ class Sidebar(Widget):
         return self._view
 
     @property
+    def scroll_top(self) -> int:
+        return self._scroll_top
+
+    @property
     def wide(self) -> bool:
         return self.window_width >= self._wide_from
 
@@ -618,7 +624,33 @@ class Sidebar(Widget):
             self.selected = self._default_selection(list(view.rows))
             view = self._build()
         self._view = view
+        self._scroll_to_selected()
         self.refresh()
+
+    def _selected_line_index(self) -> int | None:
+        if self.selected == (CMD_NEW, ""):
+            for idx, line in enumerate(self._view.lines):
+                if any(part.command == CMD_NEW for part in line.parts):
+                    return idx
+            return None
+        if self.selected is not None:
+            group, sid = self.selected
+            for idx, line in enumerate(self._view.lines):
+                if line.group == group and line.session_id == sid:
+                    return idx
+        return None
+
+    def _scroll_to_selected(self) -> None:
+        height = self.size.height or 40
+        total = len(self._view.lines)
+        max_scroll = max(0, total - height)
+        line_idx = self._selected_line_index()
+        if line_idx is not None:
+            if line_idx < self._scroll_top:
+                self._scroll_top = line_idx
+            elif line_idx >= self._scroll_top + height:
+                self._scroll_top = line_idx - height + 1
+        self._scroll_top = max(0, min(self._scroll_top, max_scroll))
 
     def refresh_times(self, times: Mapping[tuple[str, str], RowTime]) -> bool:
         """The tick's clocks: re-lay out the right-hand fields of the painted rows from their new time values, on
@@ -714,7 +746,9 @@ class Sidebar(Widget):
     @property
     def text(self) -> str:
         """The sidebar as the operator reads it, one line per row, the hairline included."""
-        return "\n".join(self._line_text(line) for line in self._view.lines)
+        height = self.size.height or len(self._view.lines)
+        lines = self._view.lines[self._scroll_top: self._scroll_top + height]
+        return "\n".join(self._line_text(line) for line in lines)
 
     def _line_text(self, line: Line) -> str:
         text = glyphs.render(line.text, self._glyph_set)
@@ -724,11 +758,12 @@ class Sidebar(Widget):
 
     def render_line(self, y: int) -> Strip:
         width = self.size.width
-        if y >= len(self._view.lines):
+        actual_y = y + self._scroll_top
+        if actual_y >= len(self._view.lines):
             segments = [Segment(" " * max(width - 1, 0), self._styles["blank"])]
             line = None
         else:
-            line = self._view.lines[y]
+            line = self._view.lines[actual_y]
             segments = [Segment(glyphs.render(part.text, self._glyph_set), self._styles.get(part.role, self._styles["text"]))
                         for part in line.parts if part.text]
         border = Segment("│", self._border)
@@ -741,8 +776,9 @@ class Sidebar(Widget):
         """The tooltip of the part (or the row) under the pointer: the words and key of a glyph, the whole of a row
         the sidebar had to cut short (D13)."""
         tip = None
-        if event.y < len(self._view.lines):
-            line = self._view.lines[event.y]
+        actual_y = event.y + self._scroll_top
+        if actual_y < len(self._view.lines):
+            line = self._view.lines[actual_y]
             x = event.x - (1 if self._side == "right" else 0)
             cursor = 0
             for part in line.parts:
@@ -764,10 +800,11 @@ class Sidebar(Widget):
             self._move(1)
 
     def on_click(self, event: events.Click) -> None:
-        if not mouse_on(self) or event.y >= len(self._view.lines):
+        actual_y = event.y + self._scroll_top
+        if not mouse_on(self) or actual_y >= len(self._view.lines):
             return
         event.stop()
-        line = self._view.lines[event.y]
+        line = self._view.lines[actual_y]
         x = event.x - (1 if self._side == "right" else 0)
         cursor = 0
         for part in line.parts:

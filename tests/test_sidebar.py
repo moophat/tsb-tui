@@ -27,6 +27,7 @@ from tsb_tui.model.fleet import (
 )
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.widgets.sidebar import (
+    CMD_NEW,
     Sidebar,
     SidebarEntry,
     SidebarModel,
@@ -913,3 +914,66 @@ def test_all_keys_sidebar_names_new_session() -> None:
     lines = keys_lines(config.load())
     sidebar = lines[lines.index("In the fleet sidebar") + 1:lines.index("In the full fleet view")]
     assert any(line.split(maxsplit=1) == ["n", "New session"] for line in sidebar)
+
+
+def test_with_more_session_groups_than_fit_down_scrolls_new_session_onto_screen(serve, wait_until) -> None:
+    """Ruling (2026-11-16): the selected row is always visible. Moving the selection to any row, the New
+    session footer included, scrolls the sidebar so that row and its marker are on screen, and a relayout
+    that would hide the selected row scrolls to keep it visible."""
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        (sid1, *_) = named_sessions(url, serve_app, "sw-1", "sw-2", "sw-3", "sw-4")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, sid1)
+            screen.open_sidebar()
+            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), "sidebar rows")
+
+            # In a 10-row window (sidebar height 9), the session group headings, the open session,
+            # joinable tail, header (3), and footer (2) require at least 11 rows. The New session footer
+            # starts below the visible area.
+            await pilot.resize_terminal(120, 10)
+            await wait_until(pilot, lambda: screen.sidebar.size.height == 9, "resized sidebar")
+
+            rendered_lines = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert not any("+ New session" in line for line in rendered_lines)
+            assert "+ New session" not in screen.sidebar.text
+
+            rows = screen.sidebar.view.rows
+            for _ in rows[1:]:
+                await pilot.press("down")
+            await pilot.press("down")
+            assert screen.sidebar.selected == (CMD_NEW, "")
+
+            rendered_after = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("▸" in line and "+ New session" in line for line in rendered_after)
+            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
+
+            screen.sidebar._relayout()
+            rendered_relayout = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("▸" in line and "+ New session" in line for line in rendered_relayout)
+            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
+
+            # Up moves back up to the first session row and keeps it visible with its marker
+            await pilot.press("up")
+            assert screen.sidebar.selected == rows[-1]
+            for _ in rows[:-1]:
+                await pilot.press("up")
+            assert screen.sidebar.selected == rows[0]
+            rendered_top = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("▸" in line and "sw-1" in line for line in rendered_top)
+            assert "▸" in screen.sidebar.text and "sw-1" in screen.sidebar.text
+
+            # Down to New session footer again and press Enter
+            for _ in rows:
+                await pilot.press("down")
+            assert screen.sidebar.selected == (CMD_NEW, "")
+            rendered_bottom = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("▸" in line and "+ New session" in line for line in rendered_bottom)
+            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
+
+            await pilot.press("enter")
+            assert isinstance(app.screen, NewSessionScreen)
+
+    asyncio.run(check())
