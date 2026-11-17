@@ -95,3 +95,117 @@ All gate outputs were written to individual files under temporary storage outsid
 
 *Note:* System python3 was used because the host environment has opt mounted read-only, preventing virtualenv creation there.
 No commit, no push performed. No absolute machine paths in modified files or report.
+
+---
+
+## 4. Round 2: Orchestrator Amendment 1 Analysis (STOP Condition Triggered)
+
+### Triggered Instruction
+> "If the run's result does not record whether the client reattached, STOP and report what it records."
+
+Per the orchestrator's explicit conditional instruction in Amendment 1, `run_one()` and its returned `result` dictionary in `bench/paint.py` were inspected to determine whether reattachment and client ID state are recorded.
+
+### What the Run's `result` Currently Records
+In `bench/paint.py` (`run_one()`, lines 78–92), `result` is constructed as:
+```python
+    result = {
+        "grid": f"{cols}x{rows}",
+        "stream": stream,
+        "keys": args.keys,
+        "lost": lost,
+        "latency": C.summary(totals),
+        "stages": probe.stage_stats(),
+        "loop_stall_ms": loop["max"],
+        "paints": paints,
+        "readahead_max": float(max_depth),
+        "lock_wait_ms": float(lock_wait),
+        "server": server.stats,
+        "dropped": dropped,
+    }
+```
+Specifically:
+1. **No reattachment status is recorded:** `result` contains only a boolean `"dropped": dropped`.
+2. **No client IDs are recorded:** `clients_before` and post-run client IDs are evaluated locally in `run_one()` at line 72 (`dropped = [screen.slot_for(sid).pump.state.client_id for sid in ids] != clients_before`), but are discarded and never placed into `result`.
+3. **No run completion status is recorded:** There is no `"completed"` or `"reached_end"` field; `run_one()` either completes and returns the dict or raises an exception.
+4. **Dropped-without-reattach ambiguity:** In `tsb_tui/model/attachment.py`, when a socket closes without reattaching (`AttachmentState.apply_close`), `state.client_id` is preserved (not reset to None), while `state.closed` becomes `True`. Thus:
+   - If an attachment dropped and *did not* reattach, `[screen.slot_for(sid).pump.state.client_id for sid in ids] != clients_before` is `False`! Line 72 would record `dropped = False` unless `state.closed` is checked.
+   - If an attachment dropped and *did* reattach, the server issued a fresh ticket/client_id, so `client_id` changed and line 72 recorded `dropped = True`.
+
+### Why This Blocks Unit Testing of `judge()`
+The requested unit test specification requires:
+1. `judge()` under `--tiny` given a dropped-and-reattached result with one lost key -> passes with warning.
+2. `judge()` under `--tiny` given a dropped-without-reattach result -> fails.
+3. `judge()` under `--tiny` given no drop with one lost key -> fails.
+4. `judge()` under gated mode given a dropped result -> fails.
+
+Because `judge(result, gate=bool)` operates solely on `result`, it cannot distinguish Case 1 from Case 2 without a schema contract defining how reattachment and run completion are represented in `result`.
+
+### Options for Orchestrator Ruling
+
+- **Option 1 (Explicit boolean flags in `result`):**
+  - In `bench/paint.py::run_one`:
+    - `clients_after = [screen.slot_for(sid).pump.state.client_id for sid in ids]`
+    - `any_closed = any(screen.slot_for(sid).pump.state.closed for sid in ids)`
+    - `dropped = (clients_after != clients_before) or any_closed`
+    - `reattached = (clients_after != clients_before) and not any_closed`
+    - In `result`: add `"reattached": reattached`, `"completed": True`.
+  - In `judge()`:
+    - If `result["dropped"]`:
+      - If not gate and result.get("reattached") and result.get("completed", True):
+        - Log/print warning line: `f"WARN {result['grid']} {result['stream']}: an attachment was dropped and reattached ({result['lost']} keystrokes lost)"`
+        - Do not fail on `result["dropped"]` or `result["lost"]`.
+      - Else:
+        - `bad.append("an attachment was dropped and reattached during the run")` (or unrecovered drop failure).
+
+- **Option 2 (Record client ID lists in `result`):**
+  - Add `"clients_before": clients_before` and `"clients_after": clients_after` to `result`.
+  - `judge()` checks whether `clients_after != clients_before` and all slots have valid non-closed clients.
+
+- **Option 3 (Warning delivery contract):**
+  - Clarify whether `judge()` itself prints the warning line directly to stdout via `print()`, or if `judge()` returns a tuple `(bad: list[str], warnings: list[str])` for `main()` to print.
+
+---
+
+## 5. Round 2: Implementation, Red-First Verification, and Gating (Amendments 1 & 2)
+
+### Orchestrator Ruling Applied (Amendment 2)
+The orchestrator adopted Option 1:
+- `bench/paint.py::run_one()` records three booleans in `result`:
+  - `dropped`: any pump's client id changed, or any pump closed.
+  - `reattached`: client ids changed and no pump closed at the end.
+  - `completed`: the run reached its end and wrote its table row (`True`).
+- `bench/paint.py::judge()`:
+  - In `--tiny` mode (`gate=False`), passes a dropped run only if `reattached` and `completed` are both `True`.
+  - Prints one warning line prefixed `WARN` naming the stream, grid, drop, and keystrokes lost (`print(f"WARN {result['grid']} {result['stream']}: an attachment was dropped and reattached ({result['lost']} keystrokes lost)")`).
+  - Lost keystrokes are tolerated only when `dropped`, `reattached`, and `completed` are `True`. An unrecovered drop or a drop with incomplete run fails. A run with no drop must lose zero keystrokes.
+  - Unanswered pings remain fatal in every run.
+  - Gated mode (`gate=True`) remains 100% unchanged.
+
+### Red-First Unit Test Verification (`tests/test_bench_judge.py`)
+Unit tests covering all four ruled behaviors were created in `tests/test_bench_judge.py`:
+1. `test_tiny_mode_judge_dropped_and_reattached_with_lost_key_passes_with_warning`: verifies tiny-mode judge given a dropped-and-reattached completed result with 1 lost keystroke passes with the expected `WARN` message.
+   - **Red run failure on main:** Failed with `AssertionError: assert ['1 keystroke(s) never reached the screen', 'an attachment was dropped and reattached during the run'] == []` because main unconditionally failed on any drop and any lost key.
+2. `test_tiny_mode_judge_dropped_without_reattach_fails`: verifies tiny-mode judge fails if dropped but not reattached, or dropped and incomplete.
+3. `test_tiny_mode_judge_no_drop_with_one_lost_key_fails`: verifies zero tolerance for lost keystrokes when no drop occurred.
+4. `test_gated_judge_given_dropped_result_fails`: verifies gated judge unconditionally fails on drop.
+
+### Implementation
+- `bench/paint.py`: Added `clients_after`, `any_closed`, `dropped`, `reattached`, and `completed` computation in `run_one()`, adding `reattached` and `completed` to `result`. Updated `judge()` to branch on `gate`, handling `--tiny` tolerance with `WARN` logging to stdout while leaving gated mode unchanged.
+
+### Verification and Gates
+All outputs directed to separate files in temporary storage outside tree, exit codes verified, no pipes:
+1. **The New Tests:**
+   - Command: `python3 -m pytest tests/test_bench_judge.py`
+   - Outcome: 4 passed in 0.47s (exit code 0).
+2. **Bench Smoke Suite (5 consecutive runs):**
+   - Command: `python3 -m pytest tests/test_bench_smoke.py`
+   - Run 1: 18 passed in 12.96s (exit code 0).
+   - Run 2: 18 passed in 13.00s (exit code 0).
+   - Run 3: 18 passed in 12.85s (exit code 0).
+   - Run 4: 18 passed in 13.22s (exit code 0).
+   - Run 5: 18 passed in 13.01s (exit code 0).
+3. **Make Lint Gate:**
+   - Command: `make lint PYTHON=python3`
+   - Outcome: Ruff check clean ("All checks passed!"); 110 tooling tests passed in 72.30s; import lint clean (194 files); docs branch guard clean; leak check clean; engine check PIN verified (exit code 0).
+
+No commit, no push performed. No absolute machine paths in any file.
