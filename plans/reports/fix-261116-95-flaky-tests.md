@@ -208,4 +208,47 @@ All outputs directed to separate files in temporary storage outside tree, exit c
    - Command: `make lint PYTHON=python3`
    - Outcome: Ruff check clean ("All checks passed!"); 110 tooling tests passed in 72.30s; import lint clean (194 files); docs branch guard clean; leak check clean; engine check PIN verified (exit code 0).
 
+---
+
+## 6. Round 3: Qodo Review Findings on bebcfa5 (#97) (Amendment 3)
+
+### Ruled Requirements
+1. **Recovered Tiny Run Screen Check:**
+   - In `--tiny` mode (`gate=False`), a dropped, reattached, and completed run passes only if at least one keystroke reached the screen (`lost < keys`).
+   - If every key was lost (`lost >= keys`), the run fails with `"no keystroke came back after the drop"`, since the screen never resumed.
+   - If at least one key came back (`lost < keys`), the run passes with the `WARN` line.
+2. **Accurate Gated Drop Message:**
+   - In gated mode (`gate=True`), on a dropped result, the judge reports:
+     - `"an attachment was dropped and reattached"` when `reattached` is True.
+     - `"an attachment was dropped and did not reattach"` otherwise.
+   - It fails either way.
+
+### Red-First Unit Test Verification (`tests/test_bench_judge.py`)
+Tests specifying the requirements were added to `tests/test_bench_judge.py` and executed against `bebcfa5` prior to updating `bench/paint.py`:
+- `test_tiny_mode_judge_dropped_and_reattached_with_every_key_lost_fails`:
+  - Result: Failed with `AssertionError: assert [] == ['no keystroke came back after the drop']`. On `bebcfa5`, `judge` previously returned `[]` and emitted `WARN` even when all keystrokes were lost.
+- `test_gated_judge_dropped_and_reattached_message`:
+  - Result: Failed with `AssertionError: assert ['an attachment was dropped and reattached during the run'] == ['an attachment was dropped and reattached']`.
+- `test_gated_judge_dropped_without_reattach_message`:
+  - Result: Failed with `AssertionError: assert ['an attachment was dropped and reattached during the run'] == ['an attachment was dropped and did not reattach']`.
+- `test_tiny_mode_judge_dropped_and_reattached_with_one_key_back_passes_with_warning`:
+  - Result: Passed with `WARN` line and `3 keystrokes lost` (proving that one key back passes).
+
+### Implementation
+In `bench/paint.py::judge()`:
+- **Gated mode:** Updated the `result["dropped"]` handler to branch on `result.get("reattached")`, appending `"an attachment was dropped and reattached"` when True, and `"an attachment was dropped and did not reattach"` otherwise.
+- **Tiny mode:** Updated the recovered drop branch (`result.get("reattached") and result.get("completed")`) to check `result["lost"] >= result["keys"]`. If True, appends `"no keystroke came back after the drop"`; otherwise logs the `WARN` line.
+
+### Verification and Gates
+All outputs directed to separate files in temporary storage outside tree, exit codes verified, no pipes:
+1. **Judge Unit Tests:**
+   - Command: `python3 -m pytest tests/test_bench_judge.py`
+   - Outcome: 7 passed in 0.47s (exit code 0).
+2. **Bench Smoke Suite (Single Run):**
+   - Command: `python3 -m pytest tests/test_bench_smoke.py`
+   - Outcome: 18 passed in 15.28s (exit code 0).
+3. **Make Lint Gate:**
+   - Command: `make lint PYTHON=python3`
+   - Outcome: Ruff check clean ("All checks passed!"); 110 tooling tests passed in 71.40s; import lint clean (194 files); docs branch guard clean; leak check clean; engine check PIN verified (exit code 0).
+
 No commit, no push performed. No absolute machine paths in any file.

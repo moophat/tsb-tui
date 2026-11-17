@@ -106,7 +106,10 @@ def judge(result: dict, *, gate: bool) -> list[str]:
         if result["lost"]:
             bad.append(f"{result['lost']} keystroke(s) never reached the screen")
         if result["dropped"]:
-            bad.append("an attachment was dropped and reattached during the run")
+            if result.get("reattached"):
+                bad.append("an attachment was dropped and reattached")
+            else:
+                bad.append("an attachment was dropped and did not reattach")
         if result["server"].get("pings_unanswered"):
             bad.append(f"{result['server']['pings_unanswered']} ping(s) went unanswered")
         if result["latency"]["p95"] >= GATE_P95_MS:
@@ -115,10 +118,13 @@ def judge(result: dict, *, gate: bool) -> list[str]:
 
     if result["dropped"]:
         if result.get("reattached") and result.get("completed"):
-            print(
-                f"WARN {result['grid']} {result['stream']}: an attachment was dropped and "
-                f"reattached ({result['lost']} keystrokes lost)"
-            )
+            if result["lost"] >= result["keys"]:
+                bad.append("no keystroke came back after the drop")
+            else:
+                print(
+                    f"WARN {result['grid']} {result['stream']}: an attachment was dropped and "
+                    f"reattached ({result['lost']} keystrokes lost)"
+                )
         else:
             bad.append("an attachment was dropped and did not reattach")
     elif result["lost"]:
