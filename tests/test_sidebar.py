@@ -27,6 +27,7 @@ from tsb_tui.model.fleet import (
 )
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.widgets.sidebar import (
+    CMD_NEW,
     Sidebar,
     SidebarEntry,
     SidebarModel,
@@ -340,12 +341,10 @@ def test_the_sidebar_is_30_32_or_42_columns_by_the_window_and_the_details_come_f
 
 
 @pytest.mark.parametrize("mode, window, closes", [
-    ("always", 120, True), ("never", 65, False), ("phone", 120, False), ("phone", 65, True)])
-def test_close_on_pick_closes_the_sidebar_always_never_or_on_a_phone(
+    ("always", 120, False), ("never", 65, False), ("phone", 120, False), ("phone", 65, False)])
+def test_picking_a_session_keeps_sidebar_open_regardless_of_old_close_setting(
         serve, monkeypatch, wait_until, mode, window, closes) -> None:
-    """`sidebar.close_on_pick`: picking a row brings the session to the front and the sidebar closes per the knob. A
-    phone (a compact window) closes it so the canvas gets the width back; a laptop keeps it open and the keys go
-    back to the session either way."""
+    """Picking a session preserves the sidebar and gives the terminal the keys."""
     monkeypatch.setenv("TSB_TUI_SIDEBAR_CLOSE_ON_PICK", mode)
 
     async def _check() -> None:
@@ -790,5 +789,191 @@ def test_the_status_rows_range_follows_the_canvas_when_it_widens_without_moving(
             assert label == "cols 1-61 of 132 ▸", label
             await wait_until(pilot, lambda: label in screen.status.text,
                              f"the row to say {label!r}, it says {screen.status.text!r}")
+
+    asyncio.run(check())
+
+
+def test_keyboard_reaches_new_session_and_opens_it(serve, wait_until) -> None:
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        named_sessions(url, serve_app, "router")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), "sidebar rows")
+            rows = screen.sidebar.view.rows
+            screen.sidebar.selected = rows[0]
+            for row in rows[1:]:
+                await pilot.press("down")
+                assert screen.sidebar.selected == row
+            await pilot.press("down")
+            assert screen.sidebar.selected_session is None
+            await pilot.press("up")
+            assert screen.sidebar.selected == rows[-1]
+            await pilot.press("down")
+            assert screen.sidebar.selected_session is None
+            from textual.widgets import Input
+
+            # The empty workspace has only one focusable panel. Add a second focus
+            # target to verify Tab retains Textual's panel-focus behavior.
+            panel = Input(id="other-panel")
+            await screen.mount(panel)
+            screen.sidebar.focus()
+            selected = screen.sidebar.selected
+            await pilot.press("tab")
+            assert panel.has_focus
+            assert screen.sidebar.selected == selected
+            await pilot.press("shift+tab")
+            assert screen.sidebar.has_focus
+            assert "+ New session · n" in screen.sidebar.text
+            assert "Tab to New session" not in screen.sidebar.text
+            assert any('n to start a New session' in (part.tip or '')
+                       for line in screen.sidebar.view.lines for part in line.parts)
+            await pilot.press("enter")
+            assert isinstance(app.screen, NewSessionScreen)
+    asyncio.run(check())
+
+
+def test_stale_ended_sidebar_row_explains_how_to_start_again(serve, monkeypatch) -> None:
+    async def check():
+        _serve_app, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            notices = []
+            monkeypatch.setattr(screen, "_record_for", lambda sid: {"id": sid, "state": "terminated"})
+            monkeypatch.setattr(app, "notify", lambda text, **kwargs: notices.append(text))
+            screen._sidebar_command("pick", "stale-ended")
+            assert notices == ["This session has ended. Start a new one with + New session."]
+    asyncio.run(check())
+
+
+def test_sidebar_n_opens_new_session_directly(serve, wait_until) -> None:
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        named_sessions(url, serve_app, 'router')
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), 'sidebar rows')
+            assert screen.sidebar.has_focus
+            await pilot.press('n')
+            await pilot.pause()
+            assert isinstance(app.screen, NewSessionScreen)
+    asyncio.run(check())
+
+
+def test_bring_forward_uses_shared_ended_states(serve, monkeypatch) -> None:
+    from tsb_tui.model import fleet
+    from tsb_tui.screens import terminal
+
+    async def check():
+        _, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            # Extend the authoritative set to prove the consumer follows it.
+            monkeypatch.setattr(terminal, 'ENDED_STATES', fleet.ENDED_STATES | {'future-ended'}, raising=False)
+            monkeypatch.setattr(screen, '_record_for', lambda sid: {'id': sid, 'state': 'future-ended'})
+            notices = []
+            monkeypatch.setattr(app, 'notify', lambda text, **kwargs: notices.append(text))
+            screen.bring_forward('closed')
+            assert notices == ['This session has ended. Start a new one with + New session.']
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("key", ["tab", "shift+tab"])
+def test_sidebar_tab_moves_focus_without_sending_to_attached_session(serve, wait_until, key) -> None:
+    async def check():
+        from textual.widgets import Input
+
+        serve_app, url = serve(InputRecordingApp())
+        (sid,) = named_sessions(url, serve_app, "router")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, sid)
+            panel = Input(id="other-panel")
+            await screen.mount(panel)
+            screen.open_sidebar()
+            await wait_until(pilot, lambda: screen.sidebar.has_focus, "sidebar focus")
+            selected = screen.sidebar.selected
+            client_id = screen.pump.state.client_id
+            await pilot.press(key)
+            assert panel.has_focus
+            assert screen.sidebar.selected == selected
+            assert serve_app.received(client_id) == [], "a sidebar focus key reached the session"
+
+    asyncio.run(check())
+
+
+def test_all_keys_sidebar_names_new_session() -> None:
+    from tsb_tui import config
+    from tsb_tui.screens.chrome_dialogs import keys_lines
+
+    lines = keys_lines(config.load())
+    sidebar = lines[lines.index("In the fleet sidebar") + 1:lines.index("In the full fleet view")]
+    assert any(line.split(maxsplit=1) == ["n", "New session"] for line in sidebar)
+
+
+def test_with_more_session_groups_than_fit_down_scrolls_new_session_onto_screen(serve, wait_until) -> None:
+    """Ruling (2026-11-16): the selected row is always visible. Moving the selection to any row, the New
+    session footer included, scrolls the sidebar so that row and its marker are on screen, and a relayout
+    that would hide the selected row scrolls to keep it visible."""
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        (sid1, *_) = named_sessions(url, serve_app, "sw-1", "sw-2", "sw-3", "sw-4")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, sid1)
+            screen.open_sidebar()
+            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), "sidebar rows")
+
+            # In a 10-row window (sidebar height 9), the session group headings, the open session,
+            # joinable tail, header (3), and footer (2) require at least 11 rows. The New session footer
+            # starts below the visible area.
+            await pilot.resize_terminal(120, 10)
+            await wait_until(pilot, lambda: screen.sidebar.size.height == 9, "resized sidebar")
+
+            rendered_lines = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert not any("+ New session" in line for line in rendered_lines)
+            assert "+ New session" not in screen.sidebar.text
+
+            rows = screen.sidebar.view.rows
+            for _ in rows[1:]:
+                await pilot.press("down")
+            await pilot.press("down")
+            assert screen.sidebar.selected == (CMD_NEW, "")
+
+            rendered_after = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("▸" in line and "+ New session" in line for line in rendered_after)
+            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
+
+            screen.sidebar._relayout()
+            rendered_relayout = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("▸" in line and "+ New session" in line for line in rendered_relayout)
+            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
+
+            # Up moves back up to the first session row and keeps it visible with its marker
+            await pilot.press("up")
+            assert screen.sidebar.selected == rows[-1]
+            for _ in rows[:-1]:
+                await pilot.press("up")
+            assert screen.sidebar.selected == rows[0]
+            rendered_top = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("▸" in line and "sw-1" in line for line in rendered_top)
+            assert "▸" in screen.sidebar.text and "sw-1" in screen.sidebar.text
+
+            # Down to New session footer again and press Enter
+            for _ in rows:
+                await pilot.press("down")
+            assert screen.sidebar.selected == (CMD_NEW, "")
+            rendered_bottom = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("▸" in line and "+ New session" in line for line in rendered_bottom)
+            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
+
+            await pilot.press("enter")
+            assert isinstance(app.screen, NewSessionScreen)
 
     asyncio.run(check())

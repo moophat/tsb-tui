@@ -70,15 +70,6 @@ LOGIN_NEEDS_NEW = "a typed login is for a new connection"
 NO_LOGIN_HELD = "TSB holds no login for this target. Type one, or cancel."
 
 
-# What the dialog says when the create size has no rule: with auto size off nothing in the design says what
-# size a new session is created with, and guessing one would be a size request the operator never made
-# (terminal-size §4). Loud, and nothing reaches the broker. OPEN-1 was ruled on 2026-10-12, so the default
-# profile has auto size on and this is what an operator who turned it off sees.
-CREATE_SIZE_OFF = ("auto size is off, so there is no size to create this session with — the size a new "
-                   "session carries is this window's, and asking for one is what auto size is "
-                   "(terminal-size §4); turn auto size on (--set size.auto_request=true, or ^\\ R) to create")
-
-
 def credential_candidates(detail: dict) -> list[tuple[str, str]] | None:
     """The `candidates` of a `credential_choice_required` body as (reference, layer) pairs, in the order the core gave
     them, or None when the list is missing or is not what error.schema.json allows (two to 64 entries, each an object with a
@@ -98,12 +89,10 @@ def credential_candidates(detail: dict) -> list[tuple[str, str]] | None:
     return found
 
 
-def create_size(app: Any) -> tuple[int, int] | None:
+def create_size(app: Any) -> tuple[int, int]:
     """The creator's size (terminal-size §4: session open carries it; size-control step 15), which is the
     canvas the window gives: the window minus the rail and the status row, as an explicit request asks for.
-    None when `size.auto_request` is off, because nothing then says what size to carry."""
-    if not app.cfg["size.auto_request"]:
-        return None
+    Auto size controls later window changes, not the size carried when opening a session."""
     return app.workspace().fit_size()
 
 
@@ -256,8 +245,8 @@ class NewSessionScreen(Screen):
                 return
             target = self.query_one("#target-id", Input).value.strip()
             size = self._create_size()
-            if self._types.get(target) != "ssh" or size is None:
-                self.query_one("#new-session-error", Static).update(CREATE_SIZE_OFF)
+            if self._types.get(target) != "ssh":
+                self.query_one("#new-session-error", Static).update("Choose an SSH target to answer login prompts.")
                 return
             self._clear_login()
             self.app.pop_screen()
@@ -367,17 +356,12 @@ class NewSessionScreen(Screen):
         self.query_one("#new-session-error", Static).update(TYPE_UNKNOWN)
         self._create(target_id, "new", None, self._login_to_send(target_id))
 
-    def _create_size(self) -> tuple[int, int] | None:
+    def _create_size(self) -> tuple[int, int]:
         return create_size(self.app)
 
     def _create(self, target_id: str, connection: str, connection_id: str | None, login: dict | None = None,
                 credential: tuple[str, str] | None = None) -> None:
-        size = self._create_size()
-        if size is None:
-            self.query_one("#new-session-error", Static).update(CREATE_SIZE_OFF)
-            self.query_one("#create-button", Button).disabled = False
-            return
-        cols, rows = size
+        cols, rows = self._create_size()
         self._last_create = (target_id, connection, connection_id, credential) if login is None else None
         remember = self.query_one("#login-remember", Checkbox).value
         self.app.call_api(

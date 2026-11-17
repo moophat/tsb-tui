@@ -1,0 +1,364 @@
+"""The leader owns keys until search is explicitly requested."""
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+from textual.command import CommandList
+from textual.widgets import Input
+from workspace_support import fixture_login
+
+from tsb_tui.app import MenuPalette, TsbTuiApp
+
+
+def test_leader_waits_and_dispatches_before_search(serve, wait_until) -> None:
+    async def check() -> None:
+        _, url = serve()
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime('menu.open_on_leader_after_ms', 10000)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            initial = workspace.sidebar_open
+            await pilot.press('ctrl+backslash')
+            await pilot.pause()
+            assert isinstance(app.screen, MenuPalette), 'leader must open the menu immediately'
+            palette = app.screen
+            search = palette.query_one(Input)
+            await pilot.pause(2)
+            await pilot.press('f')
+            await pilot.pause()
+            assert app.screen is workspace
+            assert workspace.sidebar_open is not initial
+            assert search.value == ''
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("unknown_key", ["z", "enter", "down"])
+def test_leader_unknown_key_and_explicit_search(serve, wait_until, unknown_key) -> None:
+    async def check() -> None:
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            await pilot.press('ctrl+backslash')
+            await wait_until(pilot, lambda: isinstance(app.screen, MenuPalette), 'the menu')
+            palette = app.screen
+            await wait_until(pilot, lambda: bool(palette.query(Input)), 'the menu search to mount')
+            search = palette.query_one(Input)
+            before = workspace.sidebar_open
+            await pilot.press(unknown_key)
+            await pilot.pause()
+            assert app.screen is palette
+            assert search.value == ''
+            assert workspace.sidebar_open == before
+            assert 'no shortcut' in str(palette.query_one('#menu-key-message').render()).lower()
+            await pilot.press('/', 't', 'h', 'e', 'm', 'e')
+            await pilot.pause()
+            assert search.value == 'theme'
+            options = palette.query_one(CommandList).options
+            assert options and options[0].hit.text == 'Theme…'
+            assert len(options) < len(workspace.menu_entries())
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("width", [65, 120])
+def test_menu_disabled_rows_and_columns(serve, wait_until, width) -> None:
+    async def check() -> None:
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(width, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            workspace._start_leader()
+            await pilot.pause()
+            palette = app.screen
+            options = palette.query_one(CommandList)
+            entries = {action.label: why for action, _, why in workspace.menu_entries()}
+            assert options.option_count
+            for option in options.options:
+                assert option.disabled == (entries[option.hit.text] is not None)
+                assert '\n' not in option.prompt.plain
+            assert options.highlighted is not None
+            assert not options.get_option_at_index(options.highlighted).disabled
+            assert palette.query_one('#--container').styles.border_top[0] != 'none'
+            lines = [strip.text for strip in palette._compositor.render_strips()]
+            assert any('Auto size on or off' in line for line in lines)
+            unavailable = next(i for i, option in enumerate(options.options) if option.disabled)
+            await pilot.click(options, offset=(2, unavailable))
+            await pilot.pause()
+            assert app.screen is palette
+            await pilot.press('escape')
+            assert app.screen is workspace
+            assert not workspace.leader_pending
+    asyncio.run(check())
+
+
+def test_menu_search_matches_name_word_starts_and_search_off_preserves_all(serve, wait_until) -> None:
+    async def check() -> None:
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            workspace._start_leader()
+            await pilot.pause()
+            palette = app.screen
+            await pilot.press('/')
+            await pilot.press('n', 'e', 'w')
+            await pilot.pause()
+            options = palette.query_one(CommandList).options
+            names = {o.hit.text for o in options}
+            assert 'New session…' in names and 'New session on this connection' in names
+            assert 'Event log' not in names
+            assert all('\n' not in o.prompt.plain for o in options)
+            app.cfg.set_runtime('menu.search', False)
+            await pilot.press('escape')
+            workspace._start_leader()
+            await pilot.pause()
+            palette = app.screen
+            await pilot.press('/')
+            await pilot.press('q', 'q', 'q')
+            await pilot.pause()
+            assert len(palette.query_one(CommandList).options) == len(workspace.menu_entries())
+    asyncio.run(check())
+
+
+def test_menu_match_highlight_preserves_spacing_and_footer_keys(serve, wait_until) -> None:
+    async def check() -> None:
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            workspace.open_sidebar()
+            await pilot.pause()
+            footer = workspace.status.render_line(0)
+            text = footer.text
+            assert '⏎ Open' in text and 't Take back' in text
+            assert '⏎Open' not in text and 'tTake back' not in text and 'FFull view' not in text
+            assert any(s.style != workspace.status._styles['hint'] for s in footer if '⏎' in s.text)
+            workspace._start_leader()
+            await pilot.pause()
+            await pilot.press('/', 'n', 'e', 'w')
+            await pilot.pause()
+            palette = app.screen
+            options = palette.query_one(CommandList).options
+            option = next(o for o in options if o.hit.text == 'New session…')
+            assert 'New session…' in option.prompt.plain
+            assert any('underline' in str(span.style) for span in option.prompt.spans)
+            lines = [strip.text for strip in palette._compositor.render_strips()]
+            assert any('New session…' in line for line in lines)
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize(('query', 'expected'), [
+    ('NEW SES', {'New session…', 'New session on this connection'}),
+    ('ses new', {'New session…', 'New session on this connection'}),
+    ('ession', set()),
+    ('newest', set()),
+])
+def test_menu_search_requires_each_name_word_prefix(serve, wait_until, query, expected) -> None:
+    from tsb_tui.app import MenuProvider
+
+    async def check() -> None:
+        _, url = serve()
+        app = TsbTuiApp(url)
+        assert app.cfg['menu.search'] is True
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            hits = [hit async for hit in MenuProvider(workspace).search(query)]
+            assert {hit.text for hit in hits} == expected
+    asyncio.run(check())
+
+
+def test_menu_key_state_exists_before_mount() -> None:
+    palette = MenuPalette()
+    assert palette.search_mode is False
+    assert palette.chord == ''
+
+
+def test_unmatched_chord_never_switches_sessions(serve, monkeypatch) -> None:
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            switches = []
+            monkeypatch.setattr(workspace, 'switch_to_number', switches.append)
+            await pilot.press('ctrl+backslash', ':', '1')
+            await pilot.pause()
+            assert switches == []
+            assert isinstance(app.screen, MenuPalette)
+            assert 'no shortcut' in str(app.screen.query_one('#menu-key-message').render()).lower()
+    asyncio.run(check())
+
+
+def test_queued_leader_and_key_run_once_and_close_menu(serve, monkeypatch) -> None:
+    from textual import events
+
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            calls = []
+            original = workspace.run_action_id
+
+            async def run(action):
+                calls.append(action)
+                await original(action)
+
+            monkeypatch.setattr(workspace, 'run_action_id', run)
+            # Both keys are already in the terminal queue when the first pushes the menu.
+            workspace.post_message(events.Key('ctrl+backslash', None))
+            workspace.post_message(events.Key('f', 'f'))
+            await pilot.pause()
+            assert calls == ['fleet']
+            assert app.screen is workspace
+            assert not workspace.leader_pending
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('key', ['ctrl+q', 'ctrl+y'])
+def test_app_binding_closes_menu_and_runs(serve, monkeypatch, key) -> None:
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        if key != 'ctrl+q':
+            app.bind(key, 'quit')
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            calls = []
+            original = app.action_quit
+
+            async def quit_app():
+                calls.append(app.screen)
+                await original()
+
+            monkeypatch.setattr(app, 'action_quit', quit_app)
+            await pilot.press('ctrl+backslash', key)
+            await pilot.pause()
+            assert calls == [workspace]
+            assert not app.is_running
+    asyncio.run(check())
+
+
+def test_drive_guide_describes_creation_size_independent_of_auto_size() -> None:
+    from pathlib import Path
+
+    guide = (Path(__file__).parents[1] / 'tsb_tui' / 'drive' / 'GUIDE.md').read_text()
+    assert 'It needs `size.auto_request` on' not in guide
+    assert '`size.auto_request` must be on' not in guide
+    assert guide.count('window size regardless of `size.auto_request`') == 2
+
+
+@pytest.mark.parametrize('key', ['f', 'z', '/'])
+def test_key_arriving_before_menu_mount_is_preserved(serve, key) -> None:
+    from textual import events
+
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            before = workspace.sidebar_open
+            workspace._start_leader()
+            palette = app.screen
+            assert isinstance(palette, MenuPalette)
+            assert not palette._mounted_event.is_set()
+            await palette.handle_menu_key(events.Key(key, key))
+            await pilot.pause()
+            if key == 'f':
+                assert app.screen is workspace
+                assert workspace.sidebar_open is not before
+            elif key == 'z':
+                assert app.screen is palette
+                assert 'no shortcut' in str(palette.query_one('#menu-key-message').render()).lower()
+            else:
+                assert palette.search_mode
+                assert palette.query_one(Input).has_focus
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('query', ["who's", 'whos', 'who', 'here', 'x'])
+def test_menu_apostrophes_use_same_tokens(serve, query) -> None:
+    from tsb_tui.app import MenuProvider
+
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            hits = [hit async for hit in MenuProvider(workspace).search(query)]
+            assert ("Who's here…" in {hit.text for hit in hits}) == (query != 'x')
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('binding', [False, True])
+def test_waiting_menu_action_does_not_hold_app_event_loop(serve, monkeypatch, binding) -> None:
+    from textual import events
+
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            started = asyncio.Event()
+            release = asyncio.Future()
+
+            async def wait(*args):
+                started.set()
+                await release
+
+            if binding:
+                app.bind('ctrl+y', 'wait')
+                monkeypatch.setattr(app, 'action_wait', wait, raising=False)
+                key, character = 'ctrl+y', None
+            else:
+                monkeypatch.setattr(workspace, 'run_action_id', wait)
+                key, character = 'f', 'f'
+            await pilot.press('ctrl+backslash')
+            # Post directly: Pilot.press itself waits for the App queue to drain.
+            app.post_message(events.Key(key, character))
+            try:
+                await asyncio.wait_for(started.wait(), 2)
+                app.post_message(events.Key('ctrl+q', None))
+                for _ in range(100):
+                    if not app.is_running:
+                        break
+                    await asyncio.sleep(.01)
+                assert not app.is_running, 'Ctrl+Q queued behind the waiting menu action'
+            finally:
+                if not release.done():
+                    release.set_result(None)
+    asyncio.run(check())
+
+
+def test_clicked_menu_starts_search_and_arrows_and_enter_work(serve, wait_until) -> None:
+    from workspace_support import rail_row
+
+    from tsb_tui.widgets.rail import ACT_MENU, Rail
+
+    async def check():
+        _, url = serve()
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            workspace = await fixture_login(app, pilot)
+            workspace.close_sidebar()
+            await wait_until(pilot, lambda: rail_row(workspace, ACT_MENU) is not None, 'the rail')
+            await pilot.click(Rail, offset=(1, rail_row(workspace, ACT_MENU)))
+            await pilot.pause()
+            palette = app.screen
+            assert isinstance(palette, MenuPalette)
+            assert palette.search_mode
+            assert not workspace.leader_pending
+            options = palette.query_one(CommandList)
+            initial = options.highlighted
+            await pilot.press('down')
+            assert options.highlighted != initial
+            await pilot.press('t', 'h', 'e', 'm', 'e')
+            await wait_until(pilot, lambda: palette.query_one(Input).value == 'theme', 'typed search')
+            await pilot.pause()
+            assert [o.hit.text for o in options.options] == ['Theme…']
+            await pilot.press('enter')
+            await pilot.pause()
+            assert app.screen is not palette
+            assert type(app.screen).__name__ == 'ThemePicker'
+    asyncio.run(check())

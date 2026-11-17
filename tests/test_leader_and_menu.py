@@ -85,10 +85,8 @@ def test_leader_then_a_letter_runs_the_action_and_sends_nothing_to_the_session(
     asyncio.run(_check())
 
 
-def test_the_leader_alone_opens_the_menu_after_the_delay(serve, monkeypatch, wait_until) -> None:
-    """D10, D15: `^\\` with nothing after it for `menu.open_on_leader_after_ms` opens the Menu. While it
-    waits the row says the keys are the leader's and lists the letters; once the Menu is open it says
-    `keys → menu`. None of it reaches the session."""
+def test_the_leader_alone_opens_the_menu_immediately(serve, monkeypatch, wait_until) -> None:
+    """The menu opens immediately even with a configured legacy delay; Esc returns to the session."""
     _env(monkeypatch, **{MENU_AFTER: "1500"})
 
     async def _check() -> None:
@@ -97,11 +95,7 @@ def test_the_leader_alone_opens_the_menu_after_the_delay(serve, monkeypatch, wai
         async with app.run_test(size=(120, 24)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
             await pilot.press(LEADER)
-            assert screen.status.text.startswith("keys → the leader"), screen.status.text
-            assert "d Detach" in screen.status.text and "w Who's here" in screen.status.text
             await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), "the Menu to open")
-            await wait_until(pilot, lambda: screen.status.text.startswith("keys → menu"),
-                             "the row to say the keys are the Menu's")
             await pilot.press("escape")
             await wait_until(pilot, lambda: app.screen is screen and "keys →" not in screen.status.text,
                              "the Menu to close")
@@ -221,22 +215,20 @@ def test_every_key_but_the_leader_reaches_the_session(serve, monkeypatch, wait_u
     asyncio.run(_check())
 
 
-def test_a_key_after_the_leader_that_names_no_action_goes_to_the_session_as_an_ordinary_key(
+def test_a_key_after_the_leader_without_a_binding_stays_in_the_menu(
         serve, monkeypatch, wait_until) -> None:
-    """D17 ("nothing else is ever taken"). The leader is the one key the screen takes; a letter that is
-    bound to no action is not the leader's, so it is the session's, and no 0x1c goes with it. (The design
-    does not say what a stray letter after the leader does; this is what D17 reads as.)"""
+    """An unbound key neither runs an action nor enters the session."""
     _env(monkeypatch)
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 24)) as pilot:
-            screen, client_id = await _open(pilot, app, serve_app, wait_until)
+            _screen, client_id = await _open(pilot, app, serve_app, wait_until)
             await pilot.press(LEADER, "z")
-            await wait_until(pilot, lambda: serve_app.received(client_id) == [b"z"],
-                             "the ordinary key, and no 0x1c, to reach the server")
-            assert app.screen is screen
+            await pilot.pause()
+            assert serve_app.received(client_id) == []
+            assert isinstance(app.screen, CommandPalette)
 
     asyncio.run(_check())
 
@@ -265,11 +257,12 @@ def test_the_menu_lists_every_action_of_the_table_with_its_key_and_is_searchable
             listed = " ".join(_menu_texts(palette))
             for action in A.menu_actions():
                 assert action.label in listed, f"{action.id} is not in the Menu"
-                assert action.description in listed
+                option = next(o for o in palette.query_one(CommandList).options if o.hit.text == action.label)
+                assert option.disabled or action.description[:8] in option.prompt.plain
             leader = A.leader_label(LEADER)
             assert f"{leader} w" in listed and f"{leader} d" in listed
 
-            await pilot.press(*"size")
+            await pilot.press("/", *"size")
             await wait_until(pilot, lambda: _menu_texts(palette) and "Size…" in _menu_texts(palette)[0]
                              and len(_menu_texts(palette)) < len(wanted), "the Menu to narrow to Size")
             await pilot.press("enter")
@@ -376,10 +369,9 @@ def test_the_menu_names_a_key_only_where_there_is_one_mutes_what_is_unavailable_
     asyncio.run(_check())
 
 
-def test_keys_leader_map_rebinds_a_letter_and_the_old_letter_goes_to_the_session(
+def test_keys_leader_map_rebinds_a_letter_and_the_old_letter_runs_nothing(
         serve, monkeypatch, wait_until) -> None:
-    """`keys.leader_map` (design §2.4): `detach = "q"` makes `^\\ q` detach and prints `^\\ q Detach` in
-    the row. `d` is then nobody's, so by D17 it is the session's."""
+    """Rebinding Detach to q leaves d unbound and the menu open, while q detaches."""
     _env(monkeypatch, TSB_TUI_KEYS_LEADER_MAP_DETACH="q")
 
     async def _check() -> None:
@@ -391,9 +383,10 @@ def test_keys_leader_map_rebinds_a_letter_and_the_old_letter_goes_to_the_session
             assert "^\\ d Detach" not in screen.status.text
 
             await pilot.press(LEADER, "d")
-            await wait_until(pilot, lambda: serve_app.received(client_id) == [b"d"], "d to reach the session")
-            assert app.screen is screen
-            await pilot.press(LEADER, "q")
+            await pilot.pause()
+            assert serve_app.received(client_id) == []
+            assert isinstance(app.screen, CommandPalette)
+            await pilot.press("q")
             await wait_until(pilot, lambda: _detached(screen), "q to detach")
 
     asyncio.run(_check())
@@ -443,7 +436,7 @@ def test_every_menu_action_is_reachable_by_a_click_alone(
                 # Find the entry's name on the screen, as a person would, and click there.
                 label = A.BY_ID[action_id].label
                 rows = screen_text(app).splitlines()
-                y = next(i for i, row in enumerate(rows) if row.strip().startswith(label))
+                y = next(i for i, row in enumerate(rows) if label in row)
                 await pilot.click(offset=(rows[y].index(label) + 2, y))
                 await wait_until(pilot, lambda expected=expected: isinstance(app.screen, expected),
                                  f"{action_id} to open from a click in the Menu")

@@ -98,6 +98,7 @@ wide_from = 160
 groups = ["needs_you", "open_here", "mine_held_by_others", "mine_and_joinable"]
 start_filter = "mine"
 details_from = 160
+# Accepted for existing config files; picking a session now preserves the sidebar in every mode.
 close_on_pick = "phone"
 open_when_no_session = true
 
@@ -121,6 +122,7 @@ stale_banner_pad = 1
 
 [menu]
 search = true
+# Accepted for existing config files; the menu now opens immediately and waits without a timeout.
 open_on_leader_after_ms = 300
 
 [mouse]

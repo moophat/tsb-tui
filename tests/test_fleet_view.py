@@ -463,3 +463,22 @@ def test_open_from_a_row_brings_that_session_forward_and_closes_the_view(serve, 
             assert screen.slot_for(second) is None, "nothing is attached before the gate is passed"
 
     asyncio.run(_check())
+
+
+def test_ended_sessions_follow_live_rows_under_their_own_heading() -> None:
+    model = _model([_row("old", ended=True), _row("live")])
+    layout = _layout(model, show_ended=True)
+    text = _text(layout)
+    heading = next(i for i, line in enumerate(text) if line.strip() == "Ended")
+    live = next(i for i, line in enumerate(text) if "s.live" in line)
+    old = next(i for i, line in enumerate(text) if "s.old" in line)
+    assert live < heading < old
+    assert all(line.strip() != "Ended" for line in _text(_layout(model)))
+
+
+def test_target_counts_are_separate_for_live_and_ended_sections() -> None:
+    model = _model([_row('live', target='router'), _row('end1', target='router', ended=True),
+                    _row('end2', target='router', ended=True)])
+    lines = _text(_layout(model, group_by='target', show_ended=True))
+    headers = [line.strip() for line in lines if line.strip().startswith('router ·')]
+    assert headers == ['router · 1', 'router · 2']

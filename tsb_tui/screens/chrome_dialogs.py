@@ -36,6 +36,7 @@ ENGINE_PIN_COMMIT = "34f39002c6e3974b54e6a6d400bd83777c5ea558"
 
 # The keys of the dialogs and views that are not leader actions, for All keys (D40: help is never a prerequisite).
 SIDEBAR_KEYS = (
+    ("n", "New session"),
     ("↑ ↓  j k", "move through the rows (the wheel does too)"),
     ("⏎", "open the selected session"),
     ("t", "take back the keyboard of the selected session"),

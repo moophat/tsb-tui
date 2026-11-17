@@ -58,6 +58,7 @@ from ..model.attachment import AttachmentPump, AttachmentState, PumpHooks, close
 from ..model.countdown import format_duration, parse_timestamp
 from ..model.events import TAP_RECORD, TAP_SLOT_CLOSED, EventLog
 from ..model.fleet import (
+    ENDED_STATES,
     GROUP_NEEDS_YOU,
     MAX_CHIPS,
     WHO_OTHER,
@@ -391,7 +392,6 @@ class TerminalScreen(Screen):
         self._selection: Selection | None = None
         self._drag_from: int | None = None
         self._dragged = False
-        self._chord: str | None = None  # the first character of a two-character key after the leader (`:` of `:q`)
         # The dialogs open over this screen, innermost last; each has `sync()` and `status_target()`.
         self.dialogs: list[Any] = []
         # A dialog opened for the session in front is recorded here against that session's id, so a session's
@@ -403,7 +403,6 @@ class TerminalScreen(Screen):
         self._deferred_end_slot: SessionSlot | None = None
         self._menu_open = False
         self._leader_pending = False
-        self._leader_timer: Timer | None = None
         self.fleet: Fleet | None = None
         self.poller: FleetPoller | None = None
         # The rail and the sidebar are rebuilt once per refresh of the screen: a trigger marks the model dirty and
@@ -463,7 +462,7 @@ class TerminalScreen(Screen):
     @property
     def leader_pending(self) -> bool:
         """The next key is the leader's (a letter, or the second character of `:q`), not the focused widget's."""
-        return self._leader_pending or self._chord is not None
+        return self._leader_pending
 
     def slot_for(self, session_id: str) -> SessionSlot | None:
         return next((slot for slot in self.slots if slot.session_id == session_id), None)
@@ -712,14 +711,9 @@ class TerminalScreen(Screen):
         self.refresh_status()
 
     def _after_pick(self) -> None:
-        """A pick brings its session to the front; `sidebar.close_on_pick` says whether the sidebar goes
-        (always, never, or on a phone). When it stays, the keys go back to the session."""
-        mode = self.app.cfg["sidebar.close_on_pick"]
-        if mode == "always" or (mode == "phone" and self.compact):
-            self.close_sidebar()
-        else:
-            self.set_focus(None)
-            self.refresh_status()
+        """A pick gives the session the keys while preserving the sidebar."""
+        self.set_focus(None)
+        self.refresh_status()
 
     # -- the fleet: polling, and the models the rail and the sidebar show --
 
@@ -1597,6 +1591,10 @@ class TerminalScreen(Screen):
             self.show_front(slot)
             return
         record = self._record_for(session_id)
+        if record is not None and record.get("state") in ENDED_STATES:
+            self.app.notify("This session has ended. Start a new one with + New session.",
+                            severity="warning", markup=False)
+            return
         if record is None:
             self.app.notify(f"session {session_id} is not in the fleet any more", severity="warning",
                             markup=False)
@@ -2306,7 +2304,7 @@ class TerminalScreen(Screen):
 
     def fit_size(self) -> tuple[int, int]:
         """The window minus the rail and the status row: what an explicit or an automatic request asks for, and
-        what a new session is created with when auto size is on (terminal-size §4: session open carries the
+        what a new session is created with (terminal-size §4: session open carries the
         creator's size). The sidebar is not subtracted: opening it asks for nothing (D44)."""
         window = self._window or self.app.size
         cfg = self.app.cfg
@@ -2564,12 +2562,15 @@ class TerminalScreen(Screen):
             self._spawn(self.send_input(SOURCE_FOCUS, data))
 
     async def on_key(self, event: events.Key) -> None:
-        """Every key reaches the session (D17), encoded for the session's modes (D34), except the leader.
-        The leader (`keys.leader`, Ctrl-\\ by default) is the one key this screen takes: `^\\` then a
-        letter runs that action, `^\\` then a digit switches to that chip's session; `^\\` and nothing within
-        `menu.open_on_leader_after_ms` opens the Menu; `^\\ ^\\` sends the key itself, as a typed key under the
-        guard. A key after the leader that names no action is not taken (D17): it goes to the session as an
-        ordinary key."""
+        """The leader opens the Menu immediately; it owns subsequent shortcuts until Esc.
+
+        Ordinary keys outside the Menu reach the session. A doubled leader sends the literal key.
+        """
+        from ..app import MenuPalette
+
+        if isinstance(self.app.screen, MenuPalette):
+            await self.app.screen.handle_menu_key(event)
+            return
         leader = event.key == self.app.cfg["keys.leader"]
         if self.pump is None and not leader and not self._leader_pending:
             return  # nothing to send to yet: the key goes on to the app (Ctrl-Q quits while attaching)
@@ -2588,30 +2589,6 @@ class TerminalScreen(Screen):
             else:
                 self._start_leader()
             return
-        if self._chord is not None:
-            # The second character of a two-character key (`:q`): it runs the action, or the chord is dropped. The
-            # operator typed `^\ :` on purpose, so nothing of it goes to the session.
-            first, self._chord = self._chord, None
-            self.refresh_status()
-            action = (A.action_for_chord(first, event.character, self.app.cfg.leader_overrides())
-                      if event.is_printable and event.character else None)
-            if action is not None:
-                await self.run_action_id(action.id)
-            return
-        if self._leader_pending:
-            self._cancel_leader()
-            letter = event.character if event.is_printable else None
-            if letter is not None and letter in A.chord_starts(self.app.cfg.leader_overrides()):
-                self._chord = letter
-                self.refresh_status()
-                return
-            action = A.action_for_leader_key(letter, self.app.cfg.leader_overrides()) if letter else None
-            if action is not None:
-                await self.run_action_id(action.id)
-                return
-            if letter is not None and letter in "123456789":
-                self.switch_to_number(int(letter))
-                return
         if self._scroll_mode:
             self._scroll_key(event)  # the view's, or dropped: no key reaches the session while the view is open
             return
@@ -2711,23 +2688,13 @@ class TerminalScreen(Screen):
 
     def _start_leader(self) -> None:
         self._leader_pending = True
-        wait = self.app.cfg["menu.open_on_leader_after_ms"] / 1000.0
-        self._leader_timer = self.set_timer(wait, self._leader_waited)
+        self.app.open_menu()
         self.refresh_status()
 
     def _cancel_leader(self) -> None:
         self._leader_pending = False
-        if self._leader_timer is not None:
-            self._leader_timer.stop()
-            self._leader_timer = None
         if not self._unmounted:
             self.refresh_status()
-
-    async def _leader_waited(self) -> None:
-        """The leader alone: nothing followed it in time, so the Menu opens."""
-        if self._leader_pending:
-            self._cancel_leader()
-            await self.run_action_id("menu")
 
     # -- actions: the one table, run from a key, a click or the Menu --
 
@@ -2783,14 +2750,11 @@ class TerminalScreen(Screen):
 
     async def do_new_on_connection(self) -> None:
         from ..vault_flow import call
-        from .new_session import CREATE_SIZE_OFF, TERM, NewSessionScreen, create_size
+        from .new_session import TERM, NewSessionScreen, create_size
 
         if self._refuse_while_signing_out() or self._front is None or self._front.pump is None:
             return
         size = create_size(self.app)
-        if size is None:
-            self.app.notify(CREATE_SIZE_OFF, markup=False)
-            return
         session = self._front.pump.state.session
         if self.facts().target_type == "telnet":  # stale: a telnet connection carries one session, nothing to reuse
             return
@@ -3327,8 +3291,6 @@ class TerminalScreen(Screen):
             return self._scroll_keys_target()
         if self._pan_mode:
             return self._pan_keys_target()
-        if self._chord is not None:
-            return KeysTarget("the command", (Hint("q", "Quit"),))
         if self._view_has_keys():
             return self._fleet_view_keys_target()
         if self._sidebar_has_keys():

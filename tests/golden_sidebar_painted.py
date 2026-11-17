@@ -61,7 +61,7 @@ async def _capture(n: int, tmp_path: Path) -> str:
         async with Rig(url, tmp_path=tmp_path, profile="harness", size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, make_records(n))
             await rig.login(ME)
-            return (await painted(rig, f"Yours and joinable · {n}")).sidebar.text
+            return (await painted(rig, f"Yours and joinable · {(n + 19) // 20}")).sidebar.text
 
 
 def main() -> None:

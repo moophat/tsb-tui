@@ -127,7 +127,7 @@ def test_one_rebuild_builds_entries_only_for_the_rows_the_sidebar_paints(serve, 
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await painted(rig, f"Yours and joinable · {len(records)}")
+            screen = await painted(rig, f"Yours and joinable · {sum(r['state'] not in ('killed', 'terminated') for r in records)}")
             rows = len(screen.sidebar.view.rows)
             assert 0 < rows < 60, rows
             instrument(screen, counter, monkeypatch)
@@ -135,7 +135,7 @@ def test_one_rebuild_builds_entries_only_for_the_rows_the_sidebar_paints(serve, 
             await rig.app_call(screen._sync_fleet_widgets)
             assert counter.models == 1, "one rebuild ran"
             assert counter.entries <= rows + PAINTED_EXTRA, (counter.entries, rows)
-            hidden = len(records) - rows
+            hidden = sum(r["state"] not in ("killed", "terminated") for r in records) - rows
             assert f"┆ {hidden} more · full view ▸" in screen.sidebar.text, screen.sidebar.text
 
     asyncio.run(check())
@@ -182,7 +182,7 @@ def test_triggers_before_a_refresh_run_one_rebuild(serve, tmp_path, monkeypatch)
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await painted(rig, "Yours and joinable · 100")
+            screen = await painted(rig, "Yours and joinable · 5")
             instrument(screen, counter, monkeypatch)
             counter.reset()
 
@@ -204,9 +204,8 @@ def test_triggers_before_a_refresh_run_one_rebuild(serve, tmp_path, monkeypatch)
     asyncio.run(check())
 
 
-def test_the_painted_sidebar_text_is_unchanged_at_a_long_list(serve, tmp_path) -> None:
-    """Everything the sidebar shows is the same as before: the group headings and counts, the rows in order, the
-    `N more · full view` line, the tips. The golden was captured from the code before the change."""
+def test_the_painted_sidebar_text_matches_live_sessions_at_a_long_list(serve, tmp_path) -> None:
+    """The golden lists only live sessions, with matching headings, rows, overflow counts and footer."""
     golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
 
     async def check(n: int) -> None:
@@ -215,7 +214,7 @@ def test_the_painted_sidebar_text_is_unchanged_at_a_long_list(serve, tmp_path) -
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, make_records(n))
             await rig.login(ME)
-            screen = await painted(rig, f"Yours and joinable · {n}")
+            screen = await painted(rig, f"Yours and joinable · {(n + 19) // 20}")
             text = screen.sidebar.text
             assert text == golden[str(n)], f"the painted sidebar changed at {n} records"
 
@@ -234,7 +233,7 @@ def test_the_selection_moves_over_the_painted_rows_as_before(serve, tmp_path) ->
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, make_records(14000))
             await rig.login(ME)
-            screen = await painted(rig, "Yours and joinable · 14000")
+            screen = await painted(rig, "Yours and joinable · 700")
             rows = list(screen.sidebar.view.rows)
             start = screen.sidebar.selected
             for _ in range(5):
@@ -459,7 +458,7 @@ def test_the_one_pass_over_the_records_gives_what_the_three_scans_give() -> None
     assert [r["id"] for r in groups["open_here"]] == ["s-ending-open"]
     assert [r["id"] for r in groups["mine_held_by_others"]] == ["s-held"]
     assert [r["id"] for r in groups["mine_and_joinable"]] == [
-        "s-stale", "s-asks", "s-unreachable", "s-joinable", "s-ended"]
+        "s-stale", "s-asks", "s-unreachable", "s-joinable"]
     _same_as_the_three_scans(fleet, ["s-ending-open"], ["s-stale"], ["s-asks"], {})
     _same_as_the_three_scans(fleet, [], [], [], {})
     fleet.filter_mode = "all"
@@ -494,7 +493,7 @@ def test_opening_the_sidebar_on_a_group_selects_from_the_current_rows(serve, tmp
             rig.app.wall_clock = lambda: fixed
             rig.app.client = FakeSessionsClient(url, before)
             await rig.login(ME)
-            screen = await painted(rig, "Yours and joinable · 3")
+            screen = await painted(rig, "Yours and joinable · 1")
             screen.close_sidebar()
             screen._apply_poll(10, [*before, added])  # the fleet changes while the sidebar is closed
             screen.open_sidebar(GROUP_NEEDS_YOU, refresh=False)

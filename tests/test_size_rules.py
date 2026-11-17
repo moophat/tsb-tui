@@ -387,3 +387,24 @@ def test_opening_a_dialog_or_resizing_a_widget_sends_no_request(
             assert resize_requests(serve_app) == []
 
     asyncio.run(_check())
+
+
+def test_create_with_auto_size_off_carries_window_size(serve) -> None:
+    from workspace_support import fixture_login, open_new_session
+
+    from tsb_tui.screens.attach_confirm import AttachConfirmScreen
+
+    async def check() -> None:
+        serve_app, url = serve()
+        app = TsbTuiApp(url, target=_serve.TARGET)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await fixture_login(app, pilot)
+            await open_new_session(app, pilot, auto_size=False)
+            await pilot.click("#create-button")
+            await pilot.pause()
+            assert isinstance(app.screen, AttachConfirmScreen)
+            sid = next(iter(serve_app.sessions))
+            assert (serve_app.sessions[sid]["cols"],
+                    serve_app.sessions[sid]["rows"]) == (76, 23)
+
+    asyncio.run(check())

@@ -59,9 +59,10 @@ def _core_calls(requests) -> list[tuple[str, str, object]]:
     """The requests a "nothing reached the core" check counts: everything the TUI sends the core except the screen
     lock's user-activity signal (phase 12 § G). That signal is fired by user input, at most once per served interval,
     and is not part of any operation these tests are about, so a keypress inside a counted window can add it by timing.
+    The standing GET /alerts stream is also excluded; it can start inside the window independently of the press.
     A create, a target read, a `/auth/me`: all still count, so the check still fails when the operation under test is
     sent. Takes the request log (`serve_app.requests`) or a slice of it, so a test can count only its own window."""
-    return [r for r in requests if (r[0], r[1]) != ACTIVITY]
+    return [r for r in requests if (r[0], r[1]) not in (ACTIVITY, ("GET", "/alerts"))]
 
 
 def _text(widget: Static) -> str:
@@ -217,8 +218,10 @@ def test_the_activity_signal_in_a_counted_window_is_not_what_nothing_reached_the
             await wait_until(pilot, lambda: any((m, p) == ACTIVITY for m, p, _b in serve_app.requests[start:]),
                              "the activity signal inside the window")
             window = serve_app.requests[start:]
+            # Deterministically cover a standing alert-stream request landing inside this window.
+            window = [*window, ("GET", "/alerts", None)]
             assert any((m, p) == ACTIVITY for m, p, _b in window), "the press sent no activity signal inside the window"
-            assert _core_calls(window) == [], "something other than the activity signal reached the core in the window"
+            assert _core_calls(window) == [], "an operation reached the core in the window"
             _type_login(dialog)
             dialog.query_one("#create-button", Button).press()
             await wait_until(pilot, lambda: bool(_creates(serve_app)), "the create")

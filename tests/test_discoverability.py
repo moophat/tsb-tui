@@ -108,7 +108,7 @@ def test_the_menu_lists_every_action_of_the_table_at_each_size(serve, wait_until
             await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
             want = [action.label for action in SESSION_ACTIONS]
             await wait_until(pilot, lambda: len(_menu_texts(app.screen)) >= len(want), f"the Menu at {width}")
-            got = [text.splitlines()[0].strip() for text in _menu_texts(app.screen)]
+            got = [option.hit.text for option in app.screen.query_one(CommandList).options]
             assert sorted(got) == sorted(want), f"at {width}x{height} the Menu lists {got}, the table says {want}"
             assert got == [a.label for a in A.menu_actions()], "the Menu is out of the table's own order"
 
@@ -171,7 +171,7 @@ async def _click_menu_entry(rig: Rig, label: str) -> None:
                   and len(_menu_texts(rig.app.screen)) >= len(SESSION_ACTIONS), "the Menu to fill")
     options = rig.app.screen.query_one(CommandList)
     for _ in range(80):
-        if any(line.strip().startswith(label) for line in (await rig.cmd("snapshot"))["text"].splitlines()):
+        if any(label in line for line in (await rig.cmd("snapshot"))["text"].splitlines()):
             break
         await rig.app_call(options.scroll_down, animate=False)
         await rig.pilot.pause()
