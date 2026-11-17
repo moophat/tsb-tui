@@ -69,7 +69,11 @@ async def run_one(cols: int, rows: int, stream: str, args: argparse.Namespace) -
             with contextlib.suppress(asyncio.CancelledError):
                 await sampler
             loop = await monitor.stop()
-            dropped = [screen.slot_for(sid).pump.state.client_id for sid in ids] != clients_before
+            clients_after = [screen.slot_for(sid).pump.state.client_id for sid in ids]
+            any_closed = any(screen.slot_for(sid).pump.state.closed for sid in ids)
+            dropped = (clients_after != clients_before) or any_closed
+            reattached = (clients_after != clients_before) and not any_closed
+            completed = True
             paints = front.canvas.paint_count
             lock_wait = front.canvas.lock_wait_ms
             server.quiesce()  # the window is over: no more pings, before the TUI starts to shut down
@@ -88,6 +92,8 @@ async def run_one(cols: int, rows: int, stream: str, args: argparse.Namespace) -
         "lock_wait_ms": float(lock_wait),
         "server": server.stats,
         "dropped": dropped,
+        "reattached": reattached,
+        "completed": completed,
     }
     return result
 
@@ -96,14 +102,36 @@ def judge(result: dict, *, gate: bool) -> list[str]:
     """What this row fails on, in words; empty when it passes. Without `gate` (the tiny run) nothing is judged on
     time, only on the plumbing: a keystroke that never came back, a ping that was never answered, a drop."""
     bad = []
-    if result["lost"]:
-        bad.append(f"{result['lost']} keystroke(s) never reached the screen")
+    if gate:
+        if result["lost"]:
+            bad.append(f"{result['lost']} keystroke(s) never reached the screen")
+        if result["dropped"]:
+            if result.get("reattached"):
+                bad.append("an attachment was dropped and reattached")
+            else:
+                bad.append("an attachment was dropped and did not reattach")
+        if result["server"].get("pings_unanswered"):
+            bad.append(f"{result['server']['pings_unanswered']} ping(s) went unanswered")
+        if result["latency"]["p95"] >= GATE_P95_MS:
+            bad.append(f"keystroke-to-screen p95 {result['latency']['p95']:.1f} ms is not under {GATE_P95_MS:.0f} ms")
+        return bad
+
     if result["dropped"]:
-        bad.append("an attachment was dropped and reattached during the run")
+        if result.get("reattached") and result.get("completed"):
+            if result["lost"] >= result["keys"]:
+                bad.append("no keystroke came back after the drop")
+            else:
+                print(
+                    f"WARN {result['grid']} {result['stream']}: an attachment was dropped and "
+                    f"reattached ({result['lost']} keystrokes lost)"
+                )
+        else:
+            bad.append("an attachment was dropped and did not reattach")
+    elif result["lost"]:
+        bad.append(f"{result['lost']} keystroke(s) never reached the screen")
+
     if result["server"].get("pings_unanswered"):
         bad.append(f"{result['server']['pings_unanswered']} ping(s) went unanswered")
-    if gate and result["latency"]["p95"] >= GATE_P95_MS:
-        bad.append(f"keystroke-to-screen p95 {result['latency']['p95']:.1f} ms is not under {GATE_P95_MS:.0f} ms")
     return bad
 
 

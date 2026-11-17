@@ -1042,9 +1042,36 @@ def test_drive_reads_are_live_while_the_view_is_open(serve, tmp_path) -> None:
             await _shown(rig, "L299")
             assert "L299" in live[0]["lines"]
             assert (await rig.cmd("press", keys=["ctrl+backslash", "left_square_bracket"]))["ok"]
-            await _shown(rig, "keys → scroll")
+            for _ in range(500):
+                if await rig.app_call(lambda: bool(rig.app.workspace() and rig.app.workspace().scroll_view_open)):
+                    break
+                await rig.pilot.pause()
+            else:
+                raise AssertionError("the scroll view never mounted")
+
+            def position():
+                ws = rig.app.workspace()
+                assert ws and ws.front and ws.front.canvas, "workspace canvas missing"
+                return ws.front.canvas.backend.scrollback_position()
+
+            pos_before = await rig.app_call(position)
             assert (await rig.cmd("press", keys=["pageup"]))["ok"]
-            await _shown(rig, "L299", present=False)
+
+            def moved() -> bool:
+                ws = rig.app.workspace()
+                if not ws or not ws.front or not ws.front.canvas:
+                    return False
+                canvas = ws.front.canvas
+                pos = canvas.backend.scrollback_position()
+                return pos.offset < pos_before.offset and canvas.painted
+
+            for _ in range(500):
+                if await rig.app_call(moved):
+                    break
+                await rig.pilot.pause()
+            else:
+                raise AssertionError("the scroll view viewport never moved")
+
             assert "L275" in (await rig.cmd("snapshot"))["text"], "the window shows the page before the live one"
             assert await reads() == live, "an open view changes no read"
 
