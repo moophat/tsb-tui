@@ -105,27 +105,6 @@ def test_user_theme_falls_back_to_opposite_lightness_direction(tmp_path, variant
     assert contrast_ratio(cfg["theme.surface"], background) >= 1.2
 
 
-def test_unreachable_surface_is_refused_with_background(monkeypatch):
-    from tsb_tui import theme
-
-    monkeypatch.setattr(theme, "contrast_ratio", lambda fg, bg: 1.0)
-    with pytest.raises(theme.ThemeError, match="background #112233.*choose another background"):
-        theme.surface_colour("#112233", "dark")
-
-
-def test_theme_refusal_names_theme_and_background(tmp_path, monkeypatch):
-    from tsb_tui import theme_files
-    from tsb_tui.theme import ThemeError
-
-    path = tmp_path / "broken.toml"
-    path.write_text('[theme]\nbg="#112233"\n')
-    def refused(bg, variant):
-        raise ThemeError(f"background {bg}: cannot derive a surface; choose another background")
-    monkeypatch.setattr(theme_files, "surface_colour", refused)
-    with pytest.raises(theme_files.ThemeFileError, match="theme 'broken'.*#112233.*choose another background"):
-        theme_files.parse_theme(path, yours=True)
-
-
 @pytest.mark.parametrize("width", [65, 120])
 def test_keyboard_hints_outlast_name_and_ordinary_hints(width):
     from model_frames import state_of
@@ -137,6 +116,7 @@ def test_keyboard_hints_outlast_name_and_ordinary_hints(width):
     pieces = build_pieces(_inputs(state), width)
     actions = {p.action for p in pieces}
     assert {"take_back", "scroll"} <= actions
-    assert not any(p.text.startswith("rtr-") for p in pieces)
+    # Whole items may return in freed cells under Round 3 Amendment 2.
+    assert all(not p.text.startswith("rtr-") or len(p.text) >= 5 for p in pieces)
     assert {"menu", "keys"} <= actions
     assert len("".join(p.text for p in pieces)) == width

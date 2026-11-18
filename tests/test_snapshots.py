@@ -488,7 +488,7 @@ def test_f5_whos_here_lists_who_types_and_offers_the_four_moves(size, serve, wai
                 for button in ("Take it", "Hand to selected", "Put it aside", "Remove selected"):
                     assert button in joined, f"no {button!r} button"
                 status = _status(lines)
-                assert "keys → who's here" in status and "F1 Menu" in status, status
+                assert "keys → who's here" in status and "Esc close" in status, status
                 assert "≡" in _rail(lines)[0], "the rail is gone behind the dialog"
 
     asyncio.run(check())
@@ -525,8 +525,8 @@ def test_f7_the_stale_dialog_offers_the_four_choices_to_the_one_who_types(size, 
                 assert words in squeezed, f"no {words!r}"
             assert "1-4" in squeezed and "recorded" in squeezed, "the footer is missing"
             status = _status(lines)
-            assert "you type" in status and "F1 Menu" in status, status
-            assert "F1 Menu" in status and "Ctrl+\\ ? keys" in status, status
+            assert "you type" in status and "F1 Menu" not in status, status
+            assert "F1 Menu" not in status and "Ctrl+\\ ? keys" not in status, status
             if size[0] >= 80:
                 assert "● REC" in status and "Ctrl+\\ [ Scroll" in status
             assert screen.status.size.height == 1, "the status row never grows a second line"
@@ -813,7 +813,8 @@ def test_f12_the_row_while_reattaching_says_which_try_is_next_and_that_esc_stops
             lines = shoot(app, "F12-reattaching", size).splitlines()
             status = re.sub(r"\s+", " ", " ".join(line.strip() for line in lines[-3:] if line.strip(" │")))
             assert "◐ reattaching" in status, status
-            assert "F1 Menu" in status, status
+            assert "Esc stops" in status, status
+            assert "F1 Menu" not in status and "? keys" not in status, status
             assert "ended" not in status.replace("not ended", ""), status
             if size[0] >= 120:
                 assert re.search(r"the session lives on · try \d+ in \d+ s", status), status
@@ -843,8 +844,8 @@ def test_f12_a_stale_screen_someone_else_is_choosing_shows_no_dialog_and_says_wh
                 lines = shoot(app, "F12-stale-someone-else", size).splitlines()
                 joined = "\n".join(lines)
                 status = _status(lines)
-                assert "view only" in status and "F1 Menu" in status, status
-                assert "F1 Menu" in status and "Ctrl+\\ ? keys" in status, status
+                assert "view only" in status and "F1 Menu" not in status, status
+                assert "F1 Menu" not in status and "Ctrl+\\ ? keys" not in status, status
                 if size[0] >= 80:
                     assert "● REC" in status and "Ctrl+\\ [ Scroll" in status
                 assert screen.status.size.height == 1, "the status row never grows a second line"
@@ -879,7 +880,7 @@ def test_f12_the_menu_takes_the_keys_and_says_how_to_use_it(size, serve, wait_un
             joined = "\n".join(lines)
             assert "Who's here…" in joined and "Size…" in joined, "the Menu lists no actions"
             status = lines[-1]
-            assert "keys → menu" in status and "F1 Menu" in status, status
+            assert "keys → menu" in status and "Esc close" in status, status
             if size[0] >= 120:
                 assert "↑↓ choose" in status and "⏎ run" in status and "type to find" in status, status
 

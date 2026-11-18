@@ -5,7 +5,8 @@ Two parts, kept apart so the layout is a pure function a test can read at any wi
 
 * `build_pieces(inputs, width)` turns the models into a list of `Piece`s that fill exactly `width` cells.
   The session name shortens with a trailing ellipsis before hints drop by `status.hint_priority`;
-  Menu, keys, Take back and Scroll survive every ordinary hint and the name. Then the words after the pill give way
+  On attached-session and focused session/target list rows, Menu and keys survive ordinary hints and the name.
+  Take back and Scroll remain protected on the session row. Then the words after the pill give way
   by a fixed survival order (`Item`, `_lay`): the
   session name first and, last, the state warnings; what stays is the pill, the state's key fact, the
   countdown value and `● REC`; protected keyboard hints outlast them all. A word is whole or gone, and no separator
@@ -337,7 +338,6 @@ def _special(inputs: StatusInputs) -> tuple[Left, list[tuple[str, list[Piece]]]]
                 Item("warn", (r.why,), RANK_NAME, sep=LEAD_SEP),
                 Item("warn", (f"try {r.attempt} in {_seconds(r.seconds)} s",), RANK_FACT, sep=LEAD_SEP)]
         hints = [("esc", [Piece("Esc", "hint_key"), Piece(" stops", "hint")])]
-        hints += [h for h in _session_hints(inputs) if h[0] == "menu"]
         return left, hints
     if inputs.reattach_stopped:
         return ([Piece("◌ not reattaching · the session lives on", "warn")],
@@ -389,8 +389,7 @@ def _sep(before: Item, item: Item) -> str:
 def _lay(items: Sequence[Item], avail: int | None) -> list[Piece]:
     """The items that fit `avail` cells, as pieces; `None` is no limit.
 
-    The survival order, which only ever takes things away as the room shrinks, so nothing comes back when the
-    window narrows further: first the rest of the words leave, lowest rank first (the session name, then the
+    The survival order: first the rest of the words leave, lowest rank first (the session name, then the
     state word, the keyboard note, the pan range, who types, then the keys-not-sent note); then the core (the
     pill, the key fact, the countdown value, REC, the state warnings) takes its shorter wordings; and only then
     do the warnings, then REC, then the countdown, then the key fact, go. The pill stays. A session name may end in an ellipsis; state phrases are whole or
@@ -425,6 +424,12 @@ def _lay(items: Sequence[Item], avail: int | None) -> list[Piece]:
         for i in reversed(core):
             if width() > avail and items[i].rank != RANK_PILL:
                 del pick[i]
+        # Later removals can free room for a whole item that was dropped earlier.
+        for i in by_rank:
+            if i not in pick:
+                pick[i] = 0
+                if width() > avail:
+                    del pick[i]
     pieces: list[Piece] = []
     before: Item | None = None
     for i, item in enumerate(items):
@@ -507,23 +512,33 @@ def build_pieces(inputs: StatusInputs, width: int) -> list[Piece]:
     def action_of(hint: tuple[str, list[Piece]]) -> str:
         return next((p.action.rsplit(":", 1)[-1] for p in hint[1] if p.action), hint[0])
 
-    protected = {"menu", "keys", "take_back", "scroll"}
-    # F1 is global; the leader reaches All keys in the workspace, not through modal dialogs.
-    common = {"menu"}
-    if inputs.target is None or inputs.target.name in {"fleet", "fleet view", "targets", "scroll", "pan",
-                                                       "the leader", "menu"}:
-        common.add("keys")
-    present = {action_of(h) for h in hints}
-    hints = [*hints, *(h for h in _session_hints(inputs)
-                         if h[0] in common and h[0] not in present)]
-    ordinary = [name for name, parts in hints if action_of((name, parts)) not in protected]
-    if special is not None or inputs.target is not None:
-        drop_order = list(reversed(ordinary))
+    target = inputs.target
+    stale = inputs.state is not None and inputs.state.stale_state == "pending"
+    # Alerts shares "fleet view" with Sessions, but has no session pick/take-back action.
+    session_list = target is not None and (target.name == "fleet" or (
+        target.name == "fleet view" and any(action_of(h) in {"pick", "take_back"} for h in hints)))
+    protected_row = special is None and not inputs.input_notice and (
+        (target is None and inputs.state is not None and not inputs.attaching and not stale)
+        or (target is not None and target.name == "targets") or session_list)
+    protected = {"take_back", "scroll"} if target is None and special is None else set()
+    if protected_row:
+        protected |= {"menu", "keys", "take_back", "scroll"}
+        present = {action_of(h) for h in hints}
+        hints = [*hints, *(h for h in _session_hints(inputs)
+                             if h[0] in {"menu", "keys"} and h[0] not in present)]
+    else:
+        hints = [h for h in hints if action_of(h) not in {"menu", "keys"}]
+    ordinary = [name for name, parts in hints if action_of((name, parts)) not in protected
+                and not (not protected_row and (special is not None or target is not None)
+                         and parts[0].text == "Esc")]
+    if special is not None or target is not None:
+        drop_order = list(reversed(ordinary)) if protected_row else ordinary
     else:
         rank = {name: i for i, name in enumerate(inputs.hint_priority)}
         drop_order = sorted(ordinary, key=lambda n: rank.get(n, len(rank)), reverse=True)
-    left, hints = _fit(left, hints, drop_order, width)
-    if width < 80:
+    original_left = left
+    left, hints = _fit(original_left, hints, drop_order, width)
+    if protected_row and width < 80:
         # Only after ordinary hints and facts have yielded may protected hints leave.
         for action in ("scroll", "keys", "take_back", "menu"):
             used = _width(left) + sum(_width(p) for _, p in hints) + len(GAP) * max(len(hints) - 1, 0)
@@ -532,6 +547,7 @@ def build_pieces(inputs: StatusInputs, width: int) -> list[Piece]:
             if action == "menu" and width >= len("F1 Menu"):
                 break
             hints = [h for h in hints if action_of(h) != action]
+            left, hints = _fit(original_left, hints, [], width)
     pieces = list(left)
     used = _width(left) + sum(_width(p) for _, p in hints) + len(GAP) * max(len(hints) - 1, 0)
     pieces.append(Piece(" " * max(width - used, 0), "text"))

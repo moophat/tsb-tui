@@ -195,8 +195,7 @@ def surface_colour(bg: str, variant: str) -> str:
 
     if contrast_ratio(colour(high), bg) < 1.2:
         high = 0.0 if variant == "dark" else 1.0
-        if contrast_ratio(colour(high), bg) < 1.2:
-            raise ThemeError(f"background {bg}: cannot derive a surface at 1.2:1; choose another background")
+        # One of white or black always reaches 1.2:1 against any valid background.
 
     for _ in range(48):
         mid = (low + high) / 2

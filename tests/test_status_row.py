@@ -82,7 +82,7 @@ def test_view_only_while_an_agent_types_in_your_session_says_typing_takes_it() -
     back (terminal-size §5, 5.53) - the owner's brake is useless if nobody knows it is there."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     text = _text(state)
-    assert text.startswith("‹ view only ›  you own it: typing takes it  ● REC")
+    assert text.startswith("‹ view only ›  you own it: typing takes it · rtr-…  ● live  ● REC")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_view"
 
 
@@ -134,9 +134,9 @@ def test_the_pan_range_and_the_unsent_keys_note_follow_the_state() -> None:
     assert "cols 1-76 of 132 ▸" in text
     assert "your keys were not sent" in text
     assert "cols" not in _text(state) and "not sent" not in _text(state)
-    # Squeezed, the range gives way before the note does: the note explains a keystroke that did nothing.
+    # The note outranks the range; backfill now lets both fit after other words leave.
     squeezed = _text(state, 120, range_label="cols 1-76 of 132 ▸", keys_not_sent=True)
-    assert "your keys were not sent" in squeezed and "cols 1-76" not in squeezed
+    assert "your keys were not sent" in squeezed and "cols 1-76 of 132 ▸" in squeezed
 
 
 def test_keys_arrow_replaces_the_pill_whenever_the_keys_go_elsewhere() -> None:
@@ -147,17 +147,18 @@ def test_keys_arrow_replaces_the_pill_whenever_the_keys_go_elsewhere() -> None:
     text = _text(state, target=target)
     assert text.startswith("keys → who's here")
     assert "you type" not in text
-    assert text.rstrip().endswith("↑↓ choose   t Take it   Esc close   F1 Menu")
+    assert text.rstrip().endswith("↑↓ choose   t Take it   Esc close")
     assert "‹ you type ›" in _text(state, target=target, keys_indicator=False)
 
 
 def test_a_session_that_is_not_attached_yet_has_no_pill() -> None:
     """Before `attached` nobody knows who types, and a pill would be a guess. The row says it is
-    attaching and still offers the way out and the Menu."""
+    attaching and still offers the way out, without the attached-session global hints."""
     text = _text(None, attaching=True)
     assert text.startswith("◐ attaching · rtr-core-01")
     assert "‹" not in text
-    assert "^\\ d Detach" in text and "F1 Menu" in text
+    assert "^\\ d Detach" in text
+    assert "F1 Menu" not in text and "? keys" not in text
 
 
 # -- the hints: key first, dropping by priority, the Menu last --
@@ -175,7 +176,7 @@ def test_hints_are_key_first_and_end_with_the_menu_and_the_fleet() -> None:
 
 def test_a_hint_for_an_action_that_is_not_available_is_not_shown() -> None:
     """D11: the row lists the enabled actions. Who's here and Size have nothing to show before the attach."""
-    assert _hints(None, 200) == ["detach", "keys", "menu", "fleet"]
+    assert _hints(None, 200) == ["detach", "fleet"]
 
 
 def _drop_order(state, wide: bool, **overrides) -> list[str]:
@@ -223,7 +224,7 @@ def test_the_phone_row_is_compact_and_carries_the_pan_range_and_scroll() -> None
     being live; what is left is the pill, the session, REC, the pan range and protected Scroll."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     row = _text(state, 65, range_label="cols 1-61 of 116 ▸")
-    assert row.startswith("‹you type›  ● REC")
+    assert row.startswith("‹you type›  rtr-…  ● REC")
     assert "● live" not in row
     assert "cols 1-61 of 116 ▸" not in row
     assert row.endswith("F1 Menu") and len(row) == 65

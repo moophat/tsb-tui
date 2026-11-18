@@ -27,7 +27,7 @@ from . import glyphs
 from .drive.events import EVENT_NAMES, OUTPUT_MODES
 from .model.actions import LEADER_LABELS, LEADER_MAP_IDS, KeymapError, leader_keys
 from .model.fleet import CHIP_MARKS, CHIP_SOURCES, GROUP_ORDER, NEEDS_REASONS
-from .theme import ThemeError, relative_luminance, role_colours, surface_colour
+from .theme import relative_luminance, role_colours, surface_colour
 from .theme_files import ROLES, SchemeError, ThemeFileError, find_scheme, find_theme
 
 # The phase whose keys are built so far. Every phase that reads knobs bumps this; phase 10, the last, owns
@@ -768,10 +768,7 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
     if chrome.variant is None:
         chrome = replace(chrome, variant="light" if relative_luminance(resolved["theme.bg"]) > 0.179 else "dark")
 
-    try:
-        resolved["theme.surface"] = surface_colour(resolved["theme.bg"], chrome.variant)
-    except ThemeError as exc:
-        raise ConfigError(f"theme {chrome.id!r}: {exc}") from None
+    resolved["theme.surface"] = surface_colour(resolved["theme.bg"], chrome.variant)
     sources["theme.surface"] = f"theme {chrome.id}"
 
     try:
@@ -817,6 +814,9 @@ def _check_theme_knobs(values: Mapping[str, Any]) -> None:
     Phase 3: theme.term.cursor_colour holds "role" or "scheme"; theme.term.colors is [] or exactly 16.
     Phase 12: theme.term.minimum_contrast is 1.0 (off) to 21.0, and above 1.0 is refused under
     palette = "outer", where the colours are unknown (TT21)."""
+    if not _HEX_PATTERN.fullmatch(values["theme.bg"]):
+        raise ConfigError(f"theme.bg = {values['theme.bg']!r}: expected #rrggbb")
+
     bg = values["theme.term.bg"]
     if bg not in ("scheme", "outer") and not _HEX_PATTERN.fullmatch(bg):
         raise ConfigError(f"theme.term.bg = {bg!r}: expected 'scheme', 'outer' or #rrggbb")

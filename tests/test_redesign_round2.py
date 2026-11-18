@@ -98,15 +98,15 @@ def test_real_session_targets_and_full_view_keep_menu_and_keys(serve, wait_until
     asyncio.run(check())
 
 
-def test_special_row_drops_last_ordinary_hint_first():
+def test_special_row_keeps_pre_round2_hint_drop_order():
     from tsb_tui.widgets.status_row import EndedStatus
 
     ended = EndedStatus("ended session with a reason", False,
                         (Hint("c", "New session", "new_session"),
                          Hint("n", "Next session with a long label", "next")))
-    pieces = build_pieces(owner_inputs(ended=ended), 80)
-    assert "new_session" in {p.action for p in pieces}
-    assert "next" not in {p.action for p in pieces}
+    pieces = build_pieces(owner_inputs(ended=ended), 65)
+    assert "new_session" not in {p.action for p in pieces}
+    assert "next" in {p.action for p in pieces}
 
 
 def test_nord_steel_is_the_first_passing_hsl_lightness_step(tmp_path):

@@ -148,19 +148,22 @@ def _dangling(row: str) -> list[str]:
 
 
 @pytest.mark.parametrize(("state_id", "make", "fact", "always", "stays"), STATES, ids=IDS)
-def test_at_65_columns_the_key_fact_rec_and_menu_stay_and_the_session_name_goes(
+def test_at_65_columns_hint_scope_and_backfilled_names_match_the_state(
         state_id, make, fact, always, stays) -> None:
     """The phone row (65 columns) is the one that was cut mechanically: `ends…`, "input refused", the owner's
     typing warning and `● REC` were lost to the session name that came before them. The state's key fact, REC
     survive while there is room after protected keyboard hints; no `·` may dangle."""
     state = make()
     row = _row(state, 65)
-    # The enlarged protected set outlasts the facts and recording at this width.
-    assert "F1 Menu" in row and "^\\ ? keys" in row
+    if state.stale_state == "pending":
+        assert "F1 Menu" not in row and "? keys" not in row
+    else:
+        assert "F1 Menu" in row and "^\\ ? keys" in row
     assert "^\\ [ Scroll" in row
     if state_id in {"owner-view-only", "stale-someone-else"}:
         assert "^\\ t Take back" in row
-    assert (SESSION in row) == (state_id == "you-type")
+    assert (SESSION in _expanded_session(row)) == (state_id not in {
+        "owner-view-only", "notice-link", "notice-idle"})
     assert not _dangling(row), f"{state_id}: a dangling separator in {row!r}"
     assert "…" not in _expanded_session(row), f"{state_id}: a phrase was cut with an ellipsis: {row!r}"
     pill = re.match(r"‹(you type|view only|nobody types)›", row)
@@ -168,28 +171,20 @@ def test_at_65_columns_the_key_fact_rec_and_menu_stay_and_the_session_name_goes(
 
 
 @pytest.mark.parametrize(("state_id", "make", "fact", "always", "stays"), STATES, ids=IDS)
-def test_the_session_name_is_the_first_thing_to_leave_as_the_window_narrows(state_id, make, fact, always, stays) -> None:
-    """The survival order is a promise about every width, not just a phone's: wherever the session name is still
-    on the row, so are the pill, the key fact, REC and the rest of the words; once it is gone it does not come
-    back as the window narrows further; and no width ever shows a dangling separator."""
+def test_backfilled_rows_keep_whole_phrases_and_scoped_hints_at_every_width(state_id, make, fact, always, stays) -> None:
+    """Amendment 2 permits words to return; width, whole phrases and hint scope still bind."""
     state = make()
-    name_gone = False
     for width in range(200, 39, -1):
-        # Compact chrome at 79 frees cells; survival is monotonic within each layout.
-        if width == 79:
-            name_gone = False
         row = _row(state, width)
-        assert not _dangling(row), f"{state_id} at {width}: {row!r}"
-        assert "F1 Menu" in row, f"{state_id} at {width}: {row!r}"
-        has_name = SESSION in _expanded_session(row)
-        if has_name:
-            assert not name_gone, f"{state_id}: the name came back at {width}: {row!r}"
-            assert ("● REC" in row or not _recording(state)) and all(words in row for words in stays), (
-                f"{state_id} at {width}: {row!r}")
-            if always is not None:
-                assert always in row, f"{state_id} at {width}: {row!r}"
-        else:
-            name_gone = True
+        assert len(row) == width, (state_id, width, row)
+        assert not _dangling(row), (state_id, width, row)
+        assert "‹" in row and "›" in row
+        assert ("F1 Menu" in row) == (state.stale_state != "pending")
+        if state.stale_state == "pending":
+            assert "? keys" not in row
+        for word in row.split():
+            if "…" in word:
+                assert word == "End…" or (word.startswith("rtr-") and len(word) >= 5), row
 
 
 @pytest.mark.parametrize(("state_id", "make", "fact", "always", "stays"), STATES, ids=IDS)
@@ -272,5 +267,6 @@ def test_a_reattach_row_keeps_when_the_next_try_comes_and_drops_the_reason_first
     assert wide.startswith("◐ reattaching · the broker closed this view; the session lives on · try 1 in 60 s")
     narrow = _row(state, 65, reattach=wait)
     assert narrow.startswith("◐ reattaching · try 1 in 60 s"), narrow
-    assert "F1 Menu" in narrow and "^\\ ? keys" in narrow
+    assert "Esc stops" in narrow
+    assert "F1 Menu" not in narrow and "? keys" not in narrow
     assert "broker" not in narrow and not _dangling(narrow)

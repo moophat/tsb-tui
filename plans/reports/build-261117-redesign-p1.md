@@ -1052,3 +1052,41 @@ Final checks:
 - Final scope audit and `git diff --check`: passed; source scope is unchanged, earlier report sections preserved, no ledger edits, no pin changes, no commits/pushes.
 
 The completed full suite was **9 failed, 2258 passed, 3 skipped**, not a passing full-suite result. Each failure was rerun alone once before corrections, as the table above records. Seven superseded assertions were corrected and their complete files now pass. The drive live-read mismatch and coloured-screen timeout passed alone, but their full-run failures remain concerns with no established root cause. The full suite was not repeated after the final test-only expectation changes; production code is the same code exercised by that completed run. CI-only PowerShell/Pester installer checks remain unverified. No processes started by this lane remain running.
+
+
+## Round 3
+
+**AI-Model:** gpt-6.1-sol
+**Status:** DONE_WITH_CONCERNS — three CI-only installer checks remain unverified locally.
+
+Implemented all Round 3 rulings under Amendments 1 and 2:
+- Menu/keys protection applies to attached-session rows and focused Targets/Sessions lists. Dialogs, Menu, stale, reattach and other special contexts omit those hints. Their existing hint order is restored, with Esc retained while other hints and left-hand words yield. The 80-column reattach-stopped row retains Fleet.
+- Every fallback hint drop re-fits the original left-hand items. After layout removals, whole removed items are backfilled using the existing highest-first priority, as Amendment 2 specifies. No new phrase variants were introduced. The recorded 65-column and ending-countdown 40-column regressions pass.
+- Malformed theme.bg values from profiles, configuration files, environment and --set raise ConfigError naming theme.bg before colour parsing.
+- Removed the unreachable surface refusal, its configuration wrapper, the theme-file pre-validation and orphaned imports, and both artificial refusal tests. Kept opposite-direction search and its white/black regression coverage, with one comment explaining why a surface always exists.
+
+### Completed verification
+
+All gates used the prescribed interpreter ($P1_PYTHON), clone/contract client import paths, and an unset NO_COLOR. Logs are external; only their basenames are recorded here.
+
+| Check | Completed result | Log |
+|---|---|---|
+| Initial tests-first baseline on 3e6538c | pytest exit 1; 16 failed in 1.41s | tui-r3-red.txt |
+| Final 21-case baseline on unchanged 3e6538c implementation | pytest exit 1; 21 failed in 1.39s | tui-r3-red-final.txt |
+| Final new regressions | exit 0; 21 passed in 1.00s | tui-r3-green-final.txt |
+| Final focused modules | exit 0; 130 passed in 19.20s | tui-r3-focused-final-2.txt |
+| Initial touched-file run | exit 1; 3 failed, 375 passed in 291.87s | tui-r3-touched.txt |
+| Final complete snapshot/stale-row modules | exit 0; 92 passed in 132.65s | tui-r3-touched-final.txt |
+| Related scroll/sidebar/mouse/stale/Who's here modules | exit 0; 89 passed in 168.78s | tui-r3-related.txt |
+| Menu SVG refresh | exit 0; 2 passed in 13.82s | tui-r3-snapshots-update.txt |
+| Final make lint | exit 0; style, 110 auxiliary tests, import/docs/leak/engine checks passed | tui-r3-lint-last.txt |
+| make contract-check | exit 0; program clean at c4c2b81bb7a1, v0.18.0 | tui-r3-contract.txt |
+| Full make test on final source/test tree | **exit 0; 2286 passed, 3 skipped in 2201.37s (0:36:41)** | tui-r3-full.txt |
+
+The final baseline run temporarily substituted the four implementation files from 3e6538c and restored the current files byte-for-byte before green checks. Final source/test fingerprints match the start of the completed full suite; no source, test or SVG changed during or after that run.
+
+The three initial touched-file failures were the reattaching snapshot case at three sizes, still requiring F1 Menu. Those assertions now require Esc stops and forbid Menu/keys, and their complete module passes. Other superseded assertions now follow the ruled hint scope and whole-item backfill: names/ranges may return after other words disappear, and stale/reattach/dialog/Menu rows no longer require global hints. The old monotonic name-survival test becomes a width/whole-phrase/scope sweep; separate regressions verify whole-item backfill priority. Four Menu SVGs restore Esc close in place of self-advertised Menu/keys; new-session SVGs are unchanged. The final full suite includes every touched module.
+
+**Full-run failures and isolated reruns:** zero failures; no isolated failure reruns were applicable. The three skips are tests/test_installers.py:239 (one case) and :307 (two cases), each requiring the CI image's hash-pinned pwsh and Pester inputs. Those checks were not verified locally.
+
+Final scope and whitespace audits passed: only allowed source files, tests and this Round 3 section changed; all earlier report sections are byte-for-byte preserved. No ledger or program-pin edits, commits or pushes. All commands started by this round completed; none remain running.
