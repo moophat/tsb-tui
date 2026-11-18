@@ -1,13 +1,14 @@
 """The one status row (design D43, F12): who types, which session, its state, the actions you can take
-now as clickable hints, always ending in the Menu and the Fleet.
+now as clickable hints in their display order.
 
 Two parts, kept apart so the layout is a pure function a test can read at any width:
 
 * `build_pieces(inputs, width)` turns the models into a list of `Piece`s that fill exactly `width` cells.
   The session name shortens with a trailing ellipsis before hints drop by `status.hint_priority`;
-  the Menu is the last hint to go. Then the words after the pill give way by a fixed survival order (`Item`, `_lay`): the
+  Take back and Scroll survive every ordinary hint and the name. Then the words after the pill give way
+  by a fixed survival order (`Item`, `_lay`): the
   session name first and, last, the state warnings; what stays is the pill, the state's key fact, the
-  countdown value and `● REC`; the Menu hint outlasts them all. A word is whole or gone, and no separator
+  countdown value and `● REC`; protected keyboard hints outlast them all. A word is whole or gone, and no separator
   is left dangling. The one row never grows a second line: the stale notice is a banner over the canvas
   (`stale_banner.py`).
 * `StatusRow` paints those pieces as one line and turns a click on a hint, or on the keyboard pill,
@@ -411,7 +412,7 @@ def _lay(items: Sequence[Item], avail: int | None) -> list[Piece]:
             if items[i].rank == RANK_NAME and items[i].role == "text":
                 name = items[i].variants[0]
                 room = len(name) - (width() - avail)
-                if room > 0:
+                if room >= 5:
                     items[i] = replace(items[i], variants=(name[:room - 1] + "…",))
                     continue
             del pick[i]
@@ -435,8 +436,8 @@ def _lay(items: Sequence[Item], avail: int | None) -> list[Piece]:
 
 def _fit(left: Left, hints: list[tuple[str, list[Piece]]], drop_order: list[str],
          width: int) -> tuple[list[Piece], list[tuple[str, list[Piece]]]]:
-    """Shorten the session name first, then drop hints in `drop_order`, never the last named `menu`
-    (or, in a dialog, the last hint); then give the words before them up by the survival order (`_lay`), or, for a
+    """Shorten the session name first, then drop ordinary hints in `drop_order`; protected keyboard
+    hints stay. Then give the words before them up by the survival order (`_lay`), or, for a
     row of fixed words, cut the last with an ellipsis."""
     hints = list(hints)
     items = bool(left) and isinstance(left[0], Item)
@@ -445,24 +446,30 @@ def _fit(left: Left, hints: list[tuple[str, list[Piece]]], drop_order: list[str]
         gaps = len(GAP) * max(len(hints) - 1, 0)
         return (MIN_GAP if hints else 0) + sum(_width(p) for _, p in hints) + gaps
 
-    # Reserve the state phrases while shortening the session name before any hint leaves.
-    if items:
-        left = list(left)
-        for i, item in enumerate(left):
-            if item.rank == RANK_NAME and item.role == "text":
-                excess = _width(_lay(left, None)) + hints_width() - width
-                if excess > 0:
-                    name = item.variants[0]
-                    room = max(1, len(name) - excess)
-                    left[i] = replace(item, variants=(name[:room - 1] + "…",))
+    original = list(left)
+
+    def shorten_name() -> None:
+        nonlocal left
+        left = list(original)
+        if items:
+            for i, item in enumerate(left):
+                if item.rank == RANK_NAME and item.role == "text":
+                    excess = _width(_lay(left, None)) + hints_width() - width
+                    if excess > 0:
+                        name = item.variants[0]
+                        room = max(5, len(name) - excess)
+                        if room < len(name):
+                            left[i] = replace(item, variants=(name[:room - 1] + "…",))
 
     def total() -> int:
         return _width(_lay(left, None) if items else left) + hints_width()
 
+    shorten_name()
     for name in drop_order:
         if total() <= width:
             break
         hints = [h for h in hints if h[0] != name]
+        shorten_name()
     if items:
         return _lay(left, width - hints_width()), hints
     left = list(left)
@@ -489,16 +496,16 @@ def build_pieces(inputs: StatusInputs, width: int) -> list[Piece]:
         left = [Piece(inputs.input_notice, "warn")]
     if special is not None:
         hints = special[1]
-        drop_order = [name for name, _ in hints[:-1]]
+        drop_order = [name for name, _ in hints]
     elif inputs.target is not None:
         hints = _target_hints(inputs.target)
-        # A dialog's own hints leave from the left: the key that closes it is the last to go.
-        drop_order = [name for name, _ in hints[:-1]]
+        # A focused list's hints leave in their existing priority order.
+        drop_order = [name for name, _ in hints]
     else:
         hints = _session_hints(inputs)
         rank = {name: i for i, name in enumerate(inputs.hint_priority)}
-        # Lowest priority first; a hint the knob does not name drops before any it does; Menu never.
-        drop_order = sorted((name for name, _ in hints if name != "menu"),
+        # Lowest priority first; only the keyboard actions Take back and Scroll are protected.
+        drop_order = sorted((name for name, _ in hints if name not in {"take_back", "scroll"}),
                             key=lambda n: rank.get(n, len(rank)), reverse=True)
     left, hints = _fit(left, hints, drop_order, width)
     pieces = list(left)

@@ -171,7 +171,7 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
                 assert "rtr-core-01#" in lines[0][4:], "the session's own screen is not drawn beside the rail"
 
                 status = _status(lines)
-                assert "you type" in status and "≡ Menu" in status, status
+                assert "you type" in status and "Ctrl+\\ [ Scroll" in status, status
                 if size[0] >= 120:
                     assert ("rtr-core-01" in status or any(
                         f"  {'rtr-core-01'[:n]}…  " in status for n in range(len("rtr-core-01")))) and "▦ Fleet" in status, status
@@ -528,7 +528,7 @@ def test_f7_the_stale_dialog_offers_the_four_choices_to_the_one_who_types(size, 
             assert "1-4" in squeezed and "recorded" in squeezed, "the footer is missing"
             status = _status(lines)
             assert "you type" in status and "▲ stale" in status, status
-            assert "● REC" in status and "≡ Menu" in status, f"REC and the Menu stay on the one row: {status!r}"
+            assert "● REC" in status and "Ctrl+\\ [ Scroll" in status, f"REC and Scroll stay on the one row: {status!r}"
             assert screen.status.size.height == 1, "the status row never grows a second line"
             # The row is one row; the contract's notice line (stale-screen rule 18) is the banner at the top of the
             # canvas, whole, wrapped at spaces on a phone, never cut.
@@ -582,7 +582,7 @@ def test_a2_an_agents_headless_tui_snapshot_is_the_same_ui(size, serve, snapshot
                 assert set(_shown_alerts(lines)) == {SHOWN_ALERTS}, _shown_alerts(lines)
                 assert "ops@infra-db-02:~$" in "".join(line[4:] for line in lines[:8])
                 status = _status(lines)
-                assert "you type" in status and "≡ Menu" in status, status
+                assert "you type" in status and "Ctrl+\\ [ Scroll" in status, status
 
     asyncio.run(check())
 
@@ -733,7 +733,7 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
             palette = slot.canvas._palette
             assert (palette.cursor_typist if slot.canvas.typist else palette.cursor_viewer).shape == (
                 "block" if typing else "underline"), f"{state_id} at {size[0]}: wrong cursor shape for {always!r}"
-            assert "≡ Menu" in status, f"{state_id} at {size[0]}: the Menu is not on the row: {status!r}"
+            assert "Ctrl+\\ [ Scroll" in status, status
             if size[0] >= 120 and state_id in ("you-type", "quiet-prompt"):
                 assert "rtr-core-01" in status or any(
                     f" {"rtr-core-01"[:n]}… " in status for n in range(len("rtr-core-01"))), status
@@ -741,6 +741,8 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
                 assert re.sub(r"\s+", " ", wide) in status, f"{state_id} at {size[0]}: {wide!r} not in {status!r}"
             if state_id == "owner-view-only" and size[0] >= 120:
                 assert "Ctrl+\\ t Take back" in status, status
+                if size[0] == 120:
+                    assert "rtr-" not in status and "≡ Menu" not in status, status
             if state_id == "quiet-prompt" and size[0] >= 120:
                 assert "Ctrl+\\ a Answer: kill the session?" in status, status
             if state_id == "quiet-prompt" and size[0] == 120:
@@ -778,7 +780,7 @@ def test_f12_the_row_for_an_unreachable_worker_comes_from_the_poll_and_says_the_
             await pilot.pause(0.3)
             lines = shoot(app, "F12-unreachable", size).splitlines()
             status = re.sub(r"\s+", " ", " ".join(line.strip() for line in lines[-3:] if line.strip(" │")))
-            assert "◌ unreachable" in status and "≡ Menu" in status, status
+            assert "◌ unreachable" in status and "Ctrl+\\ [ Scroll" in status, status
             if size[0] >= 120:
                 assert "◌ unreachable · TSB cannot reach its worker · input refused · not ended" in status, status
 
@@ -808,7 +810,8 @@ def test_f12_the_row_while_reattaching_says_which_try_is_next_and_that_esc_stops
             await pilot.pause(0.3)
             lines = shoot(app, "F12-reattaching", size).splitlines()
             status = re.sub(r"\s+", " ", " ".join(line.strip() for line in lines[-3:] if line.strip(" │")))
-            assert "◐ reattaching" in status and "≡ Menu" in status, status
+            assert "◐ reattaching" in status, status
+            assert ("≡ Menu" in status) == (size[0] >= 120), status
             assert "ended" not in status.replace("not ended", ""), status
             if size[0] >= 120:
                 assert re.search(r"the session lives on · try \d+ in \d+ s", status), status
@@ -839,7 +842,7 @@ def test_f12_a_stale_screen_someone_else_is_choosing_shows_no_dialog_and_says_wh
                 joined = "\n".join(lines)
                 status = _status(lines)
                 assert "view only" in status and "▲ stale" in status, status
-                assert "● REC" in status and "≡ Menu" in status, f"REC and the Menu stay on the one row: {status!r}"
+                assert "● REC" in status and "Ctrl+\\ [ Scroll" in status, f"REC and Scroll stay on the one row: {status!r}"
                 assert screen.status.size.height == 1, "the status row never grows a second line"
                 assert STALE_NOTICE in " ".join(line[4:].strip() for line in lines[:4]), lines[:4]
                 assert "Choose:" not in joined, "a client that does not type was shown the dialog"
@@ -863,7 +866,7 @@ def test_f12_the_menu_takes_the_keys_and_says_how_to_use_it(size, serve, wait_un
             session_id = create_owner_session(app, _serve.TARGET, 116, 39)
             screen = await attached(pilot, app, session_id, wait_until)
             screen.close_sidebar()
-            await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
+            await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
             screen.app.open_menu()
             await wait_until(pilot, lambda: app.screen is not screen and "Find an action" in "".join(
                 s.text for s in app.screen._compositor.render_strips()), "the Menu")

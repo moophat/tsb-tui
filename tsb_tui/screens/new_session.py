@@ -55,7 +55,7 @@ ORG_LOCKED_NOTE = "The administrator who stored it must unlock; your passphrase 
 # A telnet connection carries one session (DEFAULT 22): the worker refuses a reuse, so the dialog never asks one.
 TELNET = "telnet"
 TELNET_NO_REUSE = "a telnet connection carries one session"
-TARGET_REQUIRED = "a target id is required — pick one in the Targets tab of the full Fleet view (^\\ F)"
+TARGET_REQUIRED = "a target id is required — pick one in the Targets tab of the full Fleet view (Ctrl+\\ F)"
 NO_SUCH_TARGET = "no such target"
 # The inventory could not answer for this id (a 503, a transport error): the type is unknown, so the create asks
 # `connection: new`, which is safe for every protocol, and says what it could not read.

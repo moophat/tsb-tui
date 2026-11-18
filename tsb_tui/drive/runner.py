@@ -467,29 +467,30 @@ class Driver:
         target = locate()
         if target is None:
             raise DriveError("bad_request", f"nothing on screen is labelled {label!r}")
-        for attempt in range(2):
-            screen, position = target
-            forward = screen._forward_event
+        # Settle before dispatch: an action may itself move its label, so never retry a click.
+        for _ in range(4):
+            await self.pilot.pause()
+            settled = locate()
+            if settled == target:
+                break
+            target = settled
+        if target is None:
+            raise DriveError("bad_request", f"nothing on screen is labelled {label!r}")
+        screen, position = target
+        forward = screen._forward_event
 
-            def guarded(event: Any, forward=forward) -> None:
-                if self.screen_lock.check():
-                    self.screen_lock.blocked_inputs += 1
-                    return
-                forward(event)
+        def guarded(event: Any) -> None:
+            if self.screen_lock.check():
+                self.screen_lock.blocked_inputs += 1
+                return
+            forward(event)
 
-            screen._forward_event = guarded
-            try:
-                await self.pilot.click(offset=position)
-                await self.pilot.pause()
-            finally:
-                screen._forward_event = forward
-            # A dispatched action may replace the screen; never click into its successor.
-            if self.app.screen is not screen:
-                return {}
-            moved = locate()
-            if attempt or moved is None or moved[1] == position:
-                return {}
-            target = moved
+        screen._forward_event = guarded
+        try:
+            await self.pilot.click(offset=position)
+            await self.pilot.pause()
+        finally:
+            screen._forward_event = forward
         return {}
 
     # -- commands in, answers out --

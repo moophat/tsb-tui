@@ -27,7 +27,7 @@ from . import glyphs
 from .drive.events import EVENT_NAMES, OUTPUT_MODES
 from .model.actions import LEADER_LABELS, LEADER_MAP_IDS, KeymapError, leader_keys
 from .model.fleet import CHIP_MARKS, CHIP_SOURCES, GROUP_ORDER, NEEDS_REASONS
-from .theme import relative_luminance, role_colours, surface_colour
+from .theme import ThemeError, relative_luminance, role_colours, surface_colour
 from .theme_files import ROLES, SchemeError, ThemeFileError, find_scheme, find_theme
 
 # The phase whose keys are built so far. Every phase that reads knobs bumps this; phase 10, the last, owns
@@ -618,12 +618,10 @@ class Config:
                     else:
                         self._values[key] = self._defaults[key]
                         self._sources[key] = "default"
-            surface_key = "theme.surface"
-            if self._sources.get(surface_key, "default").startswith(("default", "theme ")):
-                bg = self._values["theme.bg"]
-                variant = new_chrome.variant or ("light" if relative_luminance(bg) > 0.179 else "dark")
-                self._values[surface_key] = surface_colour(bg, variant)
-                self._sources[surface_key] = f"theme {new_chrome.id}"
+            bg = self._values["theme.bg"]
+            variant = new_chrome.variant or ("light" if relative_luminance(bg) > 0.179 else "dark")
+            self._values["theme.surface"] = surface_colour(bg, variant)
+            self._sources["theme.surface"] = f"theme {new_chrome.id}"
             self.chrome = new_chrome
             if self.chrome.variant is None:
                 # OPEN-T5 (ruled): a theme file with no variant gets it computed from its resolved bg, as load does.
@@ -737,9 +735,6 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
         raise ConfigError(f"theme.name = {name!r}: {exc}") from None
 
     theme_roles = dict(chrome.roles)
-    theme_bg = theme_roles.get("bg", defaults["theme.bg"])
-    variant = chrome.variant or ("light" if relative_luminance(theme_bg) > 0.179 else "dark")
-    theme_roles["surface"] = surface_colour(theme_bg, variant)
     layer({f"theme.{role}": value for role, value in theme_roles.items()}, f"theme {chrome.id}")
     layer(profile_values, f"profile {chosen}")
     layer(file_values, f"config file {file_path}")
@@ -772,6 +767,12 @@ def load(*, profile: str | None = None, config_file: Path | str | None = None,
     # carries `bg` keeps the variant parse_theme computed from it.
     if chrome.variant is None:
         chrome = replace(chrome, variant="light" if relative_luminance(resolved["theme.bg"]) > 0.179 else "dark")
+
+    try:
+        resolved["theme.surface"] = surface_colour(resolved["theme.bg"], chrome.variant)
+    except ThemeError as exc:
+        raise ConfigError(f"theme {chrome.id!r}: {exc}") from None
+    sources["theme.surface"] = f"theme {chrome.id}"
 
     try:
         scheme = find_scheme(resolved["theme.term.scheme"], user_config_dir)

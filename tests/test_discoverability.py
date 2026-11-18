@@ -67,12 +67,12 @@ def test_the_menu_and_the_fleet_are_on_screen_and_one_click_away_at_each_size(se
             app.permissions = frozenset(app.client.me().get("permissions", ()))
             screen = await attached(pilot, app, session_id, wait_until)
             screen.close_sidebar()
-            await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
+            await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
             lines = screen_text(app).splitlines()
             assert len(lines) == height, f"the screen is {len(lines)} lines tall at {height}"
             assert "≡" in lines[0][:4], f"no ≡ on the rail at {width}x{height}: {lines[0]!r}"
             assert "▦▸" in lines[1][:4], f"no ▦▸ on the rail at {width}x{height}: {lines[1]!r}"
-            assert "≡ Menu" in lines[-1], f"no ≡ Menu in the status row at {width}x{height}: {lines[-1]!r}"
+            assert "Ctrl+\\ [ Scroll" in lines[-1], lines[-1]
 
             await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
             await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), f"≡ at {width}")
@@ -84,7 +84,10 @@ def test_the_menu_and_the_fleet_are_on_screen_and_one_click_away_at_each_size(se
             screen.close_sidebar()
             await wait_until(pilot, lambda: not screen.sidebar_open, "the sidebar to close")
 
-            await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+            if screen.status.hit_x("menu") is not None:
+                await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+            else:
+                await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
             await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), f"≡ Menu at {width}")
             assert serve_app.received(screen.pump.state.client_id) == [], "a click reached the session"
 
@@ -104,8 +107,11 @@ def test_the_menu_lists_every_action_of_the_table_at_each_size(serve, wait_until
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
             app.permissions = frozenset(app.client.me().get("permissions", ()))
             screen = await attached(pilot, app, session_id, wait_until)
-            await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
-            await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+            await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
+            if screen.status.hit_x("menu") is not None:
+                await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+            else:
+                await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
             want = [action.label for action in SESSION_ACTIONS]
             await wait_until(pilot, lambda: len(_menu_texts(app.screen)) >= len(want), f"the Menu at {width}")
             got = [option.hit.text for option in app.screen.query_one(CommandList).options]
@@ -161,12 +167,16 @@ async def _settle(rig: Rig, predicate, what: str) -> None:
 
 
 async def _click_menu_entry(rig: Rig, label: str) -> None:
-    """What an agent does to run an action from the Menu: click `≡ Menu`, then click the entry. The Menu is a list a
+    """Click the rail Menu (closing its covering sidebar first), then click the entry. The Menu is a list a
     window may be too short to show whole, so an entry below the fold is brought into view with the list's own scroll
     (what the wheel does) until its label is on the screen; the click itself is the driver's `click`."""
-    await _settle(rig, lambda: rig.app.screen is rig.app.workspace() and "≡ Menu" in rig.app.screen.status.text,
-                  "the status row to offer the Menu again")
-    assert (await rig.cmd("click", label="≡ Menu"))["ok"]
+    await _settle(rig, lambda: rig.app.screen is rig.app.workspace() and not rig.app.screen.dialogs,
+                  "the workspace to offer the rail Menu again")
+    if rig.app.workspace().sidebar_open:
+        assert (await rig.cmd("click", label="◂ close"))["ok"]
+        await _settle(rig, lambda: not rig.app.workspace().sidebar_open, "the sidebar to expose the rail")
+    reply = await rig.cmd("click", label="≡")
+    assert reply["ok"], reply
     await _settle(rig, lambda: isinstance(rig.app.screen, CommandPalette)
                   and len(_menu_texts(rig.app.screen)) >= len(SESSION_ACTIONS), "the Menu to fill")
     options = rig.app.screen.query_one(CommandList)

@@ -95,7 +95,7 @@ def test_each_rail_glyph_acts_on_one_click_at_65_120_and_200_columns(serve, wait
 
 def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(serve, wait_until) -> None:
     """D11, D42: a row of the sidebar opens its session and each hint on the status row runs its action, by a single
-    click. The hints that fit differ by width (a phone keeps the Menu), and every one that is on the row is tried."""
+    click. The hints that fit differ by width (Scroll stays protected), and every one that is on the row is tried."""
 
     effects = {
         "menu": lambda app, screen: isinstance(app.screen, CommandPalette),
@@ -125,10 +125,10 @@ def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(s
             await wait_until(pilot, lambda: app.screen is screen and screen.front.session_id == second,
                              "the picked session in front")
             screen.close_sidebar()
-            await wait_until(pilot, lambda: "Menu" in screen.status.text, "the status row")
+            await wait_until(pilot, lambda: "Scroll" in screen.status.text, "the status row")
 
             hints = [a for a in screen.status.actions() if a != "detach"]
-            assert "menu" in hints, f"the Menu is always on the row (at {width}: {screen.status.text!r})"
+            assert "scroll" in hints, f"Scroll is protected (at {width}: {screen.status.text!r})"
             for action in hints:
                 assert action in effects, f"a hint no test knows how to observe: {action}"
                 row = screen.status
@@ -141,7 +141,7 @@ def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(s
                     screen.close_sidebar()
                 elif action == "scroll":
                     screen.close_scroll_view()
-                    await wait_until(pilot, lambda: "Menu" in screen.status.text, "the hints to come back")
+                    await wait_until(pilot, lambda: "Scroll" in screen.status.text, "the hints to come back")
 
     for size in SIZES:
         asyncio.run(_at(*size))

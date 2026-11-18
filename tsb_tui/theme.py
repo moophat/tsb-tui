@@ -184,7 +184,7 @@ def lift(fg: str, bg: str, ratio: float) -> str:
 def surface_colour(bg: str, variant: str) -> str:
     """Nearest quantized HSL-lightness change reaching 1.2:1 (P1 O7).
 
-    Hue and saturation stay fixed; the theme variant sets the direction.
+    Hue and saturation stay fixed; try the variant direction, then its opposite.
     Bisection brackets the first passing RGB quantization boundary.
     """
     h, light, saturation = colorsys.rgb_to_hls(*(int(bg[i:i + 2], 16) / 255 for i in (1, 3, 5)))
@@ -192,6 +192,11 @@ def surface_colour(bg: str, variant: str) -> str:
 
     def colour(value: float) -> str:
         return "#" + "".join(f"{round(c * 255):02x}" for c in colorsys.hls_to_rgb(h, value, saturation))
+
+    if contrast_ratio(colour(high), bg) < 1.2:
+        high = 0.0 if variant == "dark" else 1.0
+        if contrast_ratio(colour(high), bg) < 1.2:
+            raise ThemeError(f"background {bg}: cannot derive a surface at 1.2:1; choose another background")
 
     for _ in range(48):
         mid = (low + high) / 2

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .theme import relative_luminance
+from .theme import ThemeError, relative_luminance, surface_colour
 
 _SLUG = re.compile(r"[a-z0-9-]+")
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
@@ -314,6 +314,12 @@ def parse_theme(path: Path, *, yours: bool = False) -> ChromeTheme:
     # missing roles come from the packaged defaults), so `config.load` computes it.
     if variant is None and "bg" in roles:
         variant = "light" if relative_luminance(roles["bg"]) > 0.179 else "dark"
+
+    if "bg" in roles:
+        try:
+            surface_colour(roles["bg"], variant)
+        except ThemeError as exc:
+            raise ThemeFileError(f"{path}: theme {theme_id!r}: {exc}") from None
 
     return ChromeTheme(id=theme_id, name=name, variant=variant, scheme=scheme,
                        roles=roles, path=path, yours=yours)

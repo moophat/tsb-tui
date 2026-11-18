@@ -783,3 +783,125 @@ Done: all six amendments implemented within scope; label-click race red/green un
 Verified: required owner-view-only 120-column snapshot and 160-column clickable action-set assertions are unchanged and passed in the full run. All snapshot, status-row, target-form, saved-theme, picker, new redesign, first-use/Menu and discoverability cases passed there. Final path/whitespace audit passed. No workflow/plan/program/vendor/frozen-input edits, commit or push. All commands launched by this continuation have exited; none remains running.
 
 Left: required full-suite cleanliness, plus the two previously authorized P1 help-text follow-ups listed above. Options for the gate owner: investigate/stabilize the two intermittent test scenarios and authorize another full gate, or authorize a fresh unchanged full gate to measure recurrence. Neither option was selected or executed: the instruction allowed one full run. Root cause is not claimed, and this phase is not reported as accepted.
+
+## Round 1
+
+**AI-Model:** gpt-6.1-sol
+**Status:** IN PROGRESS — Amendments 1–3 resolve the earlier stops; all focused corrections pass, and the final unchanged-tree full gate is running (history and results below).
+
+Read the complete round-1 brief and inspected the PR-head implementation, phase and prior report. The required existing test, `tests/test_drive_click_label.py::test_click_label_follows_a_label_moved_by_pending_refresh`, moves `label_x` from 2 to 20 inside its fake `click`, after the click offset was supplied. It then requires the last click to have used the new position. Two stable `locate()` results before that call necessarily both see the old position. Settling before one click cannot satisfy this fixture; the existing second click is what makes it pass.
+
+The brief requires keeping this unit test while forbidding re-location or another click after dispatch. Stopped under its instruction to report options rather than choose an unspecified resolution:
+
+1. Recommended: authorize moving this fixture's pending layout change into its refresh wait, retaining the test's intended pre-P1 regression coverage; add the separately required action-moves-label test to enforce exactly one click.
+2. Keep the existing fixture unchanged and revise the one-click requirement. This would retain the risk finding 2 intends to remove.
+
+Done: brief and targeted context inspection; identified the conflicting test expectations before editing code. Verified: the fixture changes its coordinate only inside `click`, and the current driver re-locates and clicks again afterward. Left: resolution, tests-first red/green work for all seven findings, touched-file tests and the full test/lint/contract gates. No tests or build gates were run; no claim of passing verification. No commit or push. All commands started in this round have exited.
+
+### Amendment 1 continuation — tests first
+
+Amendment 1 resolves the stop above: move the existing label test's layout change into the refresh wait; retain its intent and add the action-moves-label case. Breakdown: (1) add behavioral regressions and record red, (2) implement the seven ruled fixes, (3) run new and touched-file coverage, (4) complete make test and rerun each failure alone once, then lint and contract-check, (5) record evidence and audit paths. Builder scope excludes orchestrator ledgers and phase files.
+
+Old → new: `test_click_label_follows_a_label_moved_by_pending_refresh` changes `label_x` during `finish_refresh` instead of `click`, and requires exactly one click instead of at most two. `test_click_label_action_that_moves_label_fires_once` independently covers movement caused by the click itself. Existing PR-head label test passed (baseline output `tui-r1-baseline.txt`, exit 0). New review coverage is in `tests/test_redesign_round1.py`; red run pending. All test runs use the brief's interpreter, explicit clone-root/contract-client PYTHONPATH and NO_COLOR unset, with direct external temporary output files.
+
+### Implementation checkpoint
+
+Done: workspace routing for Menu shortcuts/number/leader branches; bounded refresh/position settling before one label click; final-layer surface derivation and ignored surface overrides on load/switch; Alerts n hint; minimum four-character name prefix with retry from the original name after each hint drop; corrected help/string; opposite-direction surface bisection and actionable theme refusal. No priority knob is changed: the existing Take back ordering and each keyboard target's own hint order remain in force.
+
+Verified: initial PR-head regressions **13 failed, 1 passed**, exit 1 (`tui-r1-red.txt`); initial fixes **14 passed**, exit 0 (`tui-r1-green.txt`). Added defensive refusal tests and delayed-refresh case fail against the PR-head function bodies (**3 failed**, exit 1, `tui-r1-additional-red.txt`). The retained settled-position test initially had a vacuous coordinate comparison: replacing its boolean with the actual recorded offset proves the pre-P1 function clicks the old coordinate (**1 failed**, exit 1, `tui-r1-pre-p1-red-final.txt`); an earlier probe passed and is retained as `tui-r1-pre-p1-red.txt`, not claimed as red evidence. Latest review/new tests **18 passed**, exit 0 (`tui-r1-new-final.txt`). Function-body baseline probes load source from git into memory and never check out or alter program or production files.
+
+Left: finish assertion updates for the ruled name behavior, run touched-file coverage and complete all gates. Initial broader regression run exposed obsolete bare-ellipsis assertions and a full-name monotonicity assertion incompatible with restoring a longer name after dropping a hint (21 failed, 97 passed, exit 1, `tui-r1-regressions-initial.txt`). Follow-up reached 95 passed with three failures (exit 1, `tui-r1-updated-green.txt`); this overlapped edits, so it is diagnostic only and will be replaced by a completed run on an unchanged tree. Ruff preflight found three new-test import issues, all safely fixed.
+
+Focused checkpoint: all new, redesign, contrast, status-row, configuration, theme-file and chrome-theme cases have passed so far; 429-case run continues without source edits. The binding-context read-only review found no relevant frozen-clause conflict. Status assertions now recognize only >=4-character name prefixes; name survival is checked within each full/compact layout, since crossing the existing 80-column boundary frees cells. The original full-name monotonicity check mistook a shortened name for removal and contradicted the explicitly requested longer-name retry after hint removal. No snapshots were rewritten.
+
+### Focused gate and full-gate start
+
+Final focused coverage: **429 passed in 499.84 s**, exit **0**, output `tui-r1-touched.txt`. Command: `env -u NO_COLOR "$P1_PYTHON" -m pytest tests/test_redesign_round1.py tests/test_drive_click_label.py tests/test_redesign_keys.py tests/test_redesign_contrast.py tests/test_status_row.py tests/test_status_row_narrow.py tests/test_drive_front_and_version.py tests/test_config.py tests/test_theme_files.py tests/test_chrome_themes.py tests/test_theme_picker.py tests/test_saved_theme.py tests/test_view_and_quit.py tests/test_first_use_leader.py tests/test_leader_and_menu.py tests/test_discoverability.py tests/test_fleet_view.py tests/test_new_session_telnet.py -p no:cacheprovider`. PYTHONPATH and output handling as above. All six existing P1 SVGs passed unchanged. No skips in this focused run.
+
+Existing assertion updates, old → new: status-row bare `…` names now assert the ruled retained names/prefixes (`rtr-core…`, `rtr-core-01`, `rtr-…`, `rtr-c…`, `a-ver…`); phone name returns whole after lower-priority hints leave. Compact hint-drop expectation removes Detach because it has already dropped at that sweep's starting width. Narrow-row helper expands only prefixes of >=4 characters; survival counts shortened names and resets at the existing compact breakpoint. The pure name-before-hints example widths change 20/12 → 22/14 to make room for the new five-cell minimum. `test_all_keys_marks_target_edit_permission` changes n/create → a/Add target. New help coverage asserts n/New session, a/Add target and Ctrl+backslash in TARGET_REQUIRED. The Menu action test opens Settings then F1 in a pending-leader context to exercise shortcut mode; ordinary F1 search typing remains covered by unchanged P1 tests.
+
+Done: all seven fixes and focused gate. Verified: new red/green tests, pre-P1 settled-coordinate regression, 429-case unchanged-tree focused run. Left: full make test to completion, isolated failure reruns if any, make lint, make contract-check, final path/whitespace audit. No source edits are planned during the full gate.
+
+Full-gate checkpoint: 2,252 tests collected; through 19%, no failures reported. Discoverability, all three click-label cases, drive accounts and drive-command tests passed. The previous gate's intermittent live-read case passed in this run. No source edits during the full gate; same foreground command continues.
+
+Full-gate checkpoint: through 45%, no failures reported; drive send/screen-lock/waits, first-use leader, Fleet and input-path tests passed. Three existing installer dependency skips appeared; no skip/xfail was added. Same uninterrupted foreground run; no production or test edits.
+
+Full-gate checkpoint: through 62%, no failures reported. Both previously intermittent P1 failures passed in this run, as did all redesign contrast, key and Round 1 review regressions. Three existing installer dependency skips remain the only skips observed. Same uninterrupted command; no source edits.
+
+Full-gate checkpoint: one failure appeared in `tests/test_snapshots.py` around 76%; its identity/traceback is pending suite completion. Run continues through 79% without interruption or source changes. The isolated rerun and diagnosis follow completion, not a restarted or hidden full gate.
+
+### Final Round 1 gate and stop
+
+| Check | External output basename | Result |
+|---|---|---|
+| New/review acceptance | `tui-r1-new-final.txt` | 18 passed, exit 0 |
+| Touched-file and relevant regressions | `tui-r1-touched.txt` | 429 passed in 499.84 s, exit 0 |
+| Full `env -u NO_COLOR make test PYTHON="$P1_PYTHON"` | `tui-r1-test.txt` | **1 failed, 2248 passed, 3 skipped** in 2273.88 s, make exit **2** |
+| Exact failure rerun alone once | `tui-r1-snapshot-alone.txt` | **1 failed** in 2.04 s, exit **1** |
+| `env -u NO_COLOR make lint PYTHON="$P1_PYTHON"` | `tui-r1-lint.txt` | Ruff passed, 110 auxiliary tests passed, import/docs/leak/engine checks passed, exit **0** |
+| `env -u NO_COLOR make contract-check` | `tui-r1-contract.txt` | program clean at v0.18.0, exit **0** |
+
+Every gate used the brief's interpreter and explicit clone-root/contract-client PYTHONPATH, with NO_COLOR unset and output redirected directly to its own external temporary file. Exact isolated command: `env -u NO_COLOR "$P1_PYTHON" -m pytest 'tests/test_snapshots.py::test_f12_the_status_row_in_each_state[owner-view-only-120x40]' -vv -p no:cacheprovider`. No test failed solely for a missing Python package. The three skips are existing `tests/test_installers.py` cases at its two PowerShell/Pester dependency skip sites (one and two cases); those checks remain unverified here.
+
+The failure is deterministic in this run: `test_f12_the_status_row_in_each_state[owner-view-only-120x40]` requires `Ctrl+backslash t Take back`, but the row contains the full session name and Menu with no Take back. The minimum name prefix cannot fit alongside all the existing state words and the Take back/Menu hints at this width. Retrying after removing every droppable hint drops Take back itself and then restores the whole name. The original acceptance assertion was not modified. No source or tests changed during or after the full gate.
+
+**Unspecified boundary, STOP:** finding 5 says Take back, Scroll and the keyboard's own actions stay high priority, while name removal waits until every droppable hint is gone. The current design has a priority order but no protected-hint category other than Menu (or a keyboard target's last hint). The brief does not settle whether the named high-priority hints become protected, or whether state text should yield while a minimum name and those hints remain. Options, not selected:
+
+1. Recommended: define Take back, Scroll and the keyboard target's required actions as protected hints that survive the name. After ordinary droppable hints are gone, allow the name to leave whole using the existing body survival order. Confirm the protected set and its relationship to configurable hint priority.
+2. Preserve the minimum name alongside high-priority hints by shortening/removing other status phrases first. This changes the existing body survival order and needs an explicit ordering ruling.
+
+Done: six review findings pass their tests; finding 5 has the minimum-prefix and longer-name retry implemented, but is **not accepted** because it loses Take back at the required width. Verified: completed focused/full/lint/contract gates and one isolated failure rerun, no rewritten snapshots, no added skips/xfails. Left: operator/orchestrator ruling on the status priority boundary, its implementation, focused regression verification and a clean full gate. Both previously intermittent P1 failures passed in this full run; the new deterministic failure is not dismissed as timing.
+
+Final path audit: all changed paths are within the round-1 allowlist, including the new review test file; terminal.py changes only the Alerts hint list, new_session.py only TARGET_REQUIRED. No workflow/plan/program/vendor/frozen-input edits, commit or push. Whitespace check passes. All commands started in this continuation have exited; the read-only context sub-agent completed and started no persistent process.
+
+### Amendment 2 — protected-hint capacity stop
+
+**AI-Model:** gpt-6.1-sol
+
+Read Amendment 2 in full. It resolves the prior survival-order boundary: Take back, Scroll and the keyboard target's own actions are protected and never dropped; shorten the name to at least four characters plus ellipsis, drop ordinary hints, then remove the name whole. Before editing, checked the existing keyboard-target hints against the fixed one-row viewport budget. No new production or test edits were made in this continuation.
+
+The Targets keyboard target already supplies eight actionable hints without target.edit: `n New session`, `⏎ New session here`, `/ Query`, `Space Mark`, `l Save login…`, `p Map…`, `Tab Next tab`, `Esc Back`. Their labels/keys total 87 cells, plus 21 existing gap cells: **108 cells**. With target.edit, Add/Edit/Delete add three actionable hints: **128 label/key cells plus 30 gap cells = 158 cells**. At an 80-column window the status row has **76 cells** after the existing four-column rail. At 160 it has **156 cells**, so the editable hint set still exceeds the row even without any left-side text. All measured hints have non-None actions; this is not a question about protecting explanatory text. Removing every inter-hint gap still cannot fit 128 cells into 76.
+
+Verification: a read-only Python calculation called the existing `TerminalScreen._fleet_view_keys_target` with lightweight workspace doubles for both permission states, then counted each emitted actionable key/label plus the actual `GAP`. Output `tui-r1-a2-hint-budget.txt`, exit **0**, with NO_COLOR unset, the brief's interpreter and explicit clone-root/contract-client PYTHONPATH. The calculation confirms the capacity conflict before any implementation. It started no persistent process.
+
+**STOP — unspecified layout:** Amendment 2's never-drop requirement cannot retain all these hints visibly in the existing single status row at the required sizes. The phase's viewport/reachability acceptance and `build_pieces`' exact-width invariant remain binding; silent clipping would make protected actions disappear. Options, not selected:
+
+1. Define compact labels or a paging/overflow interaction for keyboard-target hints, including how the operator reaches every protected action at 80 columns. This needs exact layout/interaction rulings before a builder implements it.
+2. Narrow the protected keyboard-target set to an explicitly named subset and permit the remaining hints to drop by a ruled order. This requires an amendment to the all-actions protection rule.
+
+Done: read Amendment 2 and measured both real Targets hint sets before writing. Verified: deterministic cell budgets above; no implementation guess, no snapshot weakening. Left: capacity/layout ruling, Amendment 2 tests-first implementation (including the owner-view-only snapshot old → new), then the full requested gates. No new test/build gate was run because the amendment cannot yet be implemented without choosing a layout. The previous continuation's 429-test focused pass, full-suite deterministic snapshot failure, lint pass and contract-check pass remain recorded above and are not relabelled as Amendment 2 verification. No commit or push; all commands started here exited.
+
+
+### Amendment 3 — implementation and verification in progress
+
+**AI-Model:** gpt-6.1-sol
+
+The protected hint set is exactly Take back and Scroll. Every ordinary hint, including Menu and focused-list hints, now drops in its existing priority order before the name leaves whole. The existing body survival order applies after ordinary hints are exhausted; no new state-text ranking or compact wording is introduced. Tests first: the new protection regression failed twice on the pre-amendment implementation (`tui-r1-a3-red.txt`, exit 1). Initial diagnostic coverage found obsolete Menu/Scroll and name assertions (44 failed, 71 passed, `tui-r1-a3-diagnostic.txt`, exit 1); one new 120-column assertion incorrectly demanded name removal even when dropping ordinary hints left room, and is corrected to require the surviving shortened name.
+
+Snapshot diagnostic, old → new: `test_f12_the_status_row_in_each_state[owner-view-only-120x40]` previously kept the full name and Menu while dropping Take back; it now keeps Take back and Scroll, removes the name whole and drops Menu. The existing Take back assertion remains; explicit absence of name/Menu is added at 120. Output `tui-r1-a3-snapshot-diagnostic.txt`, exit 1 on the old unconditional Menu assertion. Focused verification including all snapshot cases is running. No commit or push.
+
+
+Amendment 3 checkpoint: the diagnostic run including snapshots completed with 12 failed/191 passed (`tui-r1-a3-updated.txt`, exit 1). Its remaining assertions expected Menu instead of protected Scroll, expected a name where the minimum no longer fit, or waited for a droppable Menu hint before opening the Menu. Corrected those assertions without dropping the protected-hint, exact-width, state-word, countdown or separator checks. At 65 cells the existing body survival order cannot fit both protected hints plus the owner's full typing fact and REC; the explicit expected row now records that these body words yield after ordinary hints and the name. No new body-word policy was selected.
+
+Broader touched-file run: 6 failed/513 passed in 584.47 s (`tui-r1-a3-touched.txt`, exit 1). All snapshot cases passed; remaining failures were in leader/consumer discoverability tests waiting for droppable Detach/Menu. Detach remapping is checked at 200 instead of 120 cells. Menu click-only reachability uses the existing rail entry when the status hint drops; the driver closes the existing covering sidebar through its existing close control first. It still clicks every enabled action and verifies each effect and no session input. The first reachability follow-up had 2 failed/43 passed (`tui-r1-a3-reachability.txt`, exit 1); isolated rail probes confirmed the sidebar coverage (`tui-r1-a3-rail-diagnostic.txt` and `tui-r1-a3-rail-screen.txt`, exit 1 each). Final reachability run is pending.
+
+Lint preflights caught one missing import blank line and then an unused test import after moving click entry to the rail (`tui-r1-a3-lint.txt` and `tui-r1-a3-lint-final.txt`, make exit 2 each). Both fixed; completed lint passes (`tui-r1-a3-lint-verified.txt`, exit 0), including Ruff, auxiliary tests, import/docs/leak/engine checks. Contract-check passes (`tui-r1-a3-contract.txt`, exit 0), program clean at v0.18.0.
+
+
+Final reachability coverage: **45 passed in 127.55 s**, exit **0** (`tui-r1-a3-reachability-final.txt`). This covers the new review regressions, leader mapping, click-only Menu actions at all three widths, and every enabled driver Menu action. Only docstrings/comments and an unused import were cleaned while that process was running; no behavior changed. Full `env -u NO_COLOR make test PYTHON="$P1_PYTHON"` started with separate output `tui-r1-a3-test.txt`. Source/tests are frozen for this full gate. Remaining: completed full result, one isolated rerun per failure, final lint/path audit and report status.
+
+
+Full-gate checkpoint: 2,253 tests collected, through 65%; one failure observed in the mouse/status-hint test, pending completed traceback and required isolated rerun. Review regressions, redesign keys/contrast, click-only discoverability, click-label, final-layer themes and drive tests passed. Three existing PowerShell/Pester installer skips observed. No source/tests edited during the full run. Path audit confirms original report is retained byte-for-byte before the appended Round 1 section, all changed/untracked paths allowed, no machine paths in Round 1, program unchanged.
+
+
+### Amendment 3 completed full gate — two remaining legacy assertions
+
+Full make test completed: **2 failed, 2248 passed, 3 skipped in 2201.82 s**, make exit **2**, `tui-r1-a3-test.txt`. Exact isolated reruns, once each before changes: `test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths` failed again (1 failed in 11.95 s, exit 1, `tui-r1-a3-mouse-alone.txt`); `test_the_banner_carries_the_contracts_notice_whole_at_every_width_and_the_row_stays_one_row` failed again (1 failed in 1.27 s, exit 1, `tui-r1-a3-stale-alone.txt`). Both required the ordinary Menu hint to survive at 65 columns. No production defect or timing explanation was inferred.
+
+Assertions old → new: the mouse test waits for protected Scroll and verifies its presence instead of requiring Menu, while still clicking every available hint and checking each action's effect. The stale-banner test retains the complete contract notice, exact one-row width, stale phrase and chooser/refusal assertions, and now requires Take back and Scroll instead of Menu. These are the only edits after the completed full gate; production remains unchanged. Final two-file coverage and a new complete full gate are pending.
+
+
+Final two-file coverage: **14 passed in 44.56 s**, exit **0**, `tui-r1-a3-final-two.txt`. Final full make test now runs on the finished source/test tree with output `tui-r1-a3-test-final.txt`; lint and contract-check have separate final outputs. No further source/test edits are planned during this gate.
+
+
+Final-gate checkpoint: through 55%, one failure in drive-command coverage pending full traceback and the mandated isolated rerun; no source/test edits since gate start. Final lint passes (`tui-r1-a3-lint-gate.txt`, exit 0), including Ruff and 110 auxiliary checks; final contract-check passes (`tui-r1-a3-contract-final.txt`, exit 0), clean v0.18.0. Three existing PowerShell/Pester skips remain unverified. The prior completed full gate and isolated stale-assertion failures remain recorded above, not relabelled as passing.

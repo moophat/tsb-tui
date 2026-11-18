@@ -3320,7 +3320,8 @@ class TerminalScreen(Screen):
         click = FLEET_VIEW_HINT
         view = self.fleet_view
         if view is not None and view.tab == TAB_ALERTS:
-            return KeysTarget("fleet view", (Hint("Tab", "Next tab", click + CMD_TAB),
+            return KeysTarget("fleet view", (Hint("n", "New session", click + CMD_NEW),
+                                             Hint("Tab", "Next tab", click + CMD_TAB),
                                              Hint("Esc", "Back", click + CMD_CLOSE)))
         if view is not None and view.tab == TAB_TARGETS:
             writes = ()

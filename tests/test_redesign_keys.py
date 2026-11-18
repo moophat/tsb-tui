@@ -177,9 +177,9 @@ def test_status_shortens_session_before_dropping_the_lowest_hint():
 
     left = [Item("text", ("a-long-session-name",), RANK_NAME)]
     hints = [("low", [Piece("l Low", "hint")]), ("menu", [Piece("F1 Menu", "hint")])]
-    text, kept = _fit(left, hints, ["low"], 20)
+    text, kept = _fit(left, hints, ["low"], 22)
     assert [name for name, _ in kept] == ["low", "menu"]
     assert "".join(piece.text for piece in text).endswith("…")
-    text, kept = _fit(left, hints, ["low"], 12)
+    text, kept = _fit(left, hints, ["low"], 14)
     assert [name for name, _ in kept] == ["menu"]
     assert "".join(piece.text for piece in text).endswith("…")

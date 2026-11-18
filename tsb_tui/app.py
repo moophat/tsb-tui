@@ -271,7 +271,7 @@ class MenuPalette(CommandPalette):
             return False
         from .model import actions
 
-        screen = self._calling_screen
+        screen = self.app.workspace()
         event.stop()
         event.prevent_default()
         if event.key == self.app.cfg["keys.leader"]:

@@ -20,13 +20,14 @@ from textual.command import CommandList, CommandPalette, SearchIcon
 from textual.content import Content
 from textual.css.query import NoMatches
 from tsbc import _serve
+from workspace_support import rail_row
 
 from tsb_tui.app import MenuProvider, TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.size_dialog import SizeDialog
 from tsb_tui.screens.terminal import TerminalScreen
 from tsb_tui.screens.whos_here import WhosHereScreen
-from tsb_tui.widgets.status_row import StatusRow
+from tsb_tui.widgets.rail import ACT_MENU, Rail
 
 LEADER = "ctrl+backslash"
 # The pinned environment (conftest) holds the Menu's timer at 10 s, so `^\ <letter>` never races it;
@@ -393,7 +394,7 @@ def test_keys_leader_map_rebinds_a_letter_and_the_old_letter_runs_nothing(
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
-        async with app.run_test(size=(120, 24)) as pilot:
+        async with app.run_test(size=(200, 24)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
             await wait_until(pilot, lambda: "Ctrl+\\ q Detach" in screen.status.text, "the row to print the new letter")
             assert "Ctrl+\\ d Detach" not in screen.status.text
@@ -442,10 +443,10 @@ def test_every_menu_action_is_reachable_by_a_click_alone(
         app = TsbTuiApp(url)
         async with app.run_test(size=(width, 40)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
-            await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
+            await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
 
             for action_id, expected in (("who", WhosHereScreen), ("size", SizeDialog)):
-                await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+                await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
                 await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), "the Menu to open")
                 await wait_until(pilot, lambda: len(_menu_texts(app.screen)) == len(A.menu_actions()),
                                  "the Menu to fill")
