@@ -109,7 +109,7 @@ class MenuProvider(Provider):
     too and says why, so the Menu is the complete list and never a guess at what exists."""
 
     def _entries(self) -> list[tuple[Any, str, str | None]]:
-        return self.screen.menu_entries()
+        return self.app.workspace().menu_entries()
 
     def _entry(self, action: Any, keys: str, why: str | None) -> tuple[Any, str]:
         """The callback that runs `action` and the help line under its name. An action with no key of its own
@@ -123,7 +123,7 @@ class MenuProvider(Provider):
         help_text = " · ".join(parts)
         if why is not None:
             help_text = f"[{role_colours(self.app.cfg)['text_muted']}]{markup_escape(help_text)}[/]"
-        screen = self.screen
+        screen = self.app.workspace()
 
         async def run() -> None:
             await screen.run_action_id(action.id)
@@ -183,19 +183,26 @@ class MenuPalette(CommandPalette):
 
     DEFAULT_CSS = """
     MenuPalette #--container {
+        visibility: visible;
         border: round $frame;
         height: auto;
         max-height: 90%;
         background: $surface;
     }
     MenuPalette #--results { overlay: none; }
+    MenuPalette SearchIcon { color: $foreground; }
+    MenuPalette #--input { border: hkey $frame; }
+    MenuPalette Input > .input--placeholder { color: $text-muted; text-style: none; }
     MenuPalette CommandList {
         background: $surface;
+        border-bottom: hkey $frame;
         max-height: 60vh;
-        scrollbar-color: $foreground-muted;
-        scrollbar-color-hover: $foreground-muted;
-        scrollbar-color-active: $foreground-muted;
+        scrollbar-color: $text-muted;
+        scrollbar-color-hover: $text-muted;
+        scrollbar-color-active: $text-muted;
     }
+    MenuPalette CommandList > .option-list--option,
+    MenuPalette CommandList > .option-list--option-highlighted { text-style: none; }
     MenuPalette #--container:dark { background: $surface; }
     MenuPalette #--input, MenuPalette #--results { background: $surface; }
     MenuPalette #menu-key-message { height: 1; background: $surface; }
@@ -214,9 +221,9 @@ class MenuPalette(CommandPalette):
 
     def _refresh_command_list(self, command_list, commands, clear_current):
         entries = {action.label: (action, keys, why)
-                   for action, keys, why in self._calling_screen.menu_entries()}
+                   for action, keys, why in self.app.workspace().menu_entries()}
         width = max(12, (command_list.size.width or self.app.size.width - 2) - 4)
-        key_width = min(8, width // 5)
+        key_width = max(12, min(16, width // 4))
         name_width = min(30, max(8, width - key_width - 12))
 
         def fit(value, length):
@@ -230,10 +237,10 @@ class MenuPalette(CommandPalette):
             if len(name.plain) > name_width:
                 name = name[:name_width - 1] + Content("…")
             name += Content(" " * (name_width - len(name.plain)))
-            prompt = (Content(f"{fit(keys, key_width)} ") + name
+            prompt = (Content(f"{fit(keys, key_width)} ").stylize("bold") + name
                       + Content(f" {fit(description, max(1, width - key_width - name_width - 2))}"))
             if why is not None:
-                prompt = prompt.stylize_before("dim")
+                prompt = prompt.stylize_before(role_colours(self.app.cfg)["text_muted"])
             rendered.append(Command(prompt, command.hit, id=command.id, disabled=why is not None))
         super()._refresh_command_list(command_list, rendered, clear_current)
         command_list.highlighted = next((i for i, option in enumerate(command_list.options)
@@ -297,18 +304,19 @@ class MenuPalette(CommandPalette):
 
     def _action_escape(self) -> None:
         if self._calling_screen is not None:
-            self._calling_screen._cancel_leader()
+            self.app.workspace()._cancel_leader()
         super()._action_escape()
 
     async def _on_unmount(self) -> None:
         if self._calling_screen is not None:
-            self._calling_screen._cancel_leader()
+            self.app.workspace()._cancel_leader()
         await super()._on_unmount()
 
     def _ascii_icon(self) -> None:
         icons = list(self.query(SearchIcon))
         if icons:
             icons[0].icon = "/"
+            icons[0].refresh()
         else:
             self.call_after_refresh(self._ascii_icon)
 
@@ -437,6 +445,15 @@ class TsbTuiApp(App):
                 event.prevent_default()
                 return
             self.screen_lock.note_input()
+        if isinstance(event, events.Key) and not event.is_forwarded and event.key == "f1":
+            from .screens.lock import LockScreen
+            from .screens.login import LoginScreen
+
+            event.stop()
+            event.prevent_default()
+            if not isinstance(self.screen, (LockScreen, LoginScreen)):
+                self.open_menu()
+            return
         if (isinstance(event, events.Key) and not event.is_forwarded
                 and isinstance(self.screen, MenuPalette)
                 and await self.screen.handle_menu_key(event)):

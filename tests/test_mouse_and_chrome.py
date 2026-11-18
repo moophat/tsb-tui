@@ -422,14 +422,14 @@ def test_tooltips_name_each_glyphs_word_and_key_and_follow_the_glyph_set_and_the
     on = asyncio.run(_check({}))
     assert on[0].startswith("a-very-long-target-name · s.") and "you type" in on[0], on
     assert on[1].startswith("◂ close the sidebar"), on
-    assert on[2] == "≡ Menu ^\\ · every action, searchable", on
-    assert on[3].startswith("▦ Fleet ^\\ f"), on
-    assert on[4].startswith("1 rtr-core-01 · you type") and on[4].endswith("^\\ 1"), on
-    assert on[5] == "+ New session ^\\ c", on
+    assert on[2] == "≡ Menu Ctrl+\\ · every action, searchable", on
+    assert on[3].startswith("▦ Fleet Ctrl+\\ f"), on
+    assert on[4].startswith("1 rtr-core-01 · you type") and on[4].endswith("Ctrl+\\ 1"), on
+    assert on[5] == "+ New session Ctrl+\\ c", on
     assert on[6].startswith("Who's here… · "), on
 
     ascii_set = asyncio.run(_check({"TSB_TUI_GLYPHS_SET": "ascii"}))
-    assert ascii_set[2].startswith("= Menu ^\\") and ascii_set[3].startswith("# Fleet ^\\ f"), ascii_set
+    assert ascii_set[2].startswith("= Menu Ctrl+\\") and ascii_set[3].startswith("# Fleet Ctrl+\\ f"), ascii_set
 
     off = asyncio.run(_check({"TSB_TUI_MOUSE_TOOLTIPS": "false"}))
     assert off == ["None"] * 7, off

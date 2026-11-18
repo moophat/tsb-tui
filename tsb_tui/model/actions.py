@@ -40,7 +40,7 @@ GROUPS = (GROUP_SESSION, GROUP_FLEET, GROUP_VIEW, GROUP_SETTINGS)
 # `keys.leader` knob holds. The design's own reasons (§2.4) rule out every Ctrl-letter: they are
 # readline's, a router's or the session's. These four are the control keys that are none of those.
 LEADER_LABELS: dict[str, str] = {
-    "ctrl+backslash": "^\\",
+    "ctrl+backslash": "Ctrl+\\",
     "ctrl+right_square_bracket": "^]",
     "ctrl+circumflex_accent": "^^",
     "ctrl+underscore": "^_",

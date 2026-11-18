@@ -149,7 +149,7 @@ def test_the_leader_works_while_the_attach_is_still_starting_and_other_keys_go_t
             screen = app.screen
             await wait_until(pilot, lambda: screen.status is not None and "attaching" in screen.status.text,
                              "the row to say it is attaching")
-            assert screen.pump is None and "^\\ d Detach" in screen.status.text
+            assert screen.pump is None and "Ctrl+\\ d Detach" in screen.status.text
 
             await pilot.press(LEADER, "d")
             await wait_until(pilot, lambda: _detached(screen), "Detach to leave")
@@ -188,7 +188,7 @@ def test_ctrl_q_still_quits_while_the_attach_is_starting(serve, monkeypatch, wai
 NEVER_TAKEN = [
     ("a", b"a"), ("?", b"?"), ("|", b"|"), (":", b":"), ("/", b"/"),
     ("d", b"d"), ("w", b"w"), ("r", b"r"), ("R", b"R"), ("f", b"f"), ("x", b"x"), ("c", b"c"),
-    ("escape", b"\x1b"), ("tab", b"\t"), ("f1", b"\x1bOP"), ("f9", b"\x1b[20~"),
+    ("escape", b"\x1b"), ("tab", b"\t"), ("f9", b"\x1b[20~"),
     ("ctrl+a", b"\x01"), ("ctrl+b", b"\x02"), ("ctrl+d", b"\x04"), ("ctrl+p", b"\x10"),
     ("ctrl+q", b"\x11"), ("ctrl+z", b"\x1a"), ("ctrl+right_square_bracket", b"\x1d"),
 ]
@@ -204,6 +204,10 @@ def test_every_key_but_the_leader_reaches_the_session(serve, monkeypatch, wait_u
         serve_app, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 24)) as pilot:
+            login = app.screen
+            await pilot.press("f1")
+            await pilot.pause()
+            assert app.screen is login
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
             for key, _ in NEVER_TAKEN:
                 await pilot.press(key)
@@ -211,6 +215,18 @@ def test_every_key_but_the_leader_reaches_the_session(serve, monkeypatch, wait_u
             await wait_until(pilot, lambda: serve_app.received(client_id) == wanted,
                              f"every key to reach the server, got {serve_app.received(client_id)!r}")
             assert app.screen is screen, "a key opened something it must not"
+            await pilot.press("f1")
+            await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), "F1 Menu")
+            assert serve_app.received(client_id) == wanted
+            await pilot.press("escape", LEADER, "L")
+            from tsb_tui.screens.lock import LockScreen
+
+            await wait_until(pilot, lambda: isinstance(app.screen, LockScreen), "lock")
+            locked = app.screen
+            await pilot.press("f1")
+            await pilot.pause()
+            assert app.screen is locked
+            assert serve_app.received(client_id) == wanted
 
     asyncio.run(_check())
 
@@ -354,7 +370,7 @@ def test_the_menu_names_a_key_only_where_there_is_one_mutes_what_is_unavailable_
                 if keys:
                     assert keys in hit.help, f"{action.id} lost its key"
                 else:
-                    assert "^\\" not in hit.help, f"{action.id} has no key but its help names one"  # fails today
+                    assert "Ctrl+\\" not in hit.help, f"{action.id} has no key but its help names one"  # fails today
                 styled = [span for span in hit.display.spans if span.style == muted]
                 assert bool(styled) is (why is not None), f"{action.id}: muted exactly when it is unavailable"
                 if why is not None:
@@ -379,8 +395,8 @@ def test_keys_leader_map_rebinds_a_letter_and_the_old_letter_runs_nothing(
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 24)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
-            await wait_until(pilot, lambda: "^\\ q Detach" in screen.status.text, "the row to print the new letter")
-            assert "^\\ d Detach" not in screen.status.text
+            await wait_until(pilot, lambda: "Ctrl+\\ q Detach" in screen.status.text, "the row to print the new letter")
+            assert "Ctrl+\\ d Detach" not in screen.status.text
 
             await pilot.press(LEADER, "d")
             await pilot.pause()

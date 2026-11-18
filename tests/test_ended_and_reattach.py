@@ -140,7 +140,7 @@ def test_esc_closes_the_dialog_and_the_row_keeps_the_end_with_c_and_fleet(wait_u
                 await wait_until(pilot, lambda: app.screen is screen, "the dialog to close")
                 row = screen.status.text
                 assert "✕ ended · stub-target · killed" in row
-                assert "c New session here" in row and "^\\ f Fleet" in row and "Esc close" not in row
+                assert "c New session here" in row and "Ctrl+\\ f Fleet" in row and "Esc close" not in row
                 await pilot.press("c")
                 await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "New session")
                 assert app.screen.query_one("#target-id").value == "stub-target"

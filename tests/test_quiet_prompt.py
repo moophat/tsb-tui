@@ -223,7 +223,7 @@ def test_the_leader_and_t_takes_the_keyboard_back_from_an_agent(wait_until, serv
             app = TsbTuiApp(url)
             async with app.run_test(size=(220, 40)) as pilot:
                 screen = await open_stub_terminal(app, pilot, wait_until)
-                assert "^\\ t Take back" in screen.status.text
+                assert "Ctrl+\\ t Take back" in screen.status.text
                 await pilot.press("ctrl+backslash", "t")
                 await wait_until(pilot, lambda: [f for f in stub.text_frames if f.get("t") == "handoff"],
                                  "the hand-off")

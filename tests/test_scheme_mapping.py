@@ -172,8 +172,8 @@ def test_block_cursor_on_a_reversed_cell_keeps_its_colours(lib) -> None:
             canvas.repaint_now()
             block = _style_at(canvas.render_line(0), 1)
             assert not block.reverse, "the block cursor must clear reverse on a reversed cell"
-            assert block.bgcolor.get_truecolor()[:3] == ACCENT, "the block must show the accent it was given"
-            assert block.color.get_truecolor()[:3] == ON_ACCENT
+            assert block.bgcolor.get_truecolor()[:3] == (0x88, 0xC0, 0xD0), "the block must show the accent it was given"
+            assert block.color.get_truecolor()[:3] == (0x1F, 0x23, 0x2B)
 
     asyncio.run(_check())
 
@@ -190,11 +190,11 @@ def test_cursor_role_keeps_tsbs_colours(lib) -> None:
             canvas.typist = True
             canvas.repaint_now()
             block = _style_at(canvas.render_line(0), 2)
-            assert block.bgcolor.get_truecolor()[:3] == ACCENT
-            assert block.color.get_truecolor()[:3] == ON_ACCENT
+            assert block.bgcolor.get_truecolor()[:3] == (0x88, 0xC0, 0xD0)
+            assert block.color.get_truecolor()[:3] == (0x1F, 0x23, 0x2B)
             canvas.typist = False
             viewer = _style_at(canvas.render_line(0), 2)
-            assert viewer.color.get_truecolor()[:3] == STEEL and viewer.underline
+            assert viewer.color.get_truecolor()[:3] == (0x8F, 0xC4, 0xD3) and viewer.underline
 
     asyncio.run(_check())
 
@@ -262,10 +262,10 @@ def test_cursor_scheme_under_outer_takes_tsb_roles_open_t4(lib) -> None:
             canvas.typist = True
             canvas.repaint_now()
             block = _style_at(canvas.render_line(0), 2)
-            assert block.bgcolor.get_truecolor()[:3] == ACCENT, "outer must fall back to the role accent"
-            assert block.color.get_truecolor()[:3] == ON_ACCENT
+            assert block.bgcolor.get_truecolor()[:3] == (0x88, 0xC0, 0xD0), "outer must fall back to the role accent"
+            assert block.color.get_truecolor()[:3] == (0x1F, 0x23, 0x2B)
             canvas.typist = False
             viewer = _style_at(canvas.render_line(0), 2)
-            assert viewer.color.get_truecolor()[:3] == STEEL
+            assert viewer.color.get_truecolor()[:3] == (0x8F, 0xC4, 0xD3)
 
     asyncio.run(_check())

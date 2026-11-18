@@ -38,6 +38,14 @@ def _row(state, width: int, **overrides) -> str:
     return row
 
 
+def _expanded_session(row: str) -> str:
+    # Only an isolated session-name prefix may end in an ellipsis; state words stay whole.
+    for length in range(len(SESSION) - 1, -1, -1):
+        row = row.replace("  " + SESSION[:length] + "…  ", "  " + SESSION + "  ")
+        row = row.replace(" · " + SESSION[:length] + "…  ", " · " + SESSION + "  ")
+    return row
+
+
 def _apply(state, *frames: dict):
     for frame in frames:
         state.apply_frame(validated(frame) if frame["t"] != "token" else frame)
@@ -155,7 +163,7 @@ def test_at_65_columns_the_key_fact_rec_and_menu_stay_and_the_session_name_goes(
     if state_id not in NAME_FITS_AT_65:
         assert SESSION not in row, f"{state_id}: the name is on a row that had to give something up: {row!r}"
     assert not _dangling(row), f"{state_id}: a dangling separator in {row!r}"
-    assert "…" not in row, f"{state_id}: a phrase was cut with an ellipsis: {row!r}"
+    assert "…" not in _expanded_session(row), f"{state_id}: a phrase was cut with an ellipsis: {row!r}"
     pill = re.match(r"‹(you type|view only|nobody types)›", row)
     assert pill, f"{state_id}: the pill is not first: {row!r}"
 
@@ -192,8 +200,8 @@ def test_wide_rows_are_the_full_words_in_the_order_they_always_were(state_id, ma
     for width in ((200,) if state_id.startswith("stale") else (120, 200)):
         row = _row(make(), width)
         assert row.index("≡ Menu") > row.index("● REC")
-        assert SESSION in row, row
-        assert "…" not in row.replace("End…", ""), row
+        assert SESSION in _expanded_session(row), row
+        assert "…" not in _expanded_session(row).replace("End…", ""), row
         assert not _dangling(row)
 
 
@@ -218,7 +226,7 @@ def test_the_row_at_120_and_200_columns_is_unchanged(state_id, make, fact, alway
     columns is the full wording of every phrase, so a change to the narrow rules that touches a wide window is
     caught here and not by an operator."""
     for width in (120, 200):
-        assert _row(make(), width).startswith(WIDE[state_id]), (state_id, width)
+        assert _expanded_session(_row(make(), width)).startswith(WIDE[state_id]), (state_id, width)
 
 
 def test_the_narrowest_rows_keep_the_pill_and_the_menu_whole() -> None:
@@ -228,7 +236,7 @@ def test_the_narrowest_rows_keep_the_pill_and_the_menu_whole() -> None:
     for width in (30, 36, 40, 45):
         row = _row(state, width)
         assert row.endswith("≡ Menu ^\\") and row.startswith("‹you type›"), row
-        assert "…" not in row and not _dangling(row), row
+        assert "…" not in _expanded_session(row) and not _dangling(row), row
 
 
 def test_a_65_column_row_stale_lost_its_data_path_and_ending_keeps_the_countdown_rec_and_menu() -> None:

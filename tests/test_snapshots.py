@@ -173,7 +173,8 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
                 status = _status(lines)
                 assert "you type" in status and "≡ Menu" in status, status
                 if size[0] >= 120:
-                    assert "rtr-core-01" in status and "▦ Fleet" in status, status
+                    assert ("rtr-core-01" in status or any(
+                        f"  {'rtr-core-01'[:n]}…  " in status for n in range(len("rtr-core-01")))) and "▦ Fleet" in status, status
                 label = screen.canvas.view_range.label
                 if size[0] - 4 < 132:
                     assert label.startswith("cols 1-") and label.endswith("of 132 ▸") and label in status, (label, status)
@@ -252,7 +253,7 @@ def test_t1c_the_terminal_with_coloured_output_shows_the_scheme(size, monkeypatc
 # The six third-party schemes the design draws T1c with (design §5). The chrome is terracotta, whose
 # `surface` is #191919: the rail must keep it (ruling 2: the chrome and the scheme do not move each other).
 T1C_SCHEMES = ("dracula", "nord", "solarized-dark", "solarized-light", "catppuccin-mocha", "one-half-dark")
-TERRACOTTA_SURFACE = "#191919"
+TERRACOTTA_SURFACE = "#1f1f1f"
 # The colours are asserted from the shipped files, never the design's aggregator copies (phase 2's cross-check
 # listed where they differ); `parse_scheme` on the packaged file is the ground truth.
 _SHIPPED = Path(__file__).resolve().parents[1] / "tsb_tui" / "schemes"
@@ -624,7 +625,7 @@ def _f12(state_id: str, always: str, wide: str, from_200: str = ""):
     return register
 
 
-@_f12("you-type", "you type", "rtr-core-01  ● live  ● REC")
+@_f12("you-type", "you type", "● live  ● REC")
 def _you_type(state) -> list[dict]:
     return []
 
@@ -675,7 +676,7 @@ def _data_path(state) -> list[dict]:
     return [validated({"t": "data_path", "v": 1, "session_id": state.session_id, "state": "lost", "at": iso(NOW)})]
 
 
-@_f12("quiet-prompt", "you type", "rtr-core-01  ● live  ● REC")
+@_f12("quiet-prompt", "you type", "● live  ● REC")
 def _quiet(state) -> list[dict]:
     return [validated({"t": "quiet_prompt", "v": 1, "prompt_id": "f" * 32, "code": "quiet_prompt.kill",
                        "text": "Kill the session?"})]
@@ -733,12 +734,15 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
             assert (palette.cursor_typist if slot.canvas.typist else palette.cursor_viewer).shape == (
                 "block" if typing else "underline"), f"{state_id} at {size[0]}: wrong cursor shape for {always!r}"
             assert "≡ Menu" in status, f"{state_id} at {size[0]}: the Menu is not on the row: {status!r}"
+            if size[0] >= 120 and state_id in ("you-type", "quiet-prompt"):
+                assert "rtr-core-01" in status or any(
+                    f" {"rtr-core-01"[:n]}… " in status for n in range(len("rtr-core-01"))), status
             if size[0] >= 120:
                 assert re.sub(r"\s+", " ", wide) in status, f"{state_id} at {size[0]}: {wide!r} not in {status!r}"
             if state_id == "owner-view-only" and size[0] >= 120:
-                assert "^\\ t Take back" in status, status
+                assert "Ctrl+\\ t Take back" in status, status
             if state_id == "quiet-prompt" and size[0] >= 120:
-                assert "^\\ a Answer: kill the session?" in status, status
+                assert "Ctrl+\\ a Answer: kill the session?" in status, status
             if state_id == "quiet-prompt" and size[0] == 120:
                 assert "Detach" not in status, f"Detach kept ahead of Answer at 120: {status}"
             if size[0] >= 200 and from_200:

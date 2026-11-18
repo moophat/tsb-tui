@@ -4,8 +4,8 @@ now as clickable hints, always ending in the Menu and the Fleet.
 Two parts, kept apart so the layout is a pure function a test can read at any width:
 
 * `build_pieces(inputs, width)` turns the models into a list of `Piece`s that fill exactly `width` cells.
-  Hints drop from the right by `status.hint_priority` as the width shrinks and `≡ Menu ^\\` is the last
-  to go (D43). Then the words after the pill give way by a fixed survival order (`Item`, `_lay`): the
+  The session name shortens with a trailing ellipsis before hints drop by `status.hint_priority`;
+  the Menu is the last hint to go. Then the words after the pill give way by a fixed survival order (`Item`, `_lay`): the
   session name first and, last, the state warnings; what stays is the pill, the state's key fact, the
   countdown value and `● REC`; the Menu hint outlasts them all. A word is whole or gone, and no separator
   is left dangling. The one row never grows a second line: the stale notice is a banner over the canvas
@@ -389,8 +389,9 @@ def _lay(items: Sequence[Item], avail: int | None) -> list[Piece]:
     window narrows further: first the rest of the words leave, lowest rank first (the session name, then the
     state word, the keyboard note, the pan range, who types, then the keys-not-sent note); then the core (the
     pill, the key fact, the countdown value, REC, the state warnings) takes its shorter wordings; and only then
-    do the warnings, then REC, then the countdown, then the key fact, go. The pill stays. An item is whole or
+    do the warnings, then REC, then the countdown, then the key fact, go. The pill stays. A session name may end in an ellipsis; state phrases are whole or
     gone, and a separator is only ever put between two kept items, so none dangles."""
+    items = list(items)
     pick = {i: 0 for i in range(len(items))}  # item index -> wording (0 the fullest); absent: gone
     if avail is not None:
 
@@ -407,6 +408,12 @@ def _lay(items: Sequence[Item], avail: int | None) -> list[Piece]:
         for i in reversed([i for i in by_rank if items[i].rank > RANK_CORE]):
             if width() <= avail:
                 break
+            if items[i].rank == RANK_NAME and items[i].role == "text":
+                name = items[i].variants[0]
+                room = len(name) - (width() - avail)
+                if room > 0:
+                    items[i] = replace(items[i], variants=(name[:room - 1] + "…",))
+                    continue
             del pick[i]
         for i in core:
             while width() > avail and pick[i] < len(items[i].variants) - 1:
@@ -428,8 +435,8 @@ def _lay(items: Sequence[Item], avail: int | None) -> list[Piece]:
 
 def _fit(left: Left, hints: list[tuple[str, list[Piece]]], drop_order: list[str],
          width: int) -> tuple[list[Piece], list[tuple[str, list[Piece]]]]:
-    """Drop hints in `drop_order` until the row fits, never the last one named `menu` (or, in a
-    dialog, the last hint); then give the words before them up by the survival order (`_lay`), or, for a
+    """Shorten the session name first, then drop hints in `drop_order`, never the last named `menu`
+    (or, in a dialog, the last hint); then give the words before them up by the survival order (`_lay`), or, for a
     row of fixed words, cut the last with an ellipsis."""
     hints = list(hints)
     items = bool(left) and isinstance(left[0], Item)
@@ -438,8 +445,19 @@ def _fit(left: Left, hints: list[tuple[str, list[Piece]]], drop_order: list[str]
         gaps = len(GAP) * max(len(hints) - 1, 0)
         return (MIN_GAP if hints else 0) + sum(_width(p) for _, p in hints) + gaps
 
+    # Reserve the state phrases while shortening the session name before any hint leaves.
+    if items:
+        left = list(left)
+        for i, item in enumerate(left):
+            if item.rank == RANK_NAME and item.role == "text":
+                excess = _width(_lay(left, None)) + hints_width() - width
+                if excess > 0:
+                    name = item.variants[0]
+                    room = max(1, len(name) - excess)
+                    left[i] = replace(item, variants=(name[:room - 1] + "…",))
+
     def total() -> int:
-        return (_width(_lay(left, None)) if items else _width(left)) + hints_width()
+        return _width(_lay(left, None) if items else left) + hints_width()
 
     for name in drop_order:
         if total() <= width:
@@ -530,7 +548,7 @@ class StatusRow(Widget):
         self._styles: dict[str, Style] = {
             "text": base,
             "muted": base + Style(color=roles["text_muted"]),
-            "hint_key": base + Style(color=roles["text_muted"]),
+            "hint_key": base + Style(color=roles["text_muted"], bold=True),
             "hint": base,
             "glyph": base + Style(color=accent),
             "keys": base + Style(bold=True),

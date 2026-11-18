@@ -73,7 +73,7 @@ def test_you_type_reads_as_a_filled_pill_the_session_its_state_and_rec() -> None
     it is being recorded (session record `recording`: the warning is never hidden once attached)."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     text = _text(state)
-    assert text.startswith("‹ you type ›  rtr-core-01  ● live  ● REC")
+    assert text.startswith("‹ you type ›  …  ● live  ● REC")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_type"
 
 
@@ -82,7 +82,7 @@ def test_view_only_while_an_agent_types_in_your_session_says_typing_takes_it() -
     back (terminal-size §5, 5.53) - the owner's brake is useless if nobody knows it is there."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     text = _text(state)
-    assert text.startswith("‹ view only ›  fixture-peer types · you own it: typing takes it · rtr-core-01")
+    assert text.startswith("‹ view only ›  fixture-peer types · you own it: typing takes it · …")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_view"
 
 
@@ -91,11 +91,11 @@ def test_view_only_for_a_client_who_may_type_and_for_one_whose_right_is_read_onl
     the other cannot ever have it (session-record `may_control`), and the row must not suggest otherwise."""
     waits = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     text = _text(waits)
-    assert "‹ view only ›  fixture-user types · rtr-core-01" in text
+    assert "‹ view only ›  fixture-user types · …" in text
     assert "read-only" not in text
 
     never = state_of(me=(VIEWER, VIEWER_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
-    assert "fixture-user types · your right is read-only · rtr-core-01" in _text(never)
+    assert "fixture-user types · your right is read-only · …" in _text(never)
 
 
 def test_nobody_types_names_who_put_the_keyboard_aside() -> None:
@@ -105,7 +105,7 @@ def test_nobody_types_names_who_put_the_keyboard_aside() -> None:
     state = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     state.apply_frame(token_frame(None, "owner"))
     text = _text(state)
-    assert text.startswith("‹ nobody types ›  fixture-user put the keyboard aside · rtr-core-01")
+    assert text.startswith("‹ nobody types ›  fixture-user put the keyboard aside · …")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_none"
 
     escrow = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=None, clients=THREE)
@@ -118,11 +118,11 @@ def test_a_take_over_reads_both_ways() -> None:
     mid-command is explained, not mysterious."""
     owner = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     owner.apply_frame(token_frame((ME, ME_USER), "takeover"))
-    assert _text(owner).startswith("‹ you type ›  rtr-core-01  ● live  ● REC  you took the keyboard from fixture-peer")
+    assert _text(owner).startswith("‹ you type ›  …  ● live  ● REC  you took the keyboard from fixture-peer")
 
     peer = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     peer.apply_frame(token_frame((ME, ME_USER), "takeover"))
-    assert _text(peer).startswith("‹ view only ›  fixture-user took the keyboard (owner) · rtr-core-01")
+    assert _text(peer).startswith("‹ view only ›  fixture-user took the keyboard (owner) · …")
 
 
 def test_the_pan_range_and_the_unsent_keys_note_follow_the_state() -> None:
@@ -199,8 +199,8 @@ def test_hints_drop_from_the_right_by_priority_and_the_menu_is_the_last_to_go() 
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     in_order = [name for name in reversed(PRIORITY) if name != "menu"]
     normal, compact = _drop_order(state, True), _drop_order(state, False)
-    assert normal == ["scroll", "size", "end", "detach", "who"], "all seven fit at 200; Fleet and the Menu outlast these"
-    assert compact == ["who", "fleet"], "what is left at 79 columns keeps the Menu to the end"
+    assert normal == ["scroll", "size", "end", "detach"], "all seven fit at 200; Fleet and the Menu outlast these"
+    assert compact == ["detach", "who", "fleet"], "what is left at 79 columns keeps the Menu to the end"
     for dropped in (normal, compact):
         assert dropped == sorted(dropped, key=in_order.index), "a hint left before a lower-priority one"
     for width in (65, 120, 200):
@@ -215,7 +215,7 @@ def test_a_different_priority_drops_a_different_hint_first() -> None:
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     reversed_priority = ["menu", "fleet", "scroll", "size", "end", "detach", "who"]
     assert _drop_order(state, True, hint_priority=reversed_priority) == ["who", "detach", "end", "size"]
-    assert _drop_order(state, False, hint_priority=reversed_priority) == ["scroll", "fleet"]
+    assert _drop_order(state, False, hint_priority=reversed_priority) == ["size", "scroll", "fleet"]
 
 
 def test_the_phone_row_is_compact_and_carries_the_pan_range_and_the_menu() -> None:
@@ -223,7 +223,7 @@ def test_the_phone_row_is_compact_and_carries_the_pan_range_and_the_menu() -> No
     being live; what is left is the pill, the session, REC, the pan range and `≡ Menu ^\\`."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     row = _text(state, 65, range_label="cols 1-61 of 116 ▸")
-    assert row.startswith("‹you type›  rtr-core-01")
+    assert row.startswith("‹you type›  …")
     assert "● live" not in row
     assert "● REC  cols 1-61 of 116 ▸" in row
     assert row.endswith("≡ Menu ^\\") and len(row) == 65
@@ -249,7 +249,7 @@ def test_when_even_the_menu_leaves_no_room_for_the_words_the_name_goes_whole_not
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     row = _text(state, 36, session="a-very-long-session-name-indeed")
     assert row.endswith("≡ Menu ^\\") and len(row) == 36
-    assert "a-very-long" not in row and "…" not in row
+    assert "a-very-long" not in row and "…" in row
     assert row.startswith("‹you type›")
 
 

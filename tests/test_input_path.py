@@ -144,7 +144,6 @@ _DEFAULT_MODE_KEYS = [
     ("left", b"\x1b[D"),
     ("home", b"\x1b[H"),
     ("pageup", b"\x1b[5~"),
-    ("f1", b"\x1bOP"),
     ("f5", b"\x1b[15~"),
     ("f9", b"\x1b[20~"),  # no longer a key of ours: it detached the session before
     ("ctrl+a", b"\x01"),
@@ -186,6 +185,11 @@ def test_every_key_reaches_the_session_with_the_bytes_a_terminal_sends(
             assert got == want, [(key, w, g) for (key, w), g in zip(_DEFAULT_MODE_KEYS, got, strict=False)
                                  if w != g]
             assert isinstance(app.screen, TerminalScreen), "a key left the terminal screen"
+            await pilot.press("f1")
+            from tsb_tui.app import MenuPalette
+
+            await wait_until(pilot, lambda: isinstance(app.screen, MenuPalette), "F1 Menu")
+            assert serve_app.received(client_id) == want, "F1 sent bytes to the session"
 
     asyncio.run(_check())
 

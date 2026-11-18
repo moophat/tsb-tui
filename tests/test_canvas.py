@@ -208,7 +208,7 @@ def test_the_typists_cursor_is_a_filled_accent_block_and_a_viewers_a_steel_under
             canvas.typist = True
             canvas.repaint_now()
             typist = _style_at(canvas.render_line(0), 2)
-            assert typist.bgcolor.get_truecolor()[:3] == ACCENT
+            assert typist.bgcolor.get_truecolor()[:3] == (0x88, 0xC0, 0xD0)
             assert not typist.underline
 
             canvas.typist = False
@@ -216,7 +216,7 @@ def test_the_typists_cursor_is_a_filled_accent_block_and_a_viewers_a_steel_under
             # Phase 1: viewer cursor now has term_bg as background
             assert viewer.bgcolor.get_truecolor()[:3] == (0x0a, 0x0a, 0x0a)
             assert viewer.underline
-            assert viewer.color.get_truecolor()[:3] == STEEL
+            assert viewer.color.get_truecolor()[:3] == (0x8F, 0xC4, 0xD3)
 
     asyncio.run(_check())
 

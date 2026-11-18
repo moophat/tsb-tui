@@ -132,7 +132,7 @@ def test_the_leader_and_T_open_the_picker_and_the_session_stays_visible_beside_i
             fills = _rect_fills(app.export_screenshot())
             assert any(f == TSB_BACKGROUND and 4 <= x < 66 for f, x in fills), (
                 "the canvas lost the scheme's background under the picker")
-            assert any(f == TERRACOTTA_SURFACE and x < 4 for f, x in fills), (
+            assert any(f == NORD_SURFACE and x < 4 for f, x in fills), (
                 "the rail lost terracotta's surface under the picker")
             # the Menu's own way in: click `≡ Menu`, scroll to the entry, click it (the same path an
             # agent uses in test_discoverability, run here in the pilot — drive blocks `theme` by design).
@@ -168,6 +168,7 @@ def test_moving_the_lists_previews_the_look_at_once(serve, wait_until) -> None:
     async def check() -> None:
         gen = _session(serve, wait_until)
         app, screen, pilot = await gen.__anext__()
+        app.apply_look("terracotta", "tsb-default")
         picker = await _open_picker(pilot, app, screen, wait_until)
         _move(picker, "schemes", "dracula")
         await pilot.pause(0.2)
@@ -601,6 +602,7 @@ def test_the_status_note_names_the_chrome_theme_being_previewed(serve, wait_unti
     async def check() -> None:
         gen = _session(serve, wait_until)
         app, screen, pilot = await gen.__anext__()
+        app.apply_look("terracotta", "tsb-default")
         picker = await _open_picker(pilot, app, screen, wait_until)
         _move(picker, "themes", "nord")
         await pilot.pause(0.2)
@@ -694,26 +696,27 @@ def test_using_an_edited_user_theme_again_reapplies_its_css_colours(serve, wait_
         themes_dir = cfg_dir / "themes"
         themes_dir.mkdir(parents=True, exist_ok=True)
         (cfg_dir / "config.toml").write_text('[theme]\nname = "my-lab"\n', encoding="utf-8")
-        (themes_dir / "my-lab.toml").write_text('[theme]\nsurface = "#112233"\n', encoding="utf-8")
+        (themes_dir / "my-lab.toml").write_text('[theme]\nbg = "#112233"\n', encoding="utf-8")
         gen = _session(serve, wait_until)
         app, screen, pilot = await gen.__anext__()
-        assert app.cfg["theme.surface"] == "#112233", "the active user theme's surface did not load"
+        assert app.cfg["theme.bg"] == "#112233", "the active user theme's background did not load"
+        old_surface = app.cfg["theme.surface"]
         await _open_picker(pilot, app, screen, wait_until)
         fills = _rect_fills(app.export_screenshot())
-        assert any(f == "#112233" and x >= 66 for f, x in fills), "the panel is not the theme's surface"
-        (themes_dir / "my-lab.toml").write_text('[theme]\nsurface = "#445566"\n', encoding="utf-8")
+        assert any(f == app.cfg["theme.surface"] and x >= 66 for f, x in fills), "the panel is not the theme's surface"
+        (themes_dir / "my-lab.toml").write_text('[theme]\nbg = "#445566"\n', encoding="utf-8")
         # Use it again: the highlighted chrome row is `my-lab`, the pick in use leads the list.
         await pilot.press("enter")
         await wait_until(pilot, lambda: app.screen is screen and not screen.dialogs, "the picker to close")
-        assert app.cfg["theme.surface"] == "#445566", "Use did not reload the edited role"
+        assert app.cfg["theme.bg"] == "#445566", "Use did not reload the edited role"
         # Reopen the picker: its panel background is the CSS `$surface`, so a re-applied theme shows the new colour.
         await pilot.press("ctrl+backslash", "T")
         await wait_until(pilot, lambda: isinstance(app.screen, ThemePicker), "the picker to reopen")
         await wait_until(pilot, lambda: _listing_is_painted(app.screen), "the listing to paint")
         fills = _rect_fills(app.export_screenshot())
-        assert any(f == "#445566" and x >= 66 for f, x in fills), (
+        assert any(f == app.cfg["theme.surface"] and x >= 66 for f, x in fills), (
             "the dialog kept the old CSS surface after Use on an edited theme")
-        assert not any(f == "#112233" and x >= 66 for f, x in fills), "the panel still shows the old surface"
+        assert not any(f == old_surface and x >= 66 for f, x in fills), "the panel still shows the old surface"
         await gen.aclose()
 
     asyncio.run(check())
@@ -755,6 +758,7 @@ def test_a_real_chrome_switch_refreshes_only_through_textuals_watcher(serve, wai
     async def check() -> None:
         gen = _session(serve, wait_until)
         app, _, _ = await gen.__anext__()
+        app.apply_look("terracotta", "tsb-default")
         calls: list[int] = []
         real = app.refresh_css
         monkeypatch.setattr(app, "refresh_css", lambda *a, **k: (calls.append(1), real(*a, **k))[1])

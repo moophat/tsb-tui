@@ -3327,20 +3327,21 @@ class TerminalScreen(Screen):
             row = self.targets.row(view.selected_session)
             editable = row is not None and row.discovered_by == "tsb"
             if "target.edit" in self.app.permissions:
-                writes = (Hint("n", "New target", click + CMD_TARGET_NEW),
+                writes = (Hint("a", "Add target", click + CMD_TARGET_NEW),
                           Hint("e", "Edit target", click + CMD_TARGET_EDIT if editable else None),
                           Hint("d", "Delete target…", click + CMD_TARGET_DELETE if editable else None))
-            return KeysTarget("targets", (*writes,
+            return KeysTarget("targets", (Hint("n", "New session", click + CMD_NEW), *writes,
                 Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("/", "Query", click + CMD_FILTER),
                 Hint("Space", "Mark", click + CMD_MARK), Hint("l", "Save login…", click + CMD_SAVE_LOGIN),
                 Hint("p", "Map…", click + CMD_MAP),
                 Hint("Tab", "Next tab", click + CMD_TAB), Hint("Esc", "Back", click + CMD_CLOSE)),
                 self._targets_query_error)
         if self.compact:
-            return KeysTarget("fleet view", (Hint("t", "Take back", click + CMD_TAKE_BACK),
+            return KeysTarget("fleet view", (Hint("n", "New session", click + CMD_NEW),
+                                             Hint("t", "Take back", click + CMD_TAKE_BACK),
                                              Hint("Esc", "Back", click + CMD_CLOSE)), "tap a row")
         return KeysTarget("fleet view", (
-            Hint("⏎", "Open", click + CMD_PICK), Hint("c", "New session", click + CMD_NEW),
+            Hint("⏎", "Open", click + CMD_PICK), Hint("n", "New session", click + CMD_NEW),
             Hint("t", "Take back", click + CMD_TAKE_BACK), Hint("w", "Who's here", click + CMD_WHOS_HERE),
             Hint("x", "End…", click + CMD_END), Hint("/", "Filter", click + CMD_FILTER),
             Hint("Esc", "Back", click + CMD_CLOSE)))
