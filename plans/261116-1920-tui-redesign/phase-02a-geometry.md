@@ -15,7 +15,7 @@ Read tsb_tui/widgets/rail.py, widgets/sidebar.py, screens/terminal.py, screens/f
 
 ## Files allowed to write
 
-tsb_tui/widgets/rail.py; tsb_tui/widgets/sidebar.py; tsb_tui/screens/terminal.py; tsb_tui/screens/fleet_view.py; tsb_tui/glyphs.py; tsb_tui/app.py; tsb_tui/config.py; tsb_tui/config_default.toml; tests/test_redesign_layout.py; this phase’s snapshot baselines.
+tsb_tui/widgets/rail.py; tsb_tui/widgets/sidebar.py; tsb_tui/screens/terminal.py; tsb_tui/screens/fleet_view.py; tsb_tui/glyphs.py; tsb_tui/app.py; tsb_tui/config.py; tsb_tui/config_default.toml; tests/test_redesign_layout.py; this phase’s snapshot baselines. Amendment 2 adds `tsb_tui/widgets/status_row.py` (the bottom row becomes keys only) and any existing test under `tests/` whose only change is a moved fact (bottom row to the session frame title), a padding row removed or a border character, each listed in the phase report with the reason; any other file is a STOP.
 
 ## Tests first and measurable targets
 
@@ -23,6 +23,13 @@ tsb_tui/widgets/rail.py; tsb_tui/widgets/sidebar.py; tsb_tui/screens/terminal.py
 - **L1-rail-breakpoint / L1-compact-marks:** At widths 80 and below assert compact rows; at 81 and above assert words Sessions, Targets, Vault, Alerts, Menu, with + New last. Test 80→81→80 plus the two required sizes. Exact Unicode/ASCII marks: Sessions ▸/>; Targets ▦/#; Vault ◆/*; Alerts !/!; Menu ≡/=; + New +/+. Assert rendered strings under both glyph settings, not only lookup constants. Red: old four-column glyph-only rail.
 - **L1-tabs:** Active label is bold with ━ under every label column; inactive labels have ─ under them. Assert exact characters and bold flag, including monochrome render and both sizes. Red: colour-only bracketed tabs.
 - **L1-surfaces / L1-geometry:** Assert P1’s computed surfaces >=1.2:1 against theme bg and geometry leaves canvas/panel visible without changing PTY dimensions. Snapshot empty/populated/focused states at 80x24 and 160x45. Contrast text >=4.5 under approved O7 scope.
+
+- **Amendment 2 (2026-11-18), the rows for P2a in `plan.md`:**
+  - **L1-frame-title:** the session frame's top border carries the front session's number, target name, state, owner, who types and "recorded"; the bottom row carries keys only. Assert both rows at 80x24 and 160x45, with and without a front session. Red: P1 puts the facts on the bottom row.
+  - **L1-rail-alerts:** the Alerts row is shown only to a login holding `broker.health`. Red: P1 shows it to every login.
+  - **L1-panel-split:** the side panel's Sessions section is its rows high, at least 3 and at most half the panel (its one-line empty state with none); Targets take the rest and scroll inside their section. Assert the heights with 0, 1, 5 and 20 open sessions at both sizes.
+  - **L1-focus-border:** the focused pane, the session frame included, is drawn ┏━┓ and every other pane ┌─┐, with NO_COLOR set and unset. P2b owns where the keyboard goes; P2a owns the border it shows.
+  - **L1-frames, amended:** one blank column inside the left and right borders; section titles in the top border line ("┌─ Targets · 14/230 ─"); no blank padding rows. This replaces the "one blank cell of padding" above for the top and bottom.
 
 ## Steps
 

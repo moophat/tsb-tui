@@ -2,7 +2,7 @@
 
 **AI-Model:** gpt-6.1-sol  
 **Date:** 2026-11-16  
-**Status:** ruled 2026-11-16 19:4x (see Ruled); red-team next; not yet a builder authorization.  
+**Status:** ruled 2026-11-16 19:4x (see Ruled); amended 2026-11-18 (Amendment 2, the design review); P1 merged and released in v0.8.0; P2a next.  
 **Inputs:** main `0414b1a`; hotfix inspected through `4155ed3`; program `v0.18.0` (`c4c2b81bb7a1`).
 
 ## Outcome and stop condition
@@ -128,6 +128,48 @@ O1 is an external release dependency owned by P3b, never a P3 blocker. O2–O8 a
 - **O8: as recommended.** No match opens the existing target form with nothing inferred; after a successful save, New session continues with the record the save returned; Cancel creates nothing; a refusal is shown and never retried.
 
 With these rulings the plan is ready for a cross-family red-team; P1 dispatches after tsb-tui #94 merges and the red-team's findings are ruled.
+
+## Amendment 2 — the 11-18 design review (the orchestrator, 2026-11-18 13:4x, DEFAULTs, veto by line)
+
+On the operator's request of 2026-11-18 13:10, an independent pass with the UX skill over the ruled picks, this plan and what P1 built (tsb-core `plans/reports/review-261118-tui-redesign-picks.md`: 17 refines, 1 veto, 4 questions, 12 kept). Every refine was taken. This amendment supersedes the plan's text where they differ, phase by phase; each phase's dispatch brief quotes its rows. The research quotes behind each row are in the review.
+
+**Done in P1 (rounds 2 and 3, tsb-tui #98, released in v0.8.0):** the veto (the protected hints are "F1 Menu", key first, and "? keys" wherever they apply, plus Take back and Scroll; the name leaves whole before a protected hint; below 80 columns Scroll drops first, then keys, then Take back, the Menu last); Nord's `steel` apart in hue from its frost accent, every shipped theme tested for accent and steel apart in hue and at 4.5:1; the hint drop order an explicit priority, a screen's primary action dropping last among ordinary hints.
+
+| Phase | Rule | Acceptance (test family) |
+|---|---|---|
+| P2a | The session frame's top border carries the front session's facts: its number, target name, state, owner, who types and "recorded". The bottom row carries keys only. | L1-frame-title: facts in the frame's top border line, none on the bottom row, at 80x24 and 160x45 |
+| P2a | The rail's Alerts row is shown only to a login holding `broker.health` (Frontend §3.2). | L1-rail-alerts: present with the permission, absent without it |
+| P2a | The side panel's Sessions section shows every session open in this window: its height is its rows, at least 3 and at most half the panel; with none, its one-line empty state. Targets take the rest and scroll inside their section. | L1-panel-split: section heights at both sizes with 0, 1, 5 and 20 open sessions |
+| P2a | The focused pane, the session frame included, has a heavy border (┏━┓) and every other pane a light one (┌─┐), in every theme and in monochrome. | L1-focus-border: border characters per pane, NO_COLOR set and unset |
+| P2a | Padding is one blank column inside the left and right borders; section titles sit in the top border line ("┌─ Targets · 14/230 ─"); no blank padding rows. This replaces V2's "one blank content cell next to each border" for the top and bottom. | L1-frames, amended |
+| P2b | The rail lists, under Sessions, the sessions open in this window, one row each: number and target name ("1 core-rtr-01", cut with an ellipsis at 12 columns; "1•" at 80 columns and below), with a mark when a background session has printed since it was last shown. The Sessions row carries the needs-you count ("Sessions ▲1"). | L1-rail-sessions; L1-rail-activity |
+| P2b | After login the keyboard lands in the Targets filter. | L1-first-focus |
+| P2b | Enter on the rail's Sessions or Targets row moves the keyboard to that list in the side panel, opening the panel if it is closed. | L1-rail-enter |
+| P2b | One word, "Vault": the Menu item is "Vault…" (saved logins, with Devices and Lock now beside it); "Fleet" leaves every label (the side panel is "Targets and sessions", the full view is named by its tab); the old names stay as Menu search aliases. | L1-words: no rendered "Fleet" or "Credentials…"; the aliases find their items |
+| P2b | An unfocused list keeps its selection as a dim bar with ▸. | L1-focus, amended |
+| P2b | One letter, one meaning between the lists and the leader: `n` is New session in both (`c` stays an unadvertised alias); next and previous session move to Ctrl+\ then → and ←; Delete target moves to `D`. Drive's documented key sequences are untouched. | L1-one-meaning: no letter means two things between the list keys and the leader keys; drive's GUIDE sequences unchanged |
+| P2b | Ctrl+\ then F1 sends F1 to the session. | L1-F1-passthrough |
+| P2b | A one-line notice in the session frame when the keyboard moves to you ("you type now: ana left"; Frontend §9). | L1-token-notice |
+| P3 | A target row shows its type word when it is not ssh ("telnet", "serial"); its label falls back name, then host, then the type and the target's id (the id shown, never asked for). Targets with a session open here come first, then the rest in natural name order (rtr-2 before rtr-10). | L1-row-grammar, L1-target-order |
+| P3 | A session's end reads with its reason ("killed · idle", "killed by the owner", "terminated · the device closed it", "terminated · connection lost"), never a lone red ×; "nobody types" everywhere; the start time ("since 09:12") when two rows would read alike; "recorded" in the session frame's title, not on every row. | L1-row-grammar, L1-ended |
+| P3 | The filter also matches group and tag text (still local, no DNS). The title says what it counts ("Targets · 3/12 of 230 · 'rtr'"); while pages load, "Targets · 14/500… loading", never a false total. | L1-filter-position, amended |
+| P3 | A details key (`i`) shows a target's details at any width; no detail and no link needs 160 columns. | L1-details |
+| P3 | Other logins' live sessions on a target show on its row ("ana on it"), from the session list the TUI already reads. | L1-others-on-target |
+| P3 | "No targets you can see · ask an admin for access"; the no-session card ends with "F1 menu". | L1-empty, amended |
+| P4 | Enter on a target creates the session at once when there is one way to open it, and shows a choice only where the contract asks for one: a live connection exists (Contract §15.3), the core answers `credential_choice_required` or `connection_choice_required`, or a gate applies (recording notice, first-use host key, a typed login). | L1-open-direct |
+| P4 | A no-match add opens the target form with the typed text in the address field when it reads as an IP address or host name; type, port, name and login stay empty (the operator's own text, never an inference; refines O8). For a login without target rights: "No target matches '<query>' · ask an admin to add it · Esc clears". | L1-new-target, amended |
+| P4 | One table of exact refusal copy for opening a session (`target_connect_failed`, `target_auth_failed`, `hostkey_changed`, `no_resolving_credential`, `vault_locked`, `org_credential_locked`, `mapped_credential_missing`, `device_not_trusted`, `target_not_found`, `inventory_unavailable`): what happened, why, and one recovery key each, never a retry; "no such target" and "a target id is required" retired. | L1-open-refusals |
+| P5 | A prompt row that matched while the cursor sat on it keeps its mark as it scrolls up; rows from before this attach stay unmarked. | L1-prompts, amended |
+| P6 | A monochrome and 16-colour gallery pass: the selected row, the focused pane, the active tab and who types each stay identifiable by shape or words with NO_COLOR set. | L1-monochrome |
+
+**Questions to the operator, each with a default applied when its phase dispatches** (veto by line before then):
+
+1. Prompt marks on network gear that prints no shell marks and whose target has no prompt pattern: DEFAULT a built-in device-prompt pattern (a device name followed by `>`, `#`, `]` or `$` where the cursor waits), used only where the target has no pattern of its own, switchable off (P5).
+2. Grouping the target list: DEFAULT one list with the group shown on each row, typing matches the group; folded groups may come later as a switch (P3).
+3. Enter on a device you already have a session on: DEFAULT ask, with "go to session 1" listed first and highlighted, then "another session" and "new connection" (P4).
+4. Recent devices: DEFAULT a "Recent" section at the top of Targets, built from your own recent sessions, nothing stored (P3).
+
+Unverified and noted: Ctrl+\ on a UK Windows keyboard; GNOME Terminal's own F1 binding; whether the core states the vault's lock state without a connect (the rail's vault state shows it only where the core reports it).
 
 ## Differences from the research draft
 
