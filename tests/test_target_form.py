@@ -49,7 +49,7 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen, view = await open_targets(app, pilot, wait_until)
-            await pilot.press("n")
+            await pilot.press("a")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "new form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             assert CREDENTIAL_NOTE in str(form.query_one("#target-credential-note", Static).content)
@@ -102,7 +102,7 @@ def test_duplicate_keeps_every_field_and_core_message(serve, wait_until):
         app = TsbTuiApp(url)
         async with app.run_test(size=(100, 40)) as pilot:
             await open_targets(app, pilot, wait_until)
-            await pilot.press("n")
+            await pilot.press("a")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             form.fill({"id": "normal", "type": "ssh", "host": "example", "name": "Keep me", "group": "g",
@@ -131,7 +131,7 @@ def test_keys_follow_auth_me_permission(serve, wait_until, permission):
             hints = screen._fleet_view_keys_target().hints
             assert {"n", "e", "d"}.issubset({hint.key for hint in hints}) == permission
             assert any(m == "GET" and p == "/auth/me" for m, p, _ in server.requests)
-            await pilot.press("n")
+            await pilot.press("a")
             await pilot.pause()
             assert isinstance(app.screen, TargetFormScreen) == permission
     asyncio.run(check())
@@ -161,7 +161,7 @@ def test_invalid_port_or_empty_tag_is_refused_without_write(serve, wait_until, f
         app = TsbTuiApp(url)
         async with app.run_test(size=(100, 40)) as pilot:
             await open_targets(app, pilot, wait_until)
-            await pilot.press("n")
+            await pilot.press("a")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             form.fill({"id": "validate", "host": "example", "type": "ssh"})
@@ -179,7 +179,7 @@ def test_hot_policy_refusal_keeps_the_form(serve, wait_until):
         app = TsbTuiApp(url)
         async with app.run_test(size=(100, 40)) as pilot:
             await open_targets(app, pilot, wait_until)
-            await pilot.press("n")
+            await pilot.press("a")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             form.fill({"id": "revoked", "host": "example", "type": "ssh"})
@@ -198,7 +198,7 @@ def test_target_edit_refusal_keeps_the_form(serve, wait_until):
         app = TsbTuiApp(url)
         async with app.run_test(size=(100, 40)) as pilot:
             await open_targets(app, pilot, wait_until)
-            await pilot.press("n")
+            await pilot.press("a")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             form = app.screen
             form.fill({"id": "revoked-edit", "host": "example", "type": "ssh"})
@@ -217,7 +217,7 @@ def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen, view = await open_targets(app, pilot, wait_until)
-            await pilot.press("n")
+            await pilot.press("a")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.fill({"id": "query-target", "type": "ssh", "host": "example"})
             app.screen.query_one("#target-save", Button).press()
@@ -267,7 +267,7 @@ def test_saved_target_selection_survives_relayout_before_fleet_flush(serve, wait
                 dirty()
 
             monkeypatch.setattr(screen, "_targets_reply", reply)
-            await pilot.press("n")
+            await pilot.press("a")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form")
             app.screen.fill({"id": "delayed-target", "type": "ssh", "host": "example"})
             app.screen.query_one("#target-save", Button).press()

@@ -434,7 +434,7 @@ def test_text_faint_passes_on_the_surface_the_chrome_draws_it_on() -> None:
     """Design §1.7: the rail and sidebar draw `text_faint` on `surface`, where it must pass; the
     packaged default is #858585 (4.76:1 on surface), not the old #7a7a7a."""
     cfg = config.load(config_file=Path("/nonexistent"), environ={})
-    assert cfg["theme.text_faint"] == "#858585"
+    assert cfg["theme.text_faint"] == "#b4bcca"
 
 
 def test_the_default_roles_are_the_packaged_terracotta_roles() -> None:

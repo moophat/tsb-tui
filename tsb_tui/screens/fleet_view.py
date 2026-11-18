@@ -842,8 +842,8 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_MODE))
         elif key == "e" and self.tab == TAB_SESSIONS:
             self.toggle_show_ended()
-        elif key in ("n", "e", "d") and self.tab == TAB_TARGETS and self._model.target_edit:
-            command = {"n": CMD_TARGET_NEW, "e": CMD_TARGET_EDIT, "d": CMD_TARGET_DELETE}[key]
+        elif key in ("a", "e", "d") and self.tab == TAB_TARGETS and self._model.target_edit:
+            command = {"a": CMD_TARGET_NEW, "e": CMD_TARGET_EDIT, "d": CMD_TARGET_DELETE}[key]
             self.post_message(self.Command(command, self.selected_session))
         elif key == "space" and self.tab == TAB_TARGETS:
             self.toggle_mark()
@@ -861,7 +861,7 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_WHOS_HERE, sid))
         elif key == "x" and sid is not None:
             self.post_message(self.Command(CMD_END, sid))
-        elif key == "c":
+        elif key in ("n", "c"):
             self.post_message(self.Command(CMD_NEW))
 
     def _editing_key(self, event: events.Key) -> None:

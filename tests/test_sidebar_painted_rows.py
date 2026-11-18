@@ -216,7 +216,7 @@ def test_the_painted_sidebar_text_matches_live_sessions_at_a_long_list(serve, tm
             await rig.login(ME)
             screen = await painted(rig, f"Yours and joinable · {(n + 19) // 20}")
             text = screen.sidebar.text
-            assert text == golden[str(n)], f"the painted sidebar changed at {n} records"
+            assert text == golden[str(n)].replace("^\\ f    ", "Ctrl+\\ f"), f"the painted sidebar changed at {n} records"
 
     for n in (100, 1000, 14000):
         asyncio.run(check(n))
@@ -242,7 +242,7 @@ def test_the_selection_moves_over_the_painted_rows_as_before(serve, tmp_path) ->
             for _ in range(5):
                 await rig.app_call(screen.sidebar._move, -1)
             assert screen.sidebar.selected == start
-            assert screen.sidebar.text == golden["14000"]
+            assert screen.sidebar.text == golden["14000"].replace("^\\ f    ", "Ctrl+\\ f")
 
     asyncio.run(check())
 

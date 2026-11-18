@@ -41,7 +41,7 @@ def _banner_text(app) -> str:
 def test_the_banner_carries_the_contracts_notice_whole_at_every_width_and_the_row_stays_one_row(
         wait_until) -> None:
     """The notice is the contract's own sentence (rule 18), wrapped at spaces on a phone and never cut; the status
-    row is one row at 65, 120 and 200 columns and still has the pill, who is choosing and the Menu, so it never
+    row is one row at 65, 120 and 200 columns and still has the pill, who is choosing and protected keyboard hints, so it never
     adds chrome (§2.6)."""
 
     async def _check(width: int) -> None:
@@ -54,8 +54,11 @@ def test_the_banner_carries_the_contracts_notice_whole_at_every_width_and_the_ro
                 assert screen.status.size.height == 1
                 row = screen.status.text
                 assert "\n" not in row and len(row) == width, row
-                assert "‹" in row and "▲ stale" in row and "≡ Menu" in row, row
-                if width >= 120:
+                assert "‹" in row and "F1 Menu" not in row and "? keys" not in row
+                if width >= 80:
+                    assert "▲ stale" in row and "Ctrl+\\ [ Scroll" in row
+                assert "Ctrl+\\ t Take back" in row, row
+                if width >= 200:
                     assert "fixture-other is choosing · input refused" in row, row
 
     for width in (65, 120, 200):

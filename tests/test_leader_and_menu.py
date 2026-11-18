@@ -20,13 +20,14 @@ from textual.command import CommandList, CommandPalette, SearchIcon
 from textual.content import Content
 from textual.css.query import NoMatches
 from tsbc import _serve
+from workspace_support import rail_row
 
 from tsb_tui.app import MenuProvider, TsbTuiApp
 from tsb_tui.model import actions as A
 from tsb_tui.screens.size_dialog import SizeDialog
 from tsb_tui.screens.terminal import TerminalScreen
 from tsb_tui.screens.whos_here import WhosHereScreen
-from tsb_tui.widgets.status_row import StatusRow
+from tsb_tui.widgets.rail import ACT_MENU, Rail
 
 LEADER = "ctrl+backslash"
 # The pinned environment (conftest) holds the Menu's timer at 10 s, so `^\ <letter>` never races it;
@@ -149,7 +150,7 @@ def test_the_leader_works_while_the_attach_is_still_starting_and_other_keys_go_t
             screen = app.screen
             await wait_until(pilot, lambda: screen.status is not None and "attaching" in screen.status.text,
                              "the row to say it is attaching")
-            assert screen.pump is None and "^\\ d Detach" in screen.status.text
+            assert screen.pump is None and "Ctrl+\\ d Detach" in screen.status.text
 
             await pilot.press(LEADER, "d")
             await wait_until(pilot, lambda: _detached(screen), "Detach to leave")
@@ -188,7 +189,7 @@ def test_ctrl_q_still_quits_while_the_attach_is_starting(serve, monkeypatch, wai
 NEVER_TAKEN = [
     ("a", b"a"), ("?", b"?"), ("|", b"|"), (":", b":"), ("/", b"/"),
     ("d", b"d"), ("w", b"w"), ("r", b"r"), ("R", b"R"), ("f", b"f"), ("x", b"x"), ("c", b"c"),
-    ("escape", b"\x1b"), ("tab", b"\t"), ("f1", b"\x1bOP"), ("f9", b"\x1b[20~"),
+    ("escape", b"\x1b"), ("tab", b"\t"), ("f9", b"\x1b[20~"),
     ("ctrl+a", b"\x01"), ("ctrl+b", b"\x02"), ("ctrl+d", b"\x04"), ("ctrl+p", b"\x10"),
     ("ctrl+q", b"\x11"), ("ctrl+z", b"\x1a"), ("ctrl+right_square_bracket", b"\x1d"),
 ]
@@ -204,6 +205,10 @@ def test_every_key_but_the_leader_reaches_the_session(serve, monkeypatch, wait_u
         serve_app, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 24)) as pilot:
+            login = app.screen
+            await pilot.press("f1")
+            await pilot.pause()
+            assert app.screen is login
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
             for key, _ in NEVER_TAKEN:
                 await pilot.press(key)
@@ -211,6 +216,18 @@ def test_every_key_but_the_leader_reaches_the_session(serve, monkeypatch, wait_u
             await wait_until(pilot, lambda: serve_app.received(client_id) == wanted,
                              f"every key to reach the server, got {serve_app.received(client_id)!r}")
             assert app.screen is screen, "a key opened something it must not"
+            await pilot.press("f1")
+            await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), "F1 Menu")
+            assert serve_app.received(client_id) == wanted
+            await pilot.press("escape", LEADER, "L")
+            from tsb_tui.screens.lock import LockScreen
+
+            await wait_until(pilot, lambda: isinstance(app.screen, LockScreen), "lock")
+            locked = app.screen
+            await pilot.press("f1")
+            await pilot.pause()
+            assert app.screen is locked
+            assert serve_app.received(client_id) == wanted
 
     asyncio.run(_check())
 
@@ -237,7 +254,7 @@ def test_the_menu_lists_every_action_of_the_table_with_its_key_and_is_searchable
         serve, monkeypatch, wait_until) -> None:
     """Design §3.4 test 5, D10: every action in the table appears in the Menu (but the Menu itself and
     the dialogs' own buttons), each with its description and key; typing narrows the list and Enter runs
-    the match. Ctrl-P stays the session's: the Menu opens only from the leader, `≡ Menu` or its click."""
+    the match. Ctrl-P stays the session's: the Menu opens only from the leader, `F1 Menu` or its click."""
     _env(monkeypatch, **{MENU_AFTER: "100"})
 
     async def _check() -> None:
@@ -354,7 +371,7 @@ def test_the_menu_names_a_key_only_where_there_is_one_mutes_what_is_unavailable_
                 if keys:
                     assert keys in hit.help, f"{action.id} lost its key"
                 else:
-                    assert "^\\" not in hit.help, f"{action.id} has no key but its help names one"  # fails today
+                    assert "Ctrl+\\" not in hit.help, f"{action.id} has no key but its help names one"  # fails today
                 styled = [span for span in hit.display.spans if span.style == muted]
                 assert bool(styled) is (why is not None), f"{action.id}: muted exactly when it is unavailable"
                 if why is not None:
@@ -377,10 +394,10 @@ def test_keys_leader_map_rebinds_a_letter_and_the_old_letter_runs_nothing(
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
-        async with app.run_test(size=(120, 24)) as pilot:
+        async with app.run_test(size=(200, 24)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
-            await wait_until(pilot, lambda: "^\\ q Detach" in screen.status.text, "the row to print the new letter")
-            assert "^\\ d Detach" not in screen.status.text
+            await wait_until(pilot, lambda: "Ctrl+\\ q Detach" in screen.status.text, "the row to print the new letter")
+            assert "Ctrl+\\ d Detach" not in screen.status.text
 
             await pilot.press(LEADER, "d")
             await pilot.pause()
@@ -402,7 +419,7 @@ def test_keys_leader_chooses_the_key_and_the_row_prints_it(serve, monkeypatch, w
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 24)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
-            await wait_until(pilot, lambda: "≡ Menu ^]" in screen.status.text, "the row to print the leader")
+            await wait_until(pilot, lambda: "^] ? keys" in screen.status.text, "the row to print the leader")
 
             await pilot.press(LEADER)
             await wait_until(pilot, lambda: serve_app.received(client_id) == [b"\x1c"],
@@ -417,7 +434,7 @@ def test_keys_leader_chooses_the_key_and_the_row_prints_it(serve, monkeypatch, w
 def test_every_menu_action_is_reachable_by_a_click_alone(
         serve, monkeypatch, wait_until, screen_text, width) -> None:
     """Design §3.4 test 5, success criteria: at 65, 120 and 200 columns the Menu opens from a click on
-    `≡ Menu`, and an entry runs from a click on it, with no key pressed: here Who's here and then, from the
+    `F1 Menu`, and an entry runs from a click on it, with no key pressed: here Who's here and then, from the
     Menu again, Size."""
     _env(monkeypatch)
 
@@ -426,10 +443,10 @@ def test_every_menu_action_is_reachable_by_a_click_alone(
         app = TsbTuiApp(url)
         async with app.run_test(size=(width, 40)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
-            await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
+            await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
 
             for action_id, expected in (("who", WhosHereScreen), ("size", SizeDialog)):
-                await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+                await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
                 await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), "the Menu to open")
                 await wait_until(pilot, lambda: len(_menu_texts(app.screen)) == len(A.menu_actions()),
                                  "the Menu to fill")

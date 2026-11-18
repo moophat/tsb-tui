@@ -40,7 +40,7 @@ GROUPS = (GROUP_SESSION, GROUP_FLEET, GROUP_VIEW, GROUP_SETTINGS)
 # `keys.leader` knob holds. The design's own reasons (§2.4) rule out every Ctrl-letter: they are
 # readline's, a router's or the session's. These four are the control keys that are none of those.
 LEADER_LABELS: dict[str, str] = {
-    "ctrl+backslash": "^\\",
+    "ctrl+backslash": "Ctrl+\\",
     "ctrl+right_square_bracket": "^]",
     "ctrl+circumflex_accent": "^^",
     "ctrl+underscore": "^_",
@@ -277,7 +277,7 @@ ACTIONS: tuple[Action, ...] = (
            SCOPE_SESSION, None, _theme_blocked),
     Action("settings", "Settings…", "the knobs in force and where each came from", None, GROUP_SETTINGS,
            SCOPE_SESSION, None, _always),
-    Action("keys", "All keys", "every action's key", "?", GROUP_SETTINGS, SCOPE_SESSION, None, _always),
+    Action("keys", "All keys", "every action's key", "?", GROUP_SETTINGS, SCOPE_SESSION, "keys", _always),
     Action("about", "About", "the TUI, the contract client and the engine", None, GROUP_SETTINGS,
            SCOPE_SESSION, None, _always),
     Action("credentials", "Credentials…", "your saved logins: list, map to targets, delete", "C", GROUP_SETTINGS,

@@ -1,28 +1,28 @@
-# Chrome theme "nord" — the chrome in Nord's own palette (nordtheme/nord, MIT), to sit beside the Nord scheme.
-# The roles keep TSB's meanings: "you type" is Nord's aurora orange, "another login" its frost cyan, so the two
-# never share a hue. The chrome sits darker than the canvas (nord0), as Nord's own editor sidebars do, so the
-# aurora colours keep 4.5:1 on it.
+# Chrome theme "nord" — palette from nordtheme/nord (MIT).
+# Frost is the default accent (P1 O7); terracotta remains selectable.
+# Surface is the computed minimum HSL-lightness step from bg reaching 1.2:1.
+# Supporting surfaces and text roles retain at least 4.5:1 chrome contrast.
 [theme]
 name = "nord"
 variant = "dark"
 scheme = "nord"
 bg          = "#2e3440"
-surface     = "#252a33"
+surface     = "#39404f"
 surface_2   = "#3b4252"
-surface_3   = "#434c5e"
-border      = "#3b4252"
-border_on_surface = "#4c566a"
+surface_3   = "#41495b"
+border      = "#b1b8c7"
+border_on_surface = "#b0b8c6"
 text        = "#eceff4"
 text_muted  = "#cdd3de"
-text_faint  = "#aab3c3"
-accent      = "#d08770"
+text_faint  = "#b4bcca"
+accent      = "#88c0d0"
 accent_hot  = "#ebcb8b"
 accent_soft = "#4f4549"
 on_accent   = "#1f232b"
-steel       = "#88c0d0"
-ok          = "#a3be8c"
+steel       = "#cab0c5"
+ok          = "#abc395"
 warn        = "#ebcb8b"
-danger      = "#e0848c"
-frame       = "#6b7891"
-rec         = "#e0848c"
+danger      = "#eaabb1"
+frame       = "#b0b8c5"
+rec         = "#eaabb1"
 rec_list    = "#cdd3de"

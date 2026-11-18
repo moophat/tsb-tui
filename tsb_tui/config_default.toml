@@ -27,17 +27,17 @@
 profile = "default"                # "default", "phone", "drive" or "harness"
 
 [theme]
-name = "terracotta"
+name = "nord"
 bg          = "#0a0a0a"
-surface     = "#191919"
+surface     = "#1f1f1f"
 surface_2   = "#222222"
 surface_3   = "#2a2a2a"
-border      = "#313131"
-border_on_surface = "#3e3e3e"
+border      = "#919191"
+border_on_surface = "#919191"
 text        = "#ededed"
 text_muted  = "#a3a3a3"
-text_faint  = "#858585"   # was #7a7a7a: 4.0:1 on surface, where the rail and sidebar draw it; #858585 is 4.6:1
-accent      = "#e56a4a"
+text_faint  = "#919191"   # fallback role meets the P1 chrome contrast floor
+accent      = "#e56d4d"
 accent_hot  = "#ff570a"
 accent_soft = "#311b16"
 on_accent   = "#0a0a0a"
@@ -45,7 +45,7 @@ steel       = "#7aa7d6"
 ok          = "#7fc27f"
 warn        = "#e5b34a"
 danger      = "#ff5c7a"
-frame       = "#5a5a5a"   # neutral dialog frames (today $primary = accent)
+frame       = "#919191"   # neutral dialog frame, with chrome contrast
 rec         = "#ff5c7a"   # the status row's ● REC
 rec_list    = "#a3a3a3"   # REC on sidebar and fleet rows
 

@@ -181,6 +181,31 @@ def lift(fg: str, bg: str, ratio: float) -> str:
     return lifted
 
 
+def surface_colour(bg: str, variant: str) -> str:
+    """Nearest quantized HSL-lightness change reaching 1.2:1 (P1 O7).
+
+    Hue and saturation stay fixed; try the variant direction, then its opposite.
+    Bisection brackets the first passing RGB quantization boundary.
+    """
+    h, light, saturation = colorsys.rgb_to_hls(*(int(bg[i:i + 2], 16) / 255 for i in (1, 3, 5)))
+    low, high = light, 1.0 if variant == "dark" else 0.0
+
+    def colour(value: float) -> str:
+        return "#" + "".join(f"{round(c * 255):02x}" for c in colorsys.hls_to_rgb(h, value, saturation))
+
+    if contrast_ratio(colour(high), bg) < 1.2:
+        high = 0.0 if variant == "dark" else 1.0
+        # One of white or black always reaches 1.2:1 against any valid background.
+
+    for _ in range(48):
+        mid = (low + high) / 2
+        if contrast_ratio(colour(mid), bg) >= 1.2:
+            high = mid
+        else:
+            low = mid
+    return colour(high)
+
+
 def _rich_hex(colour: Any) -> str:
     """A `RichColor` as the lowercase `#rrggbb` `lift` takes."""
     tc = colour.get_truecolor()

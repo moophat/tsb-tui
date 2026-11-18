@@ -81,13 +81,13 @@ def test_all_keys_lists_every_actions_key_from_the_table_and_follows_a_rebinding
     for action in A.ACTIONS:
         if action.scope != A.SCOPE_SESSION or action.key is None:
             continue
-        assert f"^\\ {action.key}" in text and action.label in text, f"{action.id} is missing from All keys"
-    assert "^\\ :q" in text and "^\\ ?" in text and "^\\ F" in text and "^\\ x" in text
+        assert f"Ctrl+\\ {action.key}" in text and action.label in text, f"{action.id} is missing from All keys"
+    assert "Ctrl+\\ :q" in text and "Ctrl+\\ ?" in text and "Ctrl+\\ F" in text and "Ctrl+\\ x" in text
     for scope_key in ("t", "h", "e"):  # Who's here's own keys
         assert f"  {scope_key} " in text
     rebound = "\n".join(keys_lines(_cfg(**{"keys.leader_map.detach": "D"})))
     detach = [line for line in rebound.splitlines() if "Detach" in line]
-    assert detach and detach[0].strip().startswith("^\\ D"), detach
+    assert detach and detach[0].strip().startswith("Ctrl+\\ D"), detach
 
 
 def test_all_keys_lists_the_theme_picker_keys_under_its_own_scope() -> None:
@@ -124,7 +124,7 @@ def test_all_keys_about_and_settings_open_from_the_table_and_say_what_they_are(s
                     assert _pinned_commit()[:7] in text, f"About does not name the engine's pinned commit: {text}"
                     assert tsb_contract_client.CONTRACT_VERSION in text and "tsb-tui" in text
                 if action_id == "keys":
-                    assert "^\\ :q" in _body(app)
+                    assert "Ctrl+\\ :q" in _body(app)
                 await pilot.press("escape")
                 await wait_until(pilot, lambda: app.screen is screen, f"{action_id} to close")
 

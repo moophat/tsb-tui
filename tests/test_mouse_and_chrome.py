@@ -28,7 +28,7 @@ from workspace_support import (
 
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model.fleet import GROUP_NEEDS_YOU
-from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen
+from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen, TextScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.size_dialog import SizeDialog
 from tsb_tui.screens.whos_here import WhosHereScreen
@@ -95,10 +95,11 @@ def test_each_rail_glyph_acts_on_one_click_at_65_120_and_200_columns(serve, wait
 
 def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(serve, wait_until) -> None:
     """D11, D42: a row of the sidebar opens its session and each hint on the status row runs its action, by a single
-    click. The hints that fit differ by width (a phone keeps the Menu), and every one that is on the row is tried."""
+    click. The hints that fit differ by width (Scroll stays protected), and every one that is on the row is tried."""
 
     effects = {
         "menu": lambda app, screen: isinstance(app.screen, CommandPalette),
+        "keys": lambda app, screen: isinstance(app.screen, TextScreen),
         "fleet": lambda app, screen: screen.sidebar_open,
         "who": lambda app, screen: isinstance(app.screen, WhosHereScreen),
         "size": lambda app, screen: isinstance(app.screen, SizeDialog),
@@ -125,10 +126,10 @@ def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(s
             await wait_until(pilot, lambda: app.screen is screen and screen.front.session_id == second,
                              "the picked session in front")
             screen.close_sidebar()
-            await wait_until(pilot, lambda: "Menu" in screen.status.text, "the status row")
+            await wait_until(pilot, lambda: "Scroll" in screen.status.text, "the status row")
 
             hints = [a for a in screen.status.actions() if a != "detach"]
-            assert "menu" in hints, f"the Menu is always on the row (at {width}: {screen.status.text!r})"
+            assert "scroll" in hints, f"Scroll is protected (at {width}: {screen.status.text!r})"
             for action in hints:
                 assert action in effects, f"a hint no test knows how to observe: {action}"
                 row = screen.status
@@ -141,7 +142,7 @@ def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(s
                     screen.close_sidebar()
                 elif action == "scroll":
                     screen.close_scroll_view()
-                    await wait_until(pilot, lambda: "Menu" in screen.status.text, "the hints to come back")
+                    await wait_until(pilot, lambda: "Scroll" in screen.status.text, "the hints to come back")
 
     for size in SIZES:
         asyncio.run(_at(*size))
@@ -192,9 +193,9 @@ def test_the_full_views_hints_and_pan_hints_are_clicks_too(serve, wait_until) ->
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
-        (sid,) = named_sessions(url, serve_app, "rtr-core-01", cols=150, rows=40)
+        (sid,) = named_sessions(url, serve_app, "rtr-core-01", cols=250, rows=40)
         app = TsbTuiApp(url)
-        async with app.run_test(size=(120, 40)) as pilot:
+        async with app.run_test(size=(200, 40)) as pilot:
             screen = await fixture_login(app, pilot)
             await open_here(app, pilot, wait_until, sid)
             screen.close_sidebar()
@@ -422,14 +423,14 @@ def test_tooltips_name_each_glyphs_word_and_key_and_follow_the_glyph_set_and_the
     on = asyncio.run(_check({}))
     assert on[0].startswith("a-very-long-target-name · s.") and "you type" in on[0], on
     assert on[1].startswith("◂ close the sidebar"), on
-    assert on[2] == "≡ Menu ^\\ · every action, searchable", on
-    assert on[3].startswith("▦ Fleet ^\\ f"), on
-    assert on[4].startswith("1 rtr-core-01 · you type") and on[4].endswith("^\\ 1"), on
-    assert on[5] == "+ New session ^\\ c", on
+    assert on[2] == "≡ Menu Ctrl+\\ · every action, searchable", on
+    assert on[3].startswith("▦ Fleet Ctrl+\\ f"), on
+    assert on[4].startswith("1 rtr-core-01 · you type") and on[4].endswith("Ctrl+\\ 1"), on
+    assert on[5] == "+ New session Ctrl+\\ c", on
     assert on[6].startswith("Who's here… · "), on
 
     ascii_set = asyncio.run(_check({"TSB_TUI_GLYPHS_SET": "ascii"}))
-    assert ascii_set[2].startswith("= Menu ^\\") and ascii_set[3].startswith("# Fleet ^\\ f"), ascii_set
+    assert ascii_set[2].startswith("= Menu Ctrl+\\") and ascii_set[3].startswith("# Fleet Ctrl+\\ f"), ascii_set
 
     off = asyncio.run(_check({"TSB_TUI_MOUSE_TOOLTIPS": "false"}))
     assert off == ["None"] * 7, off

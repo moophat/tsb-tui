@@ -24,7 +24,6 @@ from stub_server import record_output
 from test_theme_picker import (
     DRACULA,
     NORD_SURFACE,
-    TERRACOTTA_SURFACE,
     _move,
     _notifications,
     _open_picker,
@@ -368,9 +367,9 @@ def test_a_bad_entry_toasts_the_file_and_the_field_and_stays_in_the_file(serve, 
         toasts = _notifications(app)
         assert any(str(_state()) in m and f"{_serve.USER}" in m and "theme" in m for m in toasts), \
             f"no toast naming the state file and the field: {toasts}"
-        assert app.cfg["theme.name"] == "terracotta", f"the look in force did not stay: {app.cfg['theme.name']!r}"
+        assert app.cfg["theme.name"] == "nord", f"the look in force did not stay: {app.cfg['theme.name']!r}"
         fills = _rect_fills(app.export_screenshot())
-        assert any(f == TERRACOTTA_SURFACE and x < 4 for f, x in fills), "the rail is not terracotta's surface"
+        assert any(f == app.cfg["theme.surface"] and x < 4 for f, x in fills), "the rail does not use the active theme surface"
         assert saved_theme.read(_state())[_serve.USER]["theme"] == "nosuch", "the bad entry was dropped from the file"
         await gen.aclose()
 
@@ -437,22 +436,23 @@ def test_two_logins_keep_their_own(serve, wait_until) -> None:
             await wait_until(pilot, lambda: isinstance(app.screen, LoginScreen) and app.screen.query("#username"),
                              "the login form to mount")
             await login(app, pilot, _serve.VIEWER, _serve.PASSWORD)
-            assert app.cfg["theme.name"] == "terracotta" and app.cfg["theme.term.scheme"] == "tsb-default", \
+            assert app.cfg["theme.name"] == "nord" and app.cfg["theme.term.scheme"] == "tsb-default", \
                 f"a login without an entry did not get the defaults back: {app.cfg['theme.name']!r}/" \
                 f"{app.cfg['theme.term.scheme']!r}"
             assert app.cfg.source("theme.name") == "default" and app.cfg.source("theme.term.scheme") == "default", \
                 f"the restored names' sources: {app.cfg.source('theme.name')!r}/{app.cfg.source('theme.term.scheme')!r}"
             # chrome.id, scheme.slug and painted colors all match the default look
-            assert app.cfg.chrome.id == "terracotta", \
-                f"chrome.id is still {app.cfg.chrome.id!r}, not terracotta"
+            assert app.cfg.chrome.id == "nord", \
+                f"chrome.id is still {app.cfg.chrome.id!r}, not nord"
             assert app.cfg.scheme.slug == "tsb-default", \
                 f"scheme.slug is still {app.cfg.scheme.slug!r}, not tsb-default"
             # Check a chrome role (surface) and the canvas background match the default look
             from tsb_tui.theme_files import packaged_dir, parse_scheme, parse_theme
-            terracotta = parse_theme(packaged_dir("themes") / "terracotta.toml")
+            default_theme = parse_theme(packaged_dir("themes") / "nord.toml")
             tsb_default = parse_scheme(packaged_dir("schemes") / "tsb-default.json")
-            assert app.cfg["theme.surface"] == terracotta.roles["surface"], \
-                f"theme.surface is {app.cfg['theme.surface']!r}, not terracotta's"
+            assert app.cfg["theme.surface"] == default_theme.roles["surface"], \
+                f"theme.surface is {app.cfg['theme.surface']!r}, not nord's"
+            await attached(pilot, app, sid, wait_until)
             fills = _rect_fills(app.export_screenshot())
             assert any(f == tsb_default.background and x >= 4 for f, x in fills), \
                 "the canvas background is not tsb-default's, it kept the previous login's scheme"

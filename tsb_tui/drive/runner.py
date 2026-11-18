@@ -450,29 +450,48 @@ class Driver:
     async def click_label(self, label: str) -> dict[str, Any]:
         """Click the control whose label is on screen: the first match in reading order that is not the session's own
         grid (what a program prints there is not a control)."""
-        screen = self.app.screen
-        lines = [strip.text for strip in screen._compositor.render_strips()]
-        for y, line in enumerate(lines):
-            start = line.find(label)
-            while start != -1:
-                x = cell_len(line[:start])
-                widget = screen.get_widget_at(x, y)[0]
-                if not isinstance(widget, Canvas):
-                    forward = screen._forward_event
-                    def guarded(event: Any, forward=forward) -> None:
-                        if self.screen_lock.check():
-                            self.screen_lock.blocked_inputs += 1
-                            return
-                        forward(event)
-                    screen._forward_event = guarded
-                    try:
-                        await self.pilot.click(offset=(x + cell_len(label) // 2, y))
-                        await self.pilot.pause()
-                    finally:
-                        screen._forward_event = forward
-                    return {}
-                start = line.find(label, start + 1)
-        raise DriveError("bad_request", f"nothing on screen is labelled {label!r}")
+        def locate():
+            screen = self.app.screen
+            lines = [strip.text for strip in screen._compositor.render_strips()]
+            for y, line in enumerate(lines):
+                start = line.find(label)
+                while start != -1:
+                    x = cell_len(line[:start])
+                    widget = screen.get_widget_at(x, y)[0]
+                    if not isinstance(widget, Canvas):
+                        return screen, (x + cell_len(label) // 2, y)
+                    start = line.find(label, start + 1)
+            return None
+
+        await self.pilot.pause()
+        target = locate()
+        if target is None:
+            raise DriveError("bad_request", f"nothing on screen is labelled {label!r}")
+        # Settle before dispatch: an action may itself move its label, so never retry a click.
+        for _ in range(4):
+            await self.pilot.pause()
+            settled = locate()
+            if settled == target:
+                break
+            target = settled
+        if target is None:
+            raise DriveError("bad_request", f"nothing on screen is labelled {label!r}")
+        screen, position = target
+        forward = screen._forward_event
+
+        def guarded(event: Any) -> None:
+            if self.screen_lock.check():
+                self.screen_lock.blocked_inputs += 1
+                return
+            forward(event)
+
+        screen._forward_event = guarded
+        try:
+            await self.pilot.click(offset=position)
+            await self.pilot.pause()
+        finally:
+            screen._forward_event = forward
+        return {}
 
     # -- commands in, answers out --
 

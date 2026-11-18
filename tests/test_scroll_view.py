@@ -444,6 +444,7 @@ def test_the_status_row_says_how_far_back_and_when_it_is_the_oldest_output(serve
 
     async def _check() -> None:
         async with _scene(serve, wait_until, screen_text) as scene:
+            await scene.pilot.resize_terminal(240, 40)
             await scene.output(99)
             await scene.open_view()
             status = scene.screen.status

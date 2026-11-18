@@ -4,7 +4,7 @@ Why it matters (Rule 9): the TUI takes exactly one key (Ctrl-\\), and everything
 the Menu. A person on a phone has no key to fall back on, and an agent has no eyes, so a way in that is only text, a
 hint that needs a second click, or an action that exists in the table but not in the Menu is a feature somebody cannot
 reach. These tests hold the three window sizes of the mockups (65x30, 120x40, 200x60): `≡` and `▦▸` on the rail and
-`≡ Menu` in the status row are on screen, each acts on one click, the Menu lists every action of the table, and an
+`F1 Menu` in the status row are on screen, each acts on one click, the Menu lists every action of the table, and an
 agent driving the TUI reaches every action that is enabled in a seeded state by `click` alone, seeing the effect.
 Servers: the contract's in-process fixture server (DT7), recording what each client sends.
 """
@@ -55,7 +55,7 @@ def _menu_texts(palette: CommandPalette) -> list[str]:
 
 def test_the_menu_and_the_fleet_are_on_screen_and_one_click_away_at_each_size(serve, screen_text, wait_until) -> None:
     """D5, D11, design §3.4 test 5. At 65x30, 120x40 and 200x60 the rail shows `≡` and `▦▸` in its first two rows and the
-    status row shows `≡ Menu`; a click on each does what it says, with no key pressed and nothing sent to the session.
+    status row shows `F1 Menu`; a click on each does what it says, with no key pressed and nothing sent to the session.
     The words are read from the screen the person sees, not from a widget's model, so a glyph that was drawn off the
     screen, or hidden behind another widget, fails here."""
 
@@ -67,12 +67,12 @@ def test_the_menu_and_the_fleet_are_on_screen_and_one_click_away_at_each_size(se
             app.permissions = frozenset(app.client.me().get("permissions", ()))
             screen = await attached(pilot, app, session_id, wait_until)
             screen.close_sidebar()
-            await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
+            await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
             lines = screen_text(app).splitlines()
             assert len(lines) == height, f"the screen is {len(lines)} lines tall at {height}"
             assert "≡" in lines[0][:4], f"no ≡ on the rail at {width}x{height}: {lines[0]!r}"
             assert "▦▸" in lines[1][:4], f"no ▦▸ on the rail at {width}x{height}: {lines[1]!r}"
-            assert "≡ Menu" in lines[-1], f"no ≡ Menu in the status row at {width}x{height}: {lines[-1]!r}"
+            assert "Ctrl+\\ [ Scroll" in lines[-1], lines[-1]
 
             await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
             await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), f"≡ at {width}")
@@ -84,8 +84,11 @@ def test_the_menu_and_the_fleet_are_on_screen_and_one_click_away_at_each_size(se
             screen.close_sidebar()
             await wait_until(pilot, lambda: not screen.sidebar_open, "the sidebar to close")
 
-            await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
-            await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), f"≡ Menu at {width}")
+            if screen.status.hit_x("menu") is not None:
+                await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+            else:
+                await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
+            await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), f"F1 Menu at {width}")
             assert serve_app.received(screen.pump.state.client_id) == [], "a click reached the session"
 
     for size in SIZES:
@@ -104,8 +107,11 @@ def test_the_menu_lists_every_action_of_the_table_at_each_size(serve, wait_until
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
             app.permissions = frozenset(app.client.me().get("permissions", ()))
             screen = await attached(pilot, app, session_id, wait_until)
-            await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
-            await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+            await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
+            if screen.status.hit_x("menu") is not None:
+                await pilot.click(StatusRow, offset=(screen.status.hit_x("menu") + 1, 0))
+            else:
+                await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
             want = [action.label for action in SESSION_ACTIONS]
             await wait_until(pilot, lambda: len(_menu_texts(app.screen)) >= len(want), f"the Menu at {width}")
             got = [option.hit.text for option in app.screen.query_one(CommandList).options]
@@ -121,7 +127,7 @@ def test_closing_a_dialog_the_menu_opened_gives_the_status_row_its_hints_back(
         action_id, serve, wait_until) -> None:
     """D11, D14. While a dialog has the keyboard the status row says `keys →` and lists the dialog's own keys; when it
     closes the row must go back to the hints of the session, or a person who closed the Event log is left with a row
-    that offers nothing (no `≡ Menu`, no `Detach`) and no way to know why. Every dialog the Menu opens registers
+    that offers nothing (no `F1 Menu`, no `Detach`) and no way to know why. Every dialog the Menu opens registers
     itself with the workspace once and leaves once; the Event log, Settings, All keys and About registered twice and
     left once, so the row stayed on `keys →` for good."""
 
@@ -141,7 +147,7 @@ def test_closing_a_dialog_the_menu_opened_gives_the_status_row_its_hints_back(
             await pilot.press("escape")
             await wait_until(pilot, lambda: app.screen is screen and not screen.dialogs
                              and "keys →" not in screen.status.text, f"{action_id} to give the row back")
-            assert "≡ Menu" in screen.status.text
+            assert "F1 Menu" in screen.status.text
 
     asyncio.run(check())
 
@@ -161,12 +167,16 @@ async def _settle(rig: Rig, predicate, what: str) -> None:
 
 
 async def _click_menu_entry(rig: Rig, label: str) -> None:
-    """What an agent does to run an action from the Menu: click `≡ Menu`, then click the entry. The Menu is a list a
+    """Click the rail Menu (closing its covering sidebar first), then click the entry. The Menu is a list a
     window may be too short to show whole, so an entry below the fold is brought into view with the list's own scroll
     (what the wheel does) until its label is on the screen; the click itself is the driver's `click`."""
-    await _settle(rig, lambda: rig.app.screen is rig.app.workspace() and "≡ Menu" in rig.app.screen.status.text,
-                  "the status row to offer the Menu again")
-    assert (await rig.cmd("click", label="≡ Menu"))["ok"]
+    await _settle(rig, lambda: rig.app.screen is rig.app.workspace() and not rig.app.screen.dialogs,
+                  "the workspace to offer the rail Menu again")
+    if rig.app.workspace().sidebar_open:
+        assert (await rig.cmd("click", label="◂ close"))["ok"]
+        await _settle(rig, lambda: not rig.app.workspace().sidebar_open, "the sidebar to expose the rail")
+    reply = await rig.cmd("click", label="≡")
+    assert reply["ok"], reply
     await _settle(rig, lambda: isinstance(rig.app.screen, CommandPalette)
                   and len(_menu_texts(rig.app.screen)) >= len(SESSION_ACTIONS), "the Menu to fill")
     options = rig.app.screen.query_one(CommandList)
@@ -189,7 +199,7 @@ def test_an_agent_reaches_every_enabled_action_by_click_alone(serve, tmp_path, w
     # and its next render measures against no app: `LookupError: <ContextVar name='active_app' ...>` in visual.py.
     """Design §3.4 test 5, success criteria. The seeded state: two sessions open, the one in front held by another client
     of the owner's own login (so Take back is offered) and asking a quiet-prompt question (so Answer is). In it every
-    action of the table is enabled, and an agent clicks `≡ Menu` and then the entry for each one, with no key pressed,
+    action of the table is enabled, and an agent clicks `F1 Menu` and then the entry for each one, with no key pressed,
     and sees what it does: the dialog, the sidebar, the view, the next session, the keyboard coming back, the end of
     the TUI. The expected effect of each is written down here, so an action that was added to the table but cannot be
     reached by a click, or that a click reaches and nothing happens, fails at the size it fails."""

@@ -640,7 +640,7 @@ def test_the_ascii_glyph_set_reaches_the_sidebar_and_the_status_row(serve, monke
             assert any(line.startswith(">1* rtr-core-01") for line in lines), lines
             assert not any(glyph in screen.sidebar.text for glyph in "≡▦▸◂●◆▲◌✕◐•┄")
             screen.close_sidebar()
-            await wait_until(pilot, lambda: "= Menu" in screen.status.text and "# Fleet" in screen.status.text,
+            await wait_until(pilot, lambda: "F1 Menu" in screen.status.text and "# Fleet" in screen.status.text,
                              "the row's own entries in ASCII")
             assert not any(glyph in screen.status.text for glyph in "≡▦▸●◐")
 
@@ -761,9 +761,9 @@ def test_rail_width_and_the_start_filter_are_the_knobs(serve, monkeypatch, wait_
 
 
 def test_the_status_rows_range_follows_the_canvas_when_it_widens_without_moving(serve, wait_until) -> None:
-    """D4, design §2.3. The row says which columns the window shows (`cols 1-35 of 132 ▸`). Closing the sidebar widens the
+    """D4, design §2.3. The row says which columns the window shows (`cols 1-88 of 132 ▸`). Closing the sidebar widens the
     canvas from 35 to 61 columns and the window stays at column 1, so the view's x and y do not move: the range's end
-    column is the only thing that changed, and the row must still say it (`cols 1-61`). A row that kept the old end column
+    column is the only thing that changed, and the row must still say it (`cols 1-116`). A row that kept the old end column
     told the person the window showed less of the session than it did, for as long as nothing else redrew it."""
     import asyncio
 
@@ -773,20 +773,20 @@ def test_the_status_rows_range_follows_the_canvas_when_it_widens_without_moving(
     async def check() -> None:
         _serve_app, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
-        async with app.run_test(size=(65, 30)) as pilot:
+        async with app.run_test(size=(120, 30)) as pilot:
             from input_server import attached
 
             session_id = create_owner_session(app, "fixture-target", 132, 40)
             screen = await attached(pilot, app, session_id, wait_until)
             screen.open_sidebar(focus=False)  # beside the terminal, the keys still the session's: the row keeps its range
-            await wait_until(pilot, lambda: screen.sidebar_open and screen.canvas.size.width == 35
-                             and "cols 1-35 of 132 ▸" in screen.status.text, "the narrow range in the row")
+            await wait_until(pilot, lambda: screen.sidebar_open and screen.canvas.size.width == 88
+                             and "cols 1-88 of 132 ▸" in screen.status.text, "the narrow range in the row")
             screen.close_sidebar()
-            await wait_until(pilot, lambda: not screen.sidebar_open and screen.canvas.size.width == 61,
+            await wait_until(pilot, lambda: not screen.sidebar_open and screen.canvas.size.width == 116,
                              "the canvas to widen")
             assert screen.canvas.view_x == 0, "the window moved, so this is not the case under test"
             label = screen.canvas.view_range.label
-            assert label == "cols 1-61 of 132 ▸", label
+            assert label == "cols 1-116 of 132 ▸", label
             await wait_until(pilot, lambda: label in screen.status.text,
                              f"the row to say {label!r}, it says {screen.status.text!r}")
 

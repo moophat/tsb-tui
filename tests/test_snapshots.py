@@ -158,8 +158,7 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
                 if size[0] - 4 < 132:
                     # The row is drawn a repaint after the canvas widens; wait for the drawn row to say the range the
                     # canvas has now, rather than for a fixed time.
-                    await wait_until(pilot, lambda: screen.canvas.view_range.label in
-                                     list(app.screen._compositor.render_strips())[-1].text, "the row to draw the range")
+                    await wait_until(pilot, lambda: screen.status._inputs.range_label == screen.canvas.view_range.label, "the row to draw the range")
                 lines = shoot(app, "T1-terminal", size).splitlines()
 
                 rail = _rail(lines)
@@ -171,12 +170,13 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
                 assert "rtr-core-01#" in lines[0][4:], "the session's own screen is not drawn beside the rail"
 
                 status = _status(lines)
-                assert "you type" in status and "≡ Menu" in status, status
+                assert "you type" in status and "Ctrl+\\ [ Scroll" in status, status
                 if size[0] >= 120:
-                    assert "rtr-core-01" in status and "▦ Fleet" in status, status
+                    assert ("rtr-core-01" in status or any(
+                        f"  {'rtr-core-01'[:n]}…  " in status for n in range(len("rtr-core-01")))) and "▦ Fleet" in status, status
                 label = screen.canvas.view_range.label
                 if size[0] - 4 < 132:
-                    assert label.startswith("cols 1-") and label.endswith("of 132 ▸") and label in status, (label, status)
+                    assert label.startswith("cols 1-") and label.endswith("of 132 ▸") and (label in status if size[0] >= 120 else "F1 Menu" in status), (label, status)
                 else:
                     assert "cols" not in status, status
                 svg = (snapshot_dir / f"T1-terminal-{size[0]}x{size[1]}.svg").read_text(encoding="utf-8")
@@ -215,8 +215,7 @@ def _shoot_t1c(monkeypatch, serve, wait_until, shoot, snapshot_dir, size, *, env
                 await wait_until(pilot, lambda: "normal 0-7" in "".join(
                     s.text for s in app.screen._compositor.render_strips()), "the coloured screen",
                     timeout_s=30)
-                await wait_until(pilot, lambda: screen.canvas.view_range.label in
-                                 list(app.screen._compositor.render_strips())[-1].text if size[0] - 4 < 132 else True,
+                await wait_until(pilot, lambda: screen.status._inputs.range_label == screen.canvas.view_range.label,
                                  "the row to draw the range")
                 await pilot.pause(0.2)
                 lines = shoot(app, stem, size).splitlines()
@@ -252,7 +251,7 @@ def test_t1c_the_terminal_with_coloured_output_shows_the_scheme(size, monkeypatc
 # The six third-party schemes the design draws T1c with (design §5). The chrome is terracotta, whose
 # `surface` is #191919: the rail must keep it (ruling 2: the chrome and the scheme do not move each other).
 T1C_SCHEMES = ("dracula", "nord", "solarized-dark", "solarized-light", "catppuccin-mocha", "one-half-dark")
-TERRACOTTA_SURFACE = "#191919"
+TERRACOTTA_SURFACE = "#1f1f1f"
 # The colours are asserted from the shipped files, never the design's aggregator copies (phase 2's cross-check
 # listed where they differ); `parse_scheme` on the packaged file is the ground truth.
 _SHIPPED = Path(__file__).resolve().parents[1] / "tsb_tui" / "schemes"
@@ -443,7 +442,7 @@ def test_s1_the_rail_widens_in_place_into_the_fleet_sidebar(size, serve, wait_un
                     if size[0] >= 120:
                         assert label in status and "rtr-core-01 shows" in status, (label, status)  # mockup S1
                     else:
-                        assert "tap a row" in status and "Esc Close" in status, status  # mockup S2: the phone's row
+                        assert "tap a row" in status and "t Take back" in status, status  # mockup S2: the phone's row
                 else:
                     assert "cols" not in status, f"a window that shows the whole grid says it pans: {status}"
                 assert not [f for f in serve_app.frames if f.get("t") == "resize"], "opening the sidebar asked for a size"
@@ -526,8 +525,10 @@ def test_f7_the_stale_dialog_offers_the_four_choices_to_the_one_who_types(size, 
                 assert words in squeezed, f"no {words!r}"
             assert "1-4" in squeezed and "recorded" in squeezed, "the footer is missing"
             status = _status(lines)
-            assert "you type" in status and "▲ stale" in status, status
-            assert "● REC" in status and "≡ Menu" in status, f"REC and the Menu stay on the one row: {status!r}"
+            assert "you type" in status and "F1 Menu" not in status, status
+            assert "F1 Menu" not in status and "Ctrl+\\ ? keys" not in status, status
+            if size[0] >= 80:
+                assert "● REC" in status and "Ctrl+\\ [ Scroll" in status
             assert screen.status.size.height == 1, "the status row never grows a second line"
             # The row is one row; the contract's notice line (stale-screen rule 18) is the banner at the top of the
             # canvas, whole, wrapped at spaces on a phone, never cut.
@@ -581,7 +582,7 @@ def test_a2_an_agents_headless_tui_snapshot_is_the_same_ui(size, serve, snapshot
                 assert set(_shown_alerts(lines)) == {SHOWN_ALERTS}, _shown_alerts(lines)
                 assert "ops@infra-db-02:~$" in "".join(line[4:] for line in lines[:8])
                 status = _status(lines)
-                assert "you type" in status and "≡ Menu" in status, status
+                assert "you type" in status and "Ctrl+\\ [ Scroll" in status, status
 
     asyncio.run(check())
 
@@ -624,7 +625,7 @@ def _f12(state_id: str, always: str, wide: str, from_200: str = ""):
     return register
 
 
-@_f12("you-type", "you type", "rtr-core-01  ● live  ● REC")
+@_f12("you-type", "you type", "● live  ● REC")
 def _you_type(state) -> list[dict]:
     return []
 
@@ -675,7 +676,7 @@ def _data_path(state) -> list[dict]:
     return [validated({"t": "data_path", "v": 1, "session_id": state.session_id, "state": "lost", "at": iso(NOW)})]
 
 
-@_f12("quiet-prompt", "you type", "rtr-core-01  ● live  ● REC")
+@_f12("quiet-prompt", "you type", "● live  ● REC")
 def _quiet(state) -> list[dict]:
     return [validated({"t": "quiet_prompt", "v": 1, "prompt_id": "f" * 32, "code": "quiet_prompt.kill",
                        "text": "Kill the session?"})]
@@ -732,13 +733,18 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
             palette = slot.canvas._palette
             assert (palette.cursor_typist if slot.canvas.typist else palette.cursor_viewer).shape == (
                 "block" if typing else "underline"), f"{state_id} at {size[0]}: wrong cursor shape for {always!r}"
-            assert "≡ Menu" in status, f"{state_id} at {size[0]}: the Menu is not on the row: {status!r}"
-            if size[0] >= 120:
+            assert ("Ctrl+\\ [ Scroll" in status if size[0] >= 80 or state_id != "owner-view-only" else "Ctrl+\\ t Take back" in status), status
+            if size[0] >= 120 and state_id in ("you-type", "quiet-prompt"):
+                assert "rtr-core-01" in status or any(
+                    f" {"rtr-core-01"[:n]}… " in status for n in range(len("rtr-core-01"))), status
+            if size[0] >= 200:
                 assert re.sub(r"\s+", " ", wide) in status, f"{state_id} at {size[0]}: {wide!r} not in {status!r}"
             if state_id == "owner-view-only" and size[0] >= 120:
-                assert "^\\ t Take back" in status, status
+                assert "Ctrl+\\ t Take back" in status, status
+                if size[0] == 120:
+                    assert "rtr-" not in status and "F1 Menu" in status, status
             if state_id == "quiet-prompt" and size[0] >= 120:
-                assert "^\\ a Answer: kill the session?" in status, status
+                assert "Ctrl+\\ a Answer: kill the session?" in status, status
             if state_id == "quiet-prompt" and size[0] == 120:
                 assert "Detach" not in status, f"Detach kept ahead of Answer at 120: {status}"
             if size[0] >= 200 and from_200:
@@ -767,15 +773,17 @@ def test_f12_the_row_for_an_unreachable_worker_comes_from_the_poll_and_says_the_
             screen.close_sidebar()
             serve_app.sessions[sid]["state"] = "unreachable"
             screen._refresh_fleet()
-            await wait_until(pilot, lambda: "unreachable" in screen.status.text, "the poll to tell the row")
+            await wait_until(pilot, lambda: screen.pump.state.session.get("state") == "unreachable", "the poll to tell the row")
             # The core then refuses what is typed, with its reason (byte-relay's refusal table).
             refusal = validated({"t": "input_refused", "v": 1, "reason": "unreachable"})
             _deliver(screen, screen.slot_for(sid), refusal)
             await pilot.pause(0.3)
             lines = shoot(app, "F12-unreachable", size).splitlines()
             status = re.sub(r"\s+", " ", " ".join(line.strip() for line in lines[-3:] if line.strip(" │")))
-            assert "◌ unreachable" in status and "≡ Menu" in status, status
-            if size[0] >= 120:
+            assert "F1 Menu" in status and "Ctrl+\\ [ Scroll" in status, status
+            if size[0] >= 80:
+                assert "◌ unreachable" in status
+            if size[0] >= 200:
                 assert "◌ unreachable · TSB cannot reach its worker · input refused · not ended" in status, status
 
     asyncio.run(check())
@@ -804,7 +812,9 @@ def test_f12_the_row_while_reattaching_says_which_try_is_next_and_that_esc_stops
             await pilot.pause(0.3)
             lines = shoot(app, "F12-reattaching", size).splitlines()
             status = re.sub(r"\s+", " ", " ".join(line.strip() for line in lines[-3:] if line.strip(" │")))
-            assert "◐ reattaching" in status and "≡ Menu" in status, status
+            assert "◐ reattaching" in status, status
+            assert "Esc stops" in status, status
+            assert "F1 Menu" not in status and "? keys" not in status, status
             assert "ended" not in status.replace("not ended", ""), status
             if size[0] >= 120:
                 assert re.search(r"the session lives on · try \d+ in \d+ s", status), status
@@ -834,12 +844,14 @@ def test_f12_a_stale_screen_someone_else_is_choosing_shows_no_dialog_and_says_wh
                 lines = shoot(app, "F12-stale-someone-else", size).splitlines()
                 joined = "\n".join(lines)
                 status = _status(lines)
-                assert "view only" in status and "▲ stale" in status, status
-                assert "● REC" in status and "≡ Menu" in status, f"REC and the Menu stay on the one row: {status!r}"
+                assert "view only" in status and "F1 Menu" not in status, status
+                assert "F1 Menu" not in status and "Ctrl+\\ ? keys" not in status, status
+                if size[0] >= 80:
+                    assert "● REC" in status and "Ctrl+\\ [ Scroll" in status
                 assert screen.status.size.height == 1, "the status row never grows a second line"
                 assert STALE_NOTICE in " ".join(line[4:].strip() for line in lines[:4]), lines[:4]
                 assert "Choose:" not in joined, "a client that does not type was shown the dialog"
-                if size[0] >= 120:  # who is choosing fits where the row has room; a phone keeps `▲ stale · input refused`
+                if size[0] >= 200:  # who is choosing fits where the row has room; a phone keeps `▲ stale · input refused`
                     assert "fixture-peer is choosing · input refused" in status, status
 
     asyncio.run(check())
@@ -859,7 +871,7 @@ def test_f12_the_menu_takes_the_keys_and_says_how_to_use_it(size, serve, wait_un
             session_id = create_owner_session(app, _serve.TARGET, 116, 39)
             screen = await attached(pilot, app, session_id, wait_until)
             screen.close_sidebar()
-            await wait_until(pilot, lambda: screen.status.hit_x("menu") is not None, "the row to fill")
+            await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
             screen.app.open_menu()
             await wait_until(pilot, lambda: app.screen is not screen and "Find an action" in "".join(
                 s.text for s in app.screen._compositor.render_strips()), "the Menu")

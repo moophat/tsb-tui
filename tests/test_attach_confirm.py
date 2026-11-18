@@ -116,7 +116,7 @@ def test_a_later_attach_in_the_same_run_shows_the_recording_text_in_the_status_r
                                  "the attach")
                 await wait_until(pilot, lambda: RECORDING["warning_text"] in screen.status.text,
                                  "the recording text in the row")
-                assert "‹ you type ›" in screen.status.text and "≡ Menu" in screen.status.text
+                assert "‹ you type ›" in screen.status.text and "F1 Menu" in screen.status.text
                 clock[0] += 6  # past `gates.recording_bar_s` (5)
                 screen._tick()
                 await wait_until(pilot, lambda: RECORDING["warning_text"] not in screen.status.text,
