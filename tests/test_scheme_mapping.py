@@ -194,7 +194,7 @@ def test_cursor_role_keeps_tsbs_colours(lib) -> None:
             assert block.color.get_truecolor()[:3] == (0x1F, 0x23, 0x2B)
             canvas.typist = False
             viewer = _style_at(canvas.render_line(0), 2)
-            assert viewer.color.get_truecolor()[:3] == (0x8F, 0xC4, 0xD3) and viewer.underline
+            assert viewer.color.get_truecolor()[:3] == (0xCA, 0xB0, 0xC5) and viewer.underline
 
     asyncio.run(_check())
 
@@ -266,6 +266,6 @@ def test_cursor_scheme_under_outer_takes_tsb_roles_open_t4(lib) -> None:
             assert block.color.get_truecolor()[:3] == (0x1F, 0x23, 0x2B)
             canvas.typist = False
             viewer = _style_at(canvas.render_line(0), 2)
-            assert viewer.color.get_truecolor()[:3] == (0x8F, 0xC4, 0xD3)
+            assert viewer.color.get_truecolor()[:3] == (0xCA, 0xB0, 0xC5)
 
     asyncio.run(_check())

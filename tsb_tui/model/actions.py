@@ -277,7 +277,7 @@ ACTIONS: tuple[Action, ...] = (
            SCOPE_SESSION, None, _theme_blocked),
     Action("settings", "Settings…", "the knobs in force and where each came from", None, GROUP_SETTINGS,
            SCOPE_SESSION, None, _always),
-    Action("keys", "All keys", "every action's key", "?", GROUP_SETTINGS, SCOPE_SESSION, None, _always),
+    Action("keys", "All keys", "every action's key", "?", GROUP_SETTINGS, SCOPE_SESSION, "keys", _always),
     Action("about", "About", "the TUI, the contract client and the engine", None, GROUP_SETTINGS,
            SCOPE_SESSION, None, _always),
     Action("credentials", "Credentials…", "your saved logins: list, map to targets, delete", "C", GROUP_SETTINGS,

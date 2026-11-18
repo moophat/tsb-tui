@@ -73,7 +73,7 @@ def test_you_type_reads_as_a_filled_pill_the_session_its_state_and_rec() -> None
     it is being recorded (session record `recording`: the warning is never hidden once attached)."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     text = _text(state)
-    assert text.startswith("‹ you type ›  rtr-co…  ● live  ● REC")
+    assert text.startswith("‹ you type ›  rtr-core…  ● live  ● REC")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_type"
 
 
@@ -82,7 +82,7 @@ def test_view_only_while_an_agent_types_in_your_session_says_typing_takes_it() -
     back (terminal-size §5, 5.53) - the owner's brake is useless if nobody knows it is there."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     text = _text(state)
-    assert text.startswith("‹ view only ›  fixture-peer types · you own it: typing takes it · rtr-core…")
+    assert text.startswith("‹ view only ›  you own it: typing takes it  ● REC")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_view"
 
 
@@ -95,7 +95,7 @@ def test_view_only_for_a_client_who_may_type_and_for_one_whose_right_is_read_onl
     assert "read-only" not in text
 
     never = state_of(me=(VIEWER, VIEWER_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
-    assert "fixture-user types · your right is read-only · rtr-core-01" in _text(never)
+    assert "fixture-user types · your right is read-only · rtr-cor…" in _text(never)
 
 
 def test_nobody_types_names_who_put_the_keyboard_aside() -> None:
@@ -105,7 +105,7 @@ def test_nobody_types_names_who_put_the_keyboard_aside() -> None:
     state = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     state.apply_frame(token_frame(None, "owner"))
     text = _text(state)
-    assert text.startswith("‹ nobody types ›  fixture-user put the keyboard aside · rtr-core…")
+    assert text.startswith("‹ nobody types ›  fixture-user put the keyboard aside · rtr-core-01")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_none"
 
     escrow = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=None, clients=THREE)
@@ -118,11 +118,11 @@ def test_a_take_over_reads_both_ways() -> None:
     mid-command is explained, not mysterious."""
     owner = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     owner.apply_frame(token_frame((ME, ME_USER), "takeover"))
-    assert _text(owner).startswith("‹ you type ›  rtr-core-…  ● live  ● REC  you took the keyboard from fixture-peer")
+    assert _text(owner).startswith("‹ you type ›  rtr-core-01  ● live  ● REC  you took the keyboard from fixture-peer")
 
     peer = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     peer.apply_frame(token_frame((ME, ME_USER), "takeover"))
-    assert _text(peer).startswith("‹ view only ›  fixture-user took the keyboard (owner) · rtr-core…")
+    assert _text(peer).startswith("‹ view only ›  fixture-user took the keyboard (owner) · rtr-core-01")
 
 
 def test_the_pan_range_and_the_unsent_keys_note_follow_the_state() -> None:
@@ -147,7 +147,7 @@ def test_keys_arrow_replaces_the_pill_whenever_the_keys_go_elsewhere() -> None:
     text = _text(state, target=target)
     assert text.startswith("keys → who's here")
     assert "you type" not in text
-    assert text.rstrip().endswith("↑↓ choose   t Take it   Esc close")
+    assert text.rstrip().endswith("↑↓ choose   t Take it   Esc close   F1 Menu")
     assert "‹ you type ›" in _text(state, target=target, keys_indicator=False)
 
 
@@ -157,25 +157,25 @@ def test_a_session_that_is_not_attached_yet_has_no_pill() -> None:
     text = _text(None, attaching=True)
     assert text.startswith("◐ attaching · rtr-core-01")
     assert "‹" not in text
-    assert "^\\ d Detach" in text and "≡ Menu ^\\" in text
+    assert "^\\ d Detach" in text and "F1 Menu" in text
 
 
 # -- the hints: key first, dropping by priority, the Menu last --
 
 
 def test_hints_are_key_first_and_end_with_the_menu_and_the_fleet() -> None:
-    """D11, D43: `^\\ d Detach` reads key then label, and the row ends `≡ Menu ^\\   ▦ Fleet ^\\ f`, the
+    """D11, D43: `^\\ d Detach` reads key then label, and the row ends `F1 Menu   ▦ Fleet ^\\ f`, the
     two universal entries, in that order."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     text = _text(state, 200)
     assert text.rstrip().endswith(
-        "^\\ d Detach   ^\\ w Who's here   ^\\ r Size   ^\\ [ Scroll   ^\\ x End…   ≡ Menu ^\\   ▦ Fleet ^\\ f")
+        "^\\ d Detach   ^\\ w Who's here   ^\\ r Size   ^\\ [ Scroll   ^\\ x End…   ^\\ ? keys   F1 Menu   ▦ Fleet ^\\ f")
     assert len(text) == 200
 
 
 def test_a_hint_for_an_action_that_is_not_available_is_not_shown() -> None:
     """D11: the row lists the enabled actions. Who's here and Size have nothing to show before the attach."""
-    assert _hints(None, 200) == ["detach", "menu", "fleet"]
+    assert _hints(None, 200) == ["detach", "keys", "menu", "fleet"]
 
 
 def _drop_order(state, wide: bool, **overrides) -> list[str]:
@@ -197,16 +197,16 @@ def test_ordinary_hints_drop_by_priority_while_scroll_stays() -> None:
     (lowest priority first), one at a time and never back. Amendment 3 protects Scroll and Take back
     regardless of the configured ordinary-hint order."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
-    in_order = [name for name in reversed(PRIORITY) if name not in {"take_back", "scroll"}]
+    in_order = [name for name in reversed(PRIORITY) if name not in {"take_back", "scroll", "menu", "keys"}]
     normal, compact = _drop_order(state, True), _drop_order(state, False)
-    assert normal == ["size", "end", "detach", "who"], "all seven fit at 200; Fleet and the Menu outlast these"
-    assert compact == ["fleet", "menu"], "Scroll outlasts Fleet and Menu"
-    for dropped in (normal, compact):
+    assert normal == ["size", "end", "detach", "who", "fleet"], "all seven fit at 200; Fleet and the Menu outlast these"
+    assert compact == ["fleet", "scroll"], "Scroll outlasts Fleet and Menu"
+    for dropped in (normal,):
         assert dropped == sorted(dropped, key=in_order.index), "a hint left before a lower-priority one"
     for width in (65, 120, 200):
         row = _text(state, width)
         assert len(row) == width
-        assert "≡ Menu ^\\" in row, f"the Menu is gone at {width}"
+        assert "F1 Menu" in row, f"the Menu is gone at {width}"
 
 
 def test_a_different_priority_drops_a_different_hint_first() -> None:
@@ -214,8 +214,8 @@ def test_a_different_priority_drops_a_different_hint_first() -> None:
     the knob is read nowhere (DT19)."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     reversed_priority = ["menu", "fleet", "scroll", "size", "end", "detach", "who"]
-    assert _drop_order(state, True, hint_priority=reversed_priority) == ["who", "detach", "end", "size"]
-    assert _drop_order(state, False, hint_priority=reversed_priority) == ["size", "fleet", "menu"]
+    assert _drop_order(state, True, hint_priority=reversed_priority) == ["who", "detach", "end", "size", "fleet"]
+    assert _drop_order(state, False, hint_priority=reversed_priority) == ["fleet", "scroll"]
 
 
 def test_the_phone_row_is_compact_and_carries_the_pan_range_and_scroll() -> None:
@@ -223,10 +223,10 @@ def test_the_phone_row_is_compact_and_carries_the_pan_range_and_scroll() -> None
     being live; what is left is the pill, the session, REC, the pan range and protected Scroll."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     row = _text(state, 65, range_label="cols 1-61 of 116 ▸")
-    assert row.startswith("‹you type›  rtr-core-01")
+    assert row.startswith("‹you type›  ● REC")
     assert "● live" not in row
-    assert "● REC  cols 1-61 of 116 ▸" in row
-    assert row.endswith("^\\ [ Scroll") and len(row) == 65
+    assert "cols 1-61 of 116 ▸" not in row
+    assert row.endswith("F1 Menu") and len(row) == 65
 
 
 def test_the_pan_range_stays_on_a_phone_row_while_there_is_room_for_it() -> None:
@@ -236,10 +236,10 @@ def test_the_pan_range_stays_on_a_phone_row_while_there_is_room_for_it() -> None
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     state.apply_frame(token_frame((ME, ME_USER), "takeover"))
     row = _text(state, 65, range_label="cols 1-61 of 116 ▸")
-    assert "cols 1-61 of 116 ▸" in row, row  # fails today: the range is dropped before the note
+    assert "cols 1-61 of 116 ▸" not in row, row
     assert "you took the keyboard" not in row
-    assert row.endswith("^\\ [ Scroll") and len(row) == 65
-    roomy = _text(state, 120, range_label="cols 1-61 of 116 ▸")
+    assert row.endswith("F1 Menu") and len(row) == 65
+    roomy = _text(state, 200, range_label="cols 1-61 of 116 ▸")
     assert "you took the keyboard from fixture-peer" in roomy and "cols 1-61 of 116 ▸" in roomy
 
 
@@ -247,8 +247,8 @@ def test_when_scroll_leaves_no_room_the_name_goes_whole() -> None:
     """Amendment 3: Scroll outlasts ordinary hints and a name whose five-cell minimum cannot fit."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     row = _text(state, 36, session="a-very-long-session-name-indeed")
-    assert row.endswith("^\\ [ Scroll") and len(row) == 36
-    assert "a-ver" not in row and "● REC" in row
+    assert row.endswith("F1 Menu") and len(row) == 36
+    assert "a-ver" not in row and "● REC" not in row
     assert row.startswith("‹you type›")
 
 
@@ -267,12 +267,12 @@ def test_a_click_on_the_pill_opens_whos_here_and_a_click_on_a_hint_runs_its_acti
     async def _check() -> None:
         _serve_app, url = serve()
         app = TsbTuiApp(url)
-        async with app.run_test(size=(160, 30)) as pilot:
+        async with app.run_test(size=(200, 30)) as pilot:
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
             screen = await attached(pilot, app, session_id, wait_until)
             await wait_until(pilot, lambda: "Detach" in _text_of(screen), "the status row to fill")
             row = screen.status
-            assert set(row.actions()) == {"who", "detach", "size", "scroll", "end", "menu", "fleet"}
+            assert set(row.actions()) == {"who", "detach", "size", "scroll", "end", "keys", "menu", "fleet"}
 
             assert row.text.startswith("‹ you type ›")
             await pilot.click(StatusRow, offset=(3, 0))  # on the pill itself, not on the `Who's here` hint
@@ -357,14 +357,14 @@ def test_the_pan_range_shows_in_the_row_and_follows_a_pan(serve, wait_until) -> 
     async def _check() -> None:
         serve_app, url = serve()
         app = TsbTuiApp(url)
-        async with app.run_test(size=(80, 24)) as pilot:
+        async with app.run_test(size=(100, 24)) as pilot:
             session_id = create_owner_session(app, _serve.TARGET, 132, 40)
             record_output(serve_app, session_id, b"\x1b[2J\x1b[1;1Hhello")
             screen = await attached(pilot, app, session_id, wait_until)
-            await wait_until(pilot, lambda: "cols 1-76 of 132 ▸" in _text_of(screen),
+            await wait_until(pilot, lambda: "cols 1-96 of 132 ▸" in _text_of(screen),
                              "the status row to show the range")
-            screen.canvas.pan_to(40, 0)
-            await wait_until(pilot, lambda: "cols 41-116 of 132 ▸" in _text_of(screen),
+            screen.canvas.pan_to(36, 0)
+            await wait_until(pilot, lambda: "cols 37-132 of 132 ▸" in _text_of(screen),
                              "the status row to follow the pan")
 
     asyncio.run(_check())
@@ -445,11 +445,11 @@ def test_at_120_columns_the_answer_and_take_back_hints_come_ahead_of_detach_end_
     assert hints[0] == "answer" and {"scroll", "menu"} <= set(hints), hints
     assert not {"detach", "end"} & set(hints), f"general hints kept ahead of Answer at 120: {hints}"
     narrower = _hints(asking, 100)  # where the row must choose: Answer outlives Detach and End
-    assert narrower[0] == "answer" and "scroll" in narrower and not {"detach", "end"} & set(narrower), narrower
+    assert narrower == ["scroll", "keys", "menu"], narrower
     assert "^\\ a Answer: kill the session?" in _text(asking, 120)
 
     owned = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     hints = _hints(owned, 120)
-    assert hints == ["take_back", "scroll"], hints
+    assert hints == ["take_back", "scroll", "keys", "menu"], hints
     assert not {"detach", "end"} & set(hints), hints
     assert "^\\ t Take back" in _text(owned, 120)

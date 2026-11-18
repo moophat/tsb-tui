@@ -28,7 +28,7 @@ from workspace_support import (
 
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model.fleet import GROUP_NEEDS_YOU
-from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen
+from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen, TextScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.size_dialog import SizeDialog
 from tsb_tui.screens.whos_here import WhosHereScreen
@@ -99,6 +99,7 @@ def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(s
 
     effects = {
         "menu": lambda app, screen: isinstance(app.screen, CommandPalette),
+        "keys": lambda app, screen: isinstance(app.screen, TextScreen),
         "fleet": lambda app, screen: screen.sidebar_open,
         "who": lambda app, screen: isinstance(app.screen, WhosHereScreen),
         "size": lambda app, screen: isinstance(app.screen, SizeDialog),
@@ -192,9 +193,9 @@ def test_the_full_views_hints_and_pan_hints_are_clicks_too(serve, wait_until) ->
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
-        (sid,) = named_sessions(url, serve_app, "rtr-core-01", cols=150, rows=40)
+        (sid,) = named_sessions(url, serve_app, "rtr-core-01", cols=250, rows=40)
         app = TsbTuiApp(url)
-        async with app.run_test(size=(120, 40)) as pilot:
+        async with app.run_test(size=(200, 40)) as pilot:
             screen = await fixture_login(app, pilot)
             await open_here(app, pilot, wait_until, sid)
             screen.close_sidebar()

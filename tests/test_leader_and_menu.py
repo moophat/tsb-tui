@@ -254,7 +254,7 @@ def test_the_menu_lists_every_action_of_the_table_with_its_key_and_is_searchable
         serve, monkeypatch, wait_until) -> None:
     """Design §3.4 test 5, D10: every action in the table appears in the Menu (but the Menu itself and
     the dialogs' own buttons), each with its description and key; typing narrows the list and Enter runs
-    the match. Ctrl-P stays the session's: the Menu opens only from the leader, `≡ Menu` or its click."""
+    the match. Ctrl-P stays the session's: the Menu opens only from the leader, `F1 Menu` or its click."""
     _env(monkeypatch, **{MENU_AFTER: "100"})
 
     async def _check() -> None:
@@ -419,7 +419,7 @@ def test_keys_leader_chooses_the_key_and_the_row_prints_it(serve, monkeypatch, w
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 24)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
-            await wait_until(pilot, lambda: "≡ Menu ^]" in screen.status.text, "the row to print the leader")
+            await wait_until(pilot, lambda: "^] ? keys" in screen.status.text, "the row to print the leader")
 
             await pilot.press(LEADER)
             await wait_until(pilot, lambda: serve_app.received(client_id) == [b"\x1c"],
@@ -434,7 +434,7 @@ def test_keys_leader_chooses_the_key_and_the_row_prints_it(serve, monkeypatch, w
 def test_every_menu_action_is_reachable_by_a_click_alone(
         serve, monkeypatch, wait_until, screen_text, width) -> None:
     """Design §3.4 test 5, success criteria: at 65, 120 and 200 columns the Menu opens from a click on
-    `≡ Menu`, and an entry runs from a click on it, with no key pressed: here Who's here and then, from the
+    `F1 Menu`, and an entry runs from a click on it, with no key pressed: here Who's here and then, from the
     Menu again, Size."""
     _env(monkeypatch)
 

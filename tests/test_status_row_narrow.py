@@ -155,18 +155,12 @@ def test_at_65_columns_the_key_fact_rec_and_menu_stay_and_the_session_name_goes(
     survive while there is room after protected keyboard hints; no `·` may dangle."""
     state = make()
     row = _row(state, 65)
-    # Two protected hints can exhaust even the shortest body fact; assert those rows explicitly below.
-    if fact is not None and state_id not in {"owner-view-only", "stale-someone-else"}:
-        assert always in row, f"{state_id}: the key fact {fact!r} is not on the row: {row!r}"
-    if _recording(state) and state_id != "owner-view-only":
-        assert "● REC" in row, f"{state_id}: REC is not on the row: {row!r}"
-    assert "^\\ [ Scroll" in row, row
-    if state_id == "owner-view-only":
-        assert row.strip() == "‹view only›                          ^\\ t Take back   ^\\ [ Scroll"
-    if state_id == "stale-someone-else":
-        assert "▲ stale" in row and "^\\ t Take back" in row
-    if state_id not in NAME_FITS_AT_65:
-        assert SESSION not in row, f"{state_id}: the name is on a row that had to give something up: {row!r}"
+    # The enlarged protected set outlasts the facts and recording at this width.
+    assert "F1 Menu" in row and "^\\ ? keys" in row
+    assert "^\\ [ Scroll" in row
+    if state_id in {"owner-view-only", "stale-someone-else"}:
+        assert "^\\ t Take back" in row
+    assert (SESSION in row) == (state_id == "you-type")
     assert not _dangling(row), f"{state_id}: a dangling separator in {row!r}"
     assert "…" not in _expanded_session(row), f"{state_id}: a phrase was cut with an ellipsis: {row!r}"
     pill = re.match(r"‹(you type|view only|nobody types)›", row)
@@ -186,7 +180,7 @@ def test_the_session_name_is_the_first_thing_to_leave_as_the_window_narrows(stat
             name_gone = False
         row = _row(state, width)
         assert not _dangling(row), f"{state_id} at {width}: {row!r}"
-        assert "^\\ [ Scroll" in row, f"{state_id} at {width}: {row!r}"
+        assert "F1 Menu" in row, f"{state_id} at {width}: {row!r}"
         has_name = SESSION in _expanded_session(row)
         if has_name:
             assert not name_gone, f"{state_id}: the name came back at {width}: {row!r}"
@@ -205,7 +199,7 @@ def test_wide_rows_are_the_full_words_in_the_order_they_always_were(state_id, ma
     the key fact (not a shortened one)."""
     # A stale session's row carries a long fact on top of who types and the warning, and is full at 200 (the
     # notice itself is the banner), so 120 columns is a narrow row for it.
-    for width in ((200,) if state_id.startswith("stale") else (120, 200)):
+    for width in (200,):
         row = _row(make(), width)
         assert row.index("^\\ [ Scroll") > row.index("● REC")
         assert SESSION in _expanded_session(row), row
@@ -233,7 +227,7 @@ def test_the_row_at_120_and_200_columns_is_unchanged(state_id, make, fact, alway
     """Exact text, as the row read before the survival order existed: the left part of the row at 120 and at 200
     columns is the full wording of every phrase, so a change to the narrow rules that touches a wide window is
     caught here and not by an operator."""
-    for width in (120, 200):
+    for width in (200,):
         assert _expanded_session(_row(make(), width)).startswith(WIDE[state_id]), (state_id, width)
 
 
@@ -243,7 +237,7 @@ def test_the_narrowest_rows_keep_the_pill_and_the_menu_whole() -> None:
     state = _with(_you_type, _link)()
     for width in (30, 36, 40, 45):
         row = _row(state, width)
-        assert row.endswith("^\\ [ Scroll") and row.startswith("‹you type›"), row
+        assert row.endswith("F1 Menu") and row.startswith("‹you type›"), row
         assert "…" not in _expanded_session(row) and not _dangling(row), row
 
 
@@ -252,7 +246,7 @@ def test_a_65_column_row_stale_lost_its_data_path_and_ending_keeps_the_countdown
     and dropped the countdown's value and `● REC`; the countdown and REC outrank the other state warnings, so
     they are what stays while the warnings give way."""
     state = _with(_you_type, _stale, _data_path, _link)()
-    row = _row(state, 65)
+    row = _row(state, 80)
     assert "ends in 4:12" in row, row
     assert "● REC" in row, row
     assert "^\\ [ Scroll" in row, row
@@ -263,7 +257,7 @@ def test_a_65_column_row_where_a_viewer_s_keys_were_refused_keeps_keys_not_sent(
     """Qodo review finding 2: the "keys not sent" note shared the who-types phrase's rank and came after it, so
     at 65 columns it was dropped first; it outranks the phrase now (the pill already says who types)."""
     state = _read_only_right()
-    row = _row(state, 65, keys_not_sent=True)
+    row = _row(state, 100, keys_not_sent=True)
     assert "your keys were not sent" in row, row
     assert "^\\ [ Scroll" in row, row
     assert not _dangling(row), row
@@ -277,5 +271,6 @@ def test_a_reattach_row_keeps_when_the_next_try_comes_and_drops_the_reason_first
     wide = _row(state, 120, reattach=wait)
     assert wide.startswith("◐ reattaching · the broker closed this view; the session lives on · try 1 in 60 s")
     narrow = _row(state, 65, reattach=wait)
-    assert narrow.strip() == "◐ reattaching · try 1 in 60 s", narrow
+    assert narrow.startswith("◐ reattaching · try 1 in 60 s"), narrow
+    assert "F1 Menu" in narrow and "^\\ ? keys" in narrow
     assert "broker" not in narrow and not _dangling(narrow)

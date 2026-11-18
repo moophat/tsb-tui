@@ -134,7 +134,7 @@ def test_the_leader_and_T_open_the_picker_and_the_session_stays_visible_beside_i
                 "the canvas lost the scheme's background under the picker")
             assert any(f == NORD_SURFACE and x < 4 for f, x in fills), (
                 "the rail lost terracotta's surface under the picker")
-            # the Menu's own way in: click `≡ Menu`, scroll to the entry, click it (the same path an
+            # the Menu's own way in: click `F1 Menu`, scroll to the entry, click it (the same path an
             # agent uses in test_discoverability, run here in the pilot — drive blocks `theme` by design).
             await pilot.press("escape")
             await wait_until(pilot, lambda: app.screen is screen, "the picker to close")
@@ -354,7 +354,7 @@ def test_the_status_row_gives_the_picker_its_hints_and_gives_the_row_back(
         await pilot.press("escape")
         await wait_until(pilot, lambda: app.screen is screen and not screen.dialogs
                          and "keys →" not in screen.status.text, "the row to give the keys back")
-        assert "≡ Menu" in screen.status.text
+        assert "F1 Menu" in screen.status.text
         await gen.aclose()
 
     asyncio.run(check())

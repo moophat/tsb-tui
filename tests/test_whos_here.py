@@ -192,7 +192,7 @@ def test_put_it_aside_sends_the_keyboard_to_escrow(serve, wait_until) -> None:
                 dialog.dismiss(None)
                 await wait_until(pilot, lambda: app.screen is screen and "keys →" not in screen.status.text,
                                  "the dialog to close")
-                assert screen.status.text.startswith("‹ nobody types ›  fixture-user put the keyboard aside")
+                assert screen.status.text.startswith("‹ nobody types ›  fixture-user put it aside")
 
     asyncio.run(_check())
 

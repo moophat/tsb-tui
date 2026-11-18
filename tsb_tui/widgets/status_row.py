@@ -5,7 +5,7 @@ Two parts, kept apart so the layout is a pure function a test can read at any wi
 
 * `build_pieces(inputs, width)` turns the models into a list of `Piece`s that fill exactly `width` cells.
   The session name shortens with a trailing ellipsis before hints drop by `status.hint_priority`;
-  Take back and Scroll survive every ordinary hint and the name. Then the words after the pill give way
+  Menu, keys, Take back and Scroll survive every ordinary hint and the name. Then the words after the pill give way
   by a fixed survival order (`Item`, `_lay`): the
   session name first and, last, the state warnings; what stays is the pill, the state's key fact, the
   countdown value and `● REC`; protected keyboard hints outlast them all. A word is whole or gone, and no separator
@@ -356,7 +356,10 @@ def _session_hints(inputs: StatusInputs) -> list[tuple[str, list[Piece]]]:
         if action.scope != A.SCOPE_SESSION or action.hint is None or A.blocked(action.id, facts):
             continue
         letter = inputs.leader_keys.get(action.id)
-        if action.glyph:
+        if action.id == "menu":
+            by_name[action.id] = [Piece("F1", "hint_key", action.id),
+                                  Piece(" Menu", "hint", action.id)]
+        elif action.glyph:
             tail = f" {inputs.leader} {letter}" if letter else f" {inputs.leader}"
             by_name[action.id] = [Piece(action.glyph, "glyph", action.id),
                                   Piece(f" {action.hint}", "hint", action.id),
@@ -496,18 +499,39 @@ def build_pieces(inputs: StatusInputs, width: int) -> list[Piece]:
         left = [Piece(inputs.input_notice, "warn")]
     if special is not None:
         hints = special[1]
-        drop_order = [name for name, _ in hints]
     elif inputs.target is not None:
         hints = _target_hints(inputs.target)
-        # A focused list's hints leave in their existing priority order.
-        drop_order = [name for name, _ in hints]
     else:
         hints = _session_hints(inputs)
+
+    def action_of(hint: tuple[str, list[Piece]]) -> str:
+        return next((p.action.rsplit(":", 1)[-1] for p in hint[1] if p.action), hint[0])
+
+    protected = {"menu", "keys", "take_back", "scroll"}
+    # F1 is global; the leader reaches All keys in the workspace, not through modal dialogs.
+    common = {"menu"}
+    if inputs.target is None or inputs.target.name in {"fleet", "fleet view", "targets", "scroll", "pan",
+                                                       "the leader", "menu"}:
+        common.add("keys")
+    present = {action_of(h) for h in hints}
+    hints = [*hints, *(h for h in _session_hints(inputs)
+                         if h[0] in common and h[0] not in present)]
+    ordinary = [name for name, parts in hints if action_of((name, parts)) not in protected]
+    if special is not None or inputs.target is not None:
+        drop_order = list(reversed(ordinary))
+    else:
         rank = {name: i for i, name in enumerate(inputs.hint_priority)}
-        # Lowest priority first; only the keyboard actions Take back and Scroll are protected.
-        drop_order = sorted((name for name, _ in hints if name not in {"take_back", "scroll"}),
-                            key=lambda n: rank.get(n, len(rank)), reverse=True)
+        drop_order = sorted(ordinary, key=lambda n: rank.get(n, len(rank)), reverse=True)
     left, hints = _fit(left, hints, drop_order, width)
+    if width < 80:
+        # Only after ordinary hints and facts have yielded may protected hints leave.
+        for action in ("scroll", "keys", "take_back", "menu"):
+            used = _width(left) + sum(_width(p) for _, p in hints) + len(GAP) * max(len(hints) - 1, 0)
+            if used + (MIN_GAP if hints and left else 0) <= width:
+                break
+            if action == "menu" and width >= len("F1 Menu"):
+                break
+            hints = [h for h in hints if action_of(h) != action]
     pieces = list(left)
     used = _width(left) + sum(_width(p) for _, p in hints) + len(GAP) * max(len(hints) - 1, 0)
     pieces.append(Piece(" " * max(width - used, 0), "text"))

@@ -3279,7 +3279,7 @@ class TerminalScreen(Screen):
         if self._leader_pending:
             keys = A.leader_keys(self.app.cfg.leader_overrides())
             facts = self.facts()
-            hints = [Hint(keys[a.id], a.hint or a.label) for a in A.leader_actions()
+            hints = [Hint(keys[a.id], a.hint or a.label, a.id) for a in A.leader_actions()
                      if a.hint and A.blocked(a.id, facts) is None]
             hints.append(Hint(A.leader_label(self.app.cfg["keys.leader"]), "sends the key itself"))
             return KeysTarget("the leader", tuple(hints))

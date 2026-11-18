@@ -54,9 +54,11 @@ def test_the_banner_carries_the_contracts_notice_whole_at_every_width_and_the_ro
                 assert screen.status.size.height == 1
                 row = screen.status.text
                 assert "\n" not in row and len(row) == width, row
-                assert "‹" in row and "▲ stale" in row and "Ctrl+\\ [ Scroll" in row
+                assert "‹" in row and "F1 Menu" in row
+                if width >= 80:
+                    assert "▲ stale" in row and "Ctrl+\\ [ Scroll" in row
                 assert "Ctrl+\\ t Take back" in row, row
-                if width >= 120:
+                if width >= 200:
                     assert "fixture-other is choosing · input refused" in row, row
 
     for width in (65, 120, 200):

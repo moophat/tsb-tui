@@ -137,6 +137,6 @@ def test_keyboard_hints_outlast_name_and_ordinary_hints(width):
     pieces = build_pieces(_inputs(state), width)
     actions = {p.action for p in pieces}
     assert {"take_back", "scroll"} <= actions
-    assert (any(p.text.startswith("rtr-") for p in pieces)) == (width == 120)
-    assert "menu" not in actions
+    assert not any(p.text.startswith("rtr-") for p in pieces)
+    assert {"menu", "keys"} <= actions
     assert len("".join(p.text for p in pieces)) == width

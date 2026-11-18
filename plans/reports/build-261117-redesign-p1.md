@@ -905,3 +905,150 @@ Final two-file coverage: **14 passed in 44.56 s**, exit **0**, `tui-r1-a3-final-
 
 
 Final-gate checkpoint: through 55%, one failure in drive-command coverage pending full traceback and the mandated isolated rerun; no source/test edits since gate start. Final lint passes (`tui-r1-a3-lint-gate.txt`, exit 0), including Ruff and 110 auxiliary checks; final contract-check passes (`tui-r1-a3-contract-final.txt`, exit 0), clean v0.18.0. Three existing PowerShell/Pester skips remain unverified. The prior completed full gate and isolated stale-assertion failures remain recorded above, not relabelled as passing.
+
+## Round 2
+
+**AI-Model:** gpt-6.1-sol
+**Status:** DONE_WITH_CONCERNS — implemented and verified; completed full run and isolated results are recorded below.
+
+Read the Round 2 brief and the design review's Pick 2, Pick 5, Pick 6 and P1 round 1 Amendment 3 rows. Baseline is `b6a693f`; the working tree was clean. No source or test changes were made, and no commit or push was performed.
+
+### Breakdown and checkpoint
+
+- [x] Inspect the baseline and named review rulings.
+- [x] Measure every shipped theme's accent/steel hue separation and chrome contrast.
+- [x] Resolve the no-session-card requirement (Amendment 1 defers it to P3).
+- [x] Add behavioral red tests, implement Amendments 1–2, and complete green/touched/full/lint/contract gates with failures and skips disclosed.
+
+### Blocker and options
+
+Ruling 1 requires the no-session card's key list to say `F1 menu`. No such card/key list exists in this baseline: `TerminalScreen.compose` mounts the rail, sidebar, fleet view and overlays; the no-session status is the `NO_SESSION = "no session open"` phrase in `widgets/status_row.py`. Creating a card needs a placement, contents and behavior that the brief does not specify, and goes beyond the allowed hint-list-only changes to `screens/terminal.py`.
+
+Operator options: (1) explicitly defer the card clause and complete the existing status-row/theme changes; (2) specify the card's layout, contents and behavior and expand the allowed paths; (3) identify an existing card elsewhere that this lane should update. No option was selected by the lane.
+
+### Read-only validation
+
+Theme audit completed with exit 0 (`tui-r2-theme-audit.txt`). Circular hue separation in degrees; each contrast range covers bg, surface, surface_2, surface_3 and accent_soft:
+
+| Theme | Hue separation | Accent contrast range | Steel contrast range |
+|---|---:|---:|---:|
+| contrast | 163.750000 | 5.069127–8.425373 | 7.033027–11.689561 |
+| dracula | 135.335753 | 4.519357–6.663561 | 6.977636–10.288168 |
+| nord | 0.098039 | 4.507602–6.243326 | 4.725312–6.544868 |
+| paper | 160.606061 | 4.525715–6.449344 | 4.642266–6.615435 |
+| terracotta | 161.979405 | 4.528994–6.246996 | 5.690790–7.849502 |
+
+Only Nord fails the hue requirement; no other theme needs a ruling. The first audit invocation exited 1 because a standalone script lacked the pinned contract package's parent on sys.path; the corrected invocation used the same pinned contract tree as pytest's conftest.
+
+The inherited Round 1 full-suite session could not be resumed (unknown process id); no matching test process remained. Its log (`tui-r1-a3-test-final.txt`) ends mid-suite at 63%, with a failure marker in test_drive_commands and no final traceback/exit result. This is an incomplete gate, not a passing result; an exact isolated rerun cannot be selected from that truncated log. Round 2 red/green, touched-file, full-suite, lint and contract gates have not run because implementation stopped at the design gap. No existing assertions were changed and no new Nord steel hex has been selected.
+
+### Amendment 1 checkpoint
+
+**AI-Model:** gpt-6.1-sol
+The amendment explicitly defers the absent no-session card to P3; that blocker is resolved without a layout change. A further narrow-width design gap remains before implementation.
+
+For an owner viewing another client's keyboard, Take back and Scroll can both apply. With the ruled existing leader spelling, the four protected hints have these cell widths: `Ctrl+\ t Take back` 18, `Ctrl+\ [ Scroll` 15, `Ctrl+\ ? keys` 13, `F1 Menu` 7. Their current three-cell gaps add 9, giving 62 cells. The retained compact `‹view only›` pill adds 11 and the minimum left gap adds 2: 75 cells total. The existing 65-column layout therefore cannot retain all four hints plus its pill, even after removing every ordinary hint and all other facts. At narrower widths, even the protected hints alone cannot fit. The row's existing exact-width and whole-hint requirements do not specify an overflow policy for this newly enlarged protected set.
+
+Operator options: specify a compact key/label/spacing format below a named width; specify a minimum supported width and behavior below it; or amend protection/row layout for narrow widths. A shared leader spelling is also possible but changes the explicit requirement to use existing session leader hints and needs a ruling. No option was selected. Source/tests and existing assertions remain unchanged; the implementation and gates remain pending. The cell-count calculation completed with exit 0; `git diff --check` also passed.
+
+### Amendment 2 implementation checkpoint
+
+**AI-Model:** gpt-6.1-sol
+Amendment 2 resolves the capacity gap: guarantee protection from 80 columns; below 80, remove Scroll, keys, Take back, then Menu, after ordinary items/facts yield. The card remains deferred to P3. Implementation is in progress, not complete.
+
+Behavioral baseline red: `tui-r2-red-complete.txt`, exit 1, 11 failed and 4 passed. These failures cover real sessions at both ruled sizes as well as pure session/list hints, list drop order, narrow protection and Nord hue. Initial pure-case red: `tui-r2-red.txt`, exit 1, 9 failed and 4 passed. Initial green: `tui-r2-green.txt`, exit 0, 13 passed. Status regression diagnostic: `tui-r2-status.txt`, exit 1, 55 failed and 52 passed; updated assertions: `tui-r2-status-updated.txt`, exit 1, 5 failed and 104 passed; final focused status suite: `tui-r2-status-final.txt`, exit 0, 109 passed, including both real-window acceptance cases. These diagnostics are not full-suite gates.
+
+Nord steel is now `#cab0c5`: bisection over the HSL lightness ray from `#b48ead`, preserving source hue/saturation before RGB quantization, finds the first quantized colour meeting 4.5:1 on every chrome surface. Accent remains `#88c0d0`; other themes are unchanged. Calculation log: `tui-r2-nord.txt`, exit 0.
+
+Assertion changes so far (old → new, required by the protected hints' space and Amendment 2):
+- test_status_row: old Menu glyph/leader spelling → `F1 Menu`; no keys action → keys present. Full hint suffix includes keys before Menu.
+- test_status_row: 120-column name prefixes → newly fitting prefixes (or name absent for owner viewing a peer); the same body semantics stay covered at wide widths.
+- test_status_row: ordinary-only drops including Menu → ordinary drops excluding all four protected actions, followed below 80 by the ruled protected order. Priority reversal still verifies the ordinary order.
+- test_status_row: 65-column name/pan-range retention → protected hints and recording where room remains; 36-column Scroll/REC retention → keys/Menu, name and REC absent. The pan-range live proof moves from 80 to 100 columns with corresponding 96-column viewport/pan coordinates. All-hint click proof moves from 160 to 200 so Size remains clickable.
+- test_status_row: Answer surviving at 100 → protected Scroll/keys/Menu surviving; Answer still survives at 120. Owner's Take back/Scroll-only list → Take back/Scroll/keys/Menu.
+- test_status_row_narrow: key fact/REC/name survival at 65 → four protected hints (only the typing client's name still fits with the test's short leader). Exact width, no dangling separators and whole phrases remain checked. Scroll at every narrow width → Menu at every tested width.
+- test_status_row_narrow: full body at 120/200 → full body at 200; countdown/REC proof moves from 65 to 80 and unsent-key proof from 65 to 100, where protected hints leave room. Narrow reattach exact body-only text → same complete body followed by Menu/keys.
+- test_redesign_round1: Menu absent and name present at 120 → Menu/keys present and name absent; Take back/Scroll remain protected with the test's short leader.
+
+Pending: related integration/snapshot diagnostics, any required assertion updates, full-suite completion and isolated failure reruns, lint, contract pin and final scope audit. No commit/push.
+
+### Integration checkpoint
+
+**AI-Model:** gpt-6.1-sol
+Related diagnostic completed: `tui-r2-related.txt`, exit 1, 39 failed and 130 passed. The baseline expectations included old Menu text, narrow fact retention, row hints that now drop, and four affected Menu SVG references. The four SVGs were regenerated by the existing test helper; the menu over New session has no changed reference. Core/status plus SVG regeneration suite: `tui-r2-updated-core.txt`, exit 0, 129 passed. The follow-up related suite is still running.
+
+Further old → new assertions:
+- discoverability: `≡ Menu` after closing each dialog → `F1 Menu`, preserving every action's observed effect.
+- leader remapping: Menu's old leader suffix → the keys hint's remapped leader; Ctrl-backslash passthrough and remapped detach remain verified.
+- mouse/chrome: no keys hint effect → All keys TextScreen effect checked on click. Full-view/Pan all-hint click proof moves from 120 to 200, where the ordinary End/Back/Done hints remain visible.
+- stale-status-row: stale/Scroll on the 65-column row → Menu/Take back; stale/Scroll remain checked from 80 and full choosing text at 200. The contract notice remains asserted whole in the banner at every width.
+- snapshots: waiting for pan-range text in the row → waiting for status inputs to receive the canvas range; narrow range/fact assertions → protected hints, retaining wide range/facts and whole banner checks. Sidebar's last Close hint → first Take back hint at 65; full state text at 120 → full state text at 200. Owner's Scroll at 65 → Take back, with Scroll retained from 80. Reattach old Menu conditional → `F1 Menu` at every tested width; menu's last Close hint → protected Menu at 65.
+
+The implementation now adds the keys hint only where the existing workspace leader reaches it (session, lists, Pan, Scroll, leader and Menu); modal dialogs retain their own hints plus global F1 Menu. Leader-target hint entries carry their existing action id so they are protected without duplicating the leader prefix.
+
+Lint preflight: `tui-r2-lint-preflight.txt`, exit 2, one redundant conditional in an updated test; corrected. Lint gate: `tui-r2-lint.txt`, exit 0, Ruff, auxiliary tests, imports, docs guard, leak check and engine verification passed. Contract gate: `tui-r2-contract.txt`, exit 0, clean v0.18.0 pin. The full suite has not yet run for Round 2.
+
+### Gate checkpoint
+
+**AI-Model:** gpt-6.1-sol
+Both design blockers are resolved by Amendments 1 and 2; current status is IN PROGRESS on verification.
+
+The second related suite (`tui-r2-related-updated.txt`) exited 1: 3 failed, 129 passed. Corrections: Who's here's narrow Esc hint → protected Menu; remapped keys hint expected `Ctrl+]` → its existing `^]` spelling; the wider all-hint Pan proof's target grows from 150 to 250 columns so the canvas still has a pan range. Focused rerun with remaining old Menu assertions (`tui-r2-reachability.txt`) exited 0: 74 passed. Attach-confirm, theme-picker and reattach assertions now expect `F1 Menu`; stopped reattach now retains Menu/keys alongside Fleet, as ruling 1 requires.
+
+Final new-tests baseline red (`tui-r2-final-red.txt`): exit 1, 13 failed, 4 passed. Final green (`tui-r2-final-green.txt`): exit 0, 17 passed. Added coverage proves special-row last-ordinary-first removal and independently scans/bisects the first passing Nord purple lightness. No missing-symbol reds.
+
+Full suite, all touched test modules, and final lint are running in separate external logs. No source/test edits will be made during these gates. Scope audit passed: every changed/untracked path is allowed, only hint-list entries changed in terminal.py, only keys hint text changed in actions.py, the original report is preserved, no machine paths occur in the Round 2 section, and `git diff --check` passed. The program pin is unchanged.
+
+### Verification checkpoint
+
+**AI-Model:** gpt-6.1-sol
+Touched-file gate (`tui-r2-touched.txt`): exit 0, 332 passed in 580.43 s. Final lint (`tui-r2-lint-final.txt`): exit 0. Final Nord measurement (`tui-r2-nord-final.txt`): exit 0; hue separation 118.205128°, accent minimum contrast 4.507602:1, steel minimum 4.520558:1 across the five chrome backgrounds. Other shipped themes remain unchanged and pass the new hue/contrast test.
+
+The full gate is still running; at 26% it has one failure marker in test_drive_commands. It has not yet produced a final traceback or exit code. No source/test edits have been made during the gates. Exact isolated failure rerun and final scope audit remain pending.
+
+### Completed full gate and isolated reruns
+
+**AI-Model:** gpt-6.1-sol
+Full gate (`tui-r2-test.txt`) completed to its end: make exit 2, 9 failed, 2258 passed, 3 skipped, 2296.13 s. The skips are the existing CI-only PowerShell/Pester installer checks (one at test_installers.py:239, two at :307); they were not verified locally.
+
+Every failure was rerun alone once before any assertion fix, each in a separate external log:
+
+| Case | Full run | Isolated result | Log |
+|---|---|---|---|
+| canvas typist/viewer cursor roles | failed | exit 1, 1 failed | tui-r2-alone-1.txt |
+| drive reads live while scroll view open | failed | exit 0, 1 passed | tui-r2-alone-2.txt |
+| cursor role keeps TSB colours | failed | exit 1, 1 failed | tui-r2-alone-3.txt |
+| outer palette cursor role fallback | failed | exit 1, 1 failed | tui-r2-alone-4.txt |
+| scroll status position and clickable hints | failed | exit 1, 1 failed | tui-r2-alone-5.txt |
+| sidebar/status ASCII glyphs | failed | exit 1, 1 failed | tui-r2-alone-6.txt |
+| status range follows canvas widening | failed | exit 1, 1 failed | tui-r2-alone-7.txt |
+| T1c solarized-light at 65x30 | failed | exit 0, 1 passed | tui-r2-alone-8.txt |
+| Put it aside sends keyboard to escrow | failed | exit 1, 1 failed | tui-r2-alone-9.txt |
+
+The drive read equality mismatch and T1c coloured-screen timeout did not reproduce in their isolated reruns. No production changes or assertion relaxations were made for either; their root causes remain unestablished.
+
+Seven reproduced failures were superseded expectations. Old → new:
+- canvas and scheme mapping (three assertions): old Nord steel RGB `(143, 196, 211)` → ruled `(202, 176, 197)`, retaining cursor shape/on-accent checks.
+- scroll position/click proof: 120-column scene → resized 240-column scene, leaving room for ordinary PgDn/Esc hints even alongside the long oldest-output note and protected hints. Position/count and click effects remain asserted.
+- ASCII status Menu: `= Menu` → `F1 Menu`; sidebar ASCII Fleet and forbidden-Unicode checks remain.
+- canvas-widening range proof: window 65 → 120, viewport 35→61 → 90→116; both exact range values and unchanged view origin remain asserted where protected hints leave room for the range.
+- escrow status: full `put the keyboard aside` wording → existing shorter `put it aside` variant, with handoff request, token reason and disabled-button checks unchanged.
+
+The five additionally touched modules are being verified as complete files. No source implementation changed after the completed full run.
+
+### Final result
+
+**AI-Model:** gpt-6.1-sol
+**Status:** DONE_WITH_CONCERNS
+
+Implemented all three Round 2 rulings under Amendments 1 and 2. The no-session card is deferred to P3. The four protected hints survive from 80 columns; below that, the ruled fallback removes Scroll, keys and Take back before Menu. List and special-row ordinary hints leave last-displayed first, while session ordinary hints retain configured priority. Nord steel is the minimum passing purple `#cab0c5`, with accent unchanged.
+
+Final checks:
+- New tests: final baseline red 13 failed/4 passed; final green 17 passed.
+- Originally touched modules: 332 passed (`tui-r2-touched.txt`, exit 0).
+- Additionally touched modules: initial 98 passed/1 failed (`tui-r2-additional-touched.txt`, exit 1). The range proof's resized open-sidebar viewport was corrected from the mistaken 90 to the existing layout's 88 columns; its closed viewport is 116. Final 99 passed (`tui-r2-additional-touched-final.txt`, exit 0).
+- Final lint: `tui-r2-lint-last.txt`, exit 0; auxiliary tests and all checks passed. Post-full lint also passed (`tui-r2-lint-post-full.txt`).
+- Final contract: `tui-r2-contract-final.txt`, exit 0, clean v0.18.0.
+- Final scope audit and `git diff --check`: passed; source scope is unchanged, earlier report sections preserved, no ledger edits, no pin changes, no commits/pushes.
+
+The completed full suite was **9 failed, 2258 passed, 3 skipped**, not a passing full-suite result. Each failure was rerun alone once before corrections, as the table above records. Seven superseded assertions were corrected and their complete files now pass. The drive live-read mismatch and coloured-screen timeout passed alone, but their full-run failures remain concerns with no established root cause. The full suite was not repeated after the final test-only expectation changes; production code is the same code exercised by that completed run. CI-only PowerShell/Pester installer checks remain unverified. No processes started by this lane remain running.

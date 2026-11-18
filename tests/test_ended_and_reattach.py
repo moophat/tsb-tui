@@ -176,11 +176,11 @@ def test_4011_and_a_dropped_socket_show_the_reattaching_row_and_esc_stops_it(
                 await wait_until(pilot, lambda: "◐ reattaching" in screen.status.text, "the reattach row")
                 row = screen.status.text
                 assert f"◐ reattaching · {why} · try 1 in 60 s" in row
-                assert "Esc stops" in row and "≡ Menu" in row
+                assert "Esc stops" in row and "F1 Menu" in row
                 await pilot.press("escape")
                 await wait_until(pilot, lambda: "not reattaching" in screen.status.text, "the stop")
                 assert "◌ not reattaching · the session lives on" in screen.status.text
-                assert "▦ Fleet" in screen.status.text and "≡ Menu" not in screen.status.text
+                assert "▦ Fleet" in screen.status.text and "F1 Menu" in screen.status.text
                 await pilot.pause(0.3)
                 assert stub.attaches == 1, "Esc must stop further attempts"
 

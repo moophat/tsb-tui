@@ -216,7 +216,7 @@ def test_the_typists_cursor_is_a_filled_accent_block_and_a_viewers_a_steel_under
             # Phase 1: viewer cursor now has term_bg as background
             assert viewer.bgcolor.get_truecolor()[:3] == (0x0a, 0x0a, 0x0a)
             assert viewer.underline
-            assert viewer.color.get_truecolor()[:3] == (0x8F, 0xC4, 0xD3)
+            assert viewer.color.get_truecolor()[:3] == (0xCA, 0xB0, 0xC5)
 
     asyncio.run(_check())
 
