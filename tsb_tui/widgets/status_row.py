@@ -315,8 +315,9 @@ def _left(inputs: StatusInputs, compact: bool, keys_only: bool = False) -> Left:
         text = f"◐ attaching · {inputs.session}" if inputs.attaching else inputs.session
         return [Piece(text, "muted")]
     kind = _kind(state)
-    if inputs.recording_bar is not None:
-        # A later attach: the fixed recording text takes the place of the words after the pill (D24).
+    if inputs.recording_bar is not None and not keys_only:
+        # A later attach: the fixed recording text takes the place of the words after the pill (D24). In keys-only the
+        # recording warning is the frame title's "recorded" and the row shows keys, so this branch is skipped.
         pill = _pill(kind, compact)
         return [Piece(pill.variants[0], pill.role, pill.action), Piece("  ", "text"),
                 Piece(inputs.recording_bar, "rec")]

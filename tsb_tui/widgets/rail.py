@@ -227,6 +227,15 @@ class Rail(Widget):
             self._rows = rail_rows(self._model, rail_width - 1)
             self.refresh()
 
+    def set_width(self, width: int) -> None:
+        """The `rail.width` knob (hairline included): rebuild the rows for the width actually used,
+        not only set the widget's width after the responsive rows were built."""
+        if width != self.rail_width:
+            self.rail_width = width
+            self.styles.width = 1 if self.edge else width
+            self._rows = rail_rows(self._model, width - 1)
+            self.refresh()
+
     @property
     def rows(self) -> list[RailRow]:
         return list(self._rows)
@@ -238,7 +247,7 @@ class Rail(Widget):
 
     def _line_text(self, y: int) -> str:
         row = self._rows[y]
-        text = glyphs.render(row.text, self._glyph_set)
+        text = "".join(glyphs.render_role(part, self._glyph_set, role) for part, role in row.parts)
         if self._model.edge:
             return text
         return text + "│" if self._side == "left" else "│" + text
@@ -258,7 +267,7 @@ class Rail(Widget):
         if y < len(self._rows):
             for text, role in self._rows[y].parts:
                 if text:
-                    segments.append(Segment(glyphs.render(text, self._glyph_set), self._styles[role]))
+                    segments.append(Segment(glyphs.render_role(text, self._glyph_set, role), self._styles[role]))
         else:
             segments.append(Segment(" " * (width - 1), self._styles["blank"]))
         if self._side == "left":
@@ -278,11 +287,13 @@ class Rail(Widget):
         if row.action == ACT_MENU:
             return f"≡ Menu {leader} · every action, searchable"
         if row.action == ACT_FLEET:
-            return f"▦ Fleet {leader} {letters['fleet']} · widens the rail into the fleet sidebar"
+            # The row now shows Targets and opens the side panel's targets, not the old fleet sidebar.
+            return "▦ Targets · opens the targets in the side panel"
         if row.action == ACT_VAULT:
             return "◆ Vault · opens saved logins"
         if row.action == ACT_NEEDS:
-            return f"▲ {model.need_you} need you · opens the sidebar at Needs you"
+            # The sessions that need you are the full view's, not a sidebar group.
+            return "▸ Sessions · opens the full view at the sessions that need you"
         if row.action == ACT_ALERTS:
             return f"! {model.alerts} TSB alert{'' if model.alerts == 1 else 's'} · opens the Alerts tab"
         if row.action == ACT_MORE:

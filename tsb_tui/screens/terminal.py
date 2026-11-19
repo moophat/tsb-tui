@@ -349,7 +349,10 @@ class SessionFrame(Container):
         self.call_after_refresh(self.screen.refresh_status)
 
     def on_click(self, event: events.Click) -> None:
-        if event.y == 0 and self.screen.front is not None:
+        # Only a click on the frame's own top border opens Who's here. A click bubbles up from a child (the canvas)
+        # with coordinates relative to that child, so `event.y == 0` alone is the canvas's first row, not the border;
+        # the event's widget is the frame itself only when the pointer is on the frame (its border), not on a child.
+        if event.widget is self and event.y == 0 and self.screen.front is not None:
             event.stop()
             self.screen.run_worker(self.screen.run_action_id("who"), exclusive=False)
 
@@ -631,7 +634,9 @@ class TerminalScreen(Screen):
             return
         self.rail.set_window_width(self._window_width())
         if self.app.cfg["rail.width"] != 4:
-            self.rail.rail_width = int(self.app.cfg["rail.width"])
+            # The knob overrides the responsive width: rebuild the rows for it, not only set the widget's width
+            # after the rows were built for the responsive width.
+            self.rail.set_width(int(self.app.cfg["rail.width"]))
         self.sidebar.set_window_width(self._window_width())
         self.sidebar.set_width(self._sidebar_width())
         # The rail takes its width here, not when its model lands: a deferred rebuild must not leave the first
@@ -906,7 +911,8 @@ class TerminalScreen(Screen):
             leader_hint=f"{leader} {letter}", detail_for=self._details_for, buttons_for=self._buttons_for,
             total=sum(len(records) for records in groups.values()),
             record_fields=fields_of, record_search=search_of, record_entry=entry_for,
-            targets=self.targets.rows, targets_loading=not self.targets.fetched)
+            targets=self.targets.rows, targets_loading=not self.targets.fetched,
+            target_has_next=bool(self.targets.next_cursor))
 
     def _time_state(self, record: dict, sid: str, stale: set[str], asks: set[str], now: float) -> RowTime:
         """A row's time-bearing fields read from its record at `now`: why it needs you, the warning window's clock,

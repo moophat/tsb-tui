@@ -77,6 +77,19 @@ def test_you_type_reads_as_a_filled_pill_the_session_its_state_and_rec() -> None
     assert build_pieces(_inputs(state), 120)[0].role == "pill_type"
 
 
+def test_keys_only_leaves_no_who_types_pill_when_a_recording_warning_is_present() -> None:
+    """With `keys_only=True` the row still showed the who-types pill when a recording warning was
+    present. keys-only means keys only in every state; the recording warning is the frame title's "recorded", and the
+    keys row shows keys."""
+    from stub_server import RECORDING
+
+    state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
+    inputs = _inputs(state, recording_bar=RECORDING["warning_text"])
+    row = "".join(p.text for p in build_pieces(inputs, 120, keys_only=True))
+    assert "you type" not in row and "types" not in row, f"the keys row kept the pill: {row!r}"
+    assert "recorded" not in row, f"the recording warning is on the keys row: {row!r}"
+
+
 def test_view_only_while_an_agent_types_in_your_session_says_typing_takes_it() -> None:
     """F12 row 2, Frontend §9: the owner whose keyboard an agent holds must be told that typing takes it
     back (terminal-size §5, 5.53) - the owner's brake is useless if nobody knows it is there."""

@@ -227,3 +227,51 @@ This section supersedes the stop and the gate of Continuation 3.
 - **Gate:** `make contract-check` exit 0; `make lint` exit 0; `make test` once end to end after the last change: **exit 0, 2348 passed, 3 skipped** (the skips are the installer tests that need the CI image).
 - `sidebar.groups`: the loader still accepts the key and ignores it (as in Continuation 3).
 - **Diff check:** `git diff --name-only` is 37 files: the six `tsb_tui` code files plus `tsb_tui/model/fleet.py` (the retired knob), the updated existing tests listed above, `tests/workspace_support.py` (click offsets and the full-view fallback) and the four regenerated P1 menu baselines; untracked: this report, `tests/test_redesign_layout.py` and `tests/snapshots/redesign-p2a/`. No plan, ledger, `program/` or `.aiworkflow` path is touched.
+
+---
+
+# Round 1 (#101) — Qodo findings
+
+**AI-Model:** strata
+Branch `feat/tui-redesign-p2a` (HEAD `3fe682c`). Eight review findings, each with a red-first test that failed on HEAD and passes after the ruled fix. Tests run with `NO_COLOR` unset, `PYTHONPATH` set to the contract client and the clone root; every suite to a file outside the tree, exit codes checked. No commit, no push.
+
+## The eight fixes
+
+1. **ASCII fallback tells typing-login apart by role** (`glyphs.py`, `rail.py`). Red: `tests/test_rail.py` — `AssertionError: another login types is +: '2* │'` (the `other` chip fell to the `*` marker). Fix: `glyphs.render_role(text, glyph_set, role)` with `_ROLE_ASCII = {"who_other": str.maketrans({"◆":"+"})}`; `rail.render_line` and `_line_text` render the chip by its role, so in ASCII a self typist is `*` and an other-login typist is `+`. Green: `test_rail.py` 11 passed.
+2. **Only the frame border opens Who's here** (`screens/terminal.py`). Red: `tests/test_redesign_layout.py` — `AssertionError: a click on the canvas top row opened Who's here; assert WhosHereScreen() is TerminalScreen()`. Fix: `SessionFrame.on_click` fires only when `event.widget is self and event.y == 0` (the border row) with a front canvas. Green.
+3. **A filter that shrinks the matches is not left scrolled past its rows** (`widgets/sidebar.py`). Red: `tests/test_redesign_layout.py` — body blank (`'zzz1' in body` fails; `zzz1`/`zzz2` scrolled out). Fix: `_relayout` clamps `_target_scroll_top` to `_target_scroll_limit()`, and `_filter_changed` resets it to 0. Green.
+4. **Keys-only shows keys in every state** (`widgets/status_row.py`). Red: `tests/test_status_row.py` — `AssertionError: the keys row kept the pill: '‹ you type ›  This session is recorded byte-perfect…'`. Fix: the recording-bar branch is gated `recording_bar is not None and not keys_only`, so a recorded session's keys row shows keys, not the pill+warning. Green: `test_status_row.py` 25 passed.
+5. **The Targets title shows `N+` when more pages exist** (`widgets/sidebar.py`, `screens/terminal.py`). Red: `tests/test_redesign_layout.py` — `TypeError: SidebarModel.__init__() got an unexpected keyword argument 'target_has_next'`. Fix: `SidebarModel.target_has_next`; the terminal passes `bool(self.targets.next_cursor)`; the title renders `· {count}+`. Green.
+6. **`rail.width` is a live knob** (`widgets/rail.py`, `screens/terminal.py`). Red: `tests/test_sidebar.py` — rail rows painted at content width 11 after setting the knob to 5. Fix: `Rail.set_width(width)` rebuilds the rows; `_layout_chrome` calls it with `int(cfg["rail.width"])`. Green: the knob test resizes and asserts every row is 5 wide.
+7. **Painting the target rows filters once, not per row** (`widgets/sidebar.py`). Red: `tests/test_redesign_layout.py` — `AssertionError: the filter ran 0 times for 21 target rows` (cache not wired). Fix: `visible_targets` caches on `(targets, filter_text)` via `_targets_cache`, delegating to `_filter_targets`. Green.
+8. **Rail tooltips name the glyph word, not the retired word** (`widgets/rail.py`). Red: `tests/test_mouse_and_chrome.py` — Fleet tip read `▦ Fleet Ctrl+\ f · widens the rail into the fleet sidebar`, needs tip read `opens the sidebar at Needs you`. Fix: ACT_FLEET → `▦ Targets · opens the targets in the side panel`; ACT_NEEDS → `▸ Sessions · opens the full view at the sessions that need you`. Green: `test_mouse_and_chrome.py` 11 passed.
+
+## Moved facts (finding 4 side effects)
+
+Finding 4 removes the pill and recording warning from the keys row, so two existing tests that read them there were re-pointed to where P2a puts them (the frame title), matching the report's earlier `REC moved to the frame title` pattern:
+- `tests/test_sidebar.py::test_view_chrome...` reads the who-types pill from `#canvases` border title, not `screen.status.text`.
+- `tests/test_sidebar.py::test_opening_the_sidebar_never_asks_for_a_size_and_the_canvas_pans` refreshes the status after the canvas settles at the whole width, so the keys row reflects the settled canvas (no pan range). The stale range was previously hidden behind the recording bar.
+- `tests/test_attach_confirm.py::test_a_later_attach...` asserts the recording warning is the frame title's `recorded` and the keys row shows keys (no pill), not that the text appears in the row.
+
+## Gate for this round
+
+- Gate suite (each to a file, exit codes checked): `test_redesign_layout.py` 60 passed, `test_sidebar.py` 47 passed, `test_status_row.py` 25 passed, `test_glyphs.py` 3 passed, `test_rail.py` 11 passed, `test_mouse_and_chrome.py` 11 passed.
+- Regression check over the suites finding 4/6/7 touch: P1 redesign (contrast 17, keys 20, round1 14, round2 17, round3 21), `test_snapshots.py` 89, `test_attach_confirm.py` 6, fact-reading suites (whos_here/take_back/leader_and_menu/stale_status_row/countdown_and_states) 44, rail/sidebar/discoverability/several_sessions/switching/flow_pilot/targets_tab/fleet_view/painted_rows 77, size/connection 40. All exit 0.
+- `make lint` exit 0 (import-lint clean, leak-check clean, docs guard no-op, engine verified). ruff is not installed on this machine, so the Python-style step reported SKIP; CI sets it.
+- **Full `make test` was NOT run** — left to the orchestrator per the brief.
+- `git diff --name-only`: 12 files — the five code files (`tsb_tui/glyphs.py`, `tsb_tui/screens/terminal.py`, `tsb_tui/widgets/rail.py`, `tsb_tui/widgets/sidebar.py`, `tsb_tui/widgets/status_row.py`), six tests (`test_mouse_and_chrome.py`, `test_rail.py`, `test_redesign_layout.py`, `test_sidebar.py`, `test_status_row.py`, `test_attach_confirm.py` for the moved fact), and this report. No plan, ledger, `program/` or `.aiworkflow` path touched.
+
+## Round 1 (#101): Qodo's eight
+
+Built by Strata (swift-1.5); the lane stalled before writing this section, so the orchestrator wrote it from the lane's saved red runs, stripped review labels from the code comments, and ran the gate. Each fix has a test that failed before it:
+
+| Finding | Fix | Red line before the fix |
+|---|---|---|
+| ASCII who-types | fallbacks by role: another login types `+`, you type `*`, the rail's Vault `*` | `another login types is +: '2* │'` |
+| Who's here click | only a click on the session frame's own top border opens it | `a click on the canvas top row opened Who's here` |
+| Filter hides matches | the target scroll top is reset on a filter change and clamped on every relayout | `┌─ ▦ Targets · 2/22 ─` with both matches unpainted |
+| Keys-only with a recording warning | the keys row shows keys in every state; "recorded" stays in the frame title | `the keys row kept the pill: '‹ you type ›  This session is recorded…'` |
+| Paged target count | a listing with a next page titles the loaded count with `+` | `SidebarModel.__init__() got an unexpected keyword argument 'target_has_next'` (new field) |
+| `rail.width` | the rows are rebuilt for the width actually used | rows of 11 cells under a 5-column knob |
+| Filter per painted row | the filtered target rows are computed once per change and reused | `the filter ran 0 times for 21 target rows` (no cache) |
+| Rail tips | the tips name the full view and the side panel's targets | the Targets tip still said "widens the rail into the fleet sidebar" |

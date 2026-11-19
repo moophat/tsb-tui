@@ -412,7 +412,7 @@ def test_tooltips_name_each_glyphs_word_and_key_and_follow_the_glyph_set_and_the
             seen.append(str(screen.sidebar.tooltip))
             screen.close_sidebar()
             await wait_until(pilot, lambda: not screen.sidebar_open, "the rail")
-            for action, arg in ((ACT_MENU, None), (ACT_FLEET, None), ("chip", first), (ACT_NEW, None)):
+            for action, arg in ((ACT_MENU, None), (ACT_FLEET, None), (ACT_NEEDS, None), ("chip", first), (ACT_NEW, None)):
                 await pilot.hover(Rail, offset=(1, rail_row(screen, action, arg)))
                 seen.append(str(screen.rail.tooltip))
             row = screen.status
@@ -424,16 +424,20 @@ def test_tooltips_name_each_glyphs_word_and_key_and_follow_the_glyph_set_and_the
     assert on[0].startswith("a-very-long-target-name · s.") and "you type" in on[0], on
     # Closing the panel has its own key and Menu entry and its hint in the keys row (the panel no longer has a close part).
     assert on[1] == "≡ Menu Ctrl+\\ · every action, searchable", on
-    assert on[2].startswith("▦ Fleet Ctrl+\\ f"), on
-    assert on[3].startswith("1 rtr-core-01 · you type") and on[3].endswith("Ctrl+\\ 1"), on
-    assert on[4] == "+ New session Ctrl+\\ c", on
-    assert on[5].startswith("Who's here… · "), on
+    # The rail's tips described the old sidebar. The Targets row says what it now opens, and the
+    # Sessions row opens the full view at the sessions that need you — not "the sidebar at Needs you".
+    assert on[2].startswith("▦ Targets") and "Fleet" not in on[2], on
+    assert "full view" in on[3] and "sidebar" not in on[3], on
+    assert on[4].startswith("1 rtr-core-01 · you type") and on[4].endswith("Ctrl+\\ 1"), on
+    assert on[5] == "+ New session Ctrl+\\ c", on
+    assert on[6].startswith("Who's here… · "), on
 
     ascii_set = asyncio.run(_check({"TSB_TUI_GLYPHS_SET": "ascii"}))
-    assert ascii_set[1].startswith("= Menu Ctrl+\\") and ascii_set[2].startswith("# Fleet Ctrl+\\ f"), ascii_set
+    assert ascii_set[1].startswith("= Menu Ctrl+\\") and ascii_set[2].startswith("# Targets") and \
+        "Fleet" not in ascii_set[2], ascii_set
 
     off = asyncio.run(_check({"TSB_TUI_MOUSE_TOOLTIPS": "false"}))
-    assert off == ["None"] * 6, off
+    assert off == ["None"] * 7, off
 
 
 @pytest.mark.parametrize("width", [65, 120, 200])

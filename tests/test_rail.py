@@ -297,3 +297,27 @@ def test_the_phone_profile_with_an_edge_rail_is_one_column_that_opens_the_sideba
 
     asyncio.run(_check())
 
+
+def test_ascii_fallbacks_tell_you_typing_from_another_login_typing_by_role(tmp_path) -> None:
+    """In ASCII mode `●` (you type) and `◆` (another login types) both fell to `*`, so the two
+    who-types states read alike. The fallback is by role, not by glyph: you type `*`, another login `+` (as on main),
+    and the rail's Vault mark stays `*` (the plan's visual rule 2.2)."""
+    from tsb_tui.config import load
+    from tsb_tui.model.fleet import WHO_ME, WHO_OTHER, Chip
+    from tsb_tui.widgets.rail import ACT_CHIP, ACT_VAULT
+
+    cfg = load(config_file=tmp_path / "absent", environ={"TSB_TUI_GLYPHS_SET": "ascii"})
+    rail = Rail(cfg)
+    chips = (Chip(1, "s-1", WHO_ME, ""), Chip(2, "s-2", WHO_OTHER, ""))
+    rail.set_model(RailModel(chips, more=False, need_you=0, alerts=None))
+    lines = rail.text.splitlines()
+    rows = rail.rows
+    vault_y = next(y for y, row in enumerate(rows) if row.action == ACT_VAULT)
+    you_y = next(y for y, row in enumerate(rows) if row.action == ACT_CHIP and row.arg == "s-1")
+    other_y = next(y for y, row in enumerate(rows) if row.action == ACT_CHIP and row.arg == "s-2")
+    vault, you, other = lines[vault_y], lines[you_y], lines[other_y]
+    assert "*" in vault, f"the Vault row must keep its * mark: {vault!r}"
+    assert "*" in you and "+" not in you, f"you type is *: {you!r}"
+    assert "+" in other and "*" not in other, f"another login types is +: {other!r}"
+    assert you != other, "the two who-types states must read differently"
+

@@ -314,6 +314,10 @@ def test_opening_the_sidebar_never_asks_for_a_size_and_the_canvas_pans(serve, wa
             await open_here(app, pilot, wait_until, sid)
             screen.close_sidebar()
             await wait_until(pilot, lambda: screen.canvas.size.width == 104, "the canvas to take the whole width")
+            # Keys-only shows the pan range in every state (HEAD hid it behind the recording bar).
+            # After the canvas settles at the whole width, refresh so the row reflects it: a 104-wide canvas of a 104-column
+            # session needs no pan, so the row says no range.
+            screen.refresh_status()
             assert screen.status.text.count("cols 1-") == 0 and screen.pump.state.holds_keyboard
             assert (screen.canvas.backend.cols, screen.canvas.backend.rows) == (104, 37)
 
@@ -637,8 +641,10 @@ def test_view_chrome_decides_compact_for_the_sidebar_width_and_the_pill(
             screen.open_sidebar()
             await wait_until(pilot, lambda: screen.sidebar.region.width == sidebar_width, f"{sidebar_width} columns")
             screen.close_sidebar()
-            await wait_until(pilot, lambda: ("‹you type›" in screen.status.text) is compact_pill
-                             and ("‹ you type ›" in screen.status.text) is not compact_pill, "the pill")
+            # Keys-only means keys only in every state, so the who-types pill is no longer on the
+            # keys row (the recording warning is the frame title's "recorded"). The fact moved to the frame's title.
+            title = str(screen.query_one("#canvases").border_title)
+            assert "you type" in title, f"the who-types fact is the frame title, not the keys row: {title!r}"
 
     asyncio.run(_check())
 
@@ -779,6 +785,13 @@ def test_rail_width_and_the_start_filter_are_the_knobs(serve, monkeypatch, wait_
             screen.close_sidebar()
             await wait_until(pilot, lambda: screen.rail.region.width == 6, "a six-column rail")
             assert screen.fit_size()[0] == 110, "the window minus the rail the knob made and the frame"
+            # A resize re-lays the chrome, building the rows for the responsive width, then the
+            # `rail.width` knob set the width after them without rebuilding. The rows are built for the width the knob
+            # uses: every row is `rail.width - 1` cells wide.
+            await pilot.resize_terminal(130, 40)
+            await pilot.pause()
+            assert all(len(row.text) == 5 for row in screen.rail.rows), \
+                [row.text for row in screen.rail.rows]
 
     asyncio.run(_check())
 

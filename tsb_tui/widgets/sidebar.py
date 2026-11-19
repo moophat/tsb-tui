@@ -141,6 +141,8 @@ class SidebarModel:
     targets: tuple[TargetRow, ...] = ()
     target_total: int | None = None
     targets_loading: bool = False
+    # The target listing has a next page: the title shows the loaded count followed by `+`, never a false total.
+    target_has_next: bool = False
 
 
 @dataclass(frozen=True)
@@ -549,6 +551,9 @@ class Sidebar(Widget):
         # changes neither (`_prepare`).
         self._prepared: Prepared | None = None
         self._prepared_for: tuple[str, SidebarModel] | None = None
+        # The filtered target rows for the current targets and filter text, reused by every paint that changes
+        # neither: `(key, rows)`.
+        self._targets_cache: tuple[tuple[object, str], tuple[TargetRow, ...]] | None = None
 
     def _build_styles(self, roles: dict[str, str]) -> None:
         """The sidebar's style table from the role colours (TT14): every colour is a role, so a theme
@@ -648,6 +653,9 @@ class Sidebar(Widget):
             self.selected = self._default_selection(list(view.rows))
             view = self._build()
         self._view = view
+        # The Targets scroll top follows the visible list: a filter, a width change or fewer targets than it had
+        # scrolled to must not leave it past the end. Clamp on every relayout.
+        self._target_scroll_top = min(self._target_scroll_top, self._target_scroll_limit())
         self._scroll_to_selected()
         self.refresh()
 
@@ -769,12 +777,23 @@ class Sidebar(Widget):
         count = sum(len(items) for group, items in self._model.groups if group == GROUP_OPEN_HERE)
         return min(max(3, count + 2), max(height // 2, 3))
 
-    def visible_targets(self) -> tuple[TargetRow, ...]:
-        """The targets the filter leaves: its text is in the target's name or host (local, no lookups)."""
+    def _filter_targets(self) -> tuple[TargetRow, ...]:
+        """The raw filter over all targets: the text is in a target's name or host (local, no lookups)."""
         needle = self.filter_text.strip().lower()
         if not needle:
             return self._model.targets
         return tuple(row for row in self._model.targets if needle in row.name.lower() or needle in row.host.lower())
+
+    def visible_targets(self) -> tuple[TargetRow, ...]:
+        """The targets the filter leaves, computed once per change: cached by the target rows and the
+        filter text, so painting N rows calls the filter once, not N times. A change to either recomputes it."""
+        key = (self._model.targets, self.filter_text)
+        cache = self._targets_cache
+        if cache is not None and cache[0] == key:
+            return cache[1]
+        result = self._filter_targets()
+        self._targets_cache = (key, result)
+        return result
 
     def _target_lines(self) -> list[Line]:
         """The Targets section's lines: the filter line when one is being typed or set, then the targets."""
@@ -831,8 +850,12 @@ class Sidebar(Widget):
             title = "▦ Targets" if targets else "▸ Sessions"
             if targets:
                 count = len(self.visible_targets())
-                total = len(self._model.targets) if self._model.target_total is None else self._model.target_total
-                title += f" · {total}" if count == total else f" · {count}/{total}"
+                if self._model.target_has_next:
+                    # A next page exists: the loaded count followed by `+`, never a false total.
+                    title += f" · {count}+"
+                else:
+                    total = len(self._model.targets) if self._model.target_total is None else self._model.target_total
+                    title += f" · {total}" if count == total else f" · {count}/{total}"
             label = horizontal + " " + title + " "
             text = tl + label[:max(width - 2, 0)].ljust(max(width - 2, 0), horizontal) + tr
             text = glyphs.render(text, self._glyph_set)
@@ -952,6 +975,9 @@ class Sidebar(Widget):
         self._relayout()
 
     def _filter_changed(self) -> None:
+        # The filter text changed: the visible target list is a different, shorter set, so the scroll top returns to
+        # its first row. `_relayout` clamps it to the new limit as well.
+        self._target_scroll_top = 0
         self._relayout()
         self.post_message(self.Command(CMD_FILTER, self.filter_text))
 

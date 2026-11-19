@@ -462,6 +462,100 @@ def test_the_filter_and_its_count_belong_to_the_targets_section(tmp_path):
     asyncio.run(check())
 
 
+def test_a_filter_that_leaves_fewer_matches_is_not_left_scrolled_past_its_rows(tmp_path):
+    """A filter that leaves fewer matches than the scroll top had scrolled to hides them. The
+    scroll top is reset when the filter text changes, so every match is painted."""
+    from tsb_tui.widgets.sidebar import Sidebar, SidebarModel
+
+    cfg = load(config_file=tmp_path / 'absent', environ={})
+    sidebar = Sidebar(cfg, leader='Ctrl+\\')
+    sidebar.styles.display = 'block'
+    names = [f'core-{n}' for n in range(20)] + ['zzz1', 'zzz2']
+
+    class PanelApp(App):
+        def compose(self):
+            yield sidebar
+
+    async def check():
+        async with PanelApp().run_test(size=(80, 24)) as pilot:
+            sidebar.set_width(28)
+            sidebar.set_window_width(80)
+            sidebar.set_model(SidebarModel((), 'mine', None, 'Ctrl+\\ f', targets=_target_rows(*names)))
+            await pilot.pause()
+            for _ in range(3):
+                sidebar._scroll_section(0, 1)
+            assert sidebar._target_scroll_top > 0, "the Targets section must be scrolled down first"
+            sidebar.focus()
+            await pilot.press('slash', 'z', 'z')
+            await pilot.pause()
+            body = '\n'.join(sidebar.render_line(y).text for y in range(sidebar.size.height))
+            assert 'zzz1' in body and 'zzz2' in body, body
+    asyncio.run(check())
+
+
+def test_the_targets_title_shows_a_plus_when_more_pages_exist(tmp_path):
+    """The Targets title counted the loaded rows as the total while a next page existed. When a
+    next page exists the title shows the loaded count followed by `+` ("Targets · 5+"), never a false total."""
+    from tsb_tui.widgets.sidebar import Sidebar, SidebarModel
+
+    cfg = load(config_file=tmp_path / 'absent', environ={})
+    sidebar = Sidebar(cfg, leader='Ctrl+\\')
+    sidebar.styles.display = 'block'
+
+    class PanelApp(App):
+        def compose(self):
+            yield sidebar
+
+    async def check():
+        async with PanelApp().run_test(size=(160, 45)) as pilot:
+            sidebar.set_width(28)
+            sidebar.set_window_width(160)
+            sidebar.set_model(SidebarModel((), 'mine', None, 'Ctrl+\\ f',
+                                           targets=_target_rows('t0', 't1', 't2', 't3', 't4'), target_has_next=True))
+            await pilot.pause()
+            title = sidebar.render_line(0).text
+            assert title.startswith('┌─ ▦ Targets · 5+'), title
+    asyncio.run(check())
+
+
+def test_painting_the_target_rows_filters_once_not_once_per_row(tmp_path):
+    """Every Targets `render_line` recomputed the filter over all targets. The filtered target
+    lines are computed once per change (cached, invalidated when targets, filter or width change), as the panel did
+    before P2a: painting N rows calls the filter once, not N times."""
+    from tsb_tui.widgets.sidebar import Sidebar, SidebarModel
+
+    cfg = load(config_file=tmp_path / 'absent', environ={})
+    sidebar = Sidebar(cfg, leader='Ctrl+\\')
+    sidebar.styles.display = 'block'
+    names = tuple(f't{n}' for n in range(30))
+    calls: list[int] = []
+
+    def counting() -> tuple:
+        calls.append(1)
+        return _target_rows(*names)
+
+    sidebar._filter_targets = counting
+
+    class PanelApp(App):
+        def compose(self):
+            yield sidebar
+
+    async def check():
+        async with PanelApp().run_test(size=(80, 24)) as pilot:
+            sidebar.set_width(28)
+            sidebar.set_window_width(80)
+            calls.clear()
+            sidebar.set_model(SidebarModel((), 'mine', None, 'Ctrl+\\ f', targets=_target_rows(*names)))
+            await pilot.pause()
+            rows = sidebar.size.height
+            target_rows = sum(1 for y in range(rows) if y < sidebar.targets_height)
+            assert target_rows > 3, "the test needs several target rows to paint"
+            for y in range(rows):
+                sidebar.render_line(y)
+            assert len(calls) == 1, f"the filter ran {len(calls)} times for {target_rows} target rows"
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize('size', [(80, 24), (160, 45)])
 def test_the_frame_title_opens_whos_here_and_carries_the_accent(serve, wait_until, size):
     from input_server import InputRecordingApp, attached
@@ -489,6 +583,33 @@ def test_the_frame_title_opens_whos_here_and_carries_the_accent(serve, wait_unti
             assert styled and styled.group(1) == 'you type', title
             await pilot.click('#canvases', offset=(6, 0))
             await wait_until(pilot, lambda: isinstance(app.screen, WhosHereScreen), 'a click on the title to open Who\'s here')
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('size', [(80, 24), (160, 45)])
+def test_only_a_click_on_the_frame_border_opens_whos_here(serve, wait_until, size):
+    """`SessionFrame.on_click` opened Who's here on any click at row 0, and a click bubbles up
+    from the canvas with child-relative coordinates, so a click on the session grid's top row opened it. Only a click
+    on the frame's own top border opens Who's here."""
+    from input_server import InputRecordingApp, attached
+    from stub_server import create_owner_session
+    from tsbc import _serve
+
+    from tsb_tui.app import TsbTuiApp
+    from tsb_tui.screens.whos_here import WhosHereScreen
+
+    async def check():
+        _, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            sid = create_owner_session(app, _serve.TARGET, 80, 24)
+            screen = await attached(pilot, app, sid, wait_until)
+            await pilot.click(screen.canvas, offset=(6, 0))
+            await pilot.pause()
+            assert app.screen is screen, 'a click on the canvas top row opened Who\'s here'
+            await pilot.click('#canvases', offset=(6, 0))
+            await wait_until(pilot, lambda: isinstance(app.screen, WhosHereScreen),
+                             'a click on the border to open Who\'s here')
     asyncio.run(check())
 
 
