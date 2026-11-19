@@ -587,6 +587,7 @@ class AttachmentPump:
         self._drained.set()
         self._queued_output = 0
         self._feeding = False
+        self._slice_running = False
         self._process_task: asyncio.Task[None] | None = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tsb-feed")
         self.attach_attempts = 0
@@ -645,20 +646,45 @@ class AttachmentPump:
             with contextlib.suppress(BaseException):
                 await self._process_task
             self._process_task = None
-        self._executor.shutdown(wait=True)
+        # The socket closes first: this coroutine is cancelled when the app unmounts, and a cancel landing on
+        # the join below must never leave the attachment open (the session would still count this client as
+        # attached). The join is the feed thread's end (DT20); the engine is freed by the slot's release, which
+        # waits for it itself.
+        self._executor.shutdown(wait=False)
         if self._att is not None and not self._att.closed:
             with contextlib.suppress(Exception):
                 await self._att.close()
+        await self.feed_stopped()
 
     def shutdown_feed(self) -> None:
-        """Shut the feed thread down now, synchronously (DT20), before the caller frees the engine: a
-        feed slice that already started finishes under the backend lock, the processor is told to end,
-        and no further slice starts. Called from the loop when a slot is released; `stop` also shuts
-        it down, harmlessly."""
+        """Tell the feed thread to end now (DT20), without waiting for it: the processor is told to
+        end and no further slice starts. A slice already running finishes under the backend lock; the
+        caller frees the engine only after `feed_stopped` returns (or at once when `feed_running` is
+        false), and this never blocks the loop. `stop` also ends it, harmlessly."""
         self._stop = True
         self._queue.append(_STOP)
         self._wake.set()
+        self._executor.shutdown(wait=False)
+
+    def feed_running(self) -> bool:
+        """Whether the feed thread is inside a run's sink now."""
+        return self._slice_running
+
+    async def feed_stopped(self) -> None:
+        """Return once the feed thread has ended: the join runs off the loop, so commands keep being
+        answered while a slice finishes. The engine is freed after this (DT20)."""
+        await asyncio.to_thread(self._executor.shutdown, True)
+
+    def join_feed(self) -> None:
+        """The same wait, blocking: for a caller with no running loop."""
         self._executor.shutdown(wait=True)
+
+    def _run_sink(self, role: str, data: bytes) -> Any:
+        self._slice_running = True
+        try:
+            return self._sink(role, data)
+        finally:
+            self._slice_running = False
 
     async def _attach(self) -> None:
         self.attach_attempts += 1
@@ -780,7 +806,7 @@ class AttachmentPump:
         self._feeding = True
         try:
             loop = asyncio.get_running_loop()
-            replies = await loop.run_in_executor(self._executor, self._sink, role, data)
+            replies = await loop.run_in_executor(self._executor, self._run_sink, role, data)
         finally:
             self._feeding = False
         self.state.applied_items += item_count
