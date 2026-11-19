@@ -74,3 +74,27 @@ shape (the free slot carries login_ended while the held slot stays mid-slice) is
 - `tests/test_drive_login_status.py` (python from the repo's test venv, NO_COLOR unset, PYTHONPATH = this clone's
   `program/contract/client` and root): 0, 13 passed (~17 s).
 - `make lint`: 0.
+
+## Round 2: why a later attach saw a stale first client
+
+Cause (evidence): the failing run's second drive showed the status row "typing takes it ... Take back", i.e.
+another client still held the typist role, so the "Who's here" control was not on screen and `click` answered
+`bad_request: nothing on screen is labelled`. The first drive's attachment had never been detached. Round 1 changed
+`AttachmentPump.stop()` to `await self.feed_stopped()` BEFORE closing the socket. When the first Rig exits the
+app unmounts and cancels the worker running `stop()`; the cancel now landed on that await (a real suspension point,
+where the old blocking join was not) and the `att.close()` after it never ran. The session kept counting the first
+client as attached. The deferred free itself (`_free_canvas`) was not the cause; the Menu/picker timeout is the same
+class (a stale attachment left by an earlier app), and that test is green after the fix.
+
+Fix: `stop()` now calls `executor.shutdown(wait=False)`, closes the attachment, and only then awaits `feed_stopped()`.
+A cancel during the join can no longer skip the close. Stop-before-free (DT20) is unchanged: the engine is freed
+only by the slot's release, which waits for the feed thread itself (the shielded join in `_free_canvas`).
+
+Numbers: click test failed 2 of 6 runs before the fix here (5 of 9 per the coordinator), 10 of 10 green after.
+Picker test (`test_the_leader_and_T_open_the_picker_and_the_session_stays_visible_beside_it`) 10 of 10 green.
+login_status file 3 of 3 green (13 tests each, including the mid-slice test). Touched files (login_status,
+drive_commands, theme_picker, discoverability, model_attachment, attach_and_close, drive_accounts,
+ended_and_reattach, reattach_login): exit 0, 296 passed. `make lint`: exit 0.
+
+Not verified: full `make test` was not re-run in this round; CI's discoverability failure was not reproduced
+locally, only the picker test was run 10 times.

@@ -646,10 +646,15 @@ class AttachmentPump:
             with contextlib.suppress(BaseException):
                 await self._process_task
             self._process_task = None
-        await self.feed_stopped()
+        # The socket closes first: this coroutine is cancelled when the app unmounts, and a cancel landing on
+        # the join below must never leave the attachment open (the session would still count this client as
+        # attached). The join is the feed thread's end (DT20); the engine is freed by the slot's release, which
+        # waits for it itself.
+        self._executor.shutdown(wait=False)
         if self._att is not None and not self._att.closed:
             with contextlib.suppress(Exception):
                 await self._att.close()
+        await self.feed_stopped()
 
     def shutdown_feed(self) -> None:
         """Tell the feed thread to end now (DT20), without waiting for it: the processor is told to
