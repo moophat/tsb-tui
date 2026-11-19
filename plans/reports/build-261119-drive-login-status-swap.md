@@ -42,3 +42,35 @@ Red on main 1.462 s (budget 0.4 s). Green after: 10 of 10 runs passed (each ~2.2
 
 ## Unresolved
 - None blocking.
+
+## Round 1 (tsb-tui #103): a cancelled deferred free never frees the grid before its feed thread ended
+
+Model: strata (swift-1.5). Not committed.
+
+### Finding
+`_free_canvas`'s deferred `free()` awaited `pump.feed_stopped()` inside a `try/finally` that ran `canvas.close()`.
+When application shutdown cancels the pending task while it waits on the join, the `finally` closes the grid while
+the feed thread is still inside a slice (closing can also block the loop on the backend lock). DT20: the feed thread
+is stopped before the engine is freed, never after.
+
+### Fix (ruled)
+`tsb_tui/screens/terminal.py`: shield the join (`await asyncio.shield(pump.feed_stopped())`) and close the canvas
+only after the join returned. A cancellation of the task raises `CancelledError` at the shielded await, so the grid
+is never closed there (the process exit releases it) and the cancellation propagates.
+
+### Test
+`tests/test_drive_login_status.py`: new `test_cancelled_deferred_free_never_closes_the_canvas_before_the_feed_thread_ends`
+— two attached sessions, the second's sink held 3.0 s; login_ended arrives through the free slot, sign-out starts the
+deferred free for the held slot, the pending task is cancelled while its feed thread is mid-slice, and every canvas
+close is recorded with `feed_running()` at that moment. No close may happen while a slice runs, and the cancelled task
+leaves the canvas never closed here.
+
+Red before the fix: `assert not any(close_log)` -> `AssertionError: the canvas was closed while the feed thread was
+still running (True = any([True]))`. The first single-session draft could not reach this: a lone slot's own feed
+thread is busy with the slice, so the 4017 close (and login_ended) is blocked until the slice ends; the two-session
+shape (the free slot carries login_ended while the held slot stays mid-slice) is what reaches the cancelled join.
+
+### Numbers (exit codes)
+- `tests/test_drive_login_status.py` (python from the repo's test venv, NO_COLOR unset, PYTHONPATH = this clone's
+  `program/contract/client` and root): 0, 13 passed (~17 s).
+- `make lint`: 0.

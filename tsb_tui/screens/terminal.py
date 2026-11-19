@@ -2469,10 +2469,11 @@ class TerminalScreen(Screen):
             return
 
         async def free() -> None:
-            try:
-                await pump.feed_stopped()
-            finally:
-                canvas.close()
+            # Shield the join so a cancellation of this task does not stop the feed thread; the grid closes only
+            # after the join returned. If the task is cancelled before that, it never closes here (the process
+            # exit releases the grid), and the cancellation propagates (DT20).
+            await asyncio.shield(pump.feed_stopped())
+            canvas.close()
 
         task = loop.create_task(free())
         self._freeing.add(task)

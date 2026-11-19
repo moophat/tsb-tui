@@ -467,3 +467,103 @@ def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(s
         asyncio.run(check())
     finally:
         release.set()
+
+
+def test_cancelled_deferred_free_never_closes_the_canvas_before_the_feed_thread_ends(serve, tmp_path, monkeypatch) -> None:
+    """The deferred free started, the feed thread is inside a slow slice, and application shutdown cancels the
+    pending task while it awaits the join. The rule (DT20) is that the feed thread stops before the engine is
+    freed, never after: a cancelled join must not close the grid while the slice still runs. Record every canvas
+    close with the feed thread's state at that moment; no close may happen while a slice is running, and the
+    cancelled task must leave the canvas closed only by process exit (so it is never closed here)."""
+    from tsb_tui.screens.terminal import TerminalScreen
+
+    hold = 3.0
+    entered = threading.Event()
+    release = threading.Event()
+    real_sink = TerminalScreen._sink
+
+    def slow_sink(self, slot, kind, data):
+        if data == b"slow-slice":
+            entered.set()
+            release.wait(hold)
+            return None
+        return real_sink(self, slot, kind, data)
+
+    monkeypatch.setattr(TerminalScreen, "_sink", slow_sink)
+
+    async def check() -> None:
+        _server, url = serve()
+        sids = [make_session(url, _serve.USER, 80, 24, target="normal") for _ in range(2)]
+        async with Rig(url, tmp_path=tmp_path, overrides=("drive.events=login_ended,ended",)) as rig:
+            await rig.login()
+            for sid in sids:
+                await rig.attach(sid)
+
+            ws = await rig.app_call(rig.app.workspace)
+            slot = await rig.app_call(lambda: ws.slots[1])
+            canvas, pump = slot.canvas, slot.pump
+
+            close_log: list[bool] = []
+            real_close = canvas.close
+
+            def record_close():
+                close_log.append(pump.feed_running())
+                real_close()
+
+            monkeypatch.setattr(canvas, "close", record_close)
+
+            def feed_slow_slice() -> None:
+                slot.pump._queue.append(b"slow-slice")
+                slot.pump._wake.set()
+
+            await rig.app_call(feed_slow_slice)
+            for _ in range(500):
+                if entered.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert entered.is_set(), "the feed thread never started the slow slice"
+            assert pump.feed_running(), "the feed thread left the slice too early"
+
+            # The other slot's feed thread is free, so the account close reaches login_ended while this slice runs.
+            ended = asyncio.get_running_loop().run_in_executor(
+                None, rig.app.client.set_account_password, _serve.USER, SECRET)
+            for _ in range(500):
+                if rig.events("login_ended"):
+                    break
+                await asyncio.sleep(0.01)
+            assert rig.events("login_ended"), "login_ended never arrived"
+
+            # The deferred free task is pending on the join; cancel it while the slice still runs.
+            pending = None
+            for _ in range(500):
+                tasks = [t for t in ws._freeing if not t.done()]
+                if tasks:
+                    pending = tasks[0]
+                    break
+                await asyncio.sleep(0.01)
+            assert pending is not None, "the deferred free task never started"
+            assert pump.feed_running(), "the feed thread left the slice before the join was cancelled"
+
+            pending.cancel()
+            for _ in range(500):
+                if pending.done():
+                    break
+                await asyncio.sleep(0.01)
+            assert pending.done(), "the cancelled deferred free never finished"
+            assert pump.feed_running(), "the feed thread ended before the join was cancelled"
+            assert not any(close_log), "the canvas was closed while the feed thread was still running"
+
+            release.set()
+            for _ in range(500):
+                if not pump.feed_running():
+                    break
+                await asyncio.sleep(0.01)
+            assert not pump.feed_running(), "the feed thread never ended after the slice"
+            await ended
+            assert not any(close_log), "the canvas was closed after the join was cancelled"
+            assert await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen))
+
+    try:
+        asyncio.run(check())
+    finally:
+        release.set()
