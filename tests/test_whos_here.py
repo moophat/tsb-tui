@@ -192,7 +192,8 @@ def test_put_it_aside_sends_the_keyboard_to_escrow(serve, wait_until) -> None:
                 dialog.dismiss(None)
                 await wait_until(pilot, lambda: app.screen is screen and "keys →" not in screen.status.text,
                                  "the dialog to close")
-                assert screen.status.text.startswith("‹ nobody types ›  fixture-user put it aside")
+                assert "nobody types" in str(screen.query_one("#canvases").border_title)  # who types is the frame's title
+                assert screen.status.text.startswith("fixture-user put the keyboard aside")
 
     asyncio.run(_check())
 
@@ -382,8 +383,8 @@ def test_two_tuis_on_one_session_show_who_types_and_who_only_watches(serve, wait
                 assert "can type" in text_a and "read-only" in text_a
                 await a.press("escape")  # each app's own pilot: two apps share this task
                 await b.press("escape")
-                await wait_until(a, lambda: "‹ you type ›" in screen_text(typist), "A's pill")
-                await wait_until(b, lambda: "‹ view only ›" in screen_text(watcher), "B's pill")
+                await wait_until(a, lambda: "you type" in screen_text(typist).splitlines()[0], "A's frame title")
+                await wait_until(b, lambda: "fixture-user types" in screen_text(watcher).splitlines()[0], "B's frame title")
                 print("\n===== TUI A after closing =====\n" + screen_text(typist))
                 print("\n===== TUI B after closing =====\n" + screen_text(watcher))
                 assert "your right is read-only" in screen_text(watcher)

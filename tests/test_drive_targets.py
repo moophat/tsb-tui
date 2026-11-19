@@ -173,6 +173,6 @@ def test_drive_new_and_targets_refuse_what_the_dialog_would(serve, tmp_path) -> 
             assert off["ok"], off
             sent = [b for m, p, b in serve_app.requests if (m, p) == ("POST", "/sessions")]
             assert len(sent) == len(creates) + 1
-            assert (sent[-1]["cols"], sent[-1]["rows"]) == (116, 39)
+            assert (sent[-1]["cols"], sent[-1]["rows"]) == (104, 37)  # the window less the rail, the frame and the status row
 
     asyncio.run(check())

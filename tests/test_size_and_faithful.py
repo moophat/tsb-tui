@@ -205,7 +205,7 @@ def test_the_grid_keeps_the_sessions_size_through_every_window_the_person_makes(
             session_id = create_owner_session(app, _serve.TARGET, 132, 40)
             screen = await attached(pilot, app, session_id, wait_until)
             assert (screen.backend.cols, screen.backend.rows) == (132, 40)
-            assert screen.canvas.view_range.label.startswith("cols 1-76 of 132"), screen.canvas.view_range.label
+            assert screen.canvas.view_range.label.startswith("cols 1-72 of 132"), screen.canvas.view_range.label
             for window in ((200, 60), (65, 30), (120, 40)):
                 await pilot.resize_terminal(*window)
                 await pilot.pause(0.4)

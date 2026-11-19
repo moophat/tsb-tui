@@ -33,9 +33,11 @@ def _stub() -> SlowChunkedApp:
 
 
 def _banner_text(app) -> str:
-    """The banner's words as the screen shows them, rows joined (the rail's four columns are not the canvas)."""
-    rows = [strip.text[4:] for strip in app.screen._compositor.render_strips()]
-    return " ".join(" ".join(rows[:3]).split())
+    """The banner's words as the screen shows them, rows joined (the rail's columns and the session frame's border and
+    title row are not the canvas)."""
+    rail = 12 if app.size.width > 80 else 4
+    rows = [strip.text[rail:].replace("┃", " ") for strip in app.screen._compositor.render_strips()]
+    return " ".join(" ".join(rows[1:4]).split())
 
 
 def test_the_banner_carries_the_contracts_notice_whole_at_every_width_and_the_row_stays_one_row(
@@ -54,7 +56,8 @@ def test_the_banner_carries_the_contracts_notice_whole_at_every_width_and_the_ro
                 assert screen.status.size.height == 1
                 row = screen.status.text
                 assert "\n" not in row and len(row) == width, row
-                assert "‹" in row and "F1 Menu" not in row and "? keys" not in row
+                assert " type" in str(screen.query_one("#canvases").border_title)  # the pill's fact is the frame's title
+                assert "F1 Menu" not in row and "? keys" not in row
                 if width >= 80:
                     assert "▲ stale" in row and "Ctrl+\\ [ Scroll" in row
                 assert "Ctrl+\\ t Take back" in row, row
@@ -97,7 +100,7 @@ def test_the_banner_never_causes_a_size_request_or_takes_canvas_rows(wait_until,
                 before, rows = screen.fit_size(), screen.canvas.size.height
                 await wait_until(pilot, lambda: STALE_NOTICE in _banner_text(app), "the banner")
                 await pilot.pause(0.6)  # longer than `size.debounce_ms`
-                assert screen.canvas.size.height == rows == 30 - 1
+                assert screen.canvas.size.height == rows == 30 - 1 - 2  # less the status row and the frame's border rows
                 assert screen.fit_size() == before
                 assert stub.resizes == [] and not any(f.get("t") == "resize" for f in stub.text_frames)
 

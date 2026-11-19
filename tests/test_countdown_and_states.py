@@ -67,7 +67,7 @@ def test_a_notice_with_ending_false_withdraws_the_countdown(
                 await wait_until(pilot, lambda: "ends in" in screen_text(app), "the countdown")
                 await screen.pump.resize(100, 30, timeout=0)
                 await wait_until(pilot, lambda: "ends in" not in screen_text(app), "the withdrawal")
-                assert "● live" in screen_text(app)
+                assert " live " in screen_text(app).splitlines()[0]  # the state is on the frame title
 
     asyncio.run(_check())
 

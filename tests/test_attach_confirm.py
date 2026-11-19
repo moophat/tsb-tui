@@ -112,16 +112,17 @@ def test_a_later_attach_in_the_same_run_shows_the_recording_text_in_the_status_r
                 await pick_in_sidebar(app, pilot, wait_until, session_id)
                 screen = app.screen
                 await wait_until(pilot, lambda: len(screen.slots) == 1, "the session to open")
+                await wait_until(pilot, lambda: not screen.view_open, "the full view to step aside on the pick")
+                screen.close_sidebar()  # the view hands the keys back to the panel it replaced; the row is read without it
                 await wait_until(pilot, lambda: screen.pump is not None and screen.pump.state.client_id,
                                  "the attach")
-                await wait_until(pilot, lambda: RECORDING["warning_text"] in screen.status.text,
-                                 "the recording text in the row")
-                assert "‹ you type ›" in screen.status.text and "F1 Menu" in screen.status.text
-                clock[0] += 6  # past `gates.recording_bar_s` (5)
-                screen._tick()
-                await wait_until(pilot, lambda: RECORDING["warning_text"] not in screen.status.text,
-                                 "the text to let go of the row")
-                assert "● REC" in screen.status.text
+                # Keys-only means keys only in every state, so a later attach's recording
+                # warning is not on the keys row — it is the frame title's "recorded" — and the keys row shows keys.
+                title = str(screen.query_one("#canvases").border_title)
+                assert RECORDING["warning_text"] not in screen.status.text, "the keys row is keys only"
+                assert "‹ you type ›" not in screen.status.text, "the keys row has no who-types pill"
+                assert "F1 Menu" in screen.status.text, "the keys row keeps its keys"
+                assert "recorded" in title, "the recording warning is the frame title's fact"
 
     asyncio.run(_check())
 

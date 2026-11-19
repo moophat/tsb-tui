@@ -420,7 +420,7 @@ def test_size_asks_for_the_windows_size_only_when_the_agent_holds_the_keyboard(s
             assert not [f for f in serve_app.frames if f.get("t") == "resize"], "drive asked for a size by itself"
             answer = await rig.cmd("size")
             assert answer["ok"] and answer["reason"] == "clamped_floor" and answer["size"] == "40x12", answer
-            assert answer["asked"] == "26x9", "the window minus the rail and the status row"
+            assert answer["asked"] == "22x7", "the window minus the rail, the frame and the status row"
             await viewer.login(_serve.PEER)
             await viewer.attach(sid)
             before = len([f for f in serve_app.frames if f.get("t") == "resize"])
@@ -724,7 +724,7 @@ def test_snapshot_text_is_what_a_pilot_of_the_same_app_shows(serve, tmp_path, sc
             await rig.login()
             text = await rig.cmd("snapshot")
             assert text["format"] == "text" and text["text"] == screen_text(rig.app)
-            assert "Fleet" in text["text"]
+            assert "Targets" in text["text"]  # the rail's own word (P2a)
             svg = await rig.cmd("snapshot", format="svg")
             assert svg["svg"].lstrip().startswith("<svg")
             assert (await rig.cmd("snapshot", format="png"))["error"] == "bad_request"
@@ -1038,8 +1038,11 @@ def test_drive_reads_are_live_while_the_view_is_open(serve, tmp_path) -> None:
                            await rig.cmd("read", what="history", lines=50)]
                 return [{key: value for key, value in answer.items() if key not in ("id", "look", "quiet_ms")} for answer in answers]
 
-            live = await reads()
             await _shown(rig, "L299")
+            # The look is `unsettled` until `drive.settled_ms` has passed since the last output: take the live reads
+            # once it has, so the reads before and after the view differ only by what the view changes.
+            await asyncio.sleep(rig.app.cfg["drive.settled_ms"] / 1000 * 1.5)
+            live = await reads()
             assert "L299" in live[0]["lines"]
             assert (await rig.cmd("press", keys=["ctrl+backslash", "left_square_bracket"]))["ok"]
             for _ in range(500):

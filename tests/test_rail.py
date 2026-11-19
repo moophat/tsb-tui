@@ -71,7 +71,7 @@ def test_a_chip_reads_its_number_who_types_and_whether_it_is_in_front_or_unseen(
     ids = [r["id"] for r in records]
     chips = fleet.chips(open_here=ids, front="s-1", unseen=["s-2"], question_for_me=["s-5"])
     model = RailModel(tuple(chips), more=False, need_you=3, alerts=None)
-    assert _texts(model) == [" ≡ ", " ▦▸", "▲3 ", "┄┄┄", "1●◂", "2◆•", "3▲ ", "4· ", "5? ", "6◌ ", " + "]
+    assert _texts(model) == ["▸3 ", "▦  ", "◆  ", "≡  ", "┄┄┄", "1●◂", "2◆•", "3▲ ", "4· ", "5? ", "6◌ ", "+  "]
 
 
 def test_more_than_nine_chips_end_in_an_ellipsis_before_the_plus() -> None:
@@ -84,7 +84,7 @@ def test_more_than_nine_chips_end_in_an_ellipsis_before_the_plus() -> None:
     model = RailModel(tuple(fleet.chips(open_here=ids)), more=fleet.chip_count(open_here=ids) > 9,
                       need_you=0, alerts=None)
     rows = rail_rows(model)
-    assert [r.text for r in rows][-2:] == [" … ", " + "]
+    assert [r.text for r in rows][-2:] == [" … ", "+  "]
     assert sum(1 for r in rows if r.action == "chip") == 9
     assert [r.action for r in rows][-2:] == [ACT_MORE, ACT_NEW]
 
@@ -112,7 +112,7 @@ def test_the_edge_rail_is_one_tappable_column() -> None:
 def test_the_rail_shows_who_types_in_each_session_open_here_and_the_one_in_front(
         serve, wait_until, screen_text) -> None:
     """Mockup T1 on the fixture server: a session the operator types in (`●`), one a peer holds (`◆`), numbered in the
-    order they were opened, the last opened in front (`◂`). The rail is four columns, hairline included."""
+    order they were opened, the last opened in front (`◂`). The worded rail is twelve columns, hairline included."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -126,20 +126,21 @@ def test_the_rail_shows_who_types_in_each_session_open_here_and_the_one_in_front
                 await open_here(app, pilot, wait_until, mine, theirs)
                 screen.close_sidebar()
                 await wait_until(pilot, lambda: not screen.sidebar_open, "the sidebar to close")
-                await wait_until(pilot, lambda: screen.rail.rows and screen.rail.rows[-2].text == "2◆◂",
+                await wait_until(pilot, lambda: screen.rail.rows and screen.rail.rows[-2].text == "2◆◂".ljust(11),
                                  "the second chip to show the peer typing and to be in front")
                 # The fixture's alert stream raises `fixture-alert-1` and clears it again, on the streamer's
                 # thread (tsbc._serve.ALERTS): a read while it is raised says `!1`. This test is about who types,
                 # not about alerts, so it reads the rail at a moment with no alert raised (before the raise or
-                # after the clear, either will do): wait for `!0`, then read without yielding, so nothing can
+                # after the clear, either will do): wait for `! Alerts 0`, then read without yielding, so nothing can
                 # change between the wait and the read.
                 await wait_until(pilot, lambda: (row := rail_row(screen, ACT_ALERTS)) is not None
-                                 and screen.rail.rows[row].text.startswith("!0"),
-                                 "a moment with no alert raised, so the rail's alert row reads !0")
+                                 and screen.rail.rows[row].text.startswith("! Alerts 0"),
+                                 "a moment with no alert raised, so the rail's alert row reads ! Alerts 0")
                 lines = screen.rail.text.splitlines()
-                assert lines[:5] == [" ≡ │", " ▦▸│", "▲0 │", "!0 │", "┄┄┄│"]
-                assert lines[5:8] == ["1● │", "2◆◂│", " + │"]
-                await wait_until(pilot, lambda: screen.rail.region.width == 4, "the rail to be laid out")
+                assert lines[:6] == [text.ljust(11) + "│" for text in
+                                     ("▸ Sessions", "▦ Targets", "◆ Vault", "! Alerts 0", "≡ Menu", "┄" * 11)]
+                assert lines[6:9] == [text.ljust(11) + "│" for text in ("1●", "2◆◂", "+ New")]
+                await wait_until(pilot, lambda: screen.rail.region.width == 12, "the worded rail to be laid out")
 
     asyncio.run(_check())
 
@@ -218,7 +219,7 @@ def test_each_top_glyph_and_each_chip_opens_what_d12_says_by_a_click(serve, wait
 
 
 def test_the_needs_you_count_opens_the_sidebar_at_needs_you(wait_until) -> None:
-    """D12: `▲3` "opens the sidebar at Needs you". A session in a warning window (a `notice` with `ending` true, DT7's
+    """D12: `▲3` "opens the full view at Needs you". A session in a warning window (a `notice` with `ending` true, DT7's
     one-frame case) is counted, and the click lands the selection on that group's first row."""
 
     async def _check() -> None:
@@ -236,11 +237,12 @@ def test_the_needs_you_count_opens_the_sidebar_at_needs_you(wait_until) -> None:
                                  and screen.slot_for("stub-session-1").pump is not None
                                  and screen.slot_for("stub-session-1").pump.state.ending, "the warning window")
                 screen.close_sidebar()
-                await wait_until(pilot, lambda: screen.rail.rows[rail_row(screen, ACT_NEEDS)].text == "▲1 ",
+                await wait_until(pilot, lambda: screen.rail._model.need_you == 1,
                                  "the rail to count the session that needs the operator")
                 await pilot.click(Rail, offset=(1, rail_row(screen, ACT_NEEDS)))
-                await wait_until(pilot, lambda: screen.sidebar_open, "the sidebar")
-                assert screen.sidebar.selected == ("needs_you", "stub-session-1")
+                await wait_until(pilot, lambda: screen.view_open, "the full view, which lists the groups")
+                await wait_until(pilot, lambda: screen.fleet_view.selected == ("needs_you", "stub-session-1"),
+                                 "the selection on the session that needs you")
 
     asyncio.run(_check())
 
@@ -262,12 +264,14 @@ def test_the_ascii_glyph_set_draws_the_rail_in_ascii_and_the_right_side_puts_the
             screen.close_sidebar()
             await wait_until(pilot, lambda: len(screen.rail.rows) >= 6, "the rail")
             lines = screen.rail.text.splitlines()
-            assert lines[:2] == ["│ = ", "│ #>"]
-            assert lines[5] == "│1*<"
-            await wait_until(pilot, lambda: screen.rail.region.width == 4, "the rail to be laid out")
-            assert screen.rail.region.x == 96 and screen.canvas.region.x == 0
-            painted = [line[96:100] for line in screen_text(app).splitlines()]
-            assert painted[:2] == ["│ =", "│ #>"] and painted[5] == "│1*<", "what is painted, not only what is read"
+            assert lines[:2] == ["│" + text.ljust(11) for text in ("> Sessions", "# Targets")]
+            assert lines[5] == "│" + "-" * 11
+            assert lines[6] == "│1*<".ljust(12)
+            await wait_until(pilot, lambda: screen.rail.region.width == 12, "the worded rail to be laid out")
+            assert screen.rail.region.x == 88 and screen.canvas.region.x == 2
+            painted = [line[88:100].ljust(12) for line in screen_text(app).splitlines()]
+            assert painted[:2] == lines[:2] and painted[6] == "│1*<".ljust(12), (
+                "what is painted, not only what is read")
 
     asyncio.run(_check())
 
@@ -292,4 +296,28 @@ def test_the_phone_profile_with_an_edge_rail_is_one_column_that_opens_the_sideba
             assert screen.sidebar.region.width == 30
 
     asyncio.run(_check())
+
+
+def test_ascii_fallbacks_tell_you_typing_from_another_login_typing_by_role(tmp_path) -> None:
+    """In ASCII mode `●` (you type) and `◆` (another login types) both fell to `*`, so the two
+    who-types states read alike. The fallback is by role, not by glyph: you type `*`, another login `+` (as on main),
+    and the rail's Vault mark stays `*` (the plan's visual rule 2.2)."""
+    from tsb_tui.config import load
+    from tsb_tui.model.fleet import WHO_ME, WHO_OTHER, Chip
+    from tsb_tui.widgets.rail import ACT_CHIP, ACT_VAULT
+
+    cfg = load(config_file=tmp_path / "absent", environ={"TSB_TUI_GLYPHS_SET": "ascii"})
+    rail = Rail(cfg)
+    chips = (Chip(1, "s-1", WHO_ME, ""), Chip(2, "s-2", WHO_OTHER, ""))
+    rail.set_model(RailModel(chips, more=False, need_you=0, alerts=None))
+    lines = rail.text.splitlines()
+    rows = rail.rows
+    vault_y = next(y for y, row in enumerate(rows) if row.action == ACT_VAULT)
+    you_y = next(y for y, row in enumerate(rows) if row.action == ACT_CHIP and row.arg == "s-1")
+    other_y = next(y for y, row in enumerate(rows) if row.action == ACT_CHIP and row.arg == "s-2")
+    vault, you, other = lines[vault_y], lines[you_y], lines[other_y]
+    assert "*" in vault, f"the Vault row must keep its * mark: {vault!r}"
+    assert "*" in you and "+" not in you, f"you type is *: {you!r}"
+    assert "+" in other and "*" not in other, f"another login types is +: {other!r}"
+    assert you != other, "the two who-types states must read differently"
 

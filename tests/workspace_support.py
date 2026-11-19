@@ -6,6 +6,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.fleet_view import FleetView
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.terminal import TerminalScreen
 from tsb_tui.widgets.rail import ACT_CHIP, ACT_NEW, Rail
@@ -73,16 +74,48 @@ async def click_new_on_rail(pilot, screen: TerminalScreen) -> None:
 
 
 async def pick_in_sidebar(app: TsbTuiApp, pilot, wait_until: Callable, session_id: str) -> None:
-    """Open the sidebar, wait until the poll has listed `session_id` and click its row, as a person does."""
+    """Wait until the poll has listed `session_id` and click its row, as a person does: in the side panel when the
+    session is open here, else in the full view's Sessions tab, which lists every other session (P2a)."""
     screen = app.screen
     assert isinstance(screen, TerminalScreen), screen
-    if not screen.sidebar_open:
+    if not screen.sidebar_open and not screen.view_open:
         screen.open_sidebar()
     screen._refresh_fleet()
-    await wait_until(pilot, lambda: any(row[1] == session_id for row in screen.sidebar.view.rows),
-                     f"{session_id} to be listed in the sidebar")
-    y = next(i for i, line in enumerate(screen.sidebar.view.lines) if line.session_id == session_id)
-    await pilot.click(Sidebar, offset=(6, y))
+    if screen.sidebar_open and any(row[1] == session_id for row in screen.sidebar.view.rows):
+        y = next(i for i, line in enumerate(screen.sidebar.view.lines) if line.session_id == session_id)
+        await click_sidebar_line(pilot, screen, y, 6)
+        return
+    if not screen.view_open:
+        screen.open_fleet_view()
+    view = screen.fleet_view
+    await wait_until(pilot, lambda: any(row[1] == session_id for row in view.layout.rows),
+                     f"{session_id} to be listed in the full view")
+    await pilot.pause(0.3)  # the framed canvas settles its width before a click lands on the view
+    y = next(i for i, line in enumerate(view.layout.lines) if line.session_id == session_id)
+    await pilot.click(FleetView, offset=(8, y))
+
+
+def sidebar_offset(screen, y: int, x: int) -> tuple[int, int]:
+    """The widget offset of column `x` of the sidebar's logical line `y`. The lines sit in the framed Sessions
+    section (frame and padding two columns each side) and scroll inside it, so the section is scrolled until the
+    line is on screen."""
+    sidebar = screen.sidebar
+    line = sidebar.view.lines[y]
+    if sidebar.line_offset(y) is None and line.session_id is not None and line.group is not None:
+        # Selecting the row scrolls the section to it, and every later relayout keeps it there.
+        sidebar.selected = (line.group, line.session_id)
+        sidebar._relayout()
+    elif sidebar.line_offset(y) is None:
+        # A control line is no row: stop a relayout from scrolling the section back to the selected row.
+        sidebar._scroll_to_selected = lambda: None
+    while (row := sidebar.line_offset(y)) is None:
+        sidebar._scroll_section(sidebar.targets_height + 1, -1 if y < sidebar._scroll_top else 1)
+    return x + 2, row
+
+
+async def click_sidebar_line(pilot, screen, y: int, x: int) -> None:
+    """Click column `x` of the sidebar's logical line `y`."""
+    await pilot.click(Sidebar, offset=sidebar_offset(screen, y, x))
 
 
 def named_sessions(url: str, serve_app, *targets: str, user: str | None = None, cols: int = 80,
@@ -115,16 +148,29 @@ async def open_here(app: TsbTuiApp, pilot, wait_until: Callable, *session_ids: s
 
 
 async def select_in_sidebar(app: TsbTuiApp, pilot, wait_until: Callable, session_id: str) -> None:
-    """Open the sidebar with the keys, wait until the poll lists `session_id` and move the selection onto its row, as
-    `j` and `k` would (the sidebar then has the keys, for `t` or Enter)."""
+    """Move the selection onto `session_id`'s row with `j` and `k` (the list then has the keys, for `t` or Enter): in the
+    side panel when the session is open here, else in the full view's Sessions tab (P2a: the panel lists only the
+    sessions open here)."""
     screen = app.screen
     assert isinstance(screen, TerminalScreen), screen
     screen.open_sidebar()
-    await wait_until(pilot, lambda: any(row[1] == session_id for row in screen.sidebar.view.rows),
-                     f"{session_id} to be listed in the sidebar")
-    for _ in range(len(screen.sidebar.view.rows) + 1):
-        if screen.sidebar.selected is not None and screen.sidebar.selected[1] == session_id:
+    screen._refresh_fleet()
+    await pilot.pause(0.3)
+    if any(row[1] == session_id for row in screen.sidebar.view.rows):
+        for _ in range(len(screen.sidebar.view.rows) + 1):
+            if screen.sidebar.selected is not None and screen.sidebar.selected[1] == session_id:
+                break
+            await pilot.press("j")
+        assert screen.sidebar.selected[1] == session_id, screen.sidebar.selected
+        await wait_until(pilot, lambda: screen._sidebar_has_keys(), "the sidebar to hold the keys")
+        return
+    screen.open_fleet_view()
+    view = screen.fleet_view
+    await wait_until(pilot, lambda: any(row[1] == session_id for row in view.layout.rows),
+                     f"{session_id} to be listed in the full view")
+    for _ in range(len(view.layout.rows) + 1):
+        if view.selected is not None and view.selected[1] == session_id:
             break
         await pilot.press("j")
-    assert screen.sidebar.selected[1] == session_id, screen.sidebar.selected
-    await wait_until(pilot, lambda: screen._sidebar_has_keys(), "the sidebar to hold the keys")
+    assert view.selected[1] == session_id, view.selected
+    await wait_until(pilot, lambda: screen._view_has_keys(), "the full view to hold the keys")

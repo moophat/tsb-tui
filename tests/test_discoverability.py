@@ -70,8 +70,11 @@ def test_the_menu_and_the_fleet_are_on_screen_and_one_click_away_at_each_size(se
             await wait_until(pilot, lambda: screen.status.hit_x("scroll") is not None, "the row to fill")
             lines = screen_text(app).splitlines()
             assert len(lines) == height, f"the screen is {len(lines)} lines tall at {height}"
-            assert "≡" in lines[0][:4], f"no ≡ on the rail at {width}x{height}: {lines[0]!r}"
-            assert "▦▸" in lines[1][:4], f"no ▦▸ on the rail at {width}x{height}: {lines[1]!r}"
+            # P2a's rail: Sessions, Targets, Vault, Alerts, Menu in this order; words from 81 columns, marks below.
+            menu_mark, fleet_mark, wide = ("Menu", "Targets", True) if width > 80 else ("≡", "▦", False)
+            rail_text = "\n".join(line[:12 if wide else 4] for line in lines)
+            assert menu_mark in rail_text, f"no {menu_mark} on the rail at {width}x{height}: {lines[:6]!r}"
+            assert fleet_mark in lines[1][:12 if wide else 4], f"no {fleet_mark} on the rail at {width}x{height}"
             assert "Ctrl+\\ [ Scroll" in lines[-1], lines[-1]
 
             await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
@@ -172,10 +175,9 @@ async def _click_menu_entry(rig: Rig, label: str) -> None:
     (what the wheel does) until its label is on the screen; the click itself is the driver's `click`."""
     await _settle(rig, lambda: rig.app.screen is rig.app.workspace() and not rig.app.screen.dialogs,
                   "the workspace to offer the rail Menu again")
-    if rig.app.workspace().sidebar_open:
-        assert (await rig.cmd("click", label="◂ close"))["ok"]
-        await _settle(rig, lambda: not rig.app.workspace().sidebar_open, "the sidebar to expose the rail")
-    reply = await rig.cmd("click", label="≡")
+    # The rail stays beside the sidebar (P2a), so its Menu needs no closing of the sidebar first; its entry is the
+    # word from 81 columns and the mark at 80 or below.
+    reply = await rig.cmd("click", label="Menu" if rig.app.size.width > 80 else "≡")
     assert reply["ok"], reply
     await _settle(rig, lambda: isinstance(rig.app.screen, CommandPalette)
                   and len(_menu_texts(rig.app.screen)) >= len(SESSION_ACTIONS), "the Menu to fill")

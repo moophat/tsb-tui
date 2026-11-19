@@ -77,6 +77,19 @@ def test_you_type_reads_as_a_filled_pill_the_session_its_state_and_rec() -> None
     assert build_pieces(_inputs(state), 120)[0].role == "pill_type"
 
 
+def test_keys_only_leaves_no_who_types_pill_when_a_recording_warning_is_present() -> None:
+    """With `keys_only=True` the row still showed the who-types pill when a recording warning was
+    present. keys-only means keys only in every state; the recording warning is the frame title's "recorded", and the
+    keys row shows keys."""
+    from stub_server import RECORDING
+
+    state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
+    inputs = _inputs(state, recording_bar=RECORDING["warning_text"])
+    row = "".join(p.text for p in build_pieces(inputs, 120, keys_only=True))
+    assert "you type" not in row and "types" not in row, f"the keys row kept the pill: {row!r}"
+    assert "recorded" not in row, f"the recording warning is on the keys row: {row!r}"
+
+
 def test_view_only_while_an_agent_types_in_your_session_says_typing_takes_it() -> None:
     """F12 row 2, Frontend §9: the owner whose keyboard an agent holds must be told that typing takes it
     back (terminal-size §5, 5.53) - the owner's brake is useless if nobody knows it is there."""
@@ -275,15 +288,15 @@ def test_a_click_on_the_pill_opens_whos_here_and_a_click_on_a_hint_runs_its_acti
             row = screen.status
             assert set(row.actions()) == {"who", "detach", "size", "scroll", "end", "keys", "menu", "fleet"}
 
-            assert row.text.startswith("‹ you type ›")
-            await pilot.click(StatusRow, offset=(3, 0))  # on the pill itself, not on the `Who's here` hint
+            assert "you type" in str(screen.query_one("#canvases").border_title)
+            await pilot.click("#canvases", offset=(6, 0))  # the frame's title took the pill's place as the control
             await wait_until(pilot, lambda: isinstance(app.screen, WhosHereScreen),
-                             "Who's here to open from the keyboard pill")
+                             "Who's here to open from the frame's title")
             app.screen.dismiss(None)
             await wait_until(pilot, lambda: app.screen is screen and "keys →" not in _text_of(screen),
                              "the dialog to close and the row to take its hints back")
 
-            await pilot.click(StatusRow, offset=(row.hit_x("who", after=14) + 1, 0))
+            await pilot.click(StatusRow, offset=(row.hit_x("who") + 1, 0))
             await wait_until(pilot, lambda: isinstance(app.screen, WhosHereScreen),
                              "Who's here to open from its hint")
             app.screen.dismiss(None)
@@ -322,11 +335,11 @@ def test_the_status_row_sits_where_status_position_says(serve, monkeypatch, wait
                 session_id = create_owner_session(app, _serve.TARGET, 80, 24)
                 screen = await attached(pilot, app, session_id, wait_until)
                 row, canvas = screen.status, screen.canvas
-                assert row.region.height == 1 and canvas.region.height == 19
+                assert row.region.height == 1 and canvas.region.height == 17  # less the status row and the frame's two border rows
                 if position == "top":
-                    assert row.region.y == 0 and canvas.region.y == 1
+                    assert row.region.y == 0 and canvas.region.y == 2  # under the status row and the frame's top border
                 else:
-                    assert row.region.y == 19 and canvas.region.y == 0
+                    assert row.region.y == 19 and canvas.region.y == 1  # under the frame's top border
 
         asyncio.run(_check())
 
@@ -344,8 +357,8 @@ def test_status_show_off_removes_the_row_and_the_canvas_takes_its_line(
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
             screen = await attached(pilot, app, session_id, wait_until)
             assert screen.status is None
-            assert screen.canvas.region.height == 20
-            assert screen.fit_size() == (100 - app.cfg["rail.width"], 20)
+            assert screen.canvas.region.height == 18  # less the frame's two border rows
+            assert screen.fit_size() == (100 - 12 - 4, 20 - 2)  # the rail, the frame and its padding
 
     asyncio.run(_check())
 
@@ -362,10 +375,10 @@ def test_the_pan_range_shows_in_the_row_and_follows_a_pan(serve, wait_until) -> 
             session_id = create_owner_session(app, _serve.TARGET, 132, 40)
             record_output(serve_app, session_id, b"\x1b[2J\x1b[1;1Hhello")
             screen = await attached(pilot, app, session_id, wait_until)
-            await wait_until(pilot, lambda: "cols 1-96 of 132 ▸" in _text_of(screen),
+            await wait_until(pilot, lambda: "cols 1-84 of 132 ▸" in _text_of(screen),
                              "the status row to show the range")
             screen.canvas.pan_to(36, 0)
-            await wait_until(pilot, lambda: "cols 37-132 of 132 ▸" in _text_of(screen),
+            await wait_until(pilot, lambda: "cols 37-120 of 132 ▸" in _text_of(screen),
                              "the status row to follow the pan")
 
     asyncio.run(_check())
@@ -389,7 +402,7 @@ def test_the_row_says_your_keys_were_not_sent_after_the_guard_holds_a_key_back(
                 await pilot.press("x")
                 await wait_until(pilot, lambda: "your keys were not sent" in _text_of(screen),
                                  "the status row to say so")
-                assert "‹ view only ›" in _text_of(screen)
+                assert " types" in str(screen.query_one("#canvases").border_title)  # who types is the frame's title
 
                 screen.post_message(events.Paste("p"))  # paste goes through the same guard
                 await wait_until(pilot, lambda: screen.suppressed_inputs == 2, "paste to be held back")

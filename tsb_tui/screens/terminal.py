@@ -43,6 +43,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from rich.style import Style
+from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
@@ -59,7 +60,6 @@ from ..model.countdown import format_duration, parse_timestamp
 from ..model.events import TAP_RECORD, TAP_SLOT_CLOSED, EventLog
 from ..model.fleet import (
     ENDED_STATES,
-    GROUP_NEEDS_YOU,
     MAX_CHIPS,
     WHO_OTHER,
     Fleet,
@@ -90,7 +90,7 @@ from ..term import (
 from ..term import ghostty as G
 from ..term.search import SearchResult, reanchor, search
 from ..term.selection import Selection
-from ..theme import TermPalette
+from ..theme import TermPalette, role_colours
 from ..widgets.canvas import Canvas, Highlight
 from ..widgets.rail import (
     ACT_ALERTS,
@@ -100,6 +100,7 @@ from ..widgets.rail import (
     ACT_MORE,
     ACT_NEEDS,
     ACT_NEW,
+    ACT_VAULT,
     WHO_WORDS,
     Rail,
     RailModel,
@@ -129,6 +130,7 @@ from ..widgets.status_row import (
     ReattachStatus,
     StatusInputs,
     StatusRow,
+    frame_title,
     is_compact,
 )
 from . import prompts
@@ -155,8 +157,10 @@ from .fleet_view import (
     CMD_TARGET_DELETE,
     CMD_TARGET_EDIT,
     CMD_TARGET_NEW,
+    GROUP_NEEDS,
     GROUP_TARGETS,
     TAB_ALERTS,
+    TAB_SESSIONS,
     TAB_TARGETS,
     FleetRow,
     FleetView,
@@ -332,11 +336,32 @@ class SessionSlot:
                 or (self.record or {}).get("target_id") or self.session_id)
 
 
+# The session frame takes two columns of border and two of padding, and two rows of border.
+FRAME_COLUMNS = 4
+FRAME_ROWS = 2
+
+
+class SessionFrame(Container):
+    """The session's frame. It refreshes the title after its final layout width, and a click on its top border (the
+    title) opens Who's here, as the pill on the status row did."""
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.call_after_refresh(self.screen.refresh_status)
+
+    def on_click(self, event: events.Click) -> None:
+        # Only a click on the frame's own top border opens Who's here. A click bubbles up from a child (the canvas)
+        # with coordinates relative to that child, so `event.y == 0` alone is the canvas's first row, not the border;
+        # the event's widget is the frame itself only when the pointer is on the frame (its border), not on a child.
+        if event.widget is self and event.y == 0 and self.screen.front is not None:
+            event.stop()
+            self.screen.run_worker(self.screen.run_action_id("who"), exclusive=False)
+
+
 class TerminalScreen(Screen):
     DEFAULT_CSS = """
     TerminalScreen { layers: base overlay; }
     #body { layer: base; height: 1fr; width: 1fr; }
-    #canvases { width: 1fr; height: 1fr; layers: base overlay; }
+    #canvases { width: 1fr; height: 1fr; layers: base overlay; padding: 0 1; }
     Canvas { layer: base; }
     StatusRow { layer: base; }
     """
@@ -501,8 +526,9 @@ class TerminalScreen(Screen):
         self._alert_stack = AlertStack(self)
         self._alert_stack.display = False
         # The overlays live in the canvas area, so a dialog over the session leaves the rail on screen (mockup A1).
-        canvases = Container(self.fleet_view, self._stale_layer, self._stale_banner, self._quiet_box, self._alert_stack,
+        canvases = SessionFrame(self.fleet_view, self._stale_layer, self._stale_banner, self._quiet_box, self._alert_stack,
                              id="canvases")
+        canvases.styles.border = ("solid", role_colours(cfg)["border_on_surface"])
         with Horizontal(id="body"):
             if cfg["rail.side"] == "left":
                 yield self.rail
@@ -513,7 +539,7 @@ class TerminalScreen(Screen):
                 yield self.sidebar
                 yield self.rail
         if cfg["status.show"]:
-            self.status = StatusRow(cfg)
+            self.status = StatusRow(cfg, keys_only=True)
             self.status.styles.dock = cfg["status.position"]
             yield self.status
 
@@ -541,6 +567,7 @@ class TerminalScreen(Screen):
         elif cfg["sidebar.open_when_no_session"]:
             self.open_sidebar(refresh=False)  # the poller's own first poll, just below, is the read
         self.poller.start()
+        self._fetch_targets(background=True)
         self.refresh_status()
 
     def on_unmount(self) -> None:
@@ -587,6 +614,8 @@ class TerminalScreen(Screen):
     def _sidebar_width(self) -> int:
         """D42: 32 columns, 30 on a phone, 42 from `sidebar.wide_from` columns."""
         cfg = self.app.cfg
+        if self._window_width() == 80:
+            return 28
         if self.compact:
             return int(cfg["sidebar.width_phone"])
         if self._window_width() >= cfg["sidebar.wide_from"]:
@@ -603,6 +632,11 @@ class TerminalScreen(Screen):
         """The rail and the sidebar take the width the window gives them. Nothing here asks for a size (D44)."""
         if self.sidebar is None or self.rail is None:
             return
+        self.rail.set_window_width(self._window_width())
+        if self.app.cfg["rail.width"] != 4:
+            # The knob overrides the responsive width: rebuild the rows for it, not only set the widget's width
+            # after the rows were built for the responsive width.
+            self.rail.set_width(int(self.app.cfg["rail.width"]))
         self.sidebar.set_window_width(self._window_width())
         self.sidebar.set_width(self._sidebar_width())
         # The rail takes its width here, not when its model lands: a deferred rebuild must not leave the first
@@ -627,8 +661,10 @@ class TerminalScreen(Screen):
             return
         if self.view_open:
             self.close_fleet_view(restore_sidebar=False)  # the sidebar is the other way to the same list
-        self.rail.display = False
+        self.rail.display = True
         self.sidebar.display = True
+        if not self.targets.fetched and not self.view_open:
+            self._fetch_targets(background=True)  # the full view empties the shared model; the panel reads it again
         self._layout_chrome()
         if refresh:
             self._refresh_fleet()
@@ -655,6 +691,20 @@ class TerminalScreen(Screen):
             self.close_sidebar()
         else:
             self.open_sidebar()
+
+    def open_needs_you(self) -> None:
+        """The rail's Sessions row: the sessions that need you are the full view's (the panel lists only the sessions
+        open here), so the view opens on the first of them."""
+        view = self.fleet_view
+        if view is None:
+            return
+        self.open_fleet_view(TAB_SESSIONS)
+        if self._fleet_dirty:
+            self._sync_fleet_widgets()
+        first = next((row for row in view.layout.rows if row[0] == GROUP_NEEDS), None)
+        if first is not None:
+            view.selected = first
+            view._relayout()
 
     def _sidebar_has_keys(self) -> bool:
         return self.sidebar_open and self.sidebar is not None and self.sidebar.has_focus
@@ -860,7 +910,9 @@ class TerminalScreen(Screen):
             mode=fleet.filter_mode, alerts=alerts.count if alerts.allowed else None,
             leader_hint=f"{leader} {letter}", detail_for=self._details_for, buttons_for=self._buttons_for,
             total=sum(len(records) for records in groups.values()),
-            record_fields=fields_of, record_search=search_of, record_entry=entry_for)
+            record_fields=fields_of, record_search=search_of, record_entry=entry_for,
+            targets=self.targets.rows, targets_loading=not self.targets.fetched,
+            target_has_next=bool(self.targets.next_cursor))
 
     def _time_state(self, record: dict, sid: str, stale: set[str], asks: set[str], now: float) -> RowTime:
         """A row's time-bearing fields read from its record at `now`: why it needs you, the warning window's clock,
@@ -1671,9 +1723,11 @@ class TerminalScreen(Screen):
         elif action in (ACT_FLEET, ACT_MORE):
             self.open_sidebar()
         elif action == ACT_NEEDS:
-            self.open_sidebar(GROUP_NEEDS_YOU)
+            self.open_needs_you()
         elif action == ACT_ALERTS:
             self.open_fleet_view(TAB_ALERTS)
+        elif action == ACT_VAULT:
+            self.run_worker(self.run_action_id("credentials"), exclusive=False)
         elif action == ACT_CHIP and message.arg is not None:
             self.bring_forward(message.arg)
         elif action == ACT_NEW:
@@ -2303,13 +2357,15 @@ class TerminalScreen(Screen):
             pass  # the pump's read loop sees the close and handles it
 
     def fit_size(self) -> tuple[int, int]:
-        """The window minus the rail and the status row: what an explicit or an automatic request asks for, and
-        what a new session is created with (terminal-size §4: session open carries the
-        creator's size). The sidebar is not subtracted: opening it asks for nothing (D44)."""
+        """The window minus the rail, the session frame (its borders and one blank column each side) and the status
+        row: what an explicit or an automatic request asks for, and what a new session is created with
+        (terminal-size §4: session open carries the creator's size). The sidebar is not subtracted: opening it asks
+        for nothing (D44)."""
         window = self._window or self.app.size
         cfg = self.app.cfg
-        return (max(window.width - cfg["rail.width"], 1),
-                max(window.height - (STATUS_ROWS if cfg["status.show"] else 0), 1))
+        rail = self.rail.rail_width if self.rail is not None else int(cfg["rail.width"])
+        return (max(window.width - rail - FRAME_COLUMNS, 1),
+                max(window.height - (STATUS_ROWS if cfg["status.show"] else 0) - FRAME_ROWS, 1))
 
     @property
     def auto_size_on(self) -> bool:
@@ -3358,7 +3414,7 @@ class TerminalScreen(Screen):
         hints = [Hint("⏎", "Open", click + CMD_PICK), Hint("t", "Take back", click + CMD_TAKE_BACK),
                  Hint("w", "Who's here", click + CMD_WHOS_HERE), Hint("/", "Filter", click + CMD_FILTER)]
         if self._window_width() >= cfg["sidebar.wide_from"]:
-            hints += [Hint("m", "Mine│all", click + CMD_MODE), Hint("F", "Full view", click + CMD_FULL_VIEW)]
+            hints.append(Hint("F", "Full view", click + CMD_FULL_VIEW))
         hints.append(Hint("Esc", "Close", click + CMD_CLOSE))
         range_label = self.canvas.view_range.label if self.canvas is not None else ""
         note = f"{self._target()} shows {range_label}" if range_label and self._front is not None else ""
@@ -3413,9 +3469,30 @@ class TerminalScreen(Screen):
         why = _REATTACH_WHY.get(wait.get("cause"), _REATTACH_WHY["transport_lost"])
         return ReattachStatus(wait["attempt"], max(wait["due"] - state.now(), 0.0), why)
 
+    def _styled_title(self, title: str) -> Text:
+        """The frame's title, its who-types words in the accent the pill carried (white on the accent)."""
+        text = Text(title)
+        roles = role_colours(self.app.cfg)
+        start = 0
+        for part in title.split(" · "):
+            if part.endswith(" types") or part == "you type":
+                text.stylize(Style(color=roles["on_accent"], bgcolor=roles["accent"], bold=True), start, start + len(part))
+            start += len(part) + 3
+        return text
+
     def refresh_status(self) -> None:
-        if self.status is not None and not self._unmounted:
-            self.status.set_inputs(self.status_inputs())
+        if self._unmounted:
+            return
+        inputs = self.status_inputs()
+        if self.status is not None:
+            self.status.set_inputs(inputs)
+        if self.is_mounted:
+            frame = self.query_one("#canvases")
+            focused = not self._sidebar_has_keys() and not self._view_has_keys() and not self.dialogs
+            frame.styles.border = ("heavy" if focused else "solid", role_colours(self.app.cfg)["border_on_surface"])
+            number = self.slots.index(self._front) + 1 if self._front in self.slots else 0
+            frame.border_title = self._styled_title(frame_title(inputs, number, max(frame.outer_size.width - 6, 0)))
+
 
 
 def _spaced(count: int) -> str:

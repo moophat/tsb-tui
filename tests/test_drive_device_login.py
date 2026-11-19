@@ -70,7 +70,7 @@ def test_prompt_mode_with_auto_size_off_still_requires_recording_acknowledgement
                 result = await rig.cmd("new", target="normal", login_mode="prompt", login_user="fixture-account",
                                        recording_acknowledged=True)
                 assert result["ok"] and stub.creates[-1]["login"]["recording_acknowledged"] is True
-                assert (stub.creates[-1]["cols"], stub.creates[-1]["rows"]) == (116, 39)
+                assert (stub.creates[-1]["cols"], stub.creates[-1]["rows"]) == (104, 37)  # the window less the rail, the frame and the status row
                 assert rig.app.cfg["size.auto_request"] is False
     asyncio.run(check())
 

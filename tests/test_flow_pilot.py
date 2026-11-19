@@ -1,5 +1,5 @@
 """The Textual pilot through the whole E0 journey — login, create, acknowledge, attach, type,
-resize, detach, see the session `detached` in the sidebar — against the slow, chunked stub
+resize, detach, see the session `detached` in the full view — against the slow, chunked stub
 (stub_server.py).
 
 Why this test matters (Rule 9): Contract §11 makes the broker a raw byte pipe and the client the
@@ -22,7 +22,6 @@ from tsbc import _serve
 from workspace_support import login, open_new_session
 
 from tsb_tui.app import TsbTuiApp
-from tsb_tui.model.fleet import GROUP_MINE_AND_JOINABLE
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.terminal import TerminalScreen
@@ -99,7 +98,7 @@ async def _run_flow(screen_text, wait_until) -> None:
                 if stub.resizes:
                     break
                 await pilot.pause(0.01)
-            assert stub.resizes == [(90 - 4, 26 - 1)]
+            assert stub.resizes == [(90 - 12 - 4, 26 - 1 - 2)]  # less the 12-column rail, the frame and the status row
 
             # -- Detach: the session lives on, `detached`, and the workspace has nothing open, so the sidebar is
             # open, listing it among the sessions to come back to. --
@@ -112,8 +111,10 @@ async def _run_flow(screen_text, wait_until) -> None:
                 await pilot.pause(0.01)
             assert stub.sessions[session_id]["state"] == "detached"
             app.screen._refresh_fleet()
-            await wait_until(pilot, lambda: (GROUP_MINE_AND_JOINABLE, session_id) in app.screen.sidebar.view.rows,
-                            "the detached session to appear in the sidebar after refresh")
+            # The panel lists only the sessions open here; the others are the full view's.
+            app.screen.open_fleet_view()
+            await wait_until(pilot, lambda: any(row[1] == session_id for row in app.screen.fleet_view.layout.rows),
+                            "the detached session to appear in the full view after refresh")
 
 
 def test_full_flow_stays_responsive_through_a_slow_chunked_attach(monkeypatch, screen_text, wait_until) -> None:

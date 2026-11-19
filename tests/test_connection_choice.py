@@ -120,7 +120,7 @@ def test_the_create_carries_the_canvas_the_window_gives_when_auto_size_is_on(wai
                 await pilot.click("#create-button")
                 await wait_until(pilot, lambda: len(stub.sessions) == 1, "the session to be created")
                 created = next(iter(stub.sessions.values()))
-                assert (created["cols"], created["rows"]) == (96, 29)
+                assert (created["cols"], created["rows"]) == (84, 27)  # the window less the rail, the frame and the status row
 
     asyncio.run(_check())
 
@@ -143,6 +143,6 @@ def test_with_auto_size_off_each_profile_creates_with_the_window_size(
                 await pilot.click("#create-button")
                 await wait_until(pilot, lambda: len(stub.sessions) == 1, "the session to be created")
                 created = next(iter(stub.sessions.values()))
-                assert (created["cols"], created["rows"]) == (96, 29)
+                assert (created["cols"], created["rows"]) == (84, 27)  # the window less the rail, the frame and the status row
 
     asyncio.run(_check())

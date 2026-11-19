@@ -16,7 +16,12 @@ import pytest
 from input_server import InputRecordingApp, other_client
 from stub_server import resize_requests
 from tsbc import _serve
-from workspace_support import fixture_login, named_sessions, open_here, pick_in_sidebar
+from workspace_support import (
+    fixture_login,
+    named_sessions,
+    open_here,
+    pick_in_sidebar,
+)
 
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.model.fleet import (
@@ -24,11 +29,11 @@ from tsb_tui.model.fleet import (
     GROUP_MINE_HELD_BY_OTHERS,
     GROUP_NEEDS_YOU,
     GROUP_OPEN_HERE,
+    GROUP_ORDER,
 )
+from tsb_tui.screens.fleet_view import GROUP_TABLE, FleetView
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.widgets.sidebar import (
-    CMD_NEW,
-    Sidebar,
     SidebarEntry,
     SidebarModel,
     sidebar_view,
@@ -218,10 +223,10 @@ def test_the_filter_narrows_every_group_and_a_group_with_no_match_says_zero() ->
 # -- the live sidebar --
 
 
-def test_the_groups_hold_the_sessions_their_rules_name_in_d42s_order(serve, wait_until) -> None:
-    """D42 on the fixture server: the one open here, the one an agent (the peer) types in that is not open, the one
-    nobody types in, and the one that needs the operator (its worker unreachable). A session owned by someone else
-    is not listed until `all`. Needs you highlights, so the unreachable one is in Needs you and in Yours and joinable."""
+def test_the_panel_lists_only_what_is_open_here_and_the_full_view_holds_the_groups(serve, wait_until) -> None:
+    """D42 on the fixture server, after P2a: the side panel's Sessions section lists only the session open here; the
+    groups (needs you, yours, someone else types, yours and joinable) are the full view's Sessions tab, where the one
+    that needs the operator (its worker unreachable) leads. A session owned by someone else is not listed."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -235,54 +240,60 @@ def test_the_groups_hold_the_sessions_their_rules_name_in_d42s_order(serve, wait
                 screen = await fixture_login(app, pilot)
                 await open_here(app, pilot, wait_until, mine)
                 screen._refresh_fleet()
-                await wait_until(pilot, lambda: len(screen.sidebar.view.rows) >= 5, "the poll to list the fleet")
-                rows = screen.sidebar.view.rows
-                assert [name for name, _ in rows if name != GROUP_MINE_AND_JOINABLE] == [
-                    GROUP_NEEDS_YOU, GROUP_OPEN_HERE, GROUP_MINE_HELD_BY_OTHERS]
-                assert (GROUP_NEEDS_YOU, broken) in rows and (GROUP_MINE_AND_JOINABLE, broken) in rows
-                assert (GROUP_OPEN_HERE, mine) in rows and (GROUP_MINE_HELD_BY_OTHERS, held) in rows
-                assert (GROUP_MINE_AND_JOINABLE, idle) in rows
+                await wait_until(pilot, lambda: broken in screen.fleet.records, "the poll to list the fleet")
+                screen._sync_fleet_widgets()
+                assert screen.sidebar.view.rows == ((GROUP_OPEN_HERE, mine),)
+                screen.open_fleet_view()
+                view = screen.fleet_view
+                await wait_until(pilot, lambda: any(r[1] == broken for r in view.layout.rows), "the view's rows")
+                rows = view.layout.rows
+                assert rows[0][0] == "needs_you" and rows[0][1] == broken, "Needs you leads"
+                assert {sid for group, sid in rows if group == GROUP_TABLE} >= {mine, held, idle, broken}
                 assert not any(sid == theirs for _, sid in rows), "another login's session is not mine"
-                assert _groups(screen) == ["Needs you", "Open here", "Yours, someone else types",
-                                           "Yours and joinable"]
 
     asyncio.run(_check())
 
 
-def test_mine_all_and_the_filter_change_what_is_listed(serve, wait_until) -> None:
-    """D42 / DT15: `mine│all` is a view over what the core returned, it does not ask for less or more; a click on
-    `all` lists the session another login owns, `mine` hides it again; `/` and typed text narrow the list, Enter keeps
-    the text, Esc clears it."""
+
+def test_mine_all_is_the_full_views_and_the_filter_narrows_the_targets(serve, wait_until) -> None:
+    """D42 / DT15 after P2a: `/` and typed text narrow the Targets section, its count in the title; Enter keeps the
+    text, Esc clears it. `mine│joinable` is the full view's switch, a view over what the core returned: it asks for
+    nothing."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
-        mine, other = named_sessions(url, serve_app, "rtr-core-01", "infra-db-02")
+        _mine, other = named_sessions(url, serve_app, "rtr-core-01", "infra-db-02")
         (theirs,) = named_sessions(url, serve_app, "lab-linux-04", user=_serve.PEER)
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await fixture_login(app, pilot)
-            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 2, "the poll to list my sessions")
-            requests_before = len([r for r in serve_app.requests if r[:2] == ("GET", "/sessions")])
-
-            await pilot.click(Sidebar, offset=(screen.sidebar.view.lines[1].text.index("all") + 1, 1))
-            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 3, "all to list the peer's session")
-            assert any(sid == theirs for _, sid in screen.sidebar.view.rows)
-            assert screen.fleet.filter_mode == "all"
-            await pilot.click(Sidebar, offset=(screen.sidebar.view.lines[1].text.index("mine") + 1, 1))
-            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 2, "mine to hide it again")
-            assert len([r for r in serve_app.requests if r[:2] == ("GET", "/sessions")]) == requests_before, (
-                "the toggle is a view: it asked the core for nothing")
-
+            await wait_until(pilot, lambda: len(screen.sidebar.model.targets) > 1 and screen._sidebar_has_keys(),
+                             "the targets")
+            total = len(screen.sidebar.model.targets)
             await pilot.press("slash")
-            await pilot.press(*"infra")
-            await wait_until(pilot, lambda: [r[1] for r in screen.sidebar.view.rows] == [other], "the filter to narrow")
-            assert "/ infra▏" in screen.sidebar.view.lines[1].text
+            await pilot.press(*"telnet")
+            await wait_until(pilot, lambda: len(screen.sidebar.visible_targets()) == 1, "the filter to narrow")
+            assert screen.sidebar.render_line(0).text.startswith(f"┌─ ▦ Targets · 1/{total}")
+            assert "/ telnet▏" in screen.sidebar.render_line(1).text
             await pilot.press("enter")
             await wait_until(pilot, lambda: not screen.sidebar.editing, "Enter to leave the filter")
-            assert [r[1] for r in screen.sidebar.view.rows] == [other], "Enter keeps the text"
+            assert len(screen.sidebar.visible_targets()) == 1, "Enter keeps the text"
             await pilot.press("slash", "escape")
-            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 2, "Esc to clear the filter")
-            assert mine in [r[1] for r in screen.sidebar.view.rows]
+            await wait_until(pilot, lambda: len(screen.sidebar.visible_targets()) == total, "Esc to clear the filter")
+
+            screen.open_fleet_view()
+            view = screen.fleet_view
+            await wait_until(pilot, lambda: any(r[1] == other for r in view.layout.rows), "the poll to list my sessions")
+            await pilot.pause(0.3)
+            requests_before = len([r for r in serve_app.requests if r[:2] == ("GET", "/sessions")])
+            lines = view.text.splitlines()
+            joinable_line = next(i for i, line in enumerate(lines) if "joinable" in line)
+            await pilot.click(FleetView, offset=(lines[joinable_line].index("joinable") + 1, joinable_line))
+            await wait_until(pilot, lambda: any(r[1] == theirs for r in view.layout.rows), "joinable to list the peer's")
+            await pilot.click(FleetView, offset=(lines[joinable_line].index("mine") + 1, joinable_line))
+            await wait_until(pilot, lambda: not any(r[1] == theirs for r in view.layout.rows), "mine to hide it again")
+            assert len([r for r in serve_app.requests if r[:2] == ("GET", "/sessions")]) == requests_before, (
+                "the toggle is a view: it asked the core for nothing")
 
     asyncio.run(_check())
 
@@ -295,23 +306,27 @@ def test_opening_the_sidebar_never_asks_for_a_size_and_the_canvas_pans(serve, wa
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
-        (sid,) = named_sessions(url, serve_app, "rtr-core-01", cols=116, rows=39)
+        (sid,) = named_sessions(url, serve_app, "rtr-core-01", cols=104, rows=37)  # the window less the rail, frame and row
         app = TsbTuiApp(url)
         app.cfg.set_runtime("size.auto_request", True)
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await fixture_login(app, pilot)
             await open_here(app, pilot, wait_until, sid)
             screen.close_sidebar()
-            await wait_until(pilot, lambda: screen.canvas.size.width == 116, "the canvas to take the whole width")
+            await wait_until(pilot, lambda: screen.canvas.size.width == 104, "the canvas to take the whole width")
+            # Keys-only shows the pan range in every state (HEAD hid it behind the recording bar).
+            # After the canvas settles at the whole width, refresh so the row reflects it: a 104-wide canvas of a 104-column
+            # session needs no pan, so the row says no range.
+            screen.refresh_status()
             assert screen.status.text.count("cols 1-") == 0 and screen.pump.state.holds_keyboard
-            assert (screen.canvas.backend.cols, screen.canvas.backend.rows) == (116, 39)
+            assert (screen.canvas.backend.cols, screen.canvas.backend.rows) == (104, 37)
 
             await pilot.click(screen.query_one("Rail"), offset=(1, 1))
-            await wait_until(pilot, lambda: screen.sidebar_open and screen.canvas.size.width == 88, "the sidebar to open")
-            await wait_until(pilot, lambda: "cols 1-88 of 116 ▸" in screen.status.text, "the pan range")
-            assert (screen.canvas.backend.cols, screen.canvas.backend.rows) == (116, 39)
+            await wait_until(pilot, lambda: screen.sidebar_open and screen.canvas.size.width == 72, "the sidebar to open")
+            await wait_until(pilot, lambda: "cols 1-72 of 104 ▸" in screen.status.text, "the pan range")
+            assert (screen.canvas.backend.cols, screen.canvas.backend.rows) == (104, 37)
             screen.close_sidebar()
-            await wait_until(pilot, lambda: screen.canvas.size.width == 116, "the width to come back")
+            await wait_until(pilot, lambda: screen.canvas.size.width == 104, "the width to come back")
             await pilot.pause(0.5)  # longer than the debounce: a request would be on its way by now
             assert resize_requests(serve_app) == [], "opening or closing the sidebar sent a size request"
 
@@ -319,10 +334,10 @@ def test_opening_the_sidebar_never_asks_for_a_size_and_the_canvas_pans(serve, wa
 
 
 @pytest.mark.parametrize("width, expected", [(65, 30), (120, 32), (200, 42)])
-def test_the_sidebar_is_30_32_or_42_columns_by_the_window_and_the_details_come_from_160(
+def test_the_sidebar_is_30_32_or_42_columns_by_the_window_and_has_no_detail_block(
         serve, wait_until, width, expected) -> None:
-    """D42, design §2.6: 30 on a phone (a compact window), 32 on a laptop, 42 from `sidebar.wide_from` columns, and
-    the selected session's details only from `sidebar.details_from` (160) — the same fact at three sizes."""
+    """D42, design §2.6: 30 on a phone (a compact window), 32 on a laptop, 42 from `sidebar.wide_from` columns. The
+    old detail block left the panel (P2a): the session's facts are the frame title's and Who's here, at every size."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -334,10 +349,11 @@ def test_the_sidebar_is_30_32_or_42_columns_by_the_window_and_the_details_come_f
             screen.open_sidebar()
             await wait_until(pilot, lambda: screen.sidebar.region.width == expected, f"a {expected}-column sidebar")
             text = screen.sidebar.text
-            assert ("attached:" in text) is (width >= 160), "details only from details_from"
-            assert ("full view ▸" in screen.sidebar.view.lines[0].text) is (width >= 160)
+            assert "attached:" not in text and "full view ▸" not in text
+            assert screen.sidebar.view.detail_start is None
 
     asyncio.run(_check())
+
 
 
 @pytest.mark.parametrize("mode, window, closes", [
@@ -371,11 +387,11 @@ def test_the_sidebars_keys_are_its_own_until_it_closes_and_the_leader_still_work
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
-        first, _second = named_sessions(url, serve_app, "rtr-core-01", "infra-db-02")
+        first, second = named_sessions(url, serve_app, "rtr-core-01", "infra-db-02")
         app = TsbTuiApp(url)
-        async with app.run_test(size=(120, 40)) as pilot:
+        async with app.run_test(size=(130, 40)) as pilot:
             screen = await fixture_login(app, pilot)
-            await open_here(app, pilot, wait_until, first)
+            await open_here(app, pilot, wait_until, first, second)  # the panel lists the sessions open here
             screen._refresh_fleet()
             screen.open_sidebar()
             await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 2 and screen._sidebar_has_keys(),
@@ -430,11 +446,11 @@ def test_a_click_on_the_session_gives_the_keys_back_to_it_from_an_open_sidebar(s
         serve_app, url = serve(InputRecordingApp())
         (sid,) = named_sessions(url, serve_app, "rtr-core-01")
         app = TsbTuiApp(url)
-        async with app.run_test(size=(120, 40)) as pilot:
+        async with app.run_test(size=(130, 40)) as pilot:
             screen = await fixture_login(app, pilot)
             await open_here(app, pilot, wait_until, sid)
             screen.open_sidebar()
-            await wait_until(pilot, lambda: screen._sidebar_has_keys() and screen.canvas.size.width == 88, "the keys")
+            await wait_until(pilot, lambda: screen._sidebar_has_keys() and screen.canvas.size.width == 82, "the keys")
             await pilot.click(screen.canvas, offset=(10, 5))
             await wait_until(pilot, lambda: not screen._sidebar_has_keys(), "the keys to go back to the session")
             await pilot.press("x")
@@ -445,9 +461,13 @@ def test_a_click_on_the_session_gives_the_keys_back_to_it_from_an_open_sidebar(s
     asyncio.run(_check())
 
 
-def test_the_sidebars_own_entries_open_the_fleet_view_new_session_alerts_and_close_by_click(
-        serve, wait_until) -> None:
-    """D12/D42: `◂ close`, `full view ▸`, `+ New session` and `! n alerts` are each one click."""
+def test_the_panels_old_entries_are_the_rails_and_the_keys_now(serve, wait_until) -> None:
+    """D12/D42 after P2a: `full view ▸`, `+ New session`, `! n alerts` and `◂ close` left the panel. The full view is
+    `F` (its hint in the keys row), New session the rail's `+ New` row, the alerts the rail's Alerts row, and closing
+    the panel is Esc (its hint `Esc Close` in the keys row while it has focus)."""
+    from workspace_support import rail_row
+
+    from tsb_tui.widgets.rail import ACT_ALERTS, ACT_NEW, Rail
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -455,26 +475,30 @@ def test_the_sidebars_own_entries_open_the_fleet_view_new_session_alerts_and_clo
         app = TsbTuiApp(url)
         async with app.run_test(size=(200, 40)) as pilot:
             screen = await fixture_login(app, pilot)
-            await wait_until(pilot, lambda: screen.sidebar.region.width == 42, "the wide sidebar")
-            lines = screen.sidebar.view.lines
-            await pilot.click(Sidebar, offset=(lines[0].text.index("full view") + 1, 0))
+            await wait_until(pilot, lambda: screen.sidebar.region.width == 42 and screen._sidebar_has_keys(),
+                             "the wide sidebar with the keys")
+            text = screen.status.text
+            assert "F Full view" in text and "Esc Close" in text, text
+            assert not any(w in screen.sidebar.text for w in ("◂ close", "+ New session", "alert"))
+            await pilot.press("F")
             await wait_until(pilot, lambda: screen.view_open, "the full view")
             await pilot.press("escape")
             await wait_until(pilot, lambda: not screen.view_open, "back to the workspace")
 
-            y = _y(screen, "+ New session")  # at 200 columns it shares its row with the alerts
-            await pilot.click(Sidebar, offset=(screen.sidebar.view.lines[y].text.index("+ New") + 2, y))
+            await pilot.click(Rail, offset=(1, rail_row(screen, ACT_NEW)))
             await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "New session")
             await pilot.press("escape")
             await wait_until(pilot, lambda: app.screen is screen, "back to the workspace")
 
-            await pilot.click(Sidebar, offset=(3, _y(screen, "alert")))
+            await pilot.click(Rail, offset=(1, rail_row(screen, ACT_ALERTS)))
             await wait_until(pilot, lambda: screen.view_open and screen.fleet_view.tab == "alerts", "the alerts")
             await pilot.press("escape")
             await wait_until(pilot, lambda: not screen.view_open, "back to the workspace")
 
-            await pilot.click(Sidebar, offset=(screen.sidebar.view.lines[0].text.index("◂ close") + 1, 0))
-            await wait_until(pilot, lambda: not screen.sidebar_open, "◂ close")
+            screen.open_sidebar()
+            await wait_until(pilot, lambda: screen._sidebar_has_keys(), "the keys")
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: not screen.sidebar_open, "Esc to close the panel")
 
     asyncio.run(_check())
 
@@ -524,8 +548,10 @@ def test_a_poll_never_attaches_a_session_another_login_holds(serve, wait_until) 
             async with app.run_test(size=(120, 40)) as pilot:
                 screen = await fixture_login(app, pilot)
                 screen._refresh_fleet()
-                await wait_until(pilot, lambda: (GROUP_MINE_HELD_BY_OTHERS, held) in screen.sidebar.view.rows,
+                screen.open_fleet_view()  # the panel lists only what is open here; the held session is the view's
+                await wait_until(pilot, lambda: any(row[1] == held for row in screen.fleet_view.layout.rows),
                                  "the held session to be listed")
+                screen.close_fleet_view()
                 screen.close_sidebar()
                 await wait_until(pilot, lambda: any(row.arg == held for row in screen.rail.rows), "its chip")
                 assert screen.slots == [] and len(serve_app.clients[held]) == 1, "the TUI attached by itself"
@@ -563,7 +589,7 @@ def test_the_status_row_offers_the_sidebars_keys_as_clicks(serve, wait_until) ->
         serve_app, url = serve(InputRecordingApp())
         (sid,) = named_sessions(url, serve_app, "rtr-core-01")
         app = TsbTuiApp(url)
-        async with app.run_test(size=(120, 40)) as pilot:
+        async with app.run_test(size=(130, 40)) as pilot:
             screen = await fixture_login(app, pilot)
             await open_here(app, pilot, wait_until, sid)
             screen.open_sidebar()
@@ -586,11 +612,11 @@ def test_the_pan_note_follows_the_sidebars_name_in_the_row(serve, wait_until) ->
         serve_app, url = serve(InputRecordingApp())
         (sid,) = named_sessions(url, serve_app, "rtr-core-01", cols=116, rows=39)
         app = TsbTuiApp(url)
-        async with app.run_test(size=(120, 40)) as pilot:
+        async with app.run_test(size=(130, 40)) as pilot:
             screen = await fixture_login(app, pilot)
             await open_here(app, pilot, wait_until, sid)
             screen.open_sidebar()
-            await wait_until(pilot, lambda: "keys → fleet · rtr-core-01 shows cols 1-88 of 116 ▸" in screen.status.text,
+            await wait_until(pilot, lambda: "keys → fleet · rtr-core-01 shows cols 1-82 of 116 ▸" in screen.status.text,
                              "the pan note")
 
     asyncio.run(_check())
@@ -615,8 +641,10 @@ def test_view_chrome_decides_compact_for_the_sidebar_width_and_the_pill(
             screen.open_sidebar()
             await wait_until(pilot, lambda: screen.sidebar.region.width == sidebar_width, f"{sidebar_width} columns")
             screen.close_sidebar()
-            await wait_until(pilot, lambda: ("‹you type›" in screen.status.text) is compact_pill
-                             and ("‹ you type ›" in screen.status.text) is not compact_pill, "the pill")
+            # Keys-only means keys only in every state, so the who-types pill is no longer on the
+            # keys row (the recording warning is the frame title's "recorded"). The fact moved to the frame's title.
+            title = str(screen.query_one("#canvases").border_title)
+            assert "you type" in title, f"the who-types fact is the frame title, not the keys row: {title!r}"
 
     asyncio.run(_check())
 
@@ -636,8 +664,9 @@ def test_the_ascii_glyph_set_reaches_the_sidebar_and_the_status_row(serve, monke
             screen.open_sidebar()
             await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 1, "the row")
             lines = screen.sidebar.text.splitlines()
-            assert lines[0].startswith("# Fleet  < close")
-            assert any(line.startswith(">1* rtr-core-01") for line in lines), lines
+            assert lines[0].startswith("┌─ # Targets ."), lines[0]  # the section's mark and the dot in ASCII
+            assert any(line.startswith(("┌─ > Sessions", "┏━ > Sessions")) for line in lines), lines
+            assert any(">1* rtr-core-01" in line for line in lines), lines
             assert not any(glyph in screen.sidebar.text for glyph in "≡▦▸◂●◆▲◌✕◐•┄")
             screen.close_sidebar()
             await wait_until(pilot, lambda: "F1 Menu" in screen.status.text and "# Fleet" in screen.status.text,
@@ -647,8 +676,9 @@ def test_the_ascii_glyph_set_reaches_the_sidebar_and_the_status_row(serve, monke
     asyncio.run(_check())
 
 
-def test_sidebar_groups_hides_the_groups_it_does_not_name(serve, monkeypatch, wait_until) -> None:
-    """`sidebar.groups`: a group left out of the knob is not drawn, and its sessions are not listed under another."""
+def test_the_retired_sidebar_groups_knob_still_loads_and_changes_nothing(serve, monkeypatch, wait_until) -> None:
+    """`sidebar.groups` is retired (the panel has one section): an old config naming it loads, and the groups the
+    full view and the rail compute are the same whatever it says."""
     monkeypatch.setenv("TSB_TUI_SIDEBAR_GROUPS", "open_here")
 
     async def _check() -> None:
@@ -660,12 +690,10 @@ def test_sidebar_groups_hides_the_groups_it_does_not_name(serve, monkeypatch, wa
             await open_here(app, pilot, wait_until, mine)
             screen._refresh_fleet()
             await wait_until(pilot, lambda: other in screen.fleet.records, "the poll")
-            screen._sync_fleet_widgets()
-            assert _groups(screen) == ["Open here"]
-            assert [name for name, _ in screen.sidebar.view.rows] == [GROUP_OPEN_HERE]
+            assert screen.fleet.group_names == GROUP_ORDER
+            assert screen.sidebar.view.rows == ((GROUP_OPEN_HERE, mine),)
 
     asyncio.run(_check())
-
 
 def test_the_poll_tells_the_row_that_the_worker_is_unreachable_and_that_it_is_back(serve, wait_until) -> None:
     """Phase 6 left it for the poll: no frame of an attachment says the core cannot reach the worker, only the record does.
@@ -686,8 +714,8 @@ def test_the_poll_tells_the_row_that_the_worker_is_unreachable_and_that_it_is_ba
             await wait_until(pilot, lambda: any(row.text.startswith("1◌") for row in screen.rail.rows), "the chip")
             serve_app.sessions[sid]["state"] = "live"
             screen._refresh_fleet()
-            await wait_until(pilot, lambda: "◌ unreachable" not in screen.status.text and "● live" in screen.status.text,
-                             "the row to read live again")
+            await wait_until(pilot, lambda: "◌ unreachable" not in screen.status.text and "live" in str(screen.query_one("#canvases").border_title),
+                             "the title to read live again")
 
     asyncio.run(_check())
 
@@ -704,13 +732,14 @@ def test_a_selected_unreachable_session_says_so_and_never_shows_an_idle_countdow
         async with app.run_test(size=(200, 40)) as pilot:
             screen = await fixture_login(app, pilot)
             await open_here(app, pilot, wait_until, sid)
-            screen.open_sidebar()
-            await wait_until(pilot, lambda: screen.sidebar.selected_session == sid, "the session to be selected")
-            assert "unreachable · input refused · not ended" not in screen.sidebar.text
+            screen.open_fleet_view()  # the details left the panel: they are the full view's
+            view = screen.fleet_view
+            await wait_until(pilot, lambda: any(r[1] == sid for r in view.layout.rows), "the session to be listed")
+            assert "unreachable · input refused · not ended" not in view.text
             serve_app.sessions[sid]["state"] = "unreachable"
             screen._refresh_fleet()
-            await wait_until(pilot, lambda: "unreachable · input refused · not ended" in screen.sidebar.text,
-                             "the details to say the session is unreachable")  # fails today: the details read `types`
+            await wait_until(pilot, lambda: "unreachable · input refused · not ended" in view.text,
+                             "the view to say the session is unreachable")
             details = screen._details_for(sid)
             assert not any(line.startswith("ends in") for line in details), details
 
@@ -733,7 +762,7 @@ def test_the_sidebar_follows_the_window_when_it_changes_size(serve, wait_until) 
             await wait_until(pilot, lambda: screen.sidebar.region.width == 32, "the laptop sidebar")
             await pilot.resize_terminal(200, 40)
             await wait_until(pilot, lambda: screen.sidebar.region.width == 42, "the wide sidebar")
-            await wait_until(pilot, lambda: screen.canvas.region.width == 158, "the canvas to take the rest")
+            await wait_until(pilot, lambda: screen.canvas.region.width == 142, "the canvas to take the rest")
             assert resize_requests(serve_app) == []
 
     asyncio.run(_check())
@@ -752,10 +781,17 @@ def test_rail_width_and_the_start_filter_are_the_knobs(serve, monkeypatch, wait_
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await fixture_login(app, pilot)
             assert screen.fleet.filter_mode == "all"
-            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 1, "the peer's session to be listed")
+            await wait_until(pilot, lambda: len(screen.fleet.records) == 1, "the peer's session to be listed")
             screen.close_sidebar()
             await wait_until(pilot, lambda: screen.rail.region.width == 6, "a six-column rail")
-            assert screen.fit_size()[0] == 114, "the window minus the rail the knob made"
+            assert screen.fit_size()[0] == 110, "the window minus the rail the knob made and the frame"
+            # A resize re-lays the chrome, building the rows for the responsive width, then the
+            # `rail.width` knob set the width after them without rebuilding. The rows are built for the width the knob
+            # uses: every row is `rail.width - 1` cells wide.
+            await pilot.resize_terminal(130, 40)
+            await pilot.pause()
+            assert all(len(row.text) == 5 for row in screen.rail.rows), \
+                [row.text for row in screen.rail.rows]
 
     asyncio.run(_check())
 
@@ -779,39 +815,40 @@ def test_the_status_rows_range_follows_the_canvas_when_it_widens_without_moving(
             session_id = create_owner_session(app, "fixture-target", 132, 40)
             screen = await attached(pilot, app, session_id, wait_until)
             screen.open_sidebar(focus=False)  # beside the terminal, the keys still the session's: the row keeps its range
-            await wait_until(pilot, lambda: screen.sidebar_open and screen.canvas.size.width == 88
-                             and "cols 1-88 of 132 ▸" in screen.status.text, "the narrow range in the row")
+            await wait_until(pilot, lambda: screen.sidebar_open and screen.canvas.size.width == 72
+                             and "cols 1-72 of 132 ▸" in screen.status.text, "the narrow range in the row")
             screen.close_sidebar()
-            await wait_until(pilot, lambda: not screen.sidebar_open and screen.canvas.size.width == 116,
+            await wait_until(pilot, lambda: not screen.sidebar_open and screen.canvas.size.width == 104,
                              "the canvas to widen")
             assert screen.canvas.view_x == 0, "the window moved, so this is not the case under test"
             label = screen.canvas.view_range.label
-            assert label == "cols 1-116 of 132 ▸", label
+            assert label == "cols 1-104 of 132 ▸", label
             await wait_until(pilot, lambda: label in screen.status.text,
                              f"the row to say {label!r}, it says {screen.status.text!r}")
 
     asyncio.run(check())
 
 
-def test_keyboard_reaches_new_session_and_opens_it(serve, wait_until) -> None:
+def test_keyboard_moves_over_the_open_rows_tab_keeps_the_selection_and_n_opens_new_session(serve, wait_until) -> None:
+    """The panel's rows are the sessions open here: the arrows move over them and stop at the ends (the New session
+    row left the panel; its keys are `n` here and the rail's `+ New`); Tab moves focus on and keeps the selection."""
     async def check():
         serve_app, url = serve(InputRecordingApp())
-        named_sessions(url, serve_app, "router")
+        first, second = named_sessions(url, serve_app, "router", "switch")
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await fixture_login(app, pilot)
-            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), "sidebar rows")
+            await open_here(app, pilot, wait_until, first, second)
+            screen.open_sidebar()
+            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 2 and screen.sidebar.has_focus, "rows")
             rows = screen.sidebar.view.rows
             screen.sidebar.selected = rows[0]
-            for row in rows[1:]:
-                await pilot.press("down")
-                assert screen.sidebar.selected == row
             await pilot.press("down")
-            assert screen.sidebar.selected_session is None
+            assert screen.sidebar.selected == rows[1]
+            await pilot.press("down")
+            assert screen.sidebar.selected == rows[0], "the arrows wrap over the open rows"
             await pilot.press("up")
-            assert screen.sidebar.selected == rows[-1]
-            await pilot.press("down")
-            assert screen.sidebar.selected_session is None
+            assert screen.sidebar.selected == rows[1]
             from textual.widgets import Input
 
             # The empty workspace has only one focusable panel. Add a second focus
@@ -823,13 +860,10 @@ def test_keyboard_reaches_new_session_and_opens_it(serve, wait_until) -> None:
             await pilot.press("tab")
             assert panel.has_focus
             assert screen.sidebar.selected == selected
-            await pilot.press("shift+tab")
-            assert screen.sidebar.has_focus
-            assert "+ New session · n" in screen.sidebar.text
-            assert "Tab to New session" not in screen.sidebar.text
-            assert any('n to start a New session' in (part.tip or '')
-                       for line in screen.sidebar.view.lines for part in line.parts)
-            await pilot.press("enter")
+            screen.sidebar.focus()
+            assert "+ New session" not in screen.sidebar.text
+            await pilot.press("n")
+            await pilot.pause()
             assert isinstance(app.screen, NewSessionScreen)
     asyncio.run(check())
 
@@ -855,7 +889,6 @@ def test_sidebar_n_opens_new_session_directly(serve, wait_until) -> None:
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await fixture_login(app, pilot)
-            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), 'sidebar rows')
             assert screen.sidebar.has_focus
             await pilot.press('n')
             await pilot.pause()
@@ -916,64 +949,40 @@ def test_all_keys_sidebar_names_new_session() -> None:
     assert any(line.split(maxsplit=1) == ["n", "New session"] for line in sidebar)
 
 
-def test_with_more_session_groups_than_fit_down_scrolls_new_session_onto_screen(serve, wait_until) -> None:
-    """Ruling (2026-11-16): the selected row is always visible. Moving the selection to any row, the New
-    session footer included, scrolls the sidebar so that row and its marker are on screen, and a relayout
-    that would hide the selected row scrolls to keep it visible."""
+def test_with_more_open_sessions_than_fit_down_scrolls_the_selected_row_onto_screen(serve, wait_until) -> None:
+    """Ruling (2026-11-16): the selected row is always visible. Moving the selection to any row scrolls the Sessions
+    section so that row and its marker are on screen, and a relayout that would hide the selected row scrolls to keep
+    it visible. (The New session row left the panel; its keys are `n` and the rail's `+ New`.)"""
     async def check():
         serve_app, url = serve(InputRecordingApp())
-        (sid1, *_) = named_sessions(url, serve_app, "sw-1", "sw-2", "sw-3", "sw-4")
+        sids = named_sessions(url, serve_app, "sw-1", "sw-2", "sw-3", "sw-4", "sw-5", "sw-6", "sw-7")
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await fixture_login(app, pilot)
-            await open_here(app, pilot, wait_until, sid1)
+            await open_here(app, pilot, wait_until, *sids)
             screen.open_sidebar()
-            await wait_until(pilot, lambda: bool(screen.sidebar.view.rows), "sidebar rows")
+            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 7, "sidebar rows")
 
-            # In a 10-row window (sidebar height 9), the session group headings, the open session,
-            # joinable tail, header (3), and footer (2) require at least 11 rows. The New session footer
-            # starts below the visible area.
-            await pilot.resize_terminal(120, 10)
-            await wait_until(pilot, lambda: screen.sidebar.size.height == 9, "resized sidebar")
-
-            rendered_lines = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
-            assert not any("+ New session" in line for line in rendered_lines)
-            assert "+ New session" not in screen.sidebar.text
-
+            # A 12-row window leaves a 6-row Sessions section (at most half the panel): four rows show at a time.
+            await pilot.resize_terminal(120, 12)
+            await wait_until(pilot, lambda: screen.sidebar.size.height == 11, "resized sidebar")
             rows = screen.sidebar.view.rows
+            assert screen.sidebar.sessions_height - 2 < len(rows), "not every row fits"
+
+            def visible(name):
+                lines = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+                return any("▸" in line and name in line for line in lines)
+
+            screen.sidebar.selected = rows[0]
+            screen.sidebar._relayout()
+            assert visible("sw-1")
             for _ in rows[1:]:
                 await pilot.press("down")
-            await pilot.press("down")
-            assert screen.sidebar.selected == (CMD_NEW, "")
-
-            rendered_after = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
-            assert any("▸" in line and "+ New session" in line for line in rendered_after)
-            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
-
+            assert screen.sidebar.selected == rows[-1] and visible("sw-7"), "down scrolls the last row on screen"
             screen.sidebar._relayout()
-            rendered_relayout = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
-            assert any("▸" in line and "+ New session" in line for line in rendered_relayout)
-            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
-
-            # Up moves back up to the first session row and keeps it visible with its marker
-            await pilot.press("up")
-            assert screen.sidebar.selected == rows[-1]
-            for _ in rows[:-1]:
+            assert visible("sw-7"), "a relayout keeps the selected row visible"
+            for _ in rows[1:]:
                 await pilot.press("up")
-            assert screen.sidebar.selected == rows[0]
-            rendered_top = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
-            assert any("▸" in line and "sw-1" in line for line in rendered_top)
-            assert "▸" in screen.sidebar.text and "sw-1" in screen.sidebar.text
-
-            # Down to New session footer again and press Enter
-            for _ in rows:
-                await pilot.press("down")
-            assert screen.sidebar.selected == (CMD_NEW, "")
-            rendered_bottom = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
-            assert any("▸" in line and "+ New session" in line for line in rendered_bottom)
-            assert "▸" in screen.sidebar.text and "+ New session" in screen.sidebar.text
-
-            await pilot.press("enter")
-            assert isinstance(app.screen, NewSessionScreen)
+            assert screen.sidebar.selected == rows[0] and visible("sw-1"), "up scrolls back to the first row"
 
     asyncio.run(check())

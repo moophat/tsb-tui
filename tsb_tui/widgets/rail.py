@@ -1,17 +1,8 @@
-"""The rail (design §2.3, D41): four columns beside the terminal, always on screen, that say what needs you
-and who types in each session and switch with one click.
+"""The responsive navigation rail: words above 80 columns, compact marks at 80 or below.
 
-Top to bottom: `≡` (the Menu), `▦▸` (the fleet sidebar, which widens this rail in place), `▲n` (how many
-sessions need you), `!n` (TSB's alerts, only for a `broker.health` holder), a hairline, one 3-cell chip per
-session (its number, who types, then `◂` in front or `•` for output not looked at), `…` when more than nine
-chips exist, and `+` (new session). Every row is one click: nothing here needs a key (D5, D12).
-
-Two parts, kept apart so the layout is a pure function a test can read: `rail_rows(model, ...)` turns the
-models into rows of styled parts, and `Rail` paints them and turns a click into a `Rail.Activated` message
-naming what was clicked. The rail asks the core for nothing and sends nothing to a session.
-
-`rail.phone = "edge"` (on a phone) shrinks the rail to one tappable column: its first row is `▸` and a tap
-anywhere on it opens the sidebar.
+Sessions, Targets, Vault, permission-gated Alerts and Menu precede the existing session chips;
+New session is last. Pure ``rail_rows`` builds the content and ``Rail`` paints it and posts
+``Activated`` on clicks. The phone edge rail remains one tappable column.
 """
 
 from __future__ import annotations
@@ -48,6 +39,7 @@ ACT_MENU = "menu"
 ACT_FLEET = "fleet"
 ACT_NEEDS = "needs"
 ACT_ALERTS = "alerts"
+ACT_VAULT = "credentials"
 ACT_CHIP = "chip"
 ACT_MORE = "more"
 ACT_NEW = "new_session"
@@ -56,12 +48,11 @@ SEPARATOR = "┄"
 EDGE_MARK = "▸"
 _WHO_ROLES = {WHO_ME: "who_me", WHO_OTHER: "who_other", WHO_NOBODY: "who_none", WHO_NEEDS_YOU: "who_needs",
               WHO_ASKS: "who_asks", WHO_UNREACHABLE: "who_unreachable", WHO_ENDED: "who_ended"}
-_COUNT_CAP = 99
 # What each who glyph says, for a chip's tooltip (design D41).
+_COUNT_CAP = 99
 WHO_WORDS = {WHO_ME: "you type", WHO_OTHER: "another login types", WHO_NOBODY: "nobody types",
               WHO_NEEDS_YOU: "needs you", WHO_ASKS: "asks you a question", WHO_UNREACHABLE: "unreachable",
               WHO_ENDED: "ended"}
-_COUNT_CAP = 99
 
 
 @dataclass(frozen=True)
@@ -100,20 +91,43 @@ def _cells(parts: list[tuple[str, str]], width: int) -> tuple[tuple[str, str], .
     return (*parts, (" " * max(width - used, 0), "blank"))
 
 
+def _worded(mark: str, word: str, count: str, width: int) -> str:
+    """`mark word count` in `width` cells: a word that does not fit beside its mark and count is cut with an
+    ellipsis at its end; the mark and the count are never cut."""
+    tail = f" {count}" if count else ""
+    room = width - 2 - len(tail)
+    if len(word) > room:
+        word = word[:max(room - 1, 0)] + "…"
+    return f"{mark} {word}{tail}"
+
+
 def rail_rows(model: RailModel, content_width: int = 3) -> list[RailRow]:
     """The rail's rows, top to bottom, each `content_width` cells wide (the hairline is the widget's)."""
     if model.edge:
         return [RailRow(_cells([(EDGE_MARK, "entry")], content_width), ACT_FLEET)]
-    rows = [
-        RailRow(_cells([(" ", "blank"), ("≡", "entry")], content_width), ACT_MENU),
-        RailRow(_cells([(" ", "blank"), ("▦▸", "entry")], content_width), ACT_FLEET),
-        RailRow(_cells([("▲" + _count(model.need_you), "need" if model.need_you else "count_zero")],
-                       content_width), ACT_NEEDS),
+    words = content_width >= 11
+    # (mark, word, count): the same marks as the compact rail; the words and the mark come together from 81 columns.
+    entries = [
+        ("▸", "Sessions", _count(model.need_you), ACT_NEEDS),
+        ("▦", "Targets", "", ACT_FLEET),
+        ("◆", "Vault", "", ACT_VAULT),
     ]
     if model.alerts is not None:
-        rows.append(RailRow(_cells([("!" + _count(model.alerts), "alert" if model.alerts else "count_zero")],
-                                   content_width), ACT_ALERTS))
-    rows.append(RailRow(_cells([(SEPARATOR * 3, "hairline")], content_width)))
+        entries.append(("!", "Alerts", _count(model.alerts), ACT_ALERTS))
+    entries.append(("≡", "Menu", "", ACT_MENU))
+    rows = []
+    for mark, word, count, action in entries:
+        role = "entry"
+        if action == ACT_NEEDS:
+            role = "need" if model.need_you else "count_zero"
+        elif action == ACT_ALERTS:
+            role = "alert" if model.alerts else "count_zero"
+        # The needs-you count does not fit beside the word Sessions in 11 cells; it shows on the marks-only rail and as
+        # the row's colour here (P2b gives the worded row its own count).
+        wide_count = "" if action == ACT_NEEDS else count
+        label = _worded(mark, word, wide_count, content_width) if words else mark + count
+        rows.append(RailRow(_cells([(label, role)], content_width), action))
+    rows.append(RailRow(_cells([(SEPARATOR * content_width, "hairline")], content_width)))
     for chip in model.chips:
         front = chip.mark == MARK_FRONT
         mark_role = "mark_front" if front else ("mark_unseen" if chip.mark == MARK_UNSEEN else "blank")
@@ -123,7 +137,7 @@ def rail_rows(model: RailModel, content_width: int = 3) -> list[RailRow]:
                    content_width), ACT_CHIP, chip.session_id))
     if model.more:
         rows.append(RailRow(_cells([(" ", "blank"), ("…", "more")], content_width), ACT_MORE))
-    rows.append(RailRow(_cells([(" ", "blank"), ("+", "plus")], content_width), ACT_NEW))
+    rows.append(RailRow(_cells([("+ New" if words else "+", "plus")], content_width), ACT_NEW))
     return rows
 
 
@@ -150,7 +164,7 @@ class Rail(Widget):
         self._build_styles(role_colours(config))
         self._glyph_set = glyphs.check(config["glyphs.set"])
         self._side = config["rail.side"]
-        self.rail_width = int(config["rail.width"])
+        self.rail_width = 4
         self._model = RailModel((), False, 0, None)
         self._rows: list[RailRow] = rail_rows(self._model, self.rail_width - 1)
         self._leader = A.leader_label(config["keys.leader"])
@@ -204,6 +218,24 @@ class Rail(Widget):
         self._rows = rail_rows(model, self.rail_width - 1)
         self.refresh()
 
+    def set_window_width(self, width: int) -> None:
+        """Use words above 80 columns and compact marks at the minimum window width."""
+        rail_width = 12 if width >= 81 else 4
+        if rail_width != self.rail_width:
+            self.rail_width = rail_width
+            self.styles.width = 1 if self.edge else rail_width
+            self._rows = rail_rows(self._model, rail_width - 1)
+            self.refresh()
+
+    def set_width(self, width: int) -> None:
+        """The `rail.width` knob (hairline included): rebuild the rows for the width actually used,
+        not only set the widget's width after the responsive rows were built."""
+        if width != self.rail_width:
+            self.rail_width = width
+            self.styles.width = 1 if self.edge else width
+            self._rows = rail_rows(self._model, width - 1)
+            self.refresh()
+
     @property
     def rows(self) -> list[RailRow]:
         return list(self._rows)
@@ -215,7 +247,7 @@ class Rail(Widget):
 
     def _line_text(self, y: int) -> str:
         row = self._rows[y]
-        text = glyphs.render(row.text, self._glyph_set)
+        text = "".join(glyphs.render_role(part, self._glyph_set, role) for part, role in row.parts)
         if self._model.edge:
             return text
         return text + "│" if self._side == "left" else "│" + text
@@ -235,7 +267,7 @@ class Rail(Widget):
         if y < len(self._rows):
             for text, role in self._rows[y].parts:
                 if text:
-                    segments.append(Segment(glyphs.render(text, self._glyph_set), self._styles[role]))
+                    segments.append(Segment(glyphs.render_role(text, self._glyph_set, role), self._styles[role]))
         else:
             segments.append(Segment(" " * (width - 1), self._styles["blank"]))
         if self._side == "left":
@@ -255,9 +287,13 @@ class Rail(Widget):
         if row.action == ACT_MENU:
             return f"≡ Menu {leader} · every action, searchable"
         if row.action == ACT_FLEET:
-            return f"▦ Fleet {leader} {letters['fleet']} · widens the rail into the fleet sidebar"
+            # The row now shows Targets and opens the side panel's targets, not the old fleet sidebar.
+            return "▦ Targets · opens the targets in the side panel"
+        if row.action == ACT_VAULT:
+            return "◆ Vault · opens saved logins"
         if row.action == ACT_NEEDS:
-            return f"▲ {model.need_you} need you · opens the sidebar at Needs you"
+            # The sessions that need you are the full view's, not a sidebar group.
+            return "▸ Sessions · opens the full view at the sessions that need you"
         if row.action == ACT_ALERTS:
             return f"! {model.alerts} TSB alert{'' if model.alerts == 1 else 's'} · opens the Alerts tab"
         if row.action == ACT_MORE:

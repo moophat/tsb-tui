@@ -20,6 +20,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from drive_support import Rig
 from input_server import make_session
 from tsb_contract_client import Client
@@ -27,7 +28,9 @@ from tsbc import _serve
 from tsbc.schema import Registry
 
 import tsb_tui.screens.terminal as terminal_screen
+from tsb_tui import glyphs
 from tsb_tui.model.fleet import GROUP_NEEDS_YOU, GROUP_OPEN_HERE, Fleet
+from tsb_tui.widgets.sidebar import Sidebar, _prepare, sidebar_view
 
 CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
 REGISTRY = Registry.from_tree(CONTRACT)
@@ -38,6 +41,43 @@ GOLDEN = Path(__file__).resolve().parent / "sidebar_painted_golden.json"
 # The constant the entry count is allowed above the painted rows: the sidebar paints one entry per row it shows,
 # and nothing else builds one on this path.
 PAINTED_EXTRA = 2
+
+
+@pytest.fixture(autouse=True)
+def _the_unframed_sidebar_view(monkeypatch) -> None:
+    """These tests are about the unframed `sidebar_view` (the grouped list and its painted window), which the side
+    panel no longer draws (P2a: its Sessions section holds only what is open here). Until the full view builds rows
+    for its painted window only, they keep testing the function: the widget runs it unframed, at the width and height
+    it had, and `legacy_text` reads it the way the widget used to paint it."""
+    original_refresh_times = Sidebar.refresh_times
+
+    def build(self):
+        needle = self.filter_text.strip()
+        if self._prepared_for is None or self._prepared_for[1] is not self._model or self._prepared_for[0] != needle:
+            self._prepared = _prepare(self._model, needle)
+            self._prepared_for = (needle, self._model)
+        return sidebar_view(
+            self._model, width=max(self.sidebar_width - 1, 1), height=self.size.height or 40, selected=self.selected,
+            filter_text=self.filter_text, editing=self.editing, wide=self.wide, show_details=self.details_shown,
+            prepared=self._prepared)
+
+    def refresh_times(self, times):
+        self.sidebar_width += 3  # the framed widget re-lays rows 3 columns narrower than this function's width
+        try:
+            return original_refresh_times(self, times)
+        finally:
+            self.sidebar_width -= 3
+
+    monkeypatch.setattr(Sidebar, "_build", build)
+    monkeypatch.setattr(Sidebar, "refresh_times", refresh_times)
+    monkeypatch.setattr(Sidebar, "sessions_height", property(lambda self: self.size.height or 40))
+
+
+def legacy_text(sidebar) -> str:
+    """The unframed view as the widget used to paint it: one line per row, the hairline at its right."""
+    height = sidebar.size.height or len(sidebar.view.lines)
+    lines = sidebar.view.lines[sidebar.scroll_top: sidebar.scroll_top + height]
+    return "\n".join(glyphs.render(line.text, glyphs.UNICODE) + "│" for line in lines)
 
 
 def make_records(n: int, **changes) -> list[dict]:
@@ -109,10 +149,10 @@ async def painted(rig: Rig, target: str):
     """The workspace screen once the sidebar lists the polled fleet."""
     screen = rig.app.workspace()
     for _ in range(600):
-        if target in screen.sidebar.text:
+        if target in legacy_text(screen.sidebar):
             return screen
         await rig.pilot.pause(0.01)
-    raise AssertionError(f"the sidebar never listed the fleet: {screen.sidebar.text!r}")
+    raise AssertionError(f"the sidebar never listed the fleet: {legacy_text(screen.sidebar)!r}")
 
 
 def test_one_rebuild_builds_entries_only_for_the_rows_the_sidebar_paints(serve, tmp_path, monkeypatch) -> None:
@@ -136,7 +176,7 @@ def test_one_rebuild_builds_entries_only_for_the_rows_the_sidebar_paints(serve, 
             assert counter.models == 1, "one rebuild ran"
             assert counter.entries <= rows + PAINTED_EXTRA, (counter.entries, rows)
             hidden = sum(r["state"] not in ("killed", "terminated") for r in records) - rows
-            assert f"┆ {hidden} more · full view ▸" in screen.sidebar.text, screen.sidebar.text
+            assert f"┆ {hidden} more · full view ▸" in legacy_text(screen.sidebar), legacy_text(screen.sidebar)
 
     asyncio.run(check())
 
@@ -157,15 +197,15 @@ def test_a_tick_with_unchanged_records_moves_only_the_clocks_of_the_painted_rows
             rig.app.wall_clock = lambda: fixed
             await rig.login(ME)
             screen = await painted(rig, "Needs you · 1")
-            assert "▲ 4:10" in screen.sidebar.text, screen.sidebar.text
+            assert "▲ 4:10" in legacy_text(screen.sidebar), legacy_text(screen.sidebar)
             instrument(screen, counter, monkeypatch)
             counter.reset()
             rig.app.wall_clock = lambda: fixed + 60
             await rig.app_call(screen._tick)
             assert counter.models == 0, "the tick rebuilt the fleet model"
             assert counter.entries == 0, "the tick constructed entries"
-            assert "▲ 3:10" in screen.sidebar.text, screen.sidebar.text
-            assert "Needs you · 1" in screen.sidebar.text
+            assert "▲ 3:10" in legacy_text(screen.sidebar), legacy_text(screen.sidebar)
+            assert "Needs you · 1" in legacy_text(screen.sidebar)
 
     asyncio.run(check())
 
@@ -215,7 +255,7 @@ def test_the_painted_sidebar_text_matches_live_sessions_at_a_long_list(serve, tm
             rig.app.client = FakeSessionsClient(url, make_records(n))
             await rig.login(ME)
             screen = await painted(rig, f"Yours and joinable · {(n + 19) // 20}")
-            text = screen.sidebar.text
+            text = legacy_text(screen.sidebar)
             assert text == golden[str(n)].replace("^\\ f    ", "Ctrl+\\ f"), f"the painted sidebar changed at {n} records"
 
     for n in (100, 1000, 14000):
@@ -242,7 +282,7 @@ def test_the_selection_moves_over_the_painted_rows_as_before(serve, tmp_path) ->
             for _ in range(5):
                 await rig.app_call(screen.sidebar._move, -1)
             assert screen.sidebar.selected == start
-            assert screen.sidebar.text == golden["14000"].replace("^\\ f    ", "Ctrl+\\ f")
+            assert legacy_text(screen.sidebar) == golden["14000"].replace("^\\ f    ", "Ctrl+\\ f")
 
     asyncio.run(check())
 
@@ -499,7 +539,7 @@ def test_opening_the_sidebar_on_a_group_selects_from_the_current_rows(serve, tmp
             screen.open_sidebar(GROUP_NEEDS_YOU, refresh=False)
             assert screen.sidebar.selected == (GROUP_NEEDS_YOU, "s.needs"), (
                 f"opening on the group selected {screen.sidebar.selected} of the rows before the poll: "
-                f"{screen.sidebar.text}")
+                f"{legacy_text(screen.sidebar)}")
 
     asyncio.run(check())
 
@@ -525,15 +565,15 @@ def test_a_relayout_after_a_tick_builds_its_rows_at_the_current_clock(serve, tmp
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
             screen = await painted(rig, "Needs you · 2")
-            assert "▲ 4:10" in screen.sidebar.text and "▲ 5:00" in screen.sidebar.text, screen.sidebar.text
+            assert "▲ 4:10" in legacy_text(screen.sidebar) and "▲ 5:00" in legacy_text(screen.sidebar), legacy_text(screen.sidebar)
             clock[0] = fixed + 60
             await rig.app_call(screen._tick)
-            assert "▲ 3:10" in screen.sidebar.text and "▲ 4:00" in screen.sidebar.text, screen.sidebar.text
+            assert "▲ 3:10" in legacy_text(screen.sidebar) and "▲ 4:00" in legacy_text(screen.sidebar), legacy_text(screen.sidebar)
             for _ in range(2):
                 await rig.app_call(screen.sidebar._move, 1)  # the selection moves: the painted rows are rebuilt
             after_relayout = _painted_rows(screen.sidebar)
-            assert "▲ 3:10" in screen.sidebar.text and "▲ 4:00" in screen.sidebar.text, (
-                f"a relayout after the tick built the rows at the model's old clock: {screen.sidebar.text}")
+            assert "▲ 3:10" in legacy_text(screen.sidebar) and "▲ 4:00" in legacy_text(screen.sidebar), (
+                f"a relayout after the tick built the rows at the model's old clock: {legacy_text(screen.sidebar)}")
             await rig.app_call(screen._sync_fleet_widgets)
             assert _painted_rows(screen.sidebar) == after_relayout, (
                 f"a relayout painted rows a rebuild at the same clock does not: {after_relayout!r} vs "
@@ -634,16 +674,16 @@ def test_the_details_clocks_move_with_the_rows(serve, tmp_path) -> None:
             screen = await painted(rig, "Open here · 2")
             await rig.app_call(screen.sidebar.select_group, GROUP_OPEN_HERE)
             assert screen.sidebar.selected == (GROUP_OPEN_HERE, first), screen.sidebar.selected
-            assert "output 9s ago" in screen.sidebar.text, screen.sidebar.text
-            assert "ends in 4:10 if nothing happens (idle)" in screen.sidebar.text, screen.sidebar.text
+            assert "output 9s ago" in legacy_text(screen.sidebar), legacy_text(screen.sidebar)
+            assert "ends in 4:10 if nothing happens (idle)" in legacy_text(screen.sidebar), legacy_text(screen.sidebar)
             clock[0] = fixed + 60
             await rig.app_call(screen._tick)
-            assert "output 1m ago" in screen.sidebar.text, (
-                f"the details' output clock froze while the rows moved: {screen.sidebar.text}")
-            assert "ends in 3:10 if nothing happens (idle)" in screen.sidebar.text, screen.sidebar.text
-            after_tick = screen.sidebar.text
+            assert "output 1m ago" in legacy_text(screen.sidebar), (
+                f"the details' output clock froze while the rows moved: {legacy_text(screen.sidebar)}")
+            assert "ends in 3:10 if nothing happens (idle)" in legacy_text(screen.sidebar), legacy_text(screen.sidebar)
+            after_tick = legacy_text(screen.sidebar)
             await rig.app_call(screen._sync_fleet_widgets)
-            assert screen.sidebar.text == after_tick, (
+            assert legacy_text(screen.sidebar) == after_tick, (
                 "the tick painted details a rebuild at the same clock does not")
 
     asyncio.run(check())

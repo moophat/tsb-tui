@@ -330,6 +330,7 @@ def test_the_view_lists_needs_you_first_and_mine_joinable_and_show_ended_change_
             assert any("infra-db-02" in l and "unreachable · input refused · not ended" in l for l in lines)
             assert not any(r[1] == theirs for r in view.layout.rows), "the peer's session is not mine"
 
+            await pilot.pause(0.3)  # the framed canvas settles its width before a click lands on the view
             await pilot.click(FleetView, offset=(view.text.splitlines()[1].index("joinable") + 1, 1))
             await wait_until(pilot, lambda: any(r[1] == theirs for r in view.layout.rows), "joinable to list it")
             await pilot.click(FleetView, offset=(view.text.splitlines()[1].index("mine") + 1, 1))
@@ -457,6 +458,7 @@ def test_open_from_a_row_brings_that_session_forward_and_closes_the_view(serve, 
             screen.open_fleet_view()
             view = screen.fleet_view
             await wait_until(pilot, lambda: any(r[1] == second for r in view.layout.rows), "the poll's sessions")
+            await pilot.pause(0.3)  # the framed canvas settles its width before a click lands on the view
             await pilot.click(FleetView, offset=(8, _y(view, second)))
             await wait_until(pilot, lambda: not screen.view_open, "the view to close on a pick")
             await wait_until(pilot, lambda: app.screen is not screen, "the gate to ask first")
