@@ -77,3 +77,27 @@ for the orchestrator if wanted.
 - The golden masks the alert count (`Alerts N`), which the fixture's alert stream sets at its own time.
 - The view's tick still rebuilds the model per second while open (as before); it now costs the ms above, not 14,000 rows.
 - No visual check in a real terminal.
+
+## Round 1 — a copied view model must not share the cached table (Qodo)
+
+Model: deepseek-v4.1-flash (opencode-go). No commit, no push.
+
+Qodo found that `FleetViewModel.cache` was an ordinary init field: `dataclasses.replace(model, ...)` handed the copy
+the same dict, and `_table` returned the cached table whenever the `(needle, show_ended)` key matched, never checking
+which rows it was built from. A later `replace(model, rows=...)` painted, counted and sized the original's rows.
+
+`tsb_tui/screens/fleet_view.py`: the field is now `field(default_factory=dict, init=False, compare=False,
+repr=False)`. `replace` does not pass an `init=False` field, so the copy gets a fresh empty cache; every other
+behaviour is unchanged. `tsb_tui/screens/fleet_view.py:197`.
+
+`tests/test_fleet_view_painted_rows.py`: `test_a_copied_model_does_not_share_the_cached_table` builds a model, reads
+its table (so the cache is populated), copies it with `replace(..., rows=<different rows>)`, and asserts the copy
+lists the new rows while the original still lists its own. Recorded RED before the fix (the copy returned
+`['old-1', 'old-2']`, expected `['new-1']`); green after.
+
+Commands, each to its own file, `NO_COLOR` unset, `PYTHONPATH` = this clone's `program/contract/client` and root,
+the repo's test venv:
+
+- `tests/test_fleet_view_painted_rows.py`: exit 0, 14 passed
+- `tests/test_sidebar_painted_rows.py`: exit 0, 2 passed
+- `make lint`: exit 0

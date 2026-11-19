@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from tsbc.schema import Registry
 
 import tsb_tui.screens.terminal as terminal_screen
 from tsb_tui.model.fleet import Fleet
+from tsb_tui.screens.fleet_view import FleetRow, FleetViewModel, visible_rows
 
 CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
 REGISTRY = Registry.from_tree(CONTRACT)
@@ -624,3 +626,25 @@ def test_the_open_full_view_clocks_move_with_the_tick(serve, tmp_path) -> None:
             assert builds[0] == 0, "a tick rebuilt the closed full view"
 
     asyncio.run(check())
+
+
+def _model_row(sid: str, **fields) -> FleetRow:
+    base = {"session_id": sid, "who": "●", "target": sid, "id_label": f"s.{sid}", "type": "shell",
+            "state": "● live", "state_role": "ok", "keys": "you", "open": "", "clients": "1", "owner": "you",
+            "ends": "6d 23h · idle", "rec": True, "front": False, "note": "", "types": "you type", "search": sid}
+    base.update(fields)
+    return FleetRow(**base)
+
+
+def test_a_copied_model_does_not_share_the_cached_table() -> None:
+    """`replace(model, rows=...)` must give the copy a cache of its own: a copy taken after the original's table was
+    built lists the copied rows, not the rows the original's cached table was built from."""
+    old = [_model_row("old-1", target="rtr-old"), _model_row("old-2", target="rtr-old")]
+    new = [_model_row("new-1", target="rtr-new")]
+    model = FleetViewModel((), tuple(old), "mine", (), "")
+    assert [r.session_id for r in visible_rows(model, "", False)] == ["old-1", "old-2"]
+    copied = replace(model, rows=tuple(new))
+    assert [r.session_id for r in visible_rows(copied, "", False)] == ["new-1"], (
+        "the copy painted the cached table of the original's rows")
+    assert [r.session_id for r in visible_rows(model, "", False)] == ["old-1", "old-2"], (
+        "the original's table changed when a copy was made")

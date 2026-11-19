@@ -194,7 +194,7 @@ class FleetViewModel:
     lazy_rows: RowSource | None = None
     # What the layout works out once for this model (the filtered table and its column sizes), so a keystroke that
     # only moves the selection does not walk the whole list again. Never compared, never shown.
-    cache: dict = field(default_factory=dict, compare=False, repr=False)
+    cache: dict = field(default_factory=dict, init=False, compare=False, repr=False)
 
     @property
     def source(self) -> RowSource:
