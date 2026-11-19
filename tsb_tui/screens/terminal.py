@@ -384,6 +384,7 @@ class TerminalScreen(Screen):
         self._last_stale: tuple[str | None, str | None] = (None, None)
         self._leaving = False
         self._unmounted = False
+        self._freeing: set[asyncio.Task[None]] = set()
         self._auto_timer: Timer | None = None
         # The session that was in front when the window last changed: the pending debounced request
         # belongs to it, and is dropped if another session comes to the front before it fires (D44).
@@ -2445,12 +2446,37 @@ class TerminalScreen(Screen):
                 self._close_attachment(slot.device_attachment)
                 slot.device_attachment = None
         if slot.pump is not None:
-            # The pump's feed thread (DT20): shut it down before the grid is freed. A worker already
-            # inside `stop` has shut it down, which is harmless.
+            # The pump's feed thread (DT20): told to end before the grid is freed. A worker already
+            # inside `stop` has ended it, which is harmless.
             slot.pump.shutdown_feed()
         slot.canvas.backend.set_reply_callback(None)
-        slot.canvas.close()
+        self._free_canvas(slot)
         self.app.tapped(slot.session_id, TAP_SLOT_CLOSED, slot)
+
+    def _free_canvas(self, slot: SessionSlot) -> None:
+        """Free the engine's grid after the feed thread has ended (DT20). With no slice running that is
+        now. With one running, the join happens off the loop and the free follows it, so the loop (and
+        with it every drive command) is not held for the length of a slice."""
+        pump, canvas = slot.pump, slot.canvas
+        if pump is None or not pump.feed_running():
+            canvas.close()
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pump.join_feed()
+            canvas.close()
+            return
+
+        async def free() -> None:
+            try:
+                await pump.feed_stopped()
+            finally:
+                canvas.close()
+
+        task = loop.create_task(free())
+        self._freeing.add(task)
+        task.add_done_callback(self._freeing.discard)
 
     def _close_slot(self, slot: SessionSlot, *, cancel: bool = True) -> None:
         """Stop this session's attachment and take it off the screen. The session lives on. When it was in front,

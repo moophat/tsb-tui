@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 
 from drive_support import Rig
 from input_server import make_session
@@ -392,3 +393,77 @@ def test_login_status_old_poll_401_after_sign_out_and_new_login(serve, tmp_path,
     asyncio.run(check())
 
 
+
+
+def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(serve, tmp_path, monkeypatch) -> None:
+    """The drive is attached to two sessions and the second one's feed thread is inside a slow slice when the account ends the login. The swap to
+    Login waits for that slice before the engine is freed, but the drive's command loop must not wait with it:
+    `login_status` is answered within the budget while the slice is still running."""
+    from tsb_tui.screens.terminal import TerminalScreen
+
+    budget = 0.4
+    hold = 1.5
+    entered = threading.Event()
+    release = threading.Event()
+    real_sink = TerminalScreen._sink
+    held: list = []
+
+    def slow_sink(self, slot, kind, data):
+        if data == b"slow-slice":
+            entered.set()
+            release.wait(hold)
+            return None
+        return real_sink(self, slot, kind, data)
+
+    monkeypatch.setattr(TerminalScreen, "_sink", slow_sink)
+
+    async def check() -> None:
+        server, url = serve()
+        sids = [make_session(url, _serve.USER, 80, 24, target="normal") for _ in range(2)]
+        async with Rig(url, tmp_path=tmp_path, overrides=("drive.events=login_ended,ended",)) as rig:
+            await rig.login()
+            for sid in sids:
+                await rig.attach(sid)
+
+            def feed_slow_slice() -> None:
+                slot = rig.app.workspace().slots[1]
+                held.append(slot.canvas)
+                slot.pump._queue.append(b"slow-slice")
+                slot.pump._wake.set()
+
+            await rig.app_call(feed_slow_slice)
+            for _ in range(500):
+                if entered.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert entered.is_set(), "the feed thread never started the slow slice"
+
+            ended = asyncio.get_running_loop().run_in_executor(
+                None, rig.app.client.set_account_password, _serve.USER, SECRET)
+            for _ in range(500):
+                if rig.events("login_ended"):
+                    break
+                await asyncio.sleep(0.01)
+            assert rig.events("login_ended"), "login_ended never arrived"
+
+            started = time.monotonic()
+            ans = await rig.cmd("login_status", timeout=5.0)
+            took = time.monotonic() - started
+            freed_during_slice = held[0]._released
+            threading.Timer(0, release.set).start()
+            await ended
+            assert ans["ok"] is True and ans["status"] == 401, ans
+            assert took < budget, f"login_status took {took:.3f}s, budget {budget}s"
+            assert not freed_during_slice, "the engine was freed while the feed slice still ran"
+            for _ in range(300):
+                if held[0]._released:
+                    break
+                await asyncio.sleep(0.01)
+            assert held[0]._released, "the engine was never freed after the slice ended"
+            assert await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen))
+            assert all(server.sessions[sid]["state"] not in ("killed", "terminated") for sid in sids)
+
+    try:
+        asyncio.run(check())
+    finally:
+        release.set()
