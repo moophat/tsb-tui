@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import textwrap
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from functools import partial
+from typing import Any
 
 from rich.segment import Segment
 from rich.style import Style
@@ -146,6 +147,31 @@ class TargetEntry:
 
 
 @dataclass(frozen=True)
+class RowSource:
+    """The table's rows, readable without building them: a long list holds the core's records, and a row is built
+    only for a line the view paints. `head` gives a record's session id, its target and whether it ended; `search`
+    the text the filter matches; `cells` the ten cells the columns are sized by (`COLUMNS`, in order); `row`
+    builds the `FleetRow` of one record. None of the first four builds a row."""
+
+    items: Sequence[Any]
+    head: Callable[[Any], tuple[str, str, bool]]
+    search: Callable[[Any], str]
+    cells: Callable[[Any], tuple[str, ...]]
+    row: Callable[[Any], FleetRow]
+
+
+def _row_cells(row: FleetRow) -> tuple[str, ...]:
+    return (row.target, row.id_label, row.type, row.state, row.keys, row.open, row.clients, row.owner, row.ends,
+            "●" if row.rec else "")
+
+
+def built_rows(rows: Sequence[FleetRow]) -> RowSource:
+    """A table whose rows are already built (a model made by hand): each item is its own row."""
+    return RowSource(rows, lambda row: (row.session_id, row.target, row.ended), lambda row: row.search, _row_cells,
+                     lambda row: row)
+
+
+@dataclass(frozen=True)
 class FleetViewModel:
     """What the view shows. `alert_lines` is None for a login that is not a `broker.health` holder: it has no
     Alerts tab at all (DT14)."""
@@ -164,6 +190,16 @@ class FleetViewModel:
     targets_note: str = ""  # why there is no list: the inventory is unavailable
     query_error: str = ""  # the broker's (or the TUI's) refusal of the query, shown in the query line
     target_details_for: Callable[[str], tuple[str, ...]] | None = None  # the two lines under the table
+    # The table's rows on demand, for a long list: when set, it is the table and `rows` is not read.
+    lazy_rows: RowSource | None = None
+    # What the layout works out once for this model (the filtered table and its column sizes), so a keystroke that
+    # only moves the selection does not walk the whole list again. `replace` hands the copy this same dict, so an
+    # entry is reused only when it was built from the same row source; never compared, never shown.
+    cache: dict = field(default_factory=dict, compare=False, repr=False)
+
+    @property
+    def source(self) -> RowSource:
+        return self.lazy_rows if self.lazy_rows is not None else built_rows(self.rows)
 
 
 @dataclass(frozen=True)
@@ -182,12 +218,58 @@ def _fit(text: str, width: int) -> str:
     return text.ljust(width)
 
 
+class _Table:
+    """The table's items after the filter and "show ended" (the live ones, then the ended ones, each in the order
+    listed), with their heads; the column sizes and the per-target counts are worked out when the layout asks."""
+
+    def __init__(self, source: RowSource, items: list[Any], heads: list[tuple[str, str, bool]]) -> None:
+        self.source = source
+        self.items = items
+        self.heads = heads
+        self._sizes: dict[str, int] | None = None
+        self._per_target: Counter | None = None
+
+    @property
+    def sizes(self) -> dict[str, int]:
+        if self._sizes is None:
+            self._sizes = _column_sizes(map(self.source.cells, self.items))
+        return self._sizes
+
+    @property
+    def per_target(self) -> Counter:
+        if self._per_target is None:
+            self._per_target = Counter((ended, target) for _sid, target, ended in self.heads)
+        return self._per_target
+
+
+def _table(model: FleetViewModel, filter_text: str, show_ended: bool) -> _Table:
+    """The model's table under the filter and "show ended", kept on the model for the key it was made for. A copy of
+    the model shares the cache, so the entry is reused only when the row source it was built from is the same."""
+    needle = filter_text.strip().lower()
+    key = (needle, show_ended)
+    rows, lazy = model.rows, model.lazy_rows
+    cached = model.cache.get("table")
+    if cached is not None and cached[0] == key and cached[1] is rows and cached[2] is lazy:
+        return cached[3]
+    source = model.source
+    cached_heads = model.cache.get("heads")
+    if cached_heads is not None and cached_heads[0] is rows and cached_heads[1] is lazy:
+        heads = cached_heads[2]
+    else:
+        heads = [source.head(item) for item in source.items]
+        model.cache["heads"] = (rows, lazy, heads)
+    chosen = [(item, head) for item, head in zip(source.items, heads)
+              if (show_ended or not head[2]) and (not needle or needle in source.search(item).lower())]
+    ordered = [pair for pair in chosen if not pair[1][2]] + [pair for pair in chosen if pair[1][2]]
+    table = _Table(source, [item for item, _head in ordered], [head for _item, head in ordered])
+    model.cache["table"] = (key, rows, lazy, table)
+    return table
+
+
 def visible_rows(model: FleetViewModel, filter_text: str, show_ended: bool) -> list[FleetRow]:
     """The table's rows after the filter and "show ended": an ended session is listed only when asked for."""
-    needle = filter_text.strip().lower()
-    return sorted((row for row in model.rows
-                   if (show_ended or not row.ended) and (not needle or needle in row.search.lower())),
-                  key=lambda row: row.ended)
+    table = _table(model, filter_text, show_ended)
+    return [table.source.row(item) for item in table.items]
 
 
 def visible_needs(model: FleetViewModel, filter_text: str) -> list[FleetRow]:
@@ -195,17 +277,18 @@ def visible_needs(model: FleetViewModel, filter_text: str) -> list[FleetRow]:
     return [row for row in model.needs if not needle or needle in row.search.lower()]
 
 
-def _columns_for(rows: Sequence[FleetRow], width: int) -> list[tuple[str, int]]:
-    """The columns that fit in `width` cells, each with its width: by their header and what their cells hold,
-    never more than `MAX_WIDTHS`. A column leaves in `DROP_ORDER` when the view is too narrow for all."""
-    cells = {
-        "target": [r.target for r in rows], "id": [r.id_label for r in rows], "type": [r.type for r in rows],
-        "state": [r.state for r in rows], "keys": [r.keys for r in rows], "open": [r.open for r in rows],
-        "clients": [r.clients for r in rows], "owner": [r.owner for r in rows], "ends": [r.ends for r in rows],
-        "rec": ["●" if r.rec else "" for r in rows],
-    }
-    sizes = {name: min(max([len(HEADERS[name]), *(len(c) for c in cells[name])]), MAX_WIDTHS[name])
-             for name in COLUMNS}
+def _column_sizes(cell_rows: Iterable[tuple[str, ...]]) -> dict[str, int]:
+    """Each column's width: by its header and what its cells hold, never more than `MAX_WIDTHS`."""
+    widest = [len(HEADERS[name]) for name in COLUMNS]
+    for cells in cell_rows:
+        for index, cell in enumerate(cells):
+            widest[index] = max(widest[index], len(cell))
+    return {name: min(size, MAX_WIDTHS[name]) for name, size in zip(COLUMNS, widest)}
+
+
+def _columns_for(sizes: Mapping[str, int], width: int) -> list[tuple[str, int]]:
+    """The columns that fit in `width` cells, each with its width. A column leaves in `DROP_ORDER` when the view is
+    too narrow for all."""
     return _keep_columns(COLUMNS, sizes, DROP_ORDER, width)
 
 
@@ -278,6 +361,11 @@ def _table_row(row: FleetRow, columns: list[tuple[str, int]], *, selected: bool,
     used = sum(len(p.text) for p in parts)
     parts.append(Part(" " * max(width - used, 0), "blank"))
     return Line(tuple(parts), row.session_id, GROUP_TABLE)
+
+
+def _item_row(source: RowSource, item: Any, columns: list[tuple[str, int]], *, selected: bool, width: int) -> Line:
+    """The line of one table item: its row is built here, when the line falls in the window shown."""
+    return _table_row(source.row(item), columns, selected=selected, width=width)
 
 
 def _needs_row(row: FleetRow, *, selected: bool, width: int, target_w: int, id_w: int, types_w: int) -> Line:
@@ -353,9 +441,9 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
     head.append(_joined([Part(" ▦ Fleet · full view", "title")],
                         [Part(back, "muted", CMD_CLOSE, tip=f"{back} · or click here"), Part(" ", "blank")], width))
     needs = visible_needs(model, filter_text)
-    table = visible_rows(model, filter_text, show_ended)
+    table = _table(model, filter_text, show_ended)
     counts: dict[str, int | str | None] = {
-        TAB_SESSIONS: len(table), TAB_TARGETS: model.targets_count,
+        TAB_SESSIONS: len(table.items), TAB_TARGETS: model.targets_count,
         TAB_ALERTS: None if model.alert_lines is None else len(model.alert_lines)}
     tab_parts = _tab_parts(model, tab, counts)
     if tab == TAB_SESSIONS:
@@ -423,11 +511,11 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                 body.append(partial(_needs_row, row, selected=selected == key, width=table_w, target_w=target_w,
                                     id_w=id_w, types_w=types_w))
             body.append(_text("", "blank", table_w))
-        body.append(_text(f" {TABLE_TITLE} · {len(table)}", "group", table_w))
-        if not table:
+        body.append(_text(f" {TABLE_TITLE} · {len(table.items)}", "group", table_w))
+        if not table.items:
             body.append(_text("   No sessions to show.", "muted", table_w))
         else:
-            columns = _columns_for(table, table_w)
+            columns = _columns_for(table.sizes, table_w)
             header = [Part(" ", "blank"), Part("  ", "blank")]
             for index, (name, size) in enumerate(columns):
                 if index:
@@ -437,20 +525,20 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
             header.append(Part(" " * max(table_w - used, 0), "blank"))
             body.append(Line(tuple(header)))
             last_target = None
-            per_target = Counter((r.ended, r.target) for r in table) if group_by == "target" else {}
+            per_target = table.per_target if group_by == "target" else {}
             ended_heading = False
-            for row in table:
-                if row.ended and not ended_heading:
+            for item, (sid, target, ended) in zip(table.items, table.heads):
+                if ended and not ended_heading:
                     body.append(_text(" Ended", "group", table_w))
                     ended_heading = True
                     last_target = None
-                if group_by == "target" and row.target != last_target:
-                    body.append(_text(f"   {row.target} · {per_target[(row.ended, row.target)]}", "muted", table_w))
-                last_target = row.target
-                key = (GROUP_TABLE, row.session_id)
+                if group_by == "target" and target != last_target:
+                    body.append(_text(f"   {target} · {per_target[(ended, target)]}", "muted", table_w))
+                last_target = target
+                key = (GROUP_TABLE, sid)
                 row_at[key] = len(body)
                 rows.append(key)
-                body.append(partial(_table_row, row, columns, selected=selected == key, width=table_w))
+                body.append(partial(_item_row, table.source, item, columns, selected=selected == key, width=table_w))
 
     room = max(height - len(head), 0)
     foot: list[Line] = []
@@ -472,7 +560,7 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
 
     if pane:
         window = _with_details(window, model, chosen, table_w, room)
-    shown = len(model.targets) if tab == TAB_TARGETS else len(table)
+    shown = len(model.targets) if tab == TAB_TARGETS else len(table.items)
     return FleetLayout((*head, *window, *foot), tuple(rows), top, shown)
 
 
@@ -899,5 +987,5 @@ class FleetView(Widget):
 
 __all__ = ["CMD_ENDED", "CMD_MAP", "CMD_MARK", "CMD_MORE_TARGETS", "CMD_OPEN_TARGET", "CMD_QUERY", "CMD_SAVE_LOGIN", "CMD_TAB",
            "CMD_TAB_CHANGED",
-           "SEPARATOR", "FleetLayout", "FleetRow", "FleetView", "FleetViewModel", "TargetEntry", "fleet_view_lines",
-           "visible_rows"]
+           "SEPARATOR", "FleetLayout", "FleetRow", "FleetView", "FleetViewModel", "RowSource", "TargetEntry",
+           "built_rows", "fleet_view_lines", "visible_rows"]
