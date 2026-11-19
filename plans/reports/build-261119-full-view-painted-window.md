@@ -101,3 +101,37 @@ the repo's test venv:
 - `tests/test_fleet_view_painted_rows.py`: exit 0, 14 passed
 - `tests/test_sidebar_painted_rows.py`: exit 0, 2 passed
 - `make lint`: exit 0
+
+## Round 2 — the cache is reused across a tabs-only copy and missed across a rows copy (Qodo)
+
+Model: deepseek-v4.1-flash (opencode-go). No commit, no push.
+
+Round 1 made `FleetViewModel.cache` per instance (`init=False`). Qodo then found the other half: `FleetView._build`
+calls `replace(model, tabs=self.tabs)` on every layout (reached by `_move`, `_jump`, `_relayout`), so each arrow key
+started with an empty cache and rescanned every record (14,000 at scale).
+
+Ruled fix. `tsb_tui/screens/fleet_view.py`: the cache is an ordinary field again,
+`field(default_factory=dict, compare=False, repr=False)`, so `replace` hands the copy the same dict
+(`fleet_view.py:198`). `_table` stores beside the `(needle, show_ended)` key the two objects the row source is read
+from - `model.rows` and `model.lazy_rows`, compared with `is` - and returns the cached table only when the key
+matches and both identities match; otherwise it rebuilds and replaces the entry (`fleet_view.py:245`). The heads pass
+is cached under the same pair of identities, so a copy with other rows rebuilds it too and a copy that only changed
+`tabs` reuses it. A model built for a poll is a new instance with a new dict, so a poll still starts clean.
+
+`tests/test_fleet_view_painted_rows.py`: round 1's `test_a_copied_model_does_not_share_the_cached_table` is kept
+unchanged and stays green. Added `test_a_keystroke_that_only_moves_the_selection_does_not_rescan_the_records`: after a
+layout on the 14,000-record fleet with a filter set, it wraps the model's lazy source so the heads pass and the filter
+are counted, installs the wrapped source (a tabs-only `replace` follows), resets the counts, and moves the selection
+once with `_move(1)`. RED first on round 1's tree: the move rescanned the heads of 14,000 records
+(`assert 14000 == 0`); green after the fix (0 heads, 0 filter calls).
+
+Commands, each to its own file with the exit code checked, `NO_COLOR` unset, `PYTHONPATH` = this clone's
+`program/contract/client` and root, the repo's test venv:
+
+- round 2 test alone, on round 1's tree (the source change stashed): exit 1, 1 failed, the head count 14000
+- `tests/test_fleet_view_painted_rows.py` and `tests/test_sidebar_painted_rows.py`: exit 0, 17 passed (15 and 2)
+- `make lint`: exit 0
+
+Status: complete; the two test files pass and `make lint` exits 0.
+Summary: the cache is shared by `replace` and guarded by the row source's identity, so a tabs-only copy reuses it and
+a rows copy rebuilds it; one new test, red on round 1's tree, pins the keystroke path.

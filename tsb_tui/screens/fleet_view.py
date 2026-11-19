@@ -193,8 +193,9 @@ class FleetViewModel:
     # The table's rows on demand, for a long list: when set, it is the table and `rows` is not read.
     lazy_rows: RowSource | None = None
     # What the layout works out once for this model (the filtered table and its column sizes), so a keystroke that
-    # only moves the selection does not walk the whole list again. Never compared, never shown.
-    cache: dict = field(default_factory=dict, init=False, compare=False, repr=False)
+    # only moves the selection does not walk the whole list again. `replace` hands the copy this same dict, so an
+    # entry is reused only when it was built from the same row source; never compared, never shown.
+    cache: dict = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def source(self) -> RowSource:
@@ -242,21 +243,26 @@ class _Table:
 
 
 def _table(model: FleetViewModel, filter_text: str, show_ended: bool) -> _Table:
-    """The model's table under the filter and "show ended", kept on the model for the key it was made for."""
+    """The model's table under the filter and "show ended", kept on the model for the key it was made for. A copy of
+    the model shares the cache, so the entry is reused only when the row source it was built from is the same."""
     needle = filter_text.strip().lower()
     key = (needle, show_ended)
+    rows, lazy = model.rows, model.lazy_rows
     cached = model.cache.get("table")
-    if cached is not None and cached[0] == key:
-        return cached[1]
+    if cached is not None and cached[0] == key and cached[1] is rows and cached[2] is lazy:
+        return cached[3]
     source = model.source
-    heads = model.cache.get("heads")
-    if heads is None:
-        heads = model.cache["heads"] = [source.head(item) for item in source.items]
+    cached_heads = model.cache.get("heads")
+    if cached_heads is not None and cached_heads[0] is rows and cached_heads[1] is lazy:
+        heads = cached_heads[2]
+    else:
+        heads = [source.head(item) for item in source.items]
+        model.cache["heads"] = (rows, lazy, heads)
     chosen = [(item, head) for item, head in zip(source.items, heads)
               if (show_ended or not head[2]) and (not needle or needle in source.search(item).lower())]
     ordered = [pair for pair in chosen if not pair[1][2]] + [pair for pair in chosen if pair[1][2]]
     table = _Table(source, [item for item, _head in ordered], [head for _item, head in ordered])
-    model.cache["table"] = (key, table)
+    model.cache["table"] = (key, rows, lazy, table)
     return table
 
 

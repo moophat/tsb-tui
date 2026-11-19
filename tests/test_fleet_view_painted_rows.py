@@ -648,3 +648,40 @@ def test_a_copied_model_does_not_share_the_cached_table() -> None:
         "the copy painted the cached table of the original's rows")
     assert [r.session_id for r in visible_rows(model, "", False)] == ["old-1", "old-2"], (
         "the original's table changed when a copy was made")
+
+
+def test_a_keystroke_that_only_moves_the_selection_does_not_rescan_the_records(serve, tmp_path) -> None:
+    """An arrow key moves the selection over the table the layout already built: `replace` hands the copy the same
+    cache, so the heads pass and the filter run once for the rows, not again over every record for a keystroke."""
+
+    async def check() -> None:
+        _app, url = serve()
+        calls = {"head": 0, "search": 0}
+        records = make_records(14000)
+        async with Rig(url, tmp_path=tmp_path, profile="harness", overrides=("fleet_view.refresh_s=0",),
+                       size=(120, 40)) as rig:
+            rig.app.client = FakeSessionsClient(url, records)
+            await rig.login(ME)
+            screen = await open_view(rig, f"{TABLE} · {live_count(records)}")
+            view = screen.fleet_view
+            view.filter_text = "rtr-0"  # the empty filter short-circuits the search, so a filter is set
+            await rig.app_call(view._relayout)
+            source = view.model.lazy_rows
+            assert source is not None
+
+            def head(record, _source=source):
+                calls["head"] += 1
+                return _source.head(record)
+
+            def search(record, _source=source):
+                calls["search"] += 1
+                return _source.search(record)
+
+            counted = replace(source, head=head, search=search)
+            await rig.app_call(view.set_model, replace(view.model, lazy_rows=counted))
+            calls["head"] = calls["search"] = 0
+            await rig.app_call(view._move, 1)  # `↓`: the selection moves one row
+            assert calls["head"] == 0, f"a keystroke rescanned the heads of {calls['head']} records"
+            assert calls["search"] == 0, f"a keystroke re-filtered all {calls['search']} records"
+
+    asyncio.run(check())
