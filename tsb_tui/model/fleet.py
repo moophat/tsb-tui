@@ -230,11 +230,11 @@ class Fleet:
     @classmethod
     def from_config(cls, config: Any, *, own_user: str | None = None) -> Fleet:
         """The fleet's start filter, id prefix, chip sources and marks, need-you reasons and groups come from
-        the knobs (DT15, D27, D41, D9, D42)."""
+        the knobs (DT15, D27, D41, D9). `sidebar.groups` still loads and is ignored: the side panel has one section."""
         return cls(own_user=own_user, id_min_hex=config["sessions.id_min_hex"],
                    filter_mode=config["sidebar.start_filter"], needs_reasons=config["rail.needs_you"],
                    chip_sources=config["rail.chips"], chip_marks=config["rail.chip_mark"],
-                   groups=config["sidebar.groups"], needs_scope=config["rail.needs_you_scope"])
+                   needs_scope=config["rail.needs_you_scope"])  # `sidebar.groups` is retired: loaded, then ignored
 
     def apply(self, generation: int, records: list[dict[str, Any]], *,
               now: float | None = None) -> bool:

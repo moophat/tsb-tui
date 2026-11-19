@@ -26,6 +26,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
+from rich.cells import cell_len, set_cell_size
 from rich.segment import Segment
 from rich.style import Style
 from textual import events
@@ -37,6 +38,7 @@ from .. import glyphs
 from ..model import actions as A
 from ..model.attachment import AttachmentState
 from ..model.countdown import countdown_parts
+from ..model.targets import as_text
 from ..theme import role_colours
 from .mouse import mouse_on, set_tip
 
@@ -238,7 +240,7 @@ def _state_notes(inputs: StatusInputs, state: AttachmentState) -> list[Item]:
     return notes
 
 
-def _body(inputs: StatusInputs, state: AttachmentState, kind: str, compact: bool) -> list[Item]:
+def _body(inputs: StatusInputs, state: AttachmentState, kind: str, compact: bool, keys_only: bool = False) -> list[Item]:
     """The words after the pill, in F12's order: who types (when it is not you) and why, the session,
     its state and REC, how the keyboard got here, the pan range, a note on keys not sent."""
     last = _last_token(state)
@@ -268,6 +270,10 @@ def _body(inputs: StatusInputs, state: AttachmentState, kind: str, compact: bool
     for n, wordings in enumerate(lead):
         rank = RANK_FACT if fact and n == len(lead) - 1 else RANK_LEAD
         items.append(Item("text", wordings, rank, lead=True))
+    if keys_only:
+        # Who types is the session frame's title; what the row keeps about the keys is a warning that follows it.
+        items = [item for item in items if not (item.lead and (item.variants[0].endswith(" types")
+                                                    or item.variants[0].startswith("nobody has the keyboard")))]
     items.append(Item("text", (inputs.session,), RANK_NAME, joins_lead=True))
     recording = state.recording or {}
     if notes:
@@ -296,7 +302,7 @@ NO_SESSION = "no session open"
 Left = list[Piece] | list[Item]  # the words before the hints: fixed pieces, or items laid out by `_lay`
 
 
-def _left(inputs: StatusInputs, compact: bool) -> Left:
+def _left(inputs: StatusInputs, compact: bool, keys_only: bool = False) -> Left:
     state = inputs.state
     if inputs.login_status:
         return [Piece(inputs.login_status, "text")]
@@ -305,7 +311,7 @@ def _left(inputs: StatusInputs, compact: bool) -> Left:
         return [Piece(f"keys → {inputs.target.name}{note}", "keys")]
     if state is None:
         if not inputs.session and not inputs.attaching:
-            return [Piece(NO_SESSION, "muted")]
+            return [] if keys_only else [Piece(NO_SESSION, "muted")]
         text = f"◐ attaching · {inputs.session}" if inputs.attaching else inputs.session
         return [Piece(text, "muted")]
     kind = _kind(state)
@@ -314,7 +320,11 @@ def _left(inputs: StatusInputs, compact: bool) -> Left:
         pill = _pill(kind, compact)
         return [Piece(pill.variants[0], pill.role, pill.action), Piece("  ", "text"),
                 Piece(inputs.recording_bar, "rec")]
-    return [_pill(kind, compact), *_body(inputs, state, kind, compact)]
+    body = _body(inputs, state, kind, compact, keys_only)
+    if keys_only:
+        # The session's facts live in the frame's title; the row keeps what is about the keys and the pan.
+        return [item for item in body if item.rank in (RANK_FACT, RANK_COUNT, RANK_WARN, RANK_KEYS, RANK_RANGE, RANK_TOOK, RANK_LEAD)]
+    return [_pill(kind, compact), *body]
 
 
 def _seconds(value: float) -> str:
@@ -493,13 +503,13 @@ def _fit(left: Left, hints: list[tuple[str, list[Piece]]], drop_order: list[str]
     return left, hints
 
 
-def build_pieces(inputs: StatusInputs, width: int) -> list[Piece]:
+def build_pieces(inputs: StatusInputs, width: int, *, keys_only: bool = False) -> list[Piece]:
     """The status row's content at `width` cells: exactly that wide, hints right-aligned, in the chosen glyph set
     (`glyphs.set`): each chrome glyph is replaced by its ASCII stand-in when the operator's terminal needs that.
     One glyph is one cell either way. The row is always one line."""
     compact = is_compact(inputs.chrome, width)
     special = _special(inputs)
-    left = special[0] if special is not None else _left(inputs, compact)
+    left = special[0] if special is not None else _left(inputs, compact, keys_only)
     if inputs.input_notice:
         left = [Piece(inputs.input_notice, "warn")]
     if special is not None:
@@ -560,6 +570,44 @@ def build_pieces(inputs: StatusInputs, width: int) -> list[Piece]:
     return pieces
 
 
+def frame_title(inputs: StatusInputs, number: int, width: int) -> str:
+    """The front session's facts, shortened in dispatch Amendment 1's exact order."""
+    state = inputs.state
+    if state is None:
+        return "No session open" if not inputs.attaching else f"{number} · attaching"
+    target = as_text(inputs.session)
+    status = as_text(state.session.get("state") or "live")
+    owner = "yours" if state.owner == state.user else f"owner {as_text(state.owner)}"
+    typist = None if state.holder is None else as_text(state.holder.get("user") or state.holder.get("client_id"))
+    recorded = bool((state.recording or {}).get("active"))
+
+    def text() -> str:
+        who = "you type" if state.holds_keyboard else ("nobody types" if typist is None else f"{typist} types")
+        return " · ".join(part for part in (str(number), target, status, owner, who,
+                                              "recorded" if recorded else "") if part)
+
+    if cell_len(text()) <= width:
+        return text()
+    owner = ""
+    if cell_len(text()) <= width:
+        return text()
+    original = target
+    for length in range(cell_len(original) - 1, 7, -1):
+        target = set_cell_size(original, length - 1).rstrip() + "…"
+        if cell_len(text()) <= width:
+            return text()
+    recorded = False
+    if cell_len(text()) <= width:
+        return text()
+    if typist is not None and not state.holds_keyboard:
+        original = typist
+        for length in range(cell_len(original) - 1, 5, -1):
+            typist = set_cell_size(original, length - 1).rstrip() + "…"
+            if cell_len(text()) <= width:
+                return text()
+    return text()
+
+
 # -- the widget --
 
 
@@ -581,8 +629,9 @@ class StatusRow(Widget):
             super().__init__()
             self.action = action
 
-    def __init__(self, config: Mapping) -> None:
+    def __init__(self, config: Mapping, *, keys_only: bool = False) -> None:
         super().__init__()
+        self.keys_only = keys_only
         self._build_styles(role_colours(config))
         self._inputs: StatusInputs | None = None
         self._line: list[Piece] = []
@@ -623,7 +672,7 @@ class StatusRow(Widget):
         width = self.size.width
         if self._inputs is None or width <= 0:
             return
-        line = build_pieces(self._inputs, width)
+        line = build_pieces(self._inputs, width, keys_only=self.keys_only)
         if line != self._line:
             self._line = line
             self.refresh()

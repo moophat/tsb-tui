@@ -112,6 +112,8 @@ def test_a_later_attach_in_the_same_run_shows_the_recording_text_in_the_status_r
                 await pick_in_sidebar(app, pilot, wait_until, session_id)
                 screen = app.screen
                 await wait_until(pilot, lambda: len(screen.slots) == 1, "the session to open")
+                await wait_until(pilot, lambda: not screen.view_open, "the full view to step aside on the pick")
+                screen.close_sidebar()  # the view hands the keys back to the panel it replaced; the row is read without it
                 await wait_until(pilot, lambda: screen.pump is not None and screen.pump.state.client_id,
                                  "the attach")
                 await wait_until(pilot, lambda: RECORDING["warning_text"] in screen.status.text,
@@ -121,7 +123,7 @@ def test_a_later_attach_in_the_same_run_shows_the_recording_text_in_the_status_r
                 screen._tick()
                 await wait_until(pilot, lambda: RECORDING["warning_text"] not in screen.status.text,
                                  "the text to let go of the row")
-                assert "● REC" in screen.status.text
+                assert "recorded" in str(screen.query_one("#canvases").border_title)  # REC moved to the frame title
 
     asyncio.run(_check())
 

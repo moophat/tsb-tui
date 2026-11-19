@@ -59,7 +59,7 @@ def test_t_on_a_row_open_here_takes_the_keyboard_and_says_whose_it_was_and_how_t
                 assert state.token_history[-1]["reason"] == "takeover"
                 await wait_until(pilot, lambda: "you took the keyboard from fixture-peer" in screen.status.text,
                                  "the status row to say whose keyboard it took")
-                assert "‹ you type ›" in screen.status.text
+                assert "you type" in str(screen.query_one("#canvases").border_title)  # the pill's fact is the frame's title
                 toast = next(((t, m) for t, m in _notes(app) if t == "keyboard · you took it"), None)
                 assert toast is not None, _notes(app)
                 assert "k8s-node-07" in toast[1] and "from fixture-peer" in toast[1]

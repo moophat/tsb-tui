@@ -303,10 +303,8 @@ def _tab_parts(model: FleetViewModel, tab: str, counts: Mapping[str, int | str |
             continue
         count = counts.get(name)
         label = TAB_LABELS[name] + (f" {count}" if count is not None else "")
-        if name == tab:
-            parts.append(Part(f"[{label}]", "tab_on", CMD_TAB, name, f"{TAB_LABELS[name]} · Tab for the next tab"))
-        else:
-            parts.append(Part(f" {label} ", "tab", CMD_TAB, name, f"{TAB_LABELS[name]} · Tab for the next tab"))
+        parts.append(Part(label, "tab_on" if name == tab else "tab", CMD_TAB, name,
+                          f"{TAB_LABELS[name]} · Tab for the next tab"))
         parts.append(Part("  ", "blank"))
     return parts
 
@@ -366,12 +364,13 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
         controls = _query_controls(model, query_text, editing)
     else:
         controls = [Part(" ", "blank")]
-    if sum(len(p.text) for p in tab_parts) + sum(len(p.text) for p in controls) <= width:
-        head.append(_joined(tab_parts, controls, width))
-    else:
-        head.append(_joined(tab_parts, [], width))
+    underline = [Part(("━" if part.role == "tab_on" else "─") * len(part.text), part.role,
+                      part.command, part.arg, part.tip) if part.role in ("tab_on", "tab")
+                 else Part(" " * len(part.text), "blank") for part in tab_parts]
+    head.append(_joined(tab_parts, controls if sum(len(p.text) for p in tab_parts + controls) <= width else [], width))
+    head.append(_joined(underline, [], width))
+    if sum(len(p.text) for p in tab_parts + controls) > width:
         head.append(_joined([Part(" ", "blank")], controls, width))
-    head.append(_text("", "blank", width))
 
     pane = details and width >= DETAILS_WIDTH * 2 and tab != TAB_TARGETS
     table_w = width - DETAILS_WIDTH if pane else width

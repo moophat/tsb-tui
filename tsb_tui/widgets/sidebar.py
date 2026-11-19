@@ -1,4 +1,4 @@
-"""The fleet sidebar (design §2.3, D42): the rail widened in place, beside the terminal, never an overlay.
+"""The side panel beside the terminal: Targets above a scrollable Sessions frame, never an overlay.
 
 It holds every session the principal owns or may join, in groups (Needs you · Open here · Yours, someone
 else types · Yours and joinable), each row with who types, the login that types, the countdown or the last
@@ -46,6 +46,7 @@ from ..model.fleet import (
     WHO_OTHER,
     WHO_UNREACHABLE,
 )
+from ..model.targets import TargetRow
 from ..theme import role_colours
 from .mouse import mouse_on, set_tip
 
@@ -137,6 +138,9 @@ class SidebarModel:
     record_fields: Callable[[Mapping[str, Any]], tuple[str, str]] | None = None  # (target, login) of a record
     record_search: Callable[[Mapping[str, Any]], str] | None = None  # the text the filter matches a record against
     record_entry: Callable[[Mapping[str, Any], str], SidebarEntry] | None = None  # the entry for a painted row
+    targets: tuple[TargetRow, ...] = ()
+    target_total: int | None = None
+    targets_loading: bool = False
 
 
 @dataclass(frozen=True)
@@ -389,8 +393,27 @@ def _detail_lines(model: SidebarModel, sid: str, width: int) -> list[Line]:
 
 def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tuple[str, str] | None,
                  filter_text: str, editing: bool, wide: bool, show_details: bool,
-                 hint_full_view: bool = True, prepared: Prepared | None = None) -> SidebarView:
-    """The sidebar's lines at `width` cells (the hairline is the widget's) and `height` rows."""
+                 hint_full_view: bool = True, prepared: Prepared | None = None,
+                 framed: bool = False) -> SidebarView:
+    """The sidebar's lines at `width` cells (the hairline is the widget's) and `height` rows.
+
+    `framed` is the side panel's Sessions section: only the sessions open in this window, one row each, no heading,
+    header, footer or details (the other groups and the mine│all switch are the full view's, the filter and its count
+    the Targets section's). Unframed is the full list the unit tests of the row grammar read."""
+    if framed:
+        prep = prepared if prepared is not None else _prepare(model, "")
+        target_w, login_w = prep.shared
+        lines: list[Line] = []
+        shown: list[tuple[str, str]] = []
+        for name, items in prep.groups:
+            if name != GROUP_OPEN_HERE:
+                continue
+            for item in items:
+                entry = item if isinstance(item, SidebarEntry) else _entry_for(item, name, model)
+                shown.append((name, entry.session_id))
+                lines.append(_row_line(entry, name, width=width, target_w=target_w, login_w=login_w,
+                                       selected=selected == (name, entry.session_id), wide=wide))
+        return SidebarView(tuple(lines), tuple(shown), 0, None, 0)
     header: list[Line] = []
     close_tip = f"◂ close the sidebar · Esc, {model.leader_hint}"
     head_parts = [Part("▦ Fleet", "title"), Part("  ", "blank"),
@@ -485,7 +508,7 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
 
 
 class Sidebar(Widget):
-    """The rail widened in place. It keeps its selection and its filter text; everything else comes from the
+    """The framed side panel. It keeps its selection and its filter text; everything else comes from the
     model the screen sets. Keys while it is focused are its own (D14)."""
 
     DEFAULT_CSS = """
@@ -509,7 +532,6 @@ class Sidebar(Widget):
         super().__init__()
         self._build_styles(role_colours(config))
         self._glyph_set = glyphs.check(config["glyphs.set"])
-        self._side = config["rail.side"]
         self._leader = leader
         self._wide_from = int(config["sidebar.wide_from"])
         self._details_from = int(config["sidebar.details_from"])
@@ -521,6 +543,7 @@ class Sidebar(Widget):
         self.sidebar_width = int(config["sidebar.width"])  # the columns it takes, the hairline included
         self._view = SidebarView((), (), 0)
         self._scroll_top = 0
+        self._target_scroll_top = 0
         self._front_id: str | None = None
         # The filter and the column widths for the current filter text and model, reused by every relayout that
         # changes neither (`_prepare`).
@@ -591,6 +614,7 @@ class Sidebar(Widget):
     def set_model(self, model: SidebarModel, *, front_id: str | None = None) -> None:
         self._model = model
         self._front_id = front_id
+        self._target_scroll_top = min(self._target_scroll_top, self._target_scroll_limit())
         self._relayout()
 
     def set_window_width(self, width: int) -> None:
@@ -608,19 +632,19 @@ class Sidebar(Widget):
     def _build(self) -> SidebarView:
         """The view at the current width and filter. The filter, the rows and the column widths are computed once
         per filter text and model (`_prepare`); a relayout that changes neither reuses them."""
-        needle = self.filter_text.strip()
+        needle = ""  # the filter is the Targets section's; the sessions open here are all shown
         if self._prepared_for is None or self._prepared_for[1] is not self._model or self._prepared_for[0] != needle:
             self._prepared = _prepare(self._model, needle)
             self._prepared_for = (needle, self._model)
         height = self.size.height or 40
         return sidebar_view(
-            self._model, width=max(self.sidebar_width - 1, 1), height=height, selected=self.selected,
+            self._model, width=max(self.sidebar_width - 4, 1), height=height, selected=self.selected,
             filter_text=self.filter_text, editing=self.editing, wide=self.wide,
-            show_details=self.details_shown, prepared=self._prepared)
+            show_details=self.details_shown, prepared=self._prepared, framed=True)
 
     def _relayout(self) -> None:
         view = self._build()
-        if self.selected not in view.rows and self.selected != (CMD_NEW, ""):
+        if self.selected not in view.rows:
             self.selected = self._default_selection(list(view.rows))
             view = self._build()
         self._view = view
@@ -628,11 +652,6 @@ class Sidebar(Widget):
         self.refresh()
 
     def _selected_line_index(self) -> int | None:
-        if self.selected == (CMD_NEW, ""):
-            for idx, line in enumerate(self._view.lines):
-                if any(part.command == CMD_NEW for part in line.parts):
-                    return idx
-            return None
         if self.selected is not None:
             group, sid = self.selected
             for idx, line in enumerate(self._view.lines):
@@ -641,7 +660,7 @@ class Sidebar(Widget):
         return None
 
     def _scroll_to_selected(self) -> None:
-        height = self.size.height or 40
+        height = max(self.sessions_height - 2, 1)
         total = len(self._view.lines)
         max_scroll = max(0, total - height)
         line_idx = self._selected_line_index()
@@ -663,7 +682,7 @@ class Sidebar(Widget):
         selected session's detail block is recomputed at the same time by `_refresh_details`."""
         if not times:
             return False
-        width = max(self.sidebar_width - 1, 1)
+        width = max(self.sidebar_width - 4, 1)
         wide = self.wide
         lines = list(self._view.lines)
         changed = False
@@ -724,7 +743,7 @@ class Sidebar(Widget):
 
     @property
     def selected_session(self) -> str | None:
-        return None if self.selected is None or self.selected == (CMD_NEW, "") else self.selected[1]
+        return None if self.selected is None else self.selected[1]
 
     def select_group(self, group: str) -> bool:
         """Move the selection to the first row of `group` (the `▲n` of the rail opens it at Needs you)."""
@@ -736,39 +755,107 @@ class Sidebar(Widget):
         return False
 
     def _move(self, step: int) -> None:
-        rows = (*self._view.rows, (CMD_NEW, ""))
+        rows = self._view.rows
+        if not rows:
+            return
         index = rows.index(self.selected) if self.selected in rows else -1
         self.selected = rows[(index + step) % len(rows)] if index >= 0 else rows[0 if step > 0 else -1]
         self._relayout()
 
-    # -- text for a test and for the report --
+    @property
+    def sessions_height(self) -> int:
+        """The open rows size the Sessions frame; the grouped content scrolls inside it."""
+        height = self.size.height or 40
+        count = sum(len(items) for group, items in self._model.groups if group == GROUP_OPEN_HERE)
+        return min(max(3, count + 2), max(height // 2, 3))
+
+    def visible_targets(self) -> tuple[TargetRow, ...]:
+        """The targets the filter leaves: its text is in the target's name or host (local, no lookups)."""
+        needle = self.filter_text.strip().lower()
+        if not needle:
+            return self._model.targets
+        return tuple(row for row in self._model.targets if needle in row.name.lower() or needle in row.host.lower())
+
+    def _target_lines(self) -> list[Line]:
+        """The Targets section's lines: the filter line when one is being typed or set, then the targets."""
+        inner = max(self.sidebar_width - 4, 1)
+        lines: list[Line] = []
+        if self.editing or self.filter_text:
+            shown = f"/ {self.filter_text}▏" if self.editing else f"/ {self.filter_text}"
+            lines.append(Line((Part(_fit(shown, inner), "filter", CMD_FILTER,
+                                    tip="/ filter the targets by name or host"),)))
+        lines.extend(_text_line(row.name, "text", inner) for row in self.visible_targets())
+        return lines
+
+    def _target_scroll_limit(self) -> int:
+        return max(len(self._target_lines()) - max(self.targets_height - 2, 0), 0)
+
+    @property
+    def targets_height(self) -> int:
+        return max((self.size.height or 40) - self.sessions_height, 0)
+
+    def line_offset(self, index: int) -> int | None:
+        """The screen row of a visible logical Sessions line."""
+        row = index - self._scroll_top
+        return self.targets_height + 1 + row if 0 <= row < self.sessions_height - 2 else None
+
+    def _line_at(self, y: int) -> Line | None:
+        row = y - self.targets_height - 1
+        index = row + self._scroll_top
+        if row == 0 and not self._view.rows:
+            return Line((Part("No live sessions · n new session", "muted", CMD_NEW),))
+        if 0 <= row < self.sessions_height - 2 and index < len(self._view.lines):
+            return self._view.lines[index]
+        return None
 
     @property
     def text(self) -> str:
-        """The sidebar as the operator reads it, one line per row, the hairline included."""
-        height = self.size.height or len(self._view.lines)
-        lines = self._view.lines[self._scroll_top: self._scroll_top + height]
-        return "\n".join(self._line_text(line) for line in lines)
+        """The actual framed rows, including both section perimeters."""
+        return "\n".join(self.render_line(y).text for y in range(self.size.height))
 
-    def _line_text(self, line: Line) -> str:
-        text = glyphs.render(line.text, self._glyph_set)
-        return text + "│" if self._side == "left" else "│" + text
+    def on_focus(self, event: events.Focus) -> None:
+        self.refresh()
 
-    # -- painting --
+    def on_blur(self, event: events.Blur) -> None:
+        self.refresh()
 
     def render_line(self, y: int) -> Strip:
         width = self.size.width
-        actual_y = y + self._scroll_top
-        if actual_y >= len(self._view.lines):
-            segments = [Segment(" " * max(width - 1, 0), self._styles["blank"])]
-            line = None
+        inner = max(width - 4, 0)
+        targets = y < self.targets_height
+        top = 0 if targets else self.targets_height
+        height = self.targets_height if targets else self.sessions_height
+        focused = self.has_focus and not targets
+        tl, horizontal, tr, vertical, bl, br = ("┏", "━", "┓", "┃", "┗", "┛") if focused else ("┌", "─", "┐", "│", "└", "┘")
+        if y == top:
+            title = "▦ Targets" if targets else "▸ Sessions"
+            if targets:
+                count = len(self.visible_targets())
+                total = len(self._model.targets) if self._model.target_total is None else self._model.target_total
+                title += f" · {total}" if count == total else f" · {count}/{total}"
+            label = horizontal + " " + title + " "
+            text = tl + label[:max(width - 2, 0)].ljust(max(width - 2, 0), horizontal) + tr
+            text = glyphs.render(text, self._glyph_set)
+            return Strip([Segment(text, self._border)]).adjust_cell_length(width)
+        if y == top + height - 1:
+            return Strip([Segment(bl + horizontal * max(width - 2, 0) + br, self._border)])
+        line = None
+        if targets:
+            index = y - top - 1 + self._target_scroll_top
+            target_lines = self._target_lines()
+            if index < len(target_lines):
+                line = target_lines[index]
+            elif not self._model.targets and y == top + 1:
+                line = _text_line("Loading targets…" if self._model.targets_loading else "No targets you can see",
+                                  "muted", inner)
         else:
-            line = self._view.lines[actual_y]
-            segments = [Segment(glyphs.render(part.text, self._glyph_set), self._styles.get(part.role, self._styles["text"]))
-                        for part in line.parts if part.text]
-        border = Segment("│", self._border)
-        segments = [*segments, border] if self._side == "left" else [border, *segments]
-        return Strip(segments).adjust_cell_length(width, self._styles["blank"])
+            line = self._line_at(y)
+        segments = [] if line is None else [
+            Segment(glyphs.render(part.text, self._glyph_set), self._styles.get(part.role, self._styles["text"]))
+            for part in line.parts if part.text]
+        content = Strip(segments).adjust_cell_length(inner, self._styles["blank"])
+        return Strip([Segment(vertical, self._border), Segment(" ", self._styles["blank"]),
+                      *content, Segment(" ", self._styles["blank"]), Segment(vertical, self._border)])
 
     # -- clicks --
 
@@ -776,10 +863,9 @@ class Sidebar(Widget):
         """The tooltip of the part (or the row) under the pointer: the words and key of a glyph, the whole of a row
         the sidebar had to cut short (D13)."""
         tip = None
-        actual_y = event.y + self._scroll_top
-        if actual_y < len(self._view.lines):
-            line = self._view.lines[actual_y]
-            x = event.x - (1 if self._side == "right" else 0)
+        line = self._line_at(event.y)
+        if line is not None:
+            x = event.x - 2
             cursor = 0
             for part in line.parts:
                 if cursor <= x < cursor + len(part.text):
@@ -792,20 +878,48 @@ class Sidebar(Widget):
     def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
         if mouse_on(self):
             event.stop()
-            self._move(-1)
+            self._wheel(event.y, -1)
 
     def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
         if mouse_on(self):
             event.stop()
-            self._move(1)
+            self._wheel(event.y, 1)
+
+    def _wheel(self, y: int, step: int) -> None:
+        """The wheel moves the selection through the sessions, a row a turn; over a Targets list longer than its
+        section it scrolls that list."""
+        if y < self.targets_height and self._target_scroll_limit() > 0:
+            self._scroll_section(y, step)
+        else:
+            self._move(step)
+
+    def _scroll_section(self, y: int, step: int) -> None:
+        if y < self.targets_height:
+            self._target_scroll_top = max(0, min(self._target_scroll_top + step, self._target_scroll_limit()))
+        else:
+            limit = max(len(self._view.lines) - max(self.sessions_height - 2, 1), 0)
+            self._scroll_top = max(0, min(self._scroll_top + step, limit))
+        self.refresh()
+
+    def _target_line_at(self, y: int) -> Line | None:
+        index = y - 1 + self._target_scroll_top
+        lines = self._target_lines()
+        return lines[index] if 0 < y < self.targets_height - 1 and index < len(lines) else None
 
     def on_click(self, event: events.Click) -> None:
-        actual_y = event.y + self._scroll_top
-        if not mouse_on(self) or actual_y >= len(self._view.lines):
+        if event.y < self.targets_height:
+            line = self._target_line_at(event.y)
+            if line is not None and mouse_on(self):
+                event.stop()
+                for part in line.parts:
+                    if part.command == CMD_FILTER:
+                        self.start_filter()
+            return
+        line = self._line_at(event.y)
+        if not mouse_on(self) or line is None:
             return
         event.stop()
-        line = self._view.lines[actual_y]
-        x = event.x - (1 if self._side == "right" else 0)
+        x = event.x - 2
         cursor = 0
         for part in line.parts:
             if cursor <= x < cursor + len(part.text):
@@ -873,9 +987,7 @@ class Sidebar(Widget):
         elif key == "n":
             self.post_message(self.Command(CMD_NEW))
         elif key == "enter":
-            if self.selected == (CMD_NEW, ""):
-                self.post_message(self.Command(CMD_NEW))
-            elif self.selected_session is not None:
+            if self.selected_session is not None:
                 self.post_message(self.Command(CMD_PICK, self.selected_session))
         elif key == "escape":
             self.post_message(self.Command(CMD_CLOSE))

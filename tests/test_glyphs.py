@@ -13,7 +13,7 @@ import pytest
 from tsb_tui import glyphs
 
 UNICODE_LINE = ["≡", "▦", "▸", "◂", "▴", "●", "◆", "·", "▲", "?", "◌", "✕", "◐", "•", "┄", "┆"]
-ASCII_LINE = ["=", "#", ">", "<", "^", "*", "+", ".", "!", "?", "o", "x", "~", "'", "-", ":"]
+ASCII_LINE = ["=", "#", ">", "<", "^", "*", "*", ".", "!", "?", "o", "x", "~", "'", "-", ":"]
 
 
 def test_every_glyph_of_the_knob_files_line_maps_to_the_ascii_one_at_the_same_position() -> None:

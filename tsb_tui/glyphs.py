@@ -4,7 +4,7 @@ terminal whose font lacks the box-drawing and geometric-shape blocks the chrome 
 The mapping is the knob file's own line, glyph for glyph:
 
     unicode  ≡ ▦ ▸ ◂ ▴ ● ◆ · ▲ ? ◌ ✕ ◐ • ┄ ┆
-    ascii    = # > < ^ * + . ! ? o x ~ ' - :
+    ascii    = # > < ^ * * . ! ? o x ~ ' - :
 
 It touches the TUI's chrome only (the rail, the sidebar, the status row). What a session prints is the
 session's and is never rewritten here.
@@ -16,7 +16,7 @@ UNICODE = "unicode"
 ASCII = "ascii"
 SETS = (UNICODE, ASCII)
 
-_PAIRS = (("≡", "="), ("▦", "#"), ("▸", ">"), ("◂", "<"), ("▴", "^"), ("●", "*"), ("◆", "+"), ("·", "."),
+_PAIRS = (("≡", "="), ("▦", "#"), ("▸", ">"), ("◂", "<"), ("▴", "^"), ("●", "*"), ("◆", "*"), ("·", "."),
           ("▲", "!"), ("?", "?"), ("◌", "o"), ("✕", "x"), ("◐", "~"), ("•", "'"), ("┄", "-"), ("┆", ":"))
 
 _TO_ASCII = str.maketrans(dict(_PAIRS))

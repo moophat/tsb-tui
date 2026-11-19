@@ -23,11 +23,12 @@ from workspace_support import (
     fixture_login,
     named_sessions,
     open_here,
+    pick_in_sidebar,
     rail_row,
+    sidebar_offset,
 )
 
 from tsb_tui.app import TsbTuiApp
-from tsb_tui.model.fleet import GROUP_NEEDS_YOU
 from tsb_tui.screens.chrome_dialogs import ConfirmEndScreen, TextScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.size_dialog import SizeDialog
@@ -63,7 +64,8 @@ def test_each_rail_glyph_acts_on_one_click_at_65_120_and_200_columns(serve, wait
             await open_here(app, pilot, wait_until, first, second)
             screen.close_sidebar()
             await wait_until(pilot, lambda: rail_row(screen, ACT_NEEDS) is not None
-                             and "▲1" in screen.rail.text, "the rail to count the session that needs you")
+                             and screen.rail._model.need_you == 1,
+                             "the rail to count the session that needs you")
 
             await pilot.click(Rail, offset=(1, rail_row(screen, ACT_MENU)))
             await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette), f"≡ at {width}")
@@ -75,9 +77,9 @@ def test_each_rail_glyph_acts_on_one_click_at_65_120_and_200_columns(serve, wait
             screen.close_sidebar()
 
             await pilot.click(Rail, offset=(1, rail_row(screen, ACT_NEEDS)))
-            await wait_until(pilot, lambda: screen.sidebar_open and screen.sidebar.selected is not None
-                             and screen.sidebar.selected[0] == GROUP_NEEDS_YOU, f"▲n at {width}")
-            screen.close_sidebar()
+            await wait_until(pilot, lambda: screen.view_open and screen.fleet_view.selected is not None
+                             and screen.fleet_view.selected[0] == "needs_you", f"▲n at {width}")
+            screen.close_fleet_view()
 
             await pilot.click(Rail, offset=(1, rail_row(screen, ACT_ALERTS)))
             await wait_until(pilot, lambda: screen.view_open and screen.fleet_view.tab == "alerts", f"!n at {width}")
@@ -114,11 +116,7 @@ def test_a_sidebar_row_and_every_status_hint_acts_on_one_click_at_three_widths(s
         async with app.run_test(size=(width, height)) as pilot:
             screen = await fixture_login(app, pilot)
             await open_here(app, pilot, wait_until, first)
-            screen.open_sidebar()
-            await wait_until(pilot, lambda: any(row[1] == second for row in screen.sidebar.view.rows),
-                             "the sidebar to list the second session")
-            y = next(i for i, line in enumerate(screen.sidebar.view.lines) if line.session_id == second)
-            await pilot.click(Sidebar, offset=(6, y))
+            await pick_in_sidebar(app, pilot, wait_until, second)  # the full view lists the sessions not open here
             await wait_until(pilot, lambda: app.screen is not screen or screen.slot_for(second) is not None,
                              f"a sidebar row at {width}")
             if app.screen is not screen:  # the gate: the first attach to a session in this run
@@ -234,10 +232,12 @@ def test_the_wheel_moves_through_the_sidebar_and_the_view(serve, wait_until) -> 
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
-        named_sessions(url, serve_app, "a-host", "b-host", "c-host")
+        first, second, third = named_sessions(url, serve_app, "a-host", "b-host", "c-host")
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, first, second, third)  # the panel lists the sessions open here
+            screen.open_sidebar()
             await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 3, "three sessions")
             first = screen.sidebar.selected
             await _wheel(pilot, screen.sidebar, True)
@@ -249,6 +249,7 @@ def test_the_wheel_moves_through_the_sidebar_and_the_view(serve, wait_until) -> 
             view = screen.fleet_view
             await wait_until(pilot, lambda: len(view.layout.rows) == 3, "the view's rows")
             start = view.selected
+            await pilot.pause(0.3)  # the framed canvas settles its width before the pointer lands on the view
             await _wheel(pilot, view, True)
             await wait_until(pilot, lambda: view.selected != start, "the wheel to move the view's selection")
 
@@ -406,9 +407,8 @@ def test_tooltips_name_each_glyphs_word_and_key_and_follow_the_glyph_set_and_the
             screen.open_sidebar()
             await wait_until(pilot, lambda: any(row[1] == second for row in screen.sidebar.view.rows), "the rows")
             y = next(i for i, line in enumerate(screen.sidebar.view.lines) if line.session_id == second)
-            await pilot.hover(Sidebar, offset=(6, y))
-            seen.append(str(screen.sidebar.tooltip))
-            await pilot.hover(Sidebar, offset=(len(screen.sidebar.view.lines[0].text.split("◂")[0]) + 2, 0))
+            await pilot.hover(Sidebar, offset=sidebar_offset(screen, y, 6))
+            await pilot.pause()
             seen.append(str(screen.sidebar.tooltip))
             screen.close_sidebar()
             await wait_until(pilot, lambda: not screen.sidebar_open, "the rail")
@@ -422,24 +422,26 @@ def test_tooltips_name_each_glyphs_word_and_key_and_follow_the_glyph_set_and_the
 
     on = asyncio.run(_check({}))
     assert on[0].startswith("a-very-long-target-name · s.") and "you type" in on[0], on
-    assert on[1].startswith("◂ close the sidebar"), on
-    assert on[2] == "≡ Menu Ctrl+\\ · every action, searchable", on
-    assert on[3].startswith("▦ Fleet Ctrl+\\ f"), on
-    assert on[4].startswith("1 rtr-core-01 · you type") and on[4].endswith("Ctrl+\\ 1"), on
-    assert on[5] == "+ New session Ctrl+\\ c", on
-    assert on[6].startswith("Who's here… · "), on
+    # Closing the panel has its own key and Menu entry and its hint in the keys row (the panel no longer has a close part).
+    assert on[1] == "≡ Menu Ctrl+\\ · every action, searchable", on
+    assert on[2].startswith("▦ Fleet Ctrl+\\ f"), on
+    assert on[3].startswith("1 rtr-core-01 · you type") and on[3].endswith("Ctrl+\\ 1"), on
+    assert on[4] == "+ New session Ctrl+\\ c", on
+    assert on[5].startswith("Who's here… · "), on
 
     ascii_set = asyncio.run(_check({"TSB_TUI_GLYPHS_SET": "ascii"}))
-    assert ascii_set[2].startswith("= Menu Ctrl+\\") and ascii_set[3].startswith("# Fleet Ctrl+\\ f"), ascii_set
+    assert ascii_set[1].startswith("= Menu Ctrl+\\") and ascii_set[2].startswith("# Fleet Ctrl+\\ f"), ascii_set
 
     off = asyncio.run(_check({"TSB_TUI_MOUSE_TOOLTIPS": "false"}))
-    assert off == ["None"] * 7, off
+    assert off == ["None"] * 6, off
 
 
 @pytest.mark.parametrize("width", [65, 120, 200])
 def test_the_rails_four_columns_are_the_same_at_every_width_so_a_tap_lands_in_the_same_place(
         serve, wait_until, width: int) -> None:
-    """D41, T3: the rail does not grow with the window, so a thumb that learned where `≡` is finds it at any width."""
+    """D41, T3: the rail's rows are the same at every width, so a thumb that learned where `≡` is finds it at any
+    width. Its width is the ruled 4 columns at 80 or below and 12 above (P2a), and its rows no longer start with
+    `≡`: Sessions, Targets, Vault, Alerts, Menu."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -448,7 +450,9 @@ def test_the_rails_four_columns_are_the_same_at_every_width_so_a_tap_lands_in_th
         async with app.run_test(size=(width, 30)) as pilot:
             screen = await fixture_login(app, pilot)
             screen.close_sidebar()
-            await wait_until(pilot, lambda: screen.rail.region.width == 4, "the rail's four columns")
-            assert rail_row(screen, ACT_MENU) == 0 and rail_row(screen, ACT_FLEET) == 1
+            columns = 4 if width <= 80 else 12
+            await wait_until(pilot, lambda: screen.rail.region.width == columns, f"the rail's {columns} columns")
+            assert rail_row(screen, ACT_NEEDS) == 0 and rail_row(screen, ACT_FLEET) == 1
+            assert rail_row(screen, ACT_MENU) == 4
 
     asyncio.run(_check())

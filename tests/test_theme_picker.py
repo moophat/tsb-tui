@@ -128,9 +128,9 @@ def test_the_leader_and_T_open_the_picker_and_the_session_stays_visible_beside_i
             await _open_picker(pilot, app, screen, wait_until)
             lines = "\n".join(s.text for s in app.screen._compositor.render_strips()).splitlines()
             assert "Theme" in lines[0], f"the panel title is not on the top border: {lines[0]!r}"
-            assert "ops@infra-db-02" in lines[0][4:], "the session is not drawn beside the panel"
+            assert "ops@infra-db-02" in lines[1][4:], "the session is not drawn beside the panel"
             fills = _rect_fills(app.export_screenshot())
-            assert any(f == TSB_BACKGROUND and 4 <= x < 66 for f, x in fills), (
+            assert any(f == TSB_BACKGROUND and 12 * 12.2 <= x < 66 * 12.2 for f, x in fills), (
                 "the canvas lost the scheme's background under the picker")
             assert any(f == NORD_SURFACE and x < 4 for f, x in fills), (
                 "the rail lost terracotta's surface under the picker")

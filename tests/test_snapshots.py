@@ -70,7 +70,7 @@ def serve(serve) -> Callable:
 
 def _shown_alerts(lines: list[str]) -> list[int]:
     """The alert count the screen says: the rail's `!n` cell or the sidebar's `! n alerts` line."""
-    return [int(m.group(1)) for line in lines if (m := re.match(r" ?!\s?(\d+)", line))]
+    return [int(m.group(1)) for line in lines if (m := re.match(r" ?!(?: Alerts)?\s?(\d+)", line))]
 
 
 @pytest.fixture
@@ -110,8 +110,22 @@ async def _open_in_order(app, pilot, wait_until, screen, *session_ids: str) -> N
 
 
 def _rail(lines: list[str]) -> list[str]:
-    """The rail's four columns, row by row."""
-    return [line[:4] for line in lines]
+    """The rail's columns, row by row: the four of the marks, or the twelve that carry words (P2a)."""
+    return [line[:12] for line in lines]
+
+
+def _menu_on_rail(lines: list[str], size: tuple[int, int]) -> bool:
+    """The rail's Menu entry: `≡` in the four columns at 80 or below, the word Menu in the twelve above."""
+    width = 12 if size[0] > 80 else 4
+    return any(("Menu" if size[0] > 80 else "≡") in cell[:width] for cell in _rail(lines))
+
+
+def _sessions_and_targets_on_rail(lines: list[str], size: tuple[int, int]) -> bool:
+    """The rail's first two rows: Sessions and Targets, as words above 80 columns and marks at 80 or below."""
+    rail = _rail(lines)
+    if size[0] > 80:
+        return "Sessions" in rail[0] and "Targets" in rail[1]
+    return rail[0].startswith("▸") and rail[1].startswith("▦")
 
 
 def _chip_rows(lines: list[str]) -> list[str]:
@@ -120,6 +134,28 @@ def _chip_rows(lines: list[str]) -> list[str]:
 
 def _status(lines: list[str]) -> str:
     return lines[-1]
+
+
+def _canvas_row(line: str, size: tuple[int, int]) -> str:
+    """A row's session part: past the rail and inside the session frame's borders and padding."""
+    return line[12 if size[0] > 80 else 4:].strip("│┃┌┐└┘┏┓┗┛─━ ")
+
+
+def _title(lines: list[str]) -> str:
+    """The session frame's top border: the front session's number, state, who types and `recorded` (P2a)."""
+    return re.sub(r"\s+", " ", lines[0])
+
+
+_MOVED = {"● live": "live", "● REC": "recorded"}
+
+
+def _row_or_title(phrase: str, status: str, title: str) -> bool:
+    """Whether each part of `phrase` is on the keys row, or is a session fact now on the frame's title."""
+    for part in re.split(r"  | · ", re.sub(r"\s+", " ", phrase).replace("● live ● REC", "● live  ● REC")):
+        part = part.strip()
+        if part and part not in status and _MOVED.get(part, part) not in title and part.removesuffix(" ") not in title:
+            return False
+    return True
 
 
 @pytest.fixture(autouse=True)
@@ -150,7 +186,7 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
                 screen = await fixture_login(app, pilot)
                 await _open_in_order(app, pilot, wait_until, screen, first, second, third)
                 screen.close_sidebar()
-                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                await wait_until(pilot, lambda: not screen.sidebar_open and screen.rail._model.need_you == 1
                                  and screen.canvas.painted, "the rail to count")
                 await pilot.pause(0.2)
                 await wait_until(pilot, lambda: "rtr-core-01#" in "".join(
@@ -162,18 +198,17 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
                 lines = shoot(app, "T1-terminal", size).splitlines()
 
                 rail = _rail(lines)
-                assert "≡" in rail[0] and "▦▸" in rail[1], rail[:2]
-                assert any(cell.startswith("▲1") for cell in rail), "no ▲1 on the rail"
-                assert any(cell.startswith("!") for cell in rail), "no alerts row on the rail"
+                assert _menu_on_rail(lines, size) and _sessions_and_targets_on_rail(lines, size), rail[:6]
+                assert screen.rail._model.need_you == 1, "the rail does not count the session that needs you"
+                assert any(cell.startswith(("!", "! Alerts")) for cell in rail), "no alerts row on the rail"
                 assert _chip_rows(lines) == ["1●◂", "2◆", "3◆"], _chip_rows(lines)
                 assert any(cell.strip().startswith("+") for cell in rail), "no + on the rail"
-                assert "rtr-core-01#" in lines[0][4:], "the session's own screen is not drawn beside the rail"
+                assert "rtr-core-01#" in lines[1][4:], "the session's own screen is not drawn beside the rail"
 
                 status = _status(lines)
-                assert "you type" in status and "Ctrl+\\ [ Scroll" in status, status
+                assert "you type" in _title(lines) and "Ctrl+\\ [ Scroll" in status, (status, lines[0])
                 if size[0] >= 120:
-                    assert ("rtr-core-01" in status or any(
-                        f"  {'rtr-core-01'[:n]}…  " in status for n in range(len("rtr-core-01")))) and "▦ Fleet" in status, status
+                    assert "rtr-core-01" in _title(lines) and "▦ Fleet" in status, (status, lines[0])
                 label = screen.canvas.view_range.label
                 if size[0] - 4 < 132:
                     assert label.startswith("cols 1-") and label.endswith("of 132 ▸") and (label in status if size[0] >= 120 else "F1 Menu" in status), (label, status)
@@ -210,7 +245,7 @@ def _shoot_t1c(monkeypatch, serve, wait_until, shoot, snapshot_dir, size, *, env
                 screen = await fixture_login(app, pilot)
                 await _open_in_order(app, pilot, wait_until, screen, first, second, third)
                 screen.close_sidebar()
-                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                await wait_until(pilot, lambda: not screen.sidebar_open and screen.rail._model.need_you == 1
                                  and screen.canvas.painted, "the rail to count")
                 await wait_until(pilot, lambda: "normal 0-7" in "".join(
                     s.text for s in app.screen._compositor.render_strips()), "the coloured screen",
@@ -238,7 +273,7 @@ def test_t1c_the_terminal_with_coloured_output_shows_the_scheme(size, monkeypatc
                             env={"theme.term.scheme": "tsb-default"}, stem="T1c-terminal-colour")
 
     # Content assertions: the T1c state's prompt and the ANSI swatch are drawn.
-    assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+    assert "ops@infra-db-02" in lines[1][4:], "the prompt is not drawn"
     assert "normal 0-7" in "\n".join(lines), "the swatch is not drawn"
     # The canvas paints its own background: rects filled with theme.bg (#0a0a0a) sit under
     # the canvas's columns (right of the rail), never as a full-window overlay.
@@ -273,7 +308,7 @@ def test_t1c_scheme_colours_reach_the_canvas_and_leave_the_chrome(slug, size, mo
                             env={"theme.name": "terracotta", "theme.term.scheme": slug},
                             stem=f"T1c-scheme-{slug}")
 
-    assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+    assert "ops@infra-db-02" in lines[1][4:], "the prompt is not drawn"
     assert "normal 0-7" in "\n".join(lines), "the swatch is not drawn"
 
     # The canvas's background is the scheme's, right of the rail, never a full-window overlay.
@@ -322,7 +357,7 @@ def test_the_gallery_pictures_each_packaged_theme_with_its_suggested_scheme(them
                             stem=f"gallery-{theme_id}-{slug}-T1c")
 
     # The text is T1c's: the prompt beside the rail, and the chips as the T1 test asserts (test_snapshots.py:161-166).
-    assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+    assert "ops@infra-db-02" in lines[1][4:], "the prompt is not drawn"
     assert _chip_rows(lines) == ["1●◂", "2◆", "3◆"], _chip_rows(lines)
 
     # The canvas paints the scheme's background, right of the rail, never a full-window overlay.
@@ -331,13 +366,15 @@ def test_the_gallery_pictures_each_packaged_theme_with_its_suggested_scheme(them
     assert min(float(x) for x in bg_rects) >= 40, (
         f"a {slug}-background rect starts left of the rail, so it is a full-window overlay")
 
-    # The chrome is the theme's: a rect under the rail keeps its `surface`, and the status row's pill keeps its
-    # `accent` (the "you type" pill, at the row's left). Neither follows the scheme.
+    # The chrome is the theme's: a rect under the rail keeps its `surface`, and the who-types words in the session
+    # frame's title (the pill's successor) keep the theme's `accent`, on the window's first row. Neither follows
+    # the scheme.
     rect_fills = re.findall(r'<rect fill="(#[0-9a-f]{6})" x="([0-9.]+)"', svg)
     assert any(fill == surface and float(x) < 40 for fill, x in rect_fills), (
         f"the rail lost {theme_id}'s surface ({surface})")
-    assert any(fill == accent and float(x) < 40 for fill, x in rect_fills), (
-        f"the status row's pill lost {theme_id}'s accent ({accent})")
+    title_rects = re.findall(r'<rect fill="(#[0-9a-f]{6})" x="([0-9.]+)" y="([0-9.]+)"', svg)
+    assert any(fill == accent and float(y) < 24 for fill, _x, y in title_rects), (
+        f"the frame title's who-types words lost {theme_id}'s accent ({accent})")
 
 
 def test_a_switch_at_run_time_draws_the_picture_a_start_with_that_look_draws(serve, wait_until, shoot,
@@ -366,7 +403,7 @@ def test_a_switch_at_run_time_draws_the_picture_a_start_with_that_look_draws(ser
                 screen = await fixture_login(app, pilot)
                 await _open_in_order(app, pilot, wait_until, screen, first, second, third)
                 screen.close_sidebar()
-                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                await wait_until(pilot, lambda: not screen.sidebar_open and screen.rail._model.need_you == 1
                                  and screen.canvas.painted, "the rail to count")
                 await wait_until(pilot, lambda: "normal 0-7" in "".join(
                     s.text for s in app.screen._compositor.render_strips()), "the coloured screen",
@@ -376,7 +413,7 @@ def test_a_switch_at_run_time_draws_the_picture_a_start_with_that_look_draws(ser
                 lines = shoot(app, "switched-dracula-dracula-T1c", size).splitlines()
                 svg = (snapshot_dir / "switched-dracula-dracula-T1c-120x40.svg").read_text(encoding="utf-8")
 
-                assert "ops@infra-db-02" in lines[0][4:], "the prompt is not drawn"
+                assert "ops@infra-db-02" in lines[1][4:], "the prompt is not drawn"
                 bg_rects = re.findall(rf'<rect fill="{dracula_scheme.background}" x="([0-9.]+)"', svg)
                 assert bg_rects, (
                     f"no rect filled with Dracula's background ({dracula_scheme.background}) is under the canvas")
@@ -415,23 +452,25 @@ def test_s1_the_rail_widens_in_place_into_the_fleet_sidebar(size, serve, wait_un
                 await _open_in_order(app, pilot, wait_until, screen, first, second)
                 screen.open_sidebar()
                 await wait_until(pilot, lambda: screen.sidebar_open and screen._sidebar_has_keys()
-                                 and any(row[1] == broken for row in screen.sidebar.view.rows), "the sidebar to fill")
+                                 and len(screen.sidebar.view.rows) == 2 and screen.targets.fetched,
+                                 "the sidebar to fill")
                 await pilot.pause(0.2)
                 text = shoot(app, "S1-sidebar", size)
                 lines = text.splitlines()
                 width = screen.sidebar.size.width
-                side = [line[:width] for line in lines]
+                rail = screen.rail.region.width  # the rail stays beside the panel (P2a)
+                side = [line[rail:rail + width] for line in lines]
 
                 assert width in (30, 32, 42), width
-                assert "▦ Fleet" in side[0] and "close" in side[0], side[0]
-                assert any("filter" in row and "mine│all" in row.replace(" ", "") or "filter" in row for row in side[:3])
-                assert any(row.strip().startswith("Needs you") for row in side), side
-                assert any(row.strip().startswith("Open here") for row in side), side
-                assert any("fw-edge-01" in row and "◌" in row for row in side), "the unreachable session needs you"
+                # P2a: the panel is two framed sections, Targets and the sessions open here; the groups, the
+                # filter's mine│all, New session and the alerts are the full view's, the rail's and the keys'.
+                assert side[0].startswith("┌─ ▦ Targets"), side[0]
+                assert any(row.startswith(("┌─ ▸ Sessions", "┏━ ▸ Sessions")) for row in side), side
                 assert any("1●" in row and "rtr-core-01" in row for row in side), side
                 assert any("2◆" in row and "infra-db-02" in row for row in side), side
-                assert any("+" in row and "New session" in row for row in side), side
-                assert lines[0][width:].strip(), "nothing is drawn beside the sidebar"
+                assert not any(w in row for row in side for w in ("Needs you", "Open here", "mine│all", "New session")), side
+                assert not any("fw-edge-01" in row for row in side), "a session not open here is the full view's"
+                assert lines[0][rail + width:].strip(), "nothing is drawn beside the sidebar"
                 assert not [row for row in side if "0:00" in row], (
                     f"a sidebar row reads an expired countdown: {[row for row in side if '0:00' in row]}")
                 status = _status(lines)
@@ -489,7 +528,7 @@ def test_f5_whos_here_lists_who_types_and_offers_the_four_moves(size, serve, wai
                     assert button in joined, f"no {button!r} button"
                 status = _status(lines)
                 assert "keys → who's here" in status and "Esc close" in status, status
-                assert "≡" in _rail(lines)[0], "the rail is gone behind the dialog"
+                assert _menu_on_rail(lines, size), "the rail is gone behind the dialog"
 
     asyncio.run(check())
 
@@ -518,22 +557,23 @@ def test_f7_the_stale_dialog_offers_the_four_choices_to_the_one_who_types(size, 
                 "the screen may be wrong" in joined and "Choose" in joined), "the contract's sentence is missing"
             order = [joined.index(f"[{n}]") for n in (1, 2, 3, 4)]
             assert order == sorted(order), "the four choices are not in order"
-            squeezed = re.sub(r"[\s│]+", " ", joined)
+            squeezed = re.sub(r"[\s│┃]+", " ", joined)
             assert "(no guarantee the screen is right)" in squeezed, (
                 "a choice's text must reach the person whole, wrapped when the window is narrow, never cut off")
             for words in ("Redraw the screen", "Send Ctrl-L", "Keep going without a redraw", "Start a fresh session"):
                 assert words in squeezed, f"no {words!r}"
             assert "1-4" in squeezed and "recorded" in squeezed, "the footer is missing"
             status = _status(lines)
-            assert "you type" in status and "F1 Menu" not in status, status
+            assert "you type" in _title(lines) and "F1 Menu" not in status, status
             assert "F1 Menu" not in status and "Ctrl+\\ ? keys" not in status, status
             if size[0] >= 80:
-                assert "● REC" in status and "Ctrl+\\ [ Scroll" in status
+                assert "recorded" in _title(lines) and "Ctrl+\\ [ Scroll" in status
             assert screen.status.size.height == 1, "the status row never grows a second line"
             # The row is one row; the contract's notice line (stale-screen rule 18) is the banner at the top of the
             # canvas, whole, wrapped at spaces on a phone, never cut.
-            assert STALE_NOTICE in " ".join(line[4:].strip() for line in lines[:4]), lines[:4]
-            assert "≡" in _rail(lines)[0]
+            assert STALE_NOTICE in " ".join(
+                _canvas_row(line, size) for line in lines[1:5]), lines[:5]
+            assert _menu_on_rail(lines, size)
 
     asyncio.run(check())
 
@@ -577,12 +617,12 @@ def test_a2_an_agents_headless_tui_snapshot_is_the_same_ui(size, serve, snapshot
                 assert len(lines) == size[1]
 
                 rail = _rail(lines)
-                assert "≡" in rail[0] and "▦▸" in rail[1], rail[:2]
+                assert _menu_on_rail(lines, size) and _sessions_and_targets_on_rail(lines, size), rail[:6]
                 assert _chip_rows(lines) == ["1●◂", "2●•", "3◆"], _chip_rows(lines)
                 assert set(_shown_alerts(lines)) == {SHOWN_ALERTS}, _shown_alerts(lines)
                 assert "ops@infra-db-02:~$" in "".join(line[4:] for line in lines[:8])
                 status = _status(lines)
-                assert "you type" in status and "Ctrl+\\ [ Scroll" in status, status
+                assert "you type" in _title(lines) and "Ctrl+\\ [ Scroll" in status, status
 
     asyncio.run(check())
 
@@ -711,7 +751,7 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
             await wait_until(
                 pilot,
                 lambda: not screen.sidebar_open and screen.canvas is not None
-                and screen.canvas.size.width == size[0] - screen.rail.size.width,
+                and screen.canvas.size.width == size[0] - screen.rail.size.width - 4,  # less the frame and its padding
                 "the canvas to take the width the closed sidebar gave back")
             slot = screen.slot_for(sid)
             state = slot.pump.state
@@ -719,7 +759,9 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
             await pilot.pause(0.3)
             lines = shoot(app, f"F12-{state_id}", size).splitlines()
             status = re.sub(r"\s+", " ", " ".join(line.strip() for line in lines[-3:] if line.strip(" │")))
-            assert always in status, f"{state_id} at {size[0]}: {always!r} not in {status!r}"
+            title = _title(lines)
+            title_words = {"view only": "fixture-peer types"}.get(always, always)  # who types, in the frame's words
+            assert title_words in title, f"{state_id} at {size[0]}: {title_words!r} not in {title!r}"
             # The chip's second cell is the session's attention first, who types only when nothing needs you (design
             # legend and §2.3 rail item 5): a warning window (the notice states) is `▲`, a question for you is `?`,
             # otherwise `●` you, `◆` another login, `·` nobody. The same at every size. The cursor follows who types alone
@@ -735,10 +777,10 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
                 "block" if typing else "underline"), f"{state_id} at {size[0]}: wrong cursor shape for {always!r}"
             assert ("Ctrl+\\ [ Scroll" in status if size[0] >= 80 or state_id != "owner-view-only" else "Ctrl+\\ t Take back" in status), status
             if size[0] >= 120 and state_id in ("you-type", "quiet-prompt"):
-                assert "rtr-core-01" in status or any(
-                    f" {"rtr-core-01"[:n]}… " in status for n in range(len("rtr-core-01"))), status
+                assert "rtr-core-01" in title or any(
+                    f" {"rtr-core-01"[:n]}… " in title for n in range(len("rtr-core-01"))), title
             if size[0] >= 200:
-                assert re.sub(r"\s+", " ", wide) in status, f"{state_id} at {size[0]}: {wide!r} not in {status!r}"
+                assert _row_or_title(wide, status, title), f"{state_id} at {size[0]}: {wide!r} not in {status!r} or {title!r}"
             if state_id == "owner-view-only" and size[0] >= 120:
                 assert "Ctrl+\\ t Take back" in status, status
                 if size[0] == 120:
@@ -844,12 +886,13 @@ def test_f12_a_stale_screen_someone_else_is_choosing_shows_no_dialog_and_says_wh
                 lines = shoot(app, "F12-stale-someone-else", size).splitlines()
                 joined = "\n".join(lines)
                 status = _status(lines)
-                assert "view only" in status and "F1 Menu" not in status, status
+                assert "fixture-peer types" in _title(lines) and "F1 Menu" not in status, status
                 assert "F1 Menu" not in status and "Ctrl+\\ ? keys" not in status, status
                 if size[0] >= 80:
-                    assert "● REC" in status and "Ctrl+\\ [ Scroll" in status
+                    assert "recorded" in _title(lines) and "Ctrl+\\ [ Scroll" in status
                 assert screen.status.size.height == 1, "the status row never grows a second line"
-                assert STALE_NOTICE in " ".join(line[4:].strip() for line in lines[:4]), lines[:4]
+                assert STALE_NOTICE in " ".join(
+                _canvas_row(line, size) for line in lines[1:5]), lines[:5]
                 assert "Choose:" not in joined, "a client that does not type was shown the dialog"
                 if size[0] >= 200:  # who is choosing fits where the row has room; a phone keeps `▲ stale · input refused`
                     assert "fixture-peer is choosing · input refused" in status, status
@@ -915,7 +958,7 @@ def test_the_picker_over_T1c_shows_the_panel_and_the_previewed_scheme(size, monk
                 screen = await fixture_login(app, pilot)
                 await _open_in_order(app, pilot, wait_until, screen, first, second, third)
                 screen.close_sidebar()
-                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                await wait_until(pilot, lambda: not screen.sidebar_open and screen.rail._model.need_you == 1
                                  and screen.canvas.painted, "the rail to count")
                 await wait_until(pilot, lambda: "normal 0-7" in "".join(
                     s.text for s in app.screen._compositor.render_strips()), "the coloured screen",
@@ -950,7 +993,7 @@ def test_the_picker_over_T1c_shows_the_panel_and_the_previewed_scheme(size, monk
                 assert bg_rects, (
                     f"no rect filled with Solarized Dark's background ({scheme.background}) is under the canvas")
                 assert min(float(x) for x in bg_rects) >= 4, "a scheme-background rect starts left of the rail"
-                assert any(float(x) < px for x in bg_rects), "the canvas left of the panel did not preview the scheme"
+                assert any(float(x) < px * 12.2 for x in bg_rects), "the canvas left of the panel did not preview the scheme"  # x is in pixels, a cell is 12.2
                 rect_fills = re.findall(r'<rect fill="(#[0-9a-f]{6})" x="([0-9.]+)"', svg)
                 assert any(fill == TERRACOTTA_SURFACE and float(x) < 4 for fill, x in rect_fills), (
                     f"the rail lost terracotta's surface ({TERRACOTTA_SURFACE})")
@@ -1011,7 +1054,7 @@ def test_the_picker_on_the_phone_over_T1c(serve, monkeypatch, wait_until, shoot,
                 screen = await fixture_login(app, pilot)
                 await _open_in_order(app, pilot, wait_until, screen, first, second, third)
                 screen.close_sidebar()
-                await wait_until(pilot, lambda: not screen.sidebar_open and "▲1" in screen.rail.text
+                await wait_until(pilot, lambda: not screen.sidebar_open and screen.rail._model.need_you == 1
                                  and screen.canvas.painted, "the rail to count")
                 await screen.run_action_id("theme")
                 await wait_until(pilot, lambda: isinstance(app.screen, ThemePicker), "the picker to open")
@@ -1037,7 +1080,7 @@ def test_the_picker_on_the_phone_over_T1c(serve, monkeypatch, wait_until, shoot,
                 assert not missing, f"the rail lost terracotta's surface on rows {sorted(missing)}"
                 canvas_rows = {row_of[float(y)] for fill, x, y in rects
                                if fill == scheme.background and float(x) >= 4}
-                above = set(range(top)) - canvas_rows
+                above = set(range(1, top)) - canvas_rows  # row 0 is the session frame's top border
                 assert not above, f"the canvas rows above the panel are not Solarized Dark's background: {sorted(above)}"
                 tab_line = lines[top + 1]
                 assert "Chrome │ Terminal colours" in tab_line and "Tab switches" in tab_line, tab_line

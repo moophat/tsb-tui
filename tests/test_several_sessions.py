@@ -36,7 +36,7 @@ DSR = b"\x1b[6n"
 
 def _chip(screen, sid: str) -> str:
     """The chip of a session as the rail shows it, or None."""
-    return next(row.text for row in screen.rail.rows if row.arg == sid)
+    return next(row.text for row in screen.rail.rows if row.arg == sid).rstrip()  # the worded rail pads each row
 
 
 def test_each_open_session_has_its_own_attachment_engine_and_canvas(serve, wait_until) -> None:

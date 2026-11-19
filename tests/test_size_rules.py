@@ -178,7 +178,7 @@ def test_a_burst_of_window_changes_sends_one_debounced_request(
             assert resize_requests(serve_app) == [], "a request went out before the window settled"
             await wait_until(pilot, lambda: resize_requests(serve_app), "the debounced request")
             await pilot.pause(QUIET_S)
-            assert resize_requests(serve_app) == [(64 - 4, 20 - 1)]
+            assert resize_requests(serve_app) == [(64 - 4 - 4, 20 - 1 - 2)]  # less the rail, the frame and the status row
 
     asyncio.run(_check())
 
@@ -284,15 +284,15 @@ def test_no_second_request_after_a_clamped_answer_until_the_window_changes(
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
             screen = await _attached(pilot, app, session_id, wait_until)
 
-            await pilot.resize_terminal(42, 13)  # asks for 38x12: below the target's 40-column floor
+            await pilot.resize_terminal(42, 13)  # asks for 34x10: below the target's 40-column floor
             await wait_until(pilot, lambda: (screen.backend.cols, screen.backend.rows) == FLOOR,
                              "the clamped answer")
             await pilot.pause(QUIET_S)
-            assert resize_requests(serve_app) == [(38, 12)]
+            assert resize_requests(serve_app) == [(34, 10)]
 
             await pilot.resize_terminal(60, 20)
             await wait_until(pilot, lambda: len(resize_requests(serve_app)) == 2, "a request after the change")
-            assert resize_requests(serve_app) == [(38, 12), (56, 19)]
+            assert resize_requests(serve_app) == [(34, 10), (52, 17)]
 
     asyncio.run(_check())
 
@@ -350,7 +350,7 @@ def test_getting_the_keyboard_sends_no_size_request(serve, monkeypatch, wait_unt
 
                 await pilot.resize_terminal(66, 20)
                 await wait_until(pilot, lambda: resize_requests(serve_app), "the typist's request")
-                assert resize_requests(serve_app) == [(66 - 4, 20 - 1)]
+                assert resize_requests(serve_app) == [(66 - 4 - 4, 20 - 1 - 2)]  # less the rail, the frame and the status row
         finally:
             owner_attachment.close()
 
@@ -405,6 +405,6 @@ def test_create_with_auto_size_off_carries_window_size(serve) -> None:
             assert isinstance(app.screen, AttachConfirmScreen)
             sid = next(iter(serve_app.sessions))
             assert (serve_app.sessions[sid]["cols"],
-                    serve_app.sessions[sid]["rows"]) == (76, 23)
+                    serve_app.sessions[sid]["rows"]) == (72, 21)
 
     asyncio.run(check())

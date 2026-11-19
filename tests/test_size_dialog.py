@@ -61,22 +61,22 @@ def test_the_typist_asks_for_the_window_minus_the_chrome_and_the_answer_shows_wi
             assert dialog.query_one("#size-panel").styles.border_top[1].hex.lower() == app.cfg["theme.frame"]  # fails today: $primary is the accent
 
             ask = dialog.query_one("#ask", Button)
-            assert str(ask.label) == "Ask for 116×29", "the window minus the rail (4) and the status row (1)"
+            assert str(ask.label) == "Ask for 104×27", "the window minus the rail (12), the frame (4 columns, 2 rows) and the status row (1)"
             assert not ask.disabled
             assert "may answer differently" in _text(dialog, "#ask-why"), "a request, not a command"
             assert "Target 80×24" in _text(dialog, "#size-title")
-            assert "this window shows 116×29" in _text(dialog, "#size-title"), "the rail takes four of the 120"
+            assert "this window shows 104×27" in _text(dialog, "#size-title"), "the rail takes twelve of the 120"
             assert _text(dialog, "#size-last") == "Last answer: none since you attached"
             await flushed(pilot, screen, serve_app, wait_until)
             assert resize_requests(serve_app) == [MARKER_SIZE], "opening the dialog asked for nothing"
 
             await pilot.click("#ask")
             await wait_until(pilot, lambda: state.last_size_answer is not None, "the answer")
-            assert resize_requests(serve_app) == [MARKER_SIZE, (116, 29)]
-            assert (state.size_cols, state.size_rows) == (116, 29)
+            assert resize_requests(serve_app) == [MARKER_SIZE, (104, 27)]
+            assert (state.size_cols, state.size_rows) == (104, 27)
             assert state.last_size_answer["reason"] == "applied"
             await wait_until(pilot, lambda: "applied" in _text(dialog, "#size-last"), "the dialog to show it")
-            assert _text(dialog, "#size-last") == "Last answer: applied · asked 116×29, the target is 116×29"
+            assert _text(dialog, "#size-last") == "Last answer: applied · asked 104×27, the target is 104×27"
 
     asyncio.run(_check())
 
@@ -118,7 +118,7 @@ def test_a_clamped_answer_shows_its_reason_and_waits_for_the_window_to_change(
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
-        async with app.run_test(size=(44, 12)) as pilot:  # asks for 40x11: the target's rows floor is 12
+        async with app.run_test(size=(48, 14)) as pilot:  # asks for 40x11: the target's rows floor is 12
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
             screen = await attached(pilot, app, session_id, wait_until)
             state = screen.pump.state
@@ -147,7 +147,7 @@ def test_a_clamped_answer_shows_its_reason_and_waits_for_the_window_to_change(
 
             await pilot.resize_terminal(60, 20)
             await wait_until(pilot, lambda: not ask.disabled, "the button to open after a window change")
-            assert str(ask.label) == "Ask for 56×19"
+            assert str(ask.label) == "Ask for 52×17"
 
     asyncio.run(_check())
 
@@ -177,7 +177,7 @@ def test_the_auto_toggle_switches_automatic_requests_for_this_run_and_asks_for_n
             assert resize_requests(serve_app) == [MARKER_SIZE], "switching it on asked for something"
 
             await pilot.resize_terminal(100, 30)
-            await wait_until(pilot, lambda: (96, 29) in resize_requests(serve_app),
+            await wait_until(pilot, lambda: (84, 27) in resize_requests(serve_app),
                              "the window change to ask for the new window")
 
             await pilot.press("R")  # inside the dialog, the same key flips it back

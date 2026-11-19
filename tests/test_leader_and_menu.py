@@ -322,7 +322,9 @@ def test_keys_indicator_off_keeps_the_pill_while_a_dialog_has_the_keys(
             await pilot.press(LEADER, "w")
             await wait_until(pilot, lambda: isinstance(app.screen, WhosHereScreen), "Who's here to open")
             await wait_until(pilot, lambda: "Esc close" in screen.status.text, "the row to show the dialog's hints")
-            assert screen.status.text.startswith("‹ you type ›") and "keys →" not in screen.status.text
+            # The pill's facts moved to the session frame's title (P2a); the row never says `keys →`.
+            assert "you type" in str(screen.query_one("#canvases").border_title)
+            assert "keys →" not in screen.status.text
 
     asyncio.run(_check())
 
