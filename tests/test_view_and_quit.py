@@ -81,13 +81,16 @@ def test_all_keys_lists_every_actions_key_from_the_table_and_follows_a_rebinding
     for action in A.ACTIONS:
         if action.scope != A.SCOPE_SESSION or action.key is None:
             continue
-        assert f"Ctrl+\\ {action.key}" in text and action.label in text, f"{action.id} is missing from All keys"
+        # An action with a key of its own (Detach: Ctrl+]) is listed under that key; its leader letter is unadvertised.
+        key = action.direct_key or f"Ctrl+\\ {action.key}"
+        assert key in text and action.label in text, f"{action.id} is missing from All keys"
     assert "Ctrl+\\ :q" in text and "Ctrl+\\ ?" in text and "Ctrl+\\ F" in text and "Ctrl+\\ x" in text
     for scope_key in ("t", "h", "e"):  # Who's here's own keys
         assert f"  {scope_key} " in text
-    rebound = "\n".join(keys_lines(_cfg(**{"keys.leader_map.detach": "D"})))
-    detach = [line for line in rebound.splitlines() if "Detach" in line]
-    assert detach and detach[0].strip().startswith("Ctrl+\\ D"), detach
+    rebound = "\n".join(keys_lines(_cfg(**{"keys.leader_map.size": "Z"})))
+    size = [line for line in rebound.splitlines() if "Size…" in line]
+    assert size and size[0].strip().startswith("Ctrl+\\ Z"), size
+    assert "Ctrl+] " in text and "Ctrl+\\ d" not in text, "Detach is listed under its own key, not the leader's"
 
 
 def test_all_keys_lists_the_theme_picker_keys_under_its_own_scope() -> None:

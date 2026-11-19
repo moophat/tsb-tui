@@ -83,14 +83,17 @@ start-up exits 2 and names the config path and environment variable.
 refused unless the host is loopback.
 
 1. **Log in** on the first screen with your TSB username and password.
-2. **List targets.** Press `Ctrl-\` then `F` for the full Fleet view, then `Tab` to the Targets tab. It lists the
+2. **List targets.** The Targets list sits at the top of the side panel, and you land in its filter after login.
+   For the whole list, press `Ctrl-\` then `F` for the full view, then `Tab` to the Targets tab. It lists the
    targets the broker shows this login.
 3. **Open a session.** Select a target and press `Enter`. New session opens on it. The first attach to a session shows a
    gate with the recording text (every byte typed and shown is recorded) and, for a first-use host key, its fingerprint
    and a tick.
 4. **Type.** Every key reaches the session except the leader, `Ctrl-\`.
-5. **Detach.** `Ctrl-\` then `d`. The session keeps running on the broker; `Ctrl-\` then `f` opens the sidebar, where
-   you pick it up again. `Ctrl-\` alone opens the Menu, the complete searchable list of actions.
+5. **Detach.** `Ctrl-]`. The session keeps running on the broker; `Ctrl-\` then `f` opens the side panel (Targets and
+   sessions), where you pick it up again. `Ctrl-\` alone opens the Menu, the complete searchable list of actions
+   (F1 opens it too). To send a real Ctrl-] to the session, press `Ctrl-\` then `Ctrl-]`; to send F1, press `Ctrl-\`
+   then F1.
 
 For an agent, the same program headless. One JSON command per line in, one JSON answer or event per line out:
 
@@ -113,14 +116,14 @@ before you run `drive` for an agent.
 
 **Targets** ([guide section 11](docs/using-tsb-tui.md#11-targets-add-edit-delete))
 - List and query the inventory on the Targets tab (`type:ssh tag:prod group:core source:nmaa`).
-- Add (`n`), edit (`e`) and delete (`d`) a target. This needs the `target.edit` permission on your login. Drive has
+- Add (`a`), edit (`e`) and delete (`D`) a target (`n` is New session). This needs the `target.edit` permission on your login. Drive has
   `target_new`, `target_edit` and `target_delete` ([GUIDE.md section 5](tsb_tui/drive/GUIDE.md#5-commands)).
 
 **Logins and the vault**
 - Type a device login in the terminal at connect, or use a stored login; **Remember** (off by default) saves a
   successful password-only login
   ([New session and Remember](#tsb-tui-drive-an-agent-or-the-harness-uses-the-tui-as-a-person-does)).
-- Credentials…: save a login, map credentials to targets, delete them; Devices… lists and revokes trusted devices
+- Vault…: save a login, map credentials to targets, delete them; Devices… lists and revokes trusted devices
   (the vault bullet of [the rail section](#the-rail-the-sidebar-and-several-sessions)).
 
 **The screen lock**
@@ -214,18 +217,18 @@ Menu) shows every knob in force and the layer its value came from. The order of 
                                      attachment, engine and canvas each), keys -> bytes, resize, the status
                                      row, Take back, the end of a session
     tsb_tui/screens/whos_here.py, size_dialog.py   Who's here (hand off, take, put aside, remove) and Size
-    tsb_tui/widgets/rail.py          the four-column rail: Menu, Fleet, need-you and alert counts, one chip per
-                                     session, new session
-    tsb_tui/widgets/sidebar.py       the rail widened in place: groups, filter, mine|all, details
+    tsb_tui/widgets/rail.py          the rail: Sessions (with the needs-you count), Targets, Vault, Alerts, Menu,
+                                     one row per session open here, New session
+    tsb_tui/widgets/sidebar.py       the side panel: the Targets list and the Sessions list, filter, fold
     tsb_tui/widgets/canvas.py        the grid painted at the session's size, panned over by the window
     tsb_tui/widgets/status_row.py    the one status row: the pill, the state in words, clickable hints
     tsb_tui/glyphs.py                the Unicode glyph set and its ASCII fallback (`glyphs.set`)
     tsb_tui/screens/prompts.py       the stale choice, the quiet prompt, operator alerts, the end dialog
     tsb_tui/model/                   pure state, no Textual: `attachment.py` (every C2 frame and close),
                                      `actions.py` (the one action table), `fleet.py`, `alerts.py`, `countdown.py`
-    tsb_tui/screens/fleet_view.py    the full-screen Fleet view: Sessions, Targets and Alerts tabs, Needs you, the table
+    tsb_tui/screens/fleet_view.py    the full view: Sessions, Targets and Alerts tabs, Needs you, the table
     tsb_tui/screens/target_form.py   the New target / Edit target form and the delete confirmation (the Targets tab's
-                                     `n`, `e`, `d`)
+                                     `a`, `e`, `D`)
     tsb_tui/screens/chrome_dialogs.py  End session…'s question, the event log, Settings…, All keys, About
     tsb_tui/widgets/mouse.py         what `mouse.enabled` and `mouse.tooltips` mean for the chrome
     tsb_tui/term/backend.py     libghostty-vt screen state, fed by the attached byte stream (Contract
@@ -272,11 +275,12 @@ line per step, including a failed close (a leaked session is worse than a loud e
 On the terminal screen every key reaches the session (F9, Esc, Tab, Ctrl-P, Ctrl-C and Ctrl-Q are the
 session's), re-encoded for the session's own modes by libghostty's key encoder. A client that only
 watches (a `session.join.ro` login) sends none of its typing; the owner's typing always goes out and
-takes the keyboard. The one key the TUI takes is the leader, Ctrl-\\ (`keys.leader`): `^\` then a letter
-runs an action (`^\ d` detach, `^\ w` Who's here, `^\ r` Size, `^\ R` auto size on or off, `^\ f` the
-fleet sidebar, `^\ 1`-`^\ 9` the session on that chip, `^\ n` and `^\ p` the next and previous, `^\ s` the
-sidebar's keys, `^\ t` Take back, `^\ c` New session, `^\ x` End…, `^\ F` the full view, `^\ e` the event log,
-`^\ v` Pan (a quick look: with `view.follow_cursor = auto` the next output or keystroke returns the window to the cursor), `^\ ?` All keys, `^\ :q` Quit), `^\` alone opens the Menu, and `^\ ^\` sends Ctrl-\\ to the session. The status row at
+takes the keyboard. The keys the TUI takes are Ctrl-] (detach), F1 (the Menu) and the leader, Ctrl-\\ (`keys.leader`): `^\` then a letter
+runs an action (`^\ w` Who's here, `^\ r` Size, `^\ R` auto size on or off, `^\ f` Targets and sessions (the
+side panel), `^\ 1`-`^\ 9` the session on that chip, `^\ →` and `^\ ←` the next and previous, `^\ s` the
+side panel's Sessions list, `^\ t` Take back, `^\ n` New session, `^\ x` End…, `^\ y` Answer the question, `^\ F` the
+full view, `^\ h` the event log, `^\ v` Pan (a quick look: with `view.follow_cursor = auto` the next output or keystroke returns the window to the cursor), `^\ ?` All keys, `^\ :q` Quit), `^\` alone opens the Menu, and `^\ ^\` sends Ctrl-\\ to the session, `^\` then F1 sends F1 and `^\` then `Ctrl-]` sends Ctrl-]. `Ctrl-]` alone detaches
+the front session from the canvas and from the lists, so no session sees it. The status row at
 the bottom (`status.position`) says who types and lists what can be done now; each hint, the keyboard
 pill and `≡ Menu` take a click. The Menu is the complete list of actions, searchable. Letters are
 rebound with `[keys.leader_map]` in the config file, by action name.
@@ -426,34 +430,40 @@ the tests cannot make.
 
 ### The rail, the sidebar and several sessions
 
-Login lands on the workspace, not on a form: a four-column rail on the left (`rail.side`, `rail.width`), the
-canvas of the session in front, and one status row. With no session open the sidebar starts open
-(`sidebar.open_when_no_session`).
+Login lands on the workspace, not on a form: a rail on the left (`rail.side`, `rail.width`; words from 81 columns,
+marks only at 80 and below), the side panel with the Targets list and the Sessions list, the canvas of the session in
+front, and one status row. With no session open the side panel starts open (`sidebar.open_when_no_session`), and the
+keys start in the Targets filter.
 
-* **The rail**, top to bottom: `≡` the Menu, `▦▸` the fleet sidebar, `▲n` how many sessions need you, `!n` TSB's
-  alerts (only for a `broker.health` login), then one chip per session open here — numbered, then who types
-  (`●` you, `◆` another login, `·` nobody, `▲` needs you, `?` asks you, `◌` unreachable, `✕` ended), then `◂` for
-  the one in front or `•` for output you have not looked at — and `+` for a new session. Every row is one click.
-* **The sidebar** is the rail widened in place to 32 columns (30 on a phone, 42 from 160 columns), beside the
-  canvas, never over it. Groups: Needs you, Open here, Yours someone else types, Yours and joinable; `/`
-  filters, `mine│all` changes what is listed, `⏎` opens a row, `t` takes the keyboard back, `Esc` or `^\ f`
-  closes it. **Opening or closing it never asks any session for a size**: the canvas pans (`cols 1-88 of 116 ▸`).
-  The fleet is read every `fleet_view.refresh_s` seconds while it is on screen, on a thread of its own.
+* **The rail**, top to bottom: `▸ Sessions`, `▦ Targets`, `◆ Vault`, `! Alerts` (only for a `broker.health` login),
+  `≡ Menu`, then one row per session open in this window (its number, its name, and a mark: `◂` for the one in front,
+  `•` for output you have not looked at, `✕` for one that ended), and `+ New`. While sessions need you, the Sessions
+  mark becomes `▲` and the count follows it (`▲1 Sessions`; `▲12 Sessio…`; `▲1` at 80 columns and below), so `▸`
+  always means Sessions and `▲` always means needs you. Every row is one click, and the rail takes the keys as one
+  stop: `↑` `↓` choose a row, `Enter` runs it, `n` is New session, `Esc` goes back to the session.
+* **Targets and sessions** (`^\ f`, or `Tab` from the rail) is the side panel, 32 columns (30 on a phone, 42 from
+  160 columns), beside the canvas, never over it. Two lists: Targets above, Sessions below, each in its own frame and
+  tint; the one with the keys has the heavy frame. `Tab` and `Shift+Tab` walk rail, Targets, Sessions; `/` filters the
+  Targets list, `⏎` opens a row, `t` takes the keyboard back, `z` folds the other list, `Esc` goes back to the session.
+  The Sessions list shows the sessions open here; the full view lists the rest. **Opening or closing the panel never
+  asks any session for a size**: the canvas pans (`cols 1-88 of 116 ▸`). The fleet is read every
+  `fleet_view.refresh_s` seconds while it is on screen, on a thread of its own.
 * **Several sessions.** Each one open here is attached, parsed and kept; only the one in front is painted, and a
   chip shows `•` when output arrived in another. Each attachment keeps its own state: a session you only watch
   never answers a terminal query.
 * **Take back.** `t` on a sidebar row (or `^\ t`, the Menu, the quiet prompt's button) brings the session to the
   front, attaches first when needed (the gate shows first), then sends `handoff` to this client's own id. The
-  status row says whose keyboard it took, and a toast says how to give it back.
+  status row says whose keyboard it took, and the session's frame says "you type now: you took it from …". When the
+  keyboard comes to you by any route, that frame notice is the one notice; no toast repeats it.
 * **New session** is a dialog over the workspace, on the target picked in the Targets tab, `--target` or typed. It is created with the canvas's size (the window minus the rail
   and the status row); auto size is on by default (`size.auto_request = true`, OPEN-1 ruled 2026-10-12). Turn it off
   and the dialog has no size to carry and says so, creating nothing (a guessed size would be a request the operator
   never made).
-* **The full Fleet view** (`full view ▸` in the sidebar, `^\ F`, the Menu) covers the canvas with the rail still
+* **The full view** (`F` in the side panel, `^\ F`, the Menu) covers the canvas with the rail still
   beside it: tabs Sessions, Targets and Alerts (Alerts only for a `broker.health` login), Needs you first, then a table of
   the sessions you own or may join (target, id, type, state, keys, open, clients, owner, ends in, REC), a `/`
-  filter, `mine│joinable`, "show ended" and `fleet_view.group_by`. `⏎` opens a row, `c` New session, `t` Take
-  back, `w` Who's here, `x` End…, `Tab` the next tab, `Esc` back to the session it came from (and to the sidebar
+  filter, `mine│joinable`, "show ended" and `fleet_view.group_by`. `⏎` opens a row, `n` New session, `t` Take
+  back, `w` Who's here, `x` End…, `Tab` the next tab, `Esc` back to the session it came from (and to the side panel
   it was opened from). `Ctrl-Q` quits from here.
 * **The Targets tab** lists the inventory the core shows this login (name, type, group, tags, source, the sessions
   you see there, and `attach` where one is live), a page at a time (`Targets 100+` until the end is reached), with the
@@ -463,7 +473,7 @@ canvas of the session in front, and one status row. With no session open the sid
   connection carries one session, so reuse is greyed there). Every string from a target record is drawn as text:
   markup stays literal and a control character (an escape included) shows as its Unicode control picture. A
   New session on a typed id reads `GET /targets/{id}` first, for its type. `tsb-tui drive` has the same two reads as
-  commands, `targets` and `new` (`tsb-tui drive --guide`). With the `target.edit` permission, `n`, `e` and `d` add,
+  commands, `targets` and `new` (`tsb-tui drive --guide`). With the `target.edit` permission, `a`, `e` and `D` add,
   edit and delete a target (`tsb_tui/screens/target_form.py`); drive has `target_new`, `target_edit` and `target_delete`.
 * **Mouse and touch.** A single click or tap acts on every piece of chrome: the rail, the sidebar, the status row's
   hints (the full view's and Pan's too) and the dialogs' buttons. The wheel moves through the sidebar and the
@@ -499,7 +509,7 @@ canvas of the session in front, and one status row. With no session open the sid
 * **The vault, in untrusted mode only** (E4): nothing about it is written on this host, the TUI never registers a device or
   sends a challenge, and every passphrase prompt says that typed keys may be recorded when the TUI runs inside a TSB
   session. A New session the core answers `vault_locked` asks the passphrase, unlocks and repeats once; an unset vault is
-  offered init, with the warning that a forgotten passphrase cannot be recovered. **Credentials…** (`^\ C`, the Menu)
+  offered init, with the warning that a forgotten passphrase cannot be recovered. **Vault…** (`^\ C`, the Menu)
   lists your own references and kinds, saves a login (a username with a password, or an unencrypted key pasted into a masked
   field or read once from a file of at most 16 KiB), maps credentials to targets and deletes them (which clears their
   mappings); on the Targets tab `Space` marks targets, `l` saves a login for the marked or selected ones and `p` maps a
@@ -528,10 +538,10 @@ Every state a session's frames put it in is on screen, never only in a log:
   button each (or 1-4), and keys are ignored for the first second. Choosing "Start a fresh session" opens New
   session on the same target and leaves the old session running.
 * **A quiet prompt** ("Kill the session?") is a box that never takes a key: Keep it, Kill it… (asks once
-  more), or Take back when someone else types. `^\ a` opens the same two answers for the keyboard.
+  more), or Take back when someone else types. `^\ y` opens the same two answers for the keyboard.
 * **An ended session** keeps its last screen, dimmed, with a dialog saying which end it was; `c` starts a new
-  session on the same target, `n` goes to the next session open here and `^\ f` opens the sidebar. Its chip
-  shows `✕` until you move on to another session.
+  session on the same target, `n` goes to the next session open here and `^\ f` opens the side panel. Its rail row
+  shows `✕` in the mark cell until you move on to another session.
 * **Operator alerts** pop up for a login that holds `broker.health` only; a 403 hides everything alert-related.
 * **Before the first attach to a session** in a run, a gate shows the recording text and, for a first-use host
   key, the fingerprint and a tick. Later attaches show the recording text in the status row for

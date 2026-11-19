@@ -37,8 +37,8 @@ def _notes(app) -> list[tuple[str, str]]:
 def test_t_on_a_row_open_here_takes_the_keyboard_and_says_whose_it_was_and_how_to_give_it_back(
         serve, wait_until) -> None:
     """D45, step 9, mockup A1: the session comes to the front, `handoff` goes to this client's own id, the `token`
-    frame says `takeover`, the status row reads "you took the keyboard from fixture-peer", and a toast names the target
-    and says how to hand it back (Who's here, then Hand to selected)."""
+    frame says `takeover`, the status row reads "you took the keyboard from fixture-peer", and the session's frame says
+    "you type now: you took it from fixture-peer" (the one notice; no toast repeats it)."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -60,10 +60,10 @@ def test_t_on_a_row_open_here_takes_the_keyboard_and_says_whose_it_was_and_how_t
                 await wait_until(pilot, lambda: "you took the keyboard from fixture-peer" in screen.status.text,
                                  "the status row to say whose keyboard it took")
                 assert "you type" in str(screen.query_one("#canvases").border_title)  # the pill's fact is the frame's title
-                toast = next(((t, m) for t, m in _notes(app) if t == "keyboard · you took it"), None)
-                assert toast is not None, _notes(app)
-                assert "k8s-node-07" in toast[1] and "from fixture-peer" in toast[1]
-                assert "Who's here, then Hand to selected" in toast[1]
+                # One notice, not two: the frame says whose it was; no toast repeats it.
+                notice = str(screen.query_one("#canvases").border_subtitle)
+                assert "you type now: you took it from fixture-peer" in notice, notice
+                assert not any(t.startswith("keyboard") for t, _ in _notes(app)), _notes(app)
 
     asyncio.run(_check())
 

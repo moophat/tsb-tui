@@ -167,7 +167,10 @@ class MenuProvider(Provider):
         words = [word for word, _ in self._words(query)]
         for action, keys, why in self._entries():
             name_words = self._words(action.label)
-            if all(any(name.startswith(word) for name, _ in name_words) for word in words):
+            # An older name finds the item too (Credentials finds Vault…), without highlighting words the label lacks.
+            alias_words = [name for alias in action.aliases for name, _ in self._words(alias)]
+            if all(any(name.startswith(word) for name, _ in name_words) or any(a.startswith(word) for a in alias_words)
+                   for word in words):
                 label = Content(action.label)
                 for name, positions in name_words:
                     for word in words:
@@ -274,7 +277,9 @@ class MenuPalette(CommandPalette):
         screen = self.app.workspace()
         event.stop()
         event.prevent_default()
-        if event.key == self.app.cfg["keys.leader"]:
+        if event.key == self.app.cfg["keys.leader"] or event.key == actions.DETACH_KEY:
+            # The leader twice sends the leader; the leader then Ctrl+] sends Ctrl+] (alone it detaches): both go to the
+            # session as typed, as the leader then F1 does.
             self._action_escape()
             await screen._send_key(event)
         elif event.character == "/":
@@ -283,7 +288,7 @@ class MenuPalette(CommandPalette):
             self.query_one(Input).focus()
             self.query_one("#menu-key-message", Static).update("Type to find an action. Enter runs it; Esc closes.")
         else:
-            letter = event.character or ""
+            letter = actions.LEADER_ARROWS.get(event.key) or event.character or ""
             overrides = self.app.cfg.leader_overrides()
             chord = self.chord
             action = (actions.action_for_chord(chord, letter, overrides) if chord
@@ -299,7 +304,7 @@ class MenuPalette(CommandPalette):
                 self._action_escape()
                 screen.switch_to_number(int(letter))
             else:
-                self.query_one("#menu-key-message", Static).update(f"{chord}{event.character or event.key} has no shortcut.")
+                self.query_one("#menu-key-message", Static).update(f"{chord}{letter or event.key} has no shortcut.")
         return True
 
     def _action_escape(self) -> None:
@@ -451,6 +456,14 @@ class TsbTuiApp(App):
 
             event.stop()
             event.prevent_default()
+            workspace = self.workspace()
+            if (isinstance(self.screen, MenuPalette) and workspace is not None and workspace.leader_pending
+                    and not self.screen.search_mode):
+                # Ctrl+\ then F1: the Menu is not wanted, the session's own F1 is (the key after the leader is the
+                # session's when it names no shortcut).
+                self.screen._action_escape()
+                await workspace._send_key(event)
+                return
             if not isinstance(self.screen, (LockScreen, LoginScreen)):
                 self.open_menu()
             return

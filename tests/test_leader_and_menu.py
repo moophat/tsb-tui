@@ -150,7 +150,7 @@ def test_the_leader_works_while_the_attach_is_still_starting_and_other_keys_go_t
             screen = app.screen
             await wait_until(pilot, lambda: screen.status is not None and "attaching" in screen.status.text,
                              "the row to say it is attaching")
-            assert screen.pump is None and "Ctrl+\\ d Detach" in screen.status.text
+            assert screen.pump is None and "Ctrl+] detach" in screen.status.text
 
             await pilot.press(LEADER, "d")
             await wait_until(pilot, lambda: _detached(screen), "Detach to leave")
@@ -191,8 +191,8 @@ NEVER_TAKEN = [
     ("d", b"d"), ("w", b"w"), ("r", b"r"), ("R", b"R"), ("f", b"f"), ("x", b"x"), ("c", b"c"),
     ("escape", b"\x1b"), ("tab", b"\t"), ("f9", b"\x1b[20~"),
     ("ctrl+a", b"\x01"), ("ctrl+b", b"\x02"), ("ctrl+d", b"\x04"), ("ctrl+p", b"\x10"),
-    ("ctrl+q", b"\x11"), ("ctrl+z", b"\x1a"), ("ctrl+right_square_bracket", b"\x1d"),
-]
+    ("ctrl+q", b"\x11"), ("ctrl+z", b"\x1a"),
+]  # Ctrl+] is not here: it detaches the front session (test_redesign_focus)
 
 
 def test_every_key_but_the_leader_reaches_the_session(serve, monkeypatch, wait_until) -> None:
@@ -277,7 +277,7 @@ def test_the_menu_lists_every_action_of_the_table_with_its_key_and_is_searchable
                 option = next(o for o in palette.query_one(CommandList).options if o.hit.text == action.label)
                 assert option.disabled or action.description[:8] in option.prompt.plain
             leader = A.leader_label(LEADER)
-            assert f"{leader} w" in listed and f"{leader} d" in listed
+            assert f"{leader} w" in listed and "Ctrl+]" in listed  # Detach is listed under its own key
 
             await pilot.press("/", *"size")
             await wait_until(pilot, lambda: _menu_texts(palette) and "Size…" in _menu_texts(palette)[0]
@@ -398,8 +398,9 @@ def test_keys_leader_map_rebinds_a_letter_and_the_old_letter_runs_nothing(
         app = TsbTuiApp(url)
         async with app.run_test(size=(200, 24)) as pilot:
             screen, client_id = await _open(pilot, app, serve_app, wait_until)
-            await wait_until(pilot, lambda: "Ctrl+\\ q Detach" in screen.status.text, "the row to print the new letter")
-            assert "Ctrl+\\ d Detach" not in screen.status.text
+            # Detach's key is Ctrl+], which the row prints; its leader letter is unadvertised but still rebindable.
+            await wait_until(pilot, lambda: "Ctrl+] detach" in screen.status.text, "the row to print Detach's key")
+            assert "Ctrl+\\ q" not in screen.status.text and "Ctrl+\\ d" not in screen.status.text
 
             await pilot.press(LEADER, "d")
             await pilot.pause()

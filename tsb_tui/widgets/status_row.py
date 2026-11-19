@@ -370,6 +370,10 @@ def _session_hints(inputs: StatusInputs) -> list[tuple[str, list[Piece]]]:
         if action.id == "menu":
             by_name[action.id] = [Piece("F1", "hint_key", action.id),
                                   Piece(" Menu", "hint", action.id)]
+        elif action.direct_key is not None:
+            # A key of its own, with no leader (Detach is Ctrl+]); the leader letter is not advertised.
+            by_name[action.id] = [Piece(action.direct_key, "hint_key", action.id),
+                                  Piece(f" {action.hint}", "hint", action.id)]
         elif action.glyph:
             tail = f" {inputs.leader} {letter}" if letter else f" {inputs.leader}"
             by_name[action.id] = [Piece(action.glyph, "glyph", action.id),
@@ -525,18 +529,20 @@ def build_pieces(inputs: StatusInputs, width: int, *, keys_only: bool = False) -
 
     target = inputs.target
     stale = inputs.state is not None and inputs.state.stale_state == "pending"
-    # Alerts shares "fleet view" with Sessions, but has no session pick/take-back action.
-    session_list = target is not None and (target.name == "fleet" or (
-        target.name == "fleet view" and any(action_of(h) in {"pick", "take_back"} for h in hints)))
+    # Alerts shares the full view with Sessions, but has no session pick/take-back action.
+    session_list = target is not None and (target.name == "sessions" or (
+        target.name == "full view" and any(action_of(h) in {"pick", "take_back"} for h in hints)))
     protected_row = special is None and not inputs.input_notice and (
         (target is None and inputs.state is not None and not inputs.attaching and not stale)
-        or (target is not None and target.name == "targets") or session_list)
-    protected = {"take_back", "scroll"} if target is None and special is None else set()
+        or (target is not None and target.name in ("targets", "rail")) or session_list)
+    # Detach carries the key that leaves a session (Ctrl+]): it is protected at every width, and under 80 columns it
+    # leaves after Scroll and `? keys`, before Take back and the Menu (below).
+    protected = {"take_back", "scroll", "detach"} if target is None and special is None else set()
     if protected_row:
-        protected |= {"menu", "keys", "take_back", "scroll"}
+        protected |= {"menu", "keys", "take_back", "scroll", "detach"}
         present = {action_of(h) for h in hints}
         hints = [*hints, *(h for h in _session_hints(inputs)
-                             if h[0] in {"menu", "keys"} and h[0] not in present)]
+                             if h[0] in {"menu", "keys", "detach"} and h[0] not in present)]
     else:
         hints = [h for h in hints if action_of(h) not in {"menu", "keys"}]
     ordinary = [name for name, parts in hints if action_of((name, parts)) not in protected
@@ -549,9 +555,10 @@ def build_pieces(inputs: StatusInputs, width: int, *, keys_only: bool = False) -
         drop_order = sorted(ordinary, key=lambda n: rank.get(n, len(rank)), reverse=True)
     original_left = left
     left, hints = _fit(original_left, hints, drop_order, width)
-    if protected_row and width < 80:
-        # Only after ordinary hints and facts have yielded may protected hints leave.
-        for action in ("scroll", "keys", "take_back", "menu"):
+    if protected and width < 80:
+        # Only after ordinary hints and facts have yielded may protected hints leave: Scroll, `? keys`, Detach, Take
+        # back, and the Menu last.
+        for action in ("scroll", "keys", "detach", "take_back", "menu"):
             used = _width(left) + sum(_width(p) for _, p in hints) + len(GAP) * max(len(hints) - 1, 0)
             if used + (MIN_GAP if hints and left else 0) <= width:
                 break

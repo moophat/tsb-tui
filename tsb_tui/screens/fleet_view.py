@@ -35,6 +35,7 @@ from textual.strip import Strip
 from textual.widget import Widget
 
 from .. import glyphs
+from ..model.actions import DETACH_KEY
 from ..model.fleet import (
     WHO_ASKS,
     WHO_ENDED,
@@ -438,7 +439,7 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
     from line `top`; beside it the selected session's details when `details` is set and the view is wide enough."""
     head: list[Line] = []
     back = f"Esc back to {model.back_label}" if model.back_label else "Esc back"
-    head.append(_joined([Part(" ▦ Fleet · full view", "title")],
+    head.append(_joined([Part(f" ▦ {TAB_LABELS.get(tab, 'Full view')} · full view", "title")],
                         [Part(back, "muted", CMD_CLOSE, tip=f"{back} · or click here"), Part(" ", "blank")], width))
     needs = visible_needs(model, filter_text)
     table = _table(model, filter_text, show_ended)
@@ -894,7 +895,7 @@ class FleetView(Widget):
         """Every key is the view's while it has the keys (D14), except the leader and the key after it, which belong
         to the screen (`^\\ f` still works). `Ctrl-Q` leaves the TUI, the sessions running (D38)."""
         screen = self.screen
-        if event.key == self._leader or getattr(screen, "leader_pending", False):
+        if event.key in (self._leader, DETACH_KEY) or getattr(screen, "leader_pending", False):
             return
         event.stop()
         key = event.key
@@ -929,8 +930,8 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_MODE))
         elif key == "e" and self.tab == TAB_SESSIONS:
             self.toggle_show_ended()
-        elif key in ("a", "e", "d") and self.tab == TAB_TARGETS and self._model.target_edit:
-            command = {"a": CMD_TARGET_NEW, "e": CMD_TARGET_EDIT, "d": CMD_TARGET_DELETE}[key]
+        elif key in ("a", "e", "D") and self.tab == TAB_TARGETS and self._model.target_edit:
+            command = {"a": CMD_TARGET_NEW, "e": CMD_TARGET_EDIT, "D": CMD_TARGET_DELETE}[key]
             self.post_message(self.Command(command, self.selected_session))
         elif key == "space" and self.tab == TAB_TARGETS:
             self.toggle_mark()

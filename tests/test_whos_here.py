@@ -322,10 +322,10 @@ def test_a_session_that_ends_under_an_open_dialog_leaves_the_end_dialog_over_one
     asyncio.run(_check())
 
 
-def test_the_keyboard_coming_to_this_client_is_told_in_a_toast(serve, wait_until) -> None:
+def test_the_keyboard_coming_to_this_client_is_told_in_the_frame_not_a_toast(serve, wait_until) -> None:
     """Frontend §9 (auto-transfer notice), D22: when another client hands the keyboard to this one, the
     operator is told, because a keyboard that arrives silently is a keyboard they type into by surprise.
-    The holder (a peer, who attached first) hands it to this owner client."""
+    The session's frame says so (one notice; no toast repeats it). The holder (a peer, who attached first) hands it to this owner client."""
 
     async def _check() -> None:
         _serve_app, url = serve(InputRecordingApp())
@@ -339,8 +339,10 @@ def test_the_keyboard_coming_to_this_client_is_told_in_a_toast(serve, wait_until
                 assert not state.holds_keyboard
                 peer.handoff(state.client_id)
                 await wait_until(pilot, lambda: state.holds_keyboard, "the keyboard to arrive")
-                await wait_until(pilot, lambda: "The keyboard was handed to you." in _notifications(app),
-                                 "the toast")
+                frame = screen.query_one("#canvases")
+                await wait_until(pilot, lambda: "handed it to you" in str(frame.border_subtitle),
+                                 "the frame's notice")
+                assert not any("handed to you" in m for m in _notifications(app)), "the notice replaces the toast"
 
     asyncio.run(_check())
 

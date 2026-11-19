@@ -30,11 +30,19 @@ SCOPE_THEME = "theme"
 SCOPES = (SCOPE_SESSION, SCOPE_WHO, SCOPE_SIZE, SCOPE_THEME)
 
 GROUP_SESSION = "This session"
-GROUP_FLEET = "Fleet"
+GROUP_FLEET = "Targets and sessions"
 GROUP_VIEW = "View"
 GROUP_SETTINGS = "Settings and help"
 # The Menu's groups, in the order the design lists them (§2.4).
 GROUPS = (GROUP_SESSION, GROUP_FLEET, GROUP_VIEW, GROUP_SETTINGS)
+
+# Detach runs on this key from the canvas and from the lists, without the leader (the Menu keeps a Detach item).
+DETACH_KEY = "ctrl+right_square_bracket"
+DETACH_LABEL = "Ctrl+]"
+# Textual's names of the keys after the leader that are not a printable character: the table writes them as the arrow.
+LEADER_ARROWS: dict[str, str] = {"right": "→", "left": "←"}
+# Unadvertised letters after the leader, kept so a hand that learned them still lands: `c` was New session's letter.
+LEADER_ALIASES: dict[str, str] = {"c": "new_session"}
 
 # How the leader key is printed in the status row (`≡ Menu ^\`), by the Textual key name the
 # `keys.leader` knob holds. The design's own reasons (§2.4) rule out every Ctrl-letter: they are
@@ -82,6 +90,11 @@ class Action:
     glyph: str = ""  # the mark that leads its hint (`≡ Menu ^\`), when it has one
     in_menu: bool = True
     permission: str | None = None
+    # Older names the Menu's search still finds the action by (the Menu's label moved: Credentials is Vault now).
+    aliases: tuple[str, ...] = ()
+    # The key that runs it without the leader, when it has one (Detach is Ctrl+]); the leader letter still works but
+    # is not advertised.
+    direct_key: str | None = None
 
 
 def _attached(facts: Facts) -> str | None:
@@ -246,28 +259,29 @@ ACTIONS: tuple[Action, ...] = (
            SCOPE_SESSION, "Size", _attached),
     Action("auto_size", "Auto size on or off", "ask for my window's size when it changes, while I type",
            "R", GROUP_SESSION, SCOPE_SESSION, None, _always),
-    Action("detach", "Detach", "leave it running", "d", GROUP_SESSION, SCOPE_SESSION, "Detach", _any_open),
+    Action("detach", "Detach", "leave it running", "d", GROUP_SESSION, SCOPE_SESSION, "detach", _any_open,
+           direct_key=DETACH_LABEL),
     Action("end", "End session…", "ends it for everyone; asks first", "x", GROUP_SESSION, SCOPE_SESSION,
            "End…", _end_blocked),
-    Action("fleet", "Fleet sidebar", "open or close it beside the terminal", "f", GROUP_FLEET,
-           SCOPE_SESSION, "Fleet", _always, glyph="▦"),
+    Action("fleet", "Targets and sessions", "open or close the panel beside the terminal", "f", GROUP_FLEET,
+           SCOPE_SESSION, "Targets", _always, glyph="▦", aliases=("Fleet", "Fleet sidebar")),
     Action("answer", "Answer the question…", "the session asked whether to kill it: keep it or kill it",
-           "a", GROUP_SESSION, SCOPE_SESSION, "Answer: kill the session?", _answer_blocked),
-    Action("full_view", "Full fleet view", "every session you own or may join, full screen", "F",
-           GROUP_FLEET, SCOPE_SESSION, None, _always),
+           "y", GROUP_SESSION, SCOPE_SESSION, "Answer: kill the session?", _answer_blocked),
+    Action("full_view", "Full view", "every session you own or may join, full screen", "F",
+           GROUP_FLEET, SCOPE_SESSION, None, _always, aliases=("Fleet", "Full fleet view")),
     Action("take_back", "Take back…", "the keyboard, in a session of yours someone else types in", "t",
            GROUP_FLEET, SCOPE_SESSION, "Take back", _take_back_blocked),
-    Action("new_session", "New session…", "on a target you can open", "c", GROUP_FLEET, SCOPE_SESSION,
+    Action("new_session", "New session…", "on a target you can open", "n", GROUP_FLEET, SCOPE_SESSION,
            None, _always),
     Action("new_on_connection", "New session on this connection", "reuse this session's authentication", None,
            GROUP_SESSION, SCOPE_SESSION, None, _reuse_blocked),
-    Action("switch", "Switch to…", "pick a session from the fleet sidebar, or its number after the leader", "s",
+    Action("switch", "Switch to…", "pick a session from the side panel, or its number after the leader", "s",
            GROUP_FLEET, SCOPE_SESSION, None, _always),
-    Action("next", "Next open session", "the next session open here", "n", GROUP_FLEET, SCOPE_SESSION, None,
+    Action("next", "Next open session", "the next session open here", "→", GROUP_FLEET, SCOPE_SESSION, None,
            _another_open),
-    Action("prev", "Previous open session", "the previous session open here", "p", GROUP_FLEET,
+    Action("prev", "Previous open session", "the previous session open here", "←", GROUP_FLEET,
            SCOPE_SESSION, None, _another_open),
-    Action("event_log", "Event log", "what this session's frames told this client, newest last", "e",
+    Action("event_log", "Event log", "what this session's frames told this client, newest last", "h",
            GROUP_VIEW, SCOPE_SESSION, None, _attached),
     Action("scroll", "Scroll back", "older output this client holds; Esc returns to live", "[", GROUP_VIEW,
            SCOPE_SESSION, "Scroll", _scroll_blocked),
@@ -280,16 +294,16 @@ ACTIONS: tuple[Action, ...] = (
     Action("keys", "All keys", "every action's key", "?", GROUP_SETTINGS, SCOPE_SESSION, "keys", _always),
     Action("about", "About", "the TUI, the contract client and the engine", None, GROUP_SETTINGS,
            SCOPE_SESSION, None, _always),
-    Action("credentials", "Credentials…", "your saved logins: list, map to targets, delete", "C", GROUP_SETTINGS,
-           SCOPE_SESSION, None, _always),
+    Action("credentials", "Vault…", "your saved logins: list, map to targets, delete", "C", GROUP_SETTINGS,
+           SCOPE_SESSION, None, _always, aliases=("Credentials", "Credentials…")),
     Action("devices", "Devices…", "your trusted devices: list and revoke", "V", GROUP_SETTINGS, SCOPE_SESSION, None,
            _always),
+    Action("lock_now", "Lock now", "lock your vault everywhere and this screen", "L", GROUP_SETTINGS, SCOPE_SESSION,
+           None, _always),
     Action("accounts", "Accounts…", "list, create, disable, enable and set passwords", None, GROUP_SETTINGS,
            SCOPE_SESSION, None, _always, permission="account.admin"),
     Action("password_change", "Change my password…", "prove your current password and set a new one", None,
            GROUP_SETTINGS, SCOPE_SESSION, None, _always),
-    Action("lock_now", "Lock now", "lock your vault everywhere and this screen", "L", GROUP_SETTINGS, SCOPE_SESSION,
-           None, _always),
     Action("sign_out", "Sign out", "detach everything here and sign out; every session keeps running", None,
            GROUP_SETTINGS, SCOPE_SESSION, None, _always),
     Action("quit", "Quit", "leave the TUI; every session keeps running", ":q", GROUP_SETTINGS,
@@ -357,9 +371,13 @@ def leader_keys(overrides: Mapping[str, str] | None = None) -> dict[str, str]:
 
 def action_for_leader_key(letter: str, overrides: Mapping[str, str] | None = None) -> Action | None:
     """The action a letter pressed after the leader runs, or None."""
-    for action_id, bound in leader_keys(overrides).items():
+    keys = leader_keys(overrides)
+    for action_id, bound in keys.items():
         if bound == letter:
             return BY_ID[action_id]
+    alias = LEADER_ALIASES.get(letter)
+    if alias is not None and letter not in keys.values():
+        return BY_ID[alias]
     return None
 
 

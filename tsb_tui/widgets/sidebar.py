@@ -33,6 +33,7 @@ from textual.strip import Strip
 from textual.widget import Widget
 
 from .. import glyphs
+from ..model.actions import DETACH_KEY
 from ..model.fleet import (
     GROUP_MINE_AND_JOINABLE,
     GROUP_MINE_HELD_BY_OTHERS,
@@ -47,7 +48,7 @@ from ..model.fleet import (
     WHO_UNREACHABLE,
 )
 from ..model.targets import TargetRow
-from ..theme import role_colours
+from ..theme import relative_luminance, role_colours, sessions_surface
 from .mouse import mouse_on, set_tip
 
 # What a click or a key on the sidebar asks the screen to do: `Sidebar.Command.name`.
@@ -59,8 +60,13 @@ CMD_MODE = "mode"
 CMD_FULL_VIEW = "full_view"
 CMD_NEW = "new_session"
 CMD_ALERTS = "alerts"
-CMD_FILTER = "filter"  # the filter text changed
+CMD_FILTER = "filter"  # `/` or a click on the filter: start typing into the Targets filter
 CMD_END = "end"  # End session… on a row
+CMD_FOLD = "fold"  # `z`: fold the other list
+CMD_BACK = "back"  # Esc in a list: the keys return to the session open here, if there is one
+CMD_OPEN_TARGET = "open_target"  # Enter on a target: New session on it (the full view's own command, same name)
+PANE_TARGETS = "targets"
+PANE_SESSIONS = "sessions"
 
 SEPARATOR = "┄"
 FULL_VIEW = "full view ▸"
@@ -418,13 +424,13 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
         return SidebarView(tuple(lines), tuple(shown), 0, None, 0)
     header: list[Line] = []
     close_tip = f"◂ close the sidebar · Esc, {model.leader_hint}"
-    head_parts = [Part("▦ Fleet", "title"), Part("  ", "blank"),
+    head_parts = [Part("▦ Targets", "title"), Part("  ", "blank"),
                   Part("◂ close", "close", CMD_CLOSE, tip=close_tip),
                   Part(f" {model.leader_hint}", "muted", CMD_CLOSE, tip=close_tip)]
     head = sum(len(p.text) for p in head_parts)
     if wide and hint_full_view and width >= head + 2 + len(FULL_VIEW):
         head_parts += [Part(" " * (width - head - len(FULL_VIEW) - 1), "blank"),
-                       Part(FULL_VIEW, "muted", CMD_FULL_VIEW, tip="▦ Full fleet view · F"), Part(" ", "blank")]
+                       Part(FULL_VIEW, "muted", CMD_FULL_VIEW, tip="▦ Full view · F"), Part(" ", "blank")]
     else:
         head_parts.append(Part(" " * max(width - head, 0), "blank"))
     header.append(Line(tuple(head_parts)))
@@ -498,7 +504,7 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
         if hidden and name == GROUP_MINE_AND_JOINABLE:
             more = f"{TAIL_MARK} {hidden} more · {FULL_VIEW}"
             body.append(Line((Part(" ", "blank"), Part(_fit(more, width - 1), "muted", CMD_FULL_VIEW,
-                                                            tip="▦ Full fleet view · every session"))))
+                                                            tip="▦ Full view · every session"))))
     lines = [*header, *body, *details, *footer]
     detail_start = len(header) + len(body) if details else None
     # The sidebar is exactly as tall as the window it sits in: blank rows fill the gap, between the groups
@@ -507,6 +513,47 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
     if gap > 0:
         lines = [*header, *body, *details, *(_blank(width) for _ in range(gap)), *footer]
     return SidebarView(tuple(lines), tuple(shown_rows), hidden, detail_start, len(details))
+
+
+def _variant(config: Mapping) -> str:
+    """The theme's direction, `dark` or `light`: the theme's own variant, else read from its background."""
+    chrome = getattr(config, "chrome", None)
+    variant = getattr(chrome, "variant", None)
+    return variant or ("light" if relative_luminance(config["theme.bg"]) > 0.179 else "dark")
+
+
+def _style_table(roles: dict[str, str], surface: str) -> tuple[dict[str, Style], Style]:
+    """The sidebar's styles on one section's `surface`, and the frame's style on it."""
+    base = Style(color=roles["text"], bgcolor=surface)
+    accent, muted, faint = roles["accent"], roles["text_muted"], roles["text_faint"]
+    styles: dict[str, Style] = {
+        "blank": base,
+        "text": base,
+        "front": base + Style(color=accent),
+        "muted": base + Style(color=muted),
+        "title": base + Style(bold=True),
+        "close": base + Style(color=muted),
+        "group": base + Style(color=muted, bold=True),
+        "hairline": base + Style(color=roles["border_on_surface"]),
+        "mark": base + Style(color=accent, bold=True),
+        "num": base + Style(color=muted),
+        "num_front": base + Style(color=accent, bold=True),
+        "who_me": base + Style(color=accent),
+        "who_other": base + Style(color=roles["steel"]),
+        "who_none": base + Style(color=faint),
+        "who_needs": base + Style(color=roles["warn"]),
+        "who_asks": base + Style(color=roles["warn"], bold=True),
+        "who_unreachable": base + Style(color=muted),
+        "who_ended": base + Style(color=roles["danger"]),
+        "warn": base + Style(color=roles["warn"]),
+        "rec": base + Style(color=roles["rec_list"]),
+        "alert": base + Style(color=roles["danger"], bold=True),
+        "toggle": base + Style(color=muted),
+        "toggle_on": base + Style(color=accent, bold=True),
+        "filter": base,
+        "button": base + Style(color=muted),
+    }
+    return styles, base + Style(color=roles["border_on_surface"])
 
 
 class Sidebar(Widget):
@@ -532,7 +579,7 @@ class Sidebar(Widget):
 
     def __init__(self, config: Mapping, *, leader: str) -> None:
         super().__init__()
-        self._build_styles(role_colours(config))
+        self._build_styles(role_colours(config), _variant(config))
         self._glyph_set = glyphs.check(config["glyphs.set"])
         self._leader = leader
         self._wide_from = int(config["sidebar.wide_from"])
@@ -546,6 +593,11 @@ class Sidebar(Widget):
         self._view = SidebarView((), (), 0)
         self._scroll_top = 0
         self._target_scroll_top = 0
+        # The list the keys are on (the Targets list or the Sessions list), the selected target (its id), and the list
+        # folded to its one-line title, if any; none of the three is saved.
+        self.pane = PANE_SESSIONS
+        self.target_selected: str | None = None
+        self.folded: str | None = None
         self._front_id: str | None = None
         # The filter and the column widths for the current filter text and model, reused by every relayout that
         # changes neither (`_prepare`).
@@ -555,43 +607,20 @@ class Sidebar(Widget):
         # neither: `(key, rows)`.
         self._targets_cache: tuple[tuple[object, str], tuple[TargetRow, ...]] | None = None
 
-    def _build_styles(self, roles: dict[str, str]) -> None:
-        """The sidebar's style table from the role colours (TT14): every colour is a role, so a theme
-        switch that rebuilds this table recolours every row without moving any role."""
-        base = Style(color=roles["text"], bgcolor=roles["surface"])
-        accent, muted, faint = roles["accent"], roles["text_muted"], roles["text_faint"]
-        self._styles: dict[str, Style] = {
-            "blank": base,
-            "text": base,
-            "front": base + Style(color=accent),
-            "muted": base + Style(color=muted),
-            "title": base + Style(bold=True),
-            "close": base + Style(color=muted),
-            "group": base + Style(color=muted, bold=True),
-            "hairline": base + Style(color=roles["border_on_surface"]),
-            "mark": base + Style(color=accent, bold=True),
-            "num": base + Style(color=muted),
-            "num_front": base + Style(color=accent, bold=True),
-            "who_me": base + Style(color=accent),
-            "who_other": base + Style(color=roles["steel"]),
-            "who_none": base + Style(color=faint),
-            "who_needs": base + Style(color=roles["warn"]),
-            "who_asks": base + Style(color=roles["warn"], bold=True),
-            "who_unreachable": base + Style(color=muted),
-            "who_ended": base + Style(color=roles["danger"]),
-            "warn": base + Style(color=roles["warn"]),
-            "rec": base + Style(color=roles["rec_list"]),
-            "alert": base + Style(color=roles["danger"], bold=True),
-            "toggle": base + Style(color=muted),
-            "toggle_on": base + Style(color=accent, bold=True),
-            "filter": base,
-            "button": base + Style(color=muted),
-        }
-        self._border = base + Style(color=roles["border_on_surface"])
+    def _build_styles(self, roles: dict[str, str], variant: str) -> None:
+        """The sidebar's two style tables from the role colours (TT14): every colour is a role, so a theme
+        switch that rebuilds them recolours every row without moving any role. Targets keeps the surface; Sessions
+        sits on the next step of the same walk (`sessions_surface`)."""
+        self._styles, self._border = _style_table(roles, roles["surface"])
+        self._styles_sessions, self._border_sessions = _style_table(roles, sessions_surface(roles["surface"], variant))
+        # The selected row's bar: the soft accent, bold, while its list has the keys; a dim bar in the second surface
+        # (still with its ▸) while the keys are elsewhere.
+        self._bar = Style(bgcolor=roles["accent_soft"], bold=True)
+        self._bar_dim = Style(bgcolor=roles["surface_3"])
 
     def apply_theme(self, config: Mapping) -> None:
         """A run-time look switch (B4): rebuild the table from the resolved roles and repaint."""
-        self._build_styles(role_colours(config))
+        self._build_styles(role_colours(config), _variant(config))
         self.refresh()
 
     # -- the model --
@@ -774,6 +803,10 @@ class Sidebar(Widget):
     def sessions_height(self) -> int:
         """The open rows size the Sessions frame; the grouped content scrolls inside it."""
         height = self.size.height or 40
+        if self.folded == PANE_SESSIONS:
+            return 1
+        if self.folded == PANE_TARGETS:
+            return max(height - 1, 1)
         count = sum(len(items) for group, items in self._model.groups if group == GROUP_OPEN_HERE)
         return min(max(3, count + 2), max(height // 2, 3))
 
@@ -795,19 +828,93 @@ class Sidebar(Widget):
         self._targets_cache = (key, result)
         return result
 
-    def _target_lines(self) -> list[Line]:
-        """The Targets section's lines: the filter line when one is being typed or set, then the targets."""
+    def _has_filter_line(self) -> bool:
+        return self.editing or bool(self.filter_text)
+
+    def _target_line_count(self) -> int:
+        return len(self.visible_targets()) + (1 if self._has_filter_line() else 0)
+
+    def _target_line(self, index: int) -> Line | None:
+        """The Targets section's logical line `index`, built when it is painted or clicked: the filter line when one is
+        being typed or set, then the targets, the selected one marked with ▸."""
         inner = max(self.sidebar_width - 4, 1)
-        lines: list[Line] = []
-        if self.editing or self.filter_text:
-            shown = f"/ {self.filter_text}▏" if self.editing else f"/ {self.filter_text}"
-            lines.append(Line((Part(_fit(shown, inner), "filter", CMD_FILTER,
-                                    tip="/ filter the targets by name or host"),)))
-        lines.extend(_text_line(row.name, "text", inner) for row in self.visible_targets())
-        return lines
+        if self._has_filter_line():
+            if index == 0:
+                shown = f"/ {self.filter_text}▏" if self.editing else f"/ {self.filter_text}"
+                return Line((Part(_fit(shown, inner), "filter", CMD_FILTER,
+                                  tip="/ filter the targets by name or host"),))
+            index -= 1
+        rows = self.visible_targets()
+        if not 0 <= index < len(rows):
+            return None
+        row = rows[index]
+        mark = (SELECTED, "mark") if row.id == self.selected_target else (" ", "blank")
+        return Line((Part(mark[0], mark[1]), Part(_fit(row.name, max(inner - 1, 1)), "text")), row.id, PANE_TARGETS)
+
+    # -- the Targets list's selection --
+
+    @property
+    def selected_target(self) -> str | None:
+        """The selected target's id: the one chosen if the filter still shows it, else the first shown."""
+        visible = self.visible_targets()
+        if any(row.id == self.target_selected for row in visible):
+            return self.target_selected
+        return visible[0].id if visible else None
+
+    def _move_target(self, step: int) -> None:
+        visible = self.visible_targets()
+        if not visible:
+            return
+        ids = [row.id for row in visible]
+        current = self.selected_target
+        index = ids.index(current) if current in ids else 0
+        self.target_selected = ids[max(0, min(index + step, len(ids) - 1))]
+        self._scroll_target_to_selected()
+        self.refresh()
+
+    def _scroll_target_to_selected(self) -> None:
+        ids = [row.id for row in self.visible_targets()]
+        chosen = self.selected_target
+        index = None if chosen not in ids else ids.index(chosen) + (1 if self._has_filter_line() else 0)
+        height = max(self.targets_height - 2, 1)
+        if index is not None:
+            if index < self._target_scroll_top:
+                self._target_scroll_top = index
+            elif index >= self._target_scroll_top + height:
+                self._target_scroll_top = index - height + 1
+        self._target_scroll_top = max(0, min(self._target_scroll_top, self._target_scroll_limit()))
+
+    # -- panes and folding --
+
+    def focus_pane(self, pane: str, *, editing: bool = False) -> None:
+        """Give the keys to one list: a folded list opens first, the filter is typed into only when asked."""
+        if self.folded == pane:
+            self.folded = None
+        self.pane = pane
+        self.editing = editing and pane == PANE_TARGETS
+        self._relayout()
+        self._scroll_target_to_selected()
+        self.focus()
+        self.refresh()
+
+    def toggle_fold(self, section: str | None = None) -> None:
+        """`z` folds the list the keys are not on (the one they are on fills the panel) and `z` again restores; a click
+        on a title folds that list, and the same click unfolds it. The keys go to the list that stays open."""
+        if section is None:
+            self.folded = None if self.folded is not None else (
+                PANE_SESSIONS if self.pane == PANE_TARGETS else PANE_TARGETS)
+        else:
+            self.folded = None if self.folded == section else section
+        if self.folded == self.pane:
+            self.pane = PANE_SESSIONS if self.pane == PANE_TARGETS else PANE_TARGETS
+            self.editing = False
+        self._target_scroll_top = min(self._target_scroll_top, self._target_scroll_limit())
+        self._relayout()
+        self._scroll_target_to_selected()
+        self.refresh()
 
     def _target_scroll_limit(self) -> int:
-        return max(len(self._target_lines()) - max(self.targets_height - 2, 0), 0)
+        return max(self._target_line_count() - max(self.targets_height - 2, 0), 0)
 
     @property
     def targets_height(self) -> int:
@@ -836,6 +943,10 @@ class Sidebar(Widget):
         self.refresh()
 
     def on_blur(self, event: events.Blur) -> None:
+        if self.editing:
+            # The keys left the list: what was typed stays as the filter, and typing into it is over.
+            self.editing = False
+            self._relayout()
         self.refresh()
 
     def render_line(self, y: int) -> Strip:
@@ -844,10 +955,14 @@ class Sidebar(Widget):
         targets = y < self.targets_height
         top = 0 if targets else self.targets_height
         height = self.targets_height if targets else self.sessions_height
-        focused = self.has_focus and not targets
+        focused = self.has_focus and (self.pane == PANE_TARGETS if targets else self.pane == PANE_SESSIONS)
+        styles, border_style = (self._styles, self._border) if targets else (self._styles_sessions,
+                                                                             self._border_sessions)
         tl, horizontal, tr, vertical, bl, br = ("┏", "━", "┓", "┃", "┗", "┛") if focused else ("┌", "─", "┐", "│", "└", "┘")
         if y == top:
             title = "▦ Targets" if targets else "▸ Sessions"
+            if not targets and self.folded == PANE_SESSIONS:
+                title += f" · {len(self._view.rows)}"
             if targets:
                 count = len(self.visible_targets())
                 if self._model.target_has_next:
@@ -859,26 +974,36 @@ class Sidebar(Widget):
             label = horizontal + " " + title + " "
             text = tl + label[:max(width - 2, 0)].ljust(max(width - 2, 0), horizontal) + tr
             text = glyphs.render(text, self._glyph_set)
-            return Strip([Segment(text, self._border)]).adjust_cell_length(width)
+            return Strip([Segment(text, border_style)]).adjust_cell_length(width)
         if y == top + height - 1:
-            return Strip([Segment(bl + horizontal * max(width - 2, 0) + br, self._border)])
+            return Strip([Segment(bl + horizontal * max(width - 2, 0) + br, border_style)])
         line = None
         if targets:
             index = y - top - 1 + self._target_scroll_top
-            target_lines = self._target_lines()
-            if index < len(target_lines):
-                line = target_lines[index]
+            line = self._target_line(index)
+            if line is not None:
+                pass
             elif not self._model.targets and y == top + 1:
                 line = _text_line("Loading targets…" if self._model.targets_loading else "No targets you can see",
                                   "muted", inner)
         else:
             line = self._line_at(y)
+        bar = None
+        if line is not None and line.session_id is not None:
+            if targets:
+                chosen = line.group == PANE_TARGETS and line.session_id == self.selected_target
+            else:
+                chosen = (line.group, line.session_id) == self.selected
+            if chosen:
+                bar = self._bar if focused else self._bar_dim
+        base = styles["blank"] if bar is None else styles["blank"] + bar
         segments = [] if line is None else [
-            Segment(glyphs.render(part.text, self._glyph_set), self._styles.get(part.role, self._styles["text"]))
+            Segment(glyphs.render(part.text, self._glyph_set),
+                    styles.get(part.role, styles["text"]) + (bar if bar is not None else Style()))
             for part in line.parts if part.text]
-        content = Strip(segments).adjust_cell_length(inner, self._styles["blank"])
-        return Strip([Segment(vertical, self._border), Segment(" ", self._styles["blank"]),
-                      *content, Segment(" ", self._styles["blank"]), Segment(vertical, self._border)])
+        content = Strip(segments).adjust_cell_length(inner, base)
+        return Strip([Segment(vertical, border_style), Segment(" ", base),
+                      *content, Segment(" ", base), Segment(vertical, border_style)])
 
     # -- clicks --
 
@@ -926,10 +1051,14 @@ class Sidebar(Widget):
 
     def _target_line_at(self, y: int) -> Line | None:
         index = y - 1 + self._target_scroll_top
-        lines = self._target_lines()
-        return lines[index] if 0 < y < self.targets_height - 1 and index < len(lines) else None
+        return self._target_line(index) if 0 < y < self.targets_height - 1 else None
 
     def on_click(self, event: events.Click) -> None:
+        if event.y in (0, self.targets_height) and mouse_on(self):
+            # A click on a section's title folds that list to it (the other fills the panel); the same click unfolds.
+            event.stop()
+            self.toggle_fold(PANE_TARGETS if event.y == 0 else PANE_SESSIONS)
+            return
         if event.y < self.targets_height:
             line = self._target_line_at(event.y)
             if line is not None and mouse_on(self):
@@ -937,6 +1066,10 @@ class Sidebar(Widget):
                 for part in line.parts:
                     if part.command == CMD_FILTER:
                         self.start_filter()
+                if line.group == PANE_TARGETS and line.session_id is not None:
+                    self.pane = PANE_TARGETS
+                    self.target_selected = line.session_id
+                    self.refresh()
             return
         line = self._line_at(event.y)
         if not mouse_on(self) or line is None:
@@ -952,6 +1085,7 @@ class Sidebar(Widget):
                 break
             cursor += len(part.text)
         if line.session_id is not None and line.group is not None:
+            self.pane = PANE_SESSIONS
             self.selected = (line.group, line.session_id)
             self._relayout()
             self.post_message(self.Command(CMD_PICK, line.session_id))
@@ -971,6 +1105,10 @@ class Sidebar(Widget):
     # -- the filter --
 
     def start_filter(self) -> None:
+        """`/` types into the Targets list's filter (the sessions open here are all shown)."""
+        if self.folded == PANE_TARGETS:
+            self.folded = None
+        self.pane = PANE_TARGETS
         self.editing = True
         self._relayout()
 
@@ -979,23 +1117,23 @@ class Sidebar(Widget):
         # its first row. `_relayout` clamps it to the new limit as well.
         self._target_scroll_top = 0
         self._relayout()
-        self.post_message(self.Command(CMD_FILTER, self.filter_text))
+        self._scroll_target_to_selected()
 
     # -- keys --
 
     def on_key(self, event: events.Key) -> None:
-        """Every key is the sidebar's while it has the keys (D14), except the leader and the key after it,
-        which belong to the screen (`^\\ f` closes it, `^\\ 2` switches)."""
+        """Every key is the panel's while it has the keys (D14), except the leader and the key after it, which belong
+        to the screen (`^\\ f` closes it, `^\\ 2` switches), and Detach, whose key the screen runs. Tab and Shift+Tab
+        move along the chain (Rail, Targets, Sessions): the screen owns where they go."""
         screen = self.screen
-        if event.key == self._leader or getattr(screen, "leader_pending", False):
+        if event.key in (self._leader, DETACH_KEY) or getattr(screen, "leader_pending", False):
             return  # on to the screen
         key = event.key
-        if not self.editing and key in ("tab", "shift+tab"):
+        if key in ("tab", "shift+tab"):
             event.stop()
-            if key == "tab":
-                self.app.action_focus_next()
-            else:
-                self.app.action_focus_previous()
+            self.editing = False
+            self._relayout()
+            screen.chain_step(self, 1 if key == "tab" else -1)
             return
         event.stop()
         if key == "ctrl+q":
@@ -1006,6 +1144,31 @@ class Sidebar(Widget):
         if self.editing:
             self._editing_key(event)
             return
+        if key == "escape":
+            self.post_message(self.Command(CMD_BACK))
+        elif key == "z":
+            self.toggle_fold()
+        elif self.pane == PANE_TARGETS:
+            self._targets_key(key)
+        else:
+            self._sessions_key(key)
+
+    def _targets_key(self, key: str) -> None:
+        if key in ("down", "j"):
+            self._move_target(1)
+        elif key in ("up", "k"):
+            self._move_target(-1)
+        elif key == "n":
+            self.post_message(self.Command(CMD_NEW))
+        elif key == "enter":
+            if self.selected_target is not None:
+                self.post_message(self.Command(CMD_OPEN_TARGET, self.selected_target))
+        elif key == "slash":
+            self.start_filter()
+        elif key == "F":
+            self.post_message(self.Command(CMD_FULL_VIEW))
+
+    def _sessions_key(self, key: str) -> None:
         if key in ("down", "j"):
             self._move(1)
         elif key in ("up", "k"):
@@ -1015,8 +1178,6 @@ class Sidebar(Widget):
         elif key == "enter":
             if self.selected_session is not None:
                 self.post_message(self.Command(CMD_PICK, self.selected_session))
-        elif key == "escape":
-            self.post_message(self.Command(CMD_CLOSE))
         elif key == "t":
             self.post_message(self.Command(CMD_TAKE_BACK, self.selected_session))
         elif key == "w":
@@ -1039,6 +1200,8 @@ class Sidebar(Widget):
         elif key == "enter":
             self.editing = False
             self._relayout()
+        elif key in ("down", "up"):
+            self._move_target(1 if key == "down" else -1)
         elif key == "backspace":
             self.filter_text = self.filter_text[:-1]
             self._filter_changed()

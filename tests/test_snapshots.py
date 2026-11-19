@@ -120,16 +120,26 @@ def _menu_on_rail(lines: list[str], size: tuple[int, int]) -> bool:
     return any(("Menu" if size[0] > 80 else "≡") in cell[:width] for cell in _rail(lines))
 
 
-def _sessions_and_targets_on_rail(lines: list[str], size: tuple[int, int]) -> bool:
-    """The rail's first two rows: Sessions and Targets, as words above 80 columns and marks at 80 or below."""
+def _sessions_and_targets_on_rail(lines: list[str], size: tuple[int, int], need: int = 0) -> bool:
+    """The rail's first two rows: Sessions and Targets, as words above 80 columns and marks at 80 or below. While
+    `need` sessions need you the Sessions mark is `▲` and its count follows it (`▲1 Sessions`, `▲1`)."""
     rail = _rail(lines)
+    mark = f"▲{need}" if need else "▸"
     if size[0] > 80:
-        return "Sessions" in rail[0] and "Targets" in rail[1]
-    return rail[0].startswith("▸") and rail[1].startswith("▦")
+        return rail[0].startswith(mark) and "Sessions" in rail[0] and "Targets" in rail[1]
+    return rail[0].startswith(mark) and rail[1].startswith("▦")
 
 
 def _chip_rows(lines: list[str]) -> list[str]:
-    return [cell[:3].rstrip() for cell in _rail(lines) if re.match(r"^\d[●◆·▲?◌✕]", cell)]
+    """The rail's session rows as number and mark (`◂` in front, `•` printed in the background): since P2b a row is its
+    number and name, with the mark at its end, and says nothing of who types."""
+    rows = []
+    for cell in _rail(lines):
+        if not re.match(r"^\d[ ◂•]", cell):
+            continue
+        rail = cell[:4] if cell[3] == "│" else cell[:12]
+        rows.append(cell[0] + next((mark for mark in "◂•" if mark in rail), ""))
+    return rows
 
 
 def _status(lines: list[str]) -> str:
@@ -198,17 +208,17 @@ def test_t1_the_terminal_with_three_sessions_open(size, serve, wait_until, shoot
                 lines = shoot(app, "T1-terminal", size).splitlines()
 
                 rail = _rail(lines)
-                assert _menu_on_rail(lines, size) and _sessions_and_targets_on_rail(lines, size), rail[:6]
+                assert _menu_on_rail(lines, size) and _sessions_and_targets_on_rail(lines, size, need=1), rail[:6]
                 assert screen.rail._model.need_you == 1, "the rail does not count the session that needs you"
                 assert any(cell.startswith(("!", "! Alerts")) for cell in rail), "no alerts row on the rail"
-                assert _chip_rows(lines) == ["1●◂", "2◆", "3◆"], _chip_rows(lines)
+                assert _chip_rows(lines) == ["1◂", "2", "3"], _chip_rows(lines)
                 assert any(cell.strip().startswith("+") for cell in rail), "no + on the rail"
                 assert "rtr-core-01#" in lines[1][4:], "the session's own screen is not drawn beside the rail"
 
                 status = _status(lines)
                 assert "you type" in _title(lines) and "Ctrl+\\ [ Scroll" in status, (status, lines[0])
                 if size[0] >= 120:
-                    assert "rtr-core-01" in _title(lines) and "▦ Fleet" in status, (status, lines[0])
+                    assert "rtr-core-01" in _title(lines) and "▦ Targets" in status, (status, lines[0])
                 label = screen.canvas.view_range.label
                 if size[0] - 4 < 132:
                     assert label.startswith("cols 1-") and label.endswith("of 132 ▸") and (label in status if size[0] >= 120 else "F1 Menu" in status), (label, status)
@@ -358,7 +368,7 @@ def test_the_gallery_pictures_each_packaged_theme_with_its_suggested_scheme(them
 
     # The text is T1c's: the prompt beside the rail, and the chips as the T1 test asserts (test_snapshots.py:161-166).
     assert "ops@infra-db-02" in lines[1][4:], "the prompt is not drawn"
-    assert _chip_rows(lines) == ["1●◂", "2◆", "3◆"], _chip_rows(lines)
+    assert _chip_rows(lines) == ["1◂", "2", "3"], _chip_rows(lines)
 
     # The canvas paints the scheme's background, right of the rail, never a full-window overlay.
     bg_rects = re.findall(rf'<rect fill="{scheme.background}" x="([0-9.]+)"', svg)
@@ -450,7 +460,7 @@ def test_s1_the_rail_widens_in_place_into_the_fleet_sidebar(size, serve, wait_un
             async with app.run_test(size=size) as pilot:
                 screen = await fixture_login(app, pilot)
                 await _open_in_order(app, pilot, wait_until, screen, first, second)
-                screen.open_sidebar()
+                screen.open_sidebar(pane="sessions")
                 await wait_until(pilot, lambda: screen.sidebar_open and screen._sidebar_has_keys()
                                  and len(screen.sidebar.view.rows) == 2 and screen.targets.fetched,
                                  "the sidebar to fill")
@@ -474,14 +484,17 @@ def test_s1_the_rail_widens_in_place_into_the_fleet_sidebar(size, serve, wait_un
                 assert not [row for row in side if "0:00" in row], (
                     f"a sidebar row reads an expired countdown: {[row for row in side if '0:00' in row]}")
                 status = _status(lines)
-                assert "keys → fleet" in status, status
+                # Detach is protected at every width, so a 65-column row cuts the words before it.
+                assert "keys → sessions" in status or (size[0] < 80 and status.startswith("keys → se")), status
                 label = screen.canvas.view_range.label
                 if screen.canvas.size.width < 132:
                     assert label.startswith("cols 1-") and label.endswith("of 132 ▸"), label
                     if size[0] >= 120:
                         assert label in status and "rtr-core-01 shows" in status, (label, status)  # mockup S1
                     else:
-                        assert "tap a row" in status and "t Take back" in status, status  # mockup S2: the phone's row
+                        # Mockup S2: the phone's row. The protected Detach, keys and Menu hints take the room first, so
+                        # the note gives way to them.
+                        assert "t Take back" in status and "Ctrl+] detach" in status, status
                 else:
                     assert "cols" not in status, f"a window that shows the whole grid says it pans: {status}"
                 assert not [f for f in serve_app.frames if f.get("t") == "resize"], "opening the sidebar asked for a size"
@@ -618,7 +631,7 @@ def test_a2_an_agents_headless_tui_snapshot_is_the_same_ui(size, serve, snapshot
 
                 rail = _rail(lines)
                 assert _menu_on_rail(lines, size) and _sessions_and_targets_on_rail(lines, size), rail[:6]
-                assert _chip_rows(lines) == ["1●◂", "2●•", "3◆"], _chip_rows(lines)
+                assert _chip_rows(lines) == ["1◂", "2•", "3"], _chip_rows(lines)
                 assert set(_shown_alerts(lines)) == {SHOWN_ALERTS}, _shown_alerts(lines)
                 assert "ops@infra-db-02:~$" in "".join(line[4:] for line in lines[:8])
                 status = _status(lines)
@@ -762,14 +775,10 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
             title = _title(lines)
             title_words = {"view only": "fixture-peer types"}.get(always, always)  # who types, in the frame's words
             assert title_words in title, f"{state_id} at {size[0]}: {title_words!r} not in {title!r}"
-            # The chip's second cell is the session's attention first, who types only when nothing needs you (design
-            # legend and §2.3 rail item 5): a warning window (the notice states) is `▲`, a question for you is `?`,
-            # otherwise `●` you, `◆` another login, `·` nobody. The same at every size. The cursor follows who types alone
-            # (D21: the typist's cursor is a block, a viewer's an underline).
-            glyph = {"quiet-prompt": "?", "notice-link": "▲", "notice-idle": "▲"}.get(
-                state_id) or {"you type": "●", "view only": "◆", "nobody types": "·"}[always]
-            assert [chip[:2] for chip in _chip_rows(lines)] == [f"1{glyph}"], (
-                f"{state_id} at {size[0]}: the rail chip disagrees with {always!r}: {_chip_rows(lines)}")
+            # The rail's row is the session's number, name and mark (P2b): who types and what needs you are the frame
+            # title's and the status row's, the same at every size. The cursor follows who types alone (D21: the
+            # typist's cursor is a block, a viewer's an underline).
+            assert _chip_rows(lines) == ["1◂"], f"{state_id} at {size[0]}: the rail row: {_chip_rows(lines)}"
             typing = always == "you type"
             assert slot.canvas.typist is typing, f"{state_id} at {size[0]}: the cursor is not the {always!r} one"
             palette = slot.canvas._palette
@@ -786,9 +795,9 @@ def test_f12_the_status_row_in_each_state(state_id, make, always, wide, from_200
                 if size[0] == 120:
                     assert "rtr-" not in status and "F1 Menu" in status, status
             if state_id == "quiet-prompt" and size[0] >= 120:
-                assert "Ctrl+\\ a Answer: kill the session?" in status, status
+                assert "Ctrl+\\ y Answer: kill the session?" in status, status
             if state_id == "quiet-prompt" and size[0] == 120:
-                assert "Detach" not in status, f"Detach kept ahead of Answer at 120: {status}"
+                assert "Ctrl+] detach" in status, f"Detach (protected) is not on the row at 120: {status}"
             if size[0] >= 200 and from_200:
                 assert from_200 in status, f"{state_id} at {size[0]}: the hint {from_200!r} is not on the row: {status!r}"
             if state_id == "quiet-prompt":

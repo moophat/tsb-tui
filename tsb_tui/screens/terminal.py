@@ -94,6 +94,7 @@ from ..theme import TermPalette, role_colours
 from ..widgets.canvas import Canvas, Highlight
 from ..widgets.rail import (
     ACT_ALERTS,
+    ACT_BACK,
     ACT_CHIP,
     ACT_FLEET,
     ACT_MENU,
@@ -107,15 +108,19 @@ from ..widgets.rail import (
 )
 from ..widgets.sidebar import (
     CMD_ALERTS,
+    CMD_BACK,
     CMD_CLOSE,
     CMD_END,
     CMD_FILTER,
+    CMD_FOLD,
     CMD_FULL_VIEW,
     CMD_MODE,
     CMD_NEW,
     CMD_PICK,
     CMD_TAKE_BACK,
     CMD_WHOS_HERE,
+    PANE_SESSIONS,
+    PANE_TARGETS,
     RowTime,
     Sidebar,
     SidebarEntry,
@@ -199,17 +204,10 @@ REATTACH_LOGIN_GONE = "the login this client held no longer works"
 MENU_KEYS = KeysTarget("menu", (Hint("↑↓", "choose"), Hint("⏎", "run"), Hint("type", "to find"),
                                 Hint("Esc", "close")))
 
-# What the operator is told when the keyboard comes to this client, by the `token` frame's reason
-# (typing-ownership step 16; Frontend §9, the auto-transfer notice). Taking it oneself is told apart below.
-KEYBOARD_GAINED = {
-    "handoff": "The keyboard was handed to you.",
-    "detach": "The keyboard passed to you: its holder left.",
-    "owner": "The owner gave you the keyboard.",
-    "release": "The keyboard came back to you.",
-}
 # The sidebar's, the full view's and Pan's own keys as status-row hints are `sidebar:<command>`,
 # `fleet_view:<command>` and `pan:<move>`: each a click (D11), none an action of the table.
 SIDEBAR_HINT = "sidebar:"
+RAIL_HINT = "rail:"
 FLEET_VIEW_HINT = "fleet_view:"
 TARGETS_UNAVAILABLE = "the inventory is unavailable"
 PAN_HINT = "pan:"
@@ -329,6 +327,9 @@ class SessionSlot:
     attach_coro: Any = None
     login_status: str = ""
     login_status_until: float = 0.0
+    # The one line the session frame shows when the keyboard moved to this client, and when it stops showing.
+    keyboard_notice: str = ""
+    keyboard_notice_until: float = 0.0
 
     @property
     def target(self) -> str:
@@ -567,7 +568,8 @@ class TerminalScreen(Screen):
         if self._first_session is not None:
             self._add_slot({"id": self._first_session}, recording_bar=self._first_recording_bar)
         elif cfg["sidebar.open_when_no_session"]:
-            self.open_sidebar(refresh=False)  # the poller's own first poll, just below, is the read
+            # The poller's own first poll, just below, is the read. After login the keys land in the Targets filter.
+            self.open_sidebar(refresh=False, pane=PANE_TARGETS, editing=True)
         self.poller.start()
         self._fetch_targets(background=True)
         self.refresh_status()
@@ -591,7 +593,7 @@ class TerminalScreen(Screen):
 
     def on_descendant_focus(self, event: events.DescendantFocus) -> None:
         """The sidebar took the keys (or the session got them back): the status row says where they go (D14)."""
-        if self._scroll_mode and (self._sidebar_has_keys() or self._view_has_keys()):
+        if self._scroll_mode and (self._sidebar_has_keys() or self._view_has_keys() or self._rail_has_keys()):
             self.close_scroll_view()  # the view's keys are not what they go to now
         self.refresh_status()
 
@@ -655,7 +657,8 @@ class TerminalScreen(Screen):
     def sidebar_open(self) -> bool:
         return self.sidebar is not None and bool(self.sidebar.display)
 
-    def open_sidebar(self, group: str | None = None, *, focus: bool = True, refresh: bool = True) -> None:
+    def open_sidebar(self, group: str | None = None, *, focus: bool = True, refresh: bool = True,
+                     pane: str | None = None, editing: bool = False) -> None:
         """The rail widens in place into the sidebar. It takes width from the canvas, which pans: no request goes
         to any session (D44). Opening it reads the fleet again (a read, session-list step 3), unless the poller has
         only just started."""
@@ -677,7 +680,10 @@ class TerminalScreen(Screen):
                 self._sync_fleet_widgets()
             self.sidebar.select_group(group)
         if focus:
-            self.sidebar.focus()
+            if pane is None:
+                self.sidebar.focus()
+            else:
+                self.sidebar.focus_pane(pane, editing=editing)
         self.refresh_status()
 
     def close_sidebar(self) -> None:
@@ -685,7 +691,8 @@ class TerminalScreen(Screen):
             return
         self.sidebar.display = False
         self.rail.display = True
-        self.set_focus(None)
+        if not self._rail_has_keys():  # the rail keeps the keys it had: Enter on a row there opens the panel again
+            self.set_focus(None)
         self.refresh_status()
 
     def toggle_sidebar(self) -> None:
@@ -710,6 +717,51 @@ class TerminalScreen(Screen):
 
     def _sidebar_has_keys(self) -> bool:
         return self.sidebar_open and self.sidebar is not None and self.sidebar.has_focus
+
+    def _rail_has_keys(self) -> bool:
+        return self.rail is not None and self.rail.has_focus
+
+    # -- the focus chain: Rail, Targets list, Sessions list; the canvas is outside it --
+
+    @property
+    def focus_owner(self) -> str:
+        """Where the keys are: `rail`, `targets` or `sessions` (the side panel's two lists), `full view`, or
+        `canvas`, the session in front (also what is left when nothing in the chrome has them)."""
+        if self.rail is not None and self.rail.has_focus:
+            return "rail"
+        if self._sidebar_has_keys():
+            return self.sidebar.pane
+        if self._view_has_keys():
+            return "full view"
+        return "canvas"
+
+    def _chain_stops(self) -> list[str]:
+        """The stops Tab walks: the rail, then the two lists of the side panel while it is open."""
+        return ["rail", PANE_TARGETS, PANE_SESSIONS] if self.sidebar_open else ["rail"]
+
+    def focus_stop(self, stop: str) -> None:
+        """Give the keys to one stop of the chain: the rail, or one list of the side panel (a folded list opens)."""
+        if stop == "rail":
+            if self.rail is not None:
+                self.rail.focus()
+        elif self.sidebar is not None:
+            self.sidebar.focus_pane(stop)
+        self.refresh_status()
+
+    def chain_step(self, widget: Any, step: int) -> None:
+        """Tab (`step` 1) and Shift+Tab (-1) from a stop of the chain. The rail is one stop however many rows it has;
+        the canvas is no stop (Tab and Esc there are the session's)."""
+        stops = self._chain_stops()
+        here = "rail" if widget is self.rail else getattr(widget, "pane", PANE_SESSIONS)
+        if here not in stops:
+            return
+        self.focus_stop(stops[(stops.index(here) + step) % len(stops)])
+
+    def return_to_canvas(self) -> None:
+        """Esc in a list or on the rail: the keys go back to the session open here; with none open nothing happens."""
+        if self._front is not None:
+            self.set_focus(None)
+            self.refresh_status()
 
     # -- the full Fleet view (D7, D8): the sidebar's long form, with the rail still beside it --
 
@@ -865,12 +917,16 @@ class TerminalScreen(Screen):
                             stale_with_me=stale, live=live)
         needing = scan.needs_you
         alerts = self.app.alerts
+        # The rail's rows are the sessions open in this window; a session of mine that another login holds is the
+        # side panel's and the full view's.
+        open_set = set(open_ids)
+        rail_chips = [chip for chip in chips if chip.session_id in open_set]
         self.rail.set_model(RailModel(
-            chips=tuple(chips), more=len(scan.chip_ids) > MAX_CHIPS,
+            chips=tuple(rail_chips), more=sum(sid in open_set for sid in scan.chip_ids) > MAX_CHIPS,
             need_you=len(needing), alerts=alerts.count if alerts.allowed else None,
             edge=self._rail_edge(),
             names=tuple((chip.session_id, live[chip.session_id].get("target_id", chip.session_id))
-                        for chip in chips if chip.session_id in live)))
+                        for chip in rail_chips if chip.session_id in live)))
         if self.sidebar_open:
             self.sidebar.set_model(self._sidebar_model(scan, live, chips, stale, asks),
                                    front_id=front_id)
@@ -1745,18 +1801,30 @@ class TerminalScreen(Screen):
     def on_rail_activated(self, message: Rail.Activated) -> None:
         message.stop()
         action = message.action
-        if action == ACT_MENU:
+        if action == ACT_BACK:
+            self.return_to_canvas()
+        elif action == ACT_MENU:
             self.run_worker(self.run_action_id("menu"), exclusive=False)
         elif action in (ACT_FLEET, ACT_MORE):
-            self.open_sidebar()
+            if message.by_key and action == ACT_FLEET:
+                self.open_sidebar(refresh=False, pane=PANE_TARGETS)
+            else:
+                self.open_sidebar()
         elif action == ACT_NEEDS:
-            self.open_needs_you()
+            if message.by_key:
+                # Enter on Sessions: the keys go to the Sessions list of the side panel, which opens if it is closed.
+                self.open_sidebar(refresh=False, pane=PANE_SESSIONS)
+            else:
+                self.open_needs_you()
         elif action == ACT_ALERTS:
             self.open_fleet_view(TAB_ALERTS)
         elif action == ACT_VAULT:
             self.run_worker(self.run_action_id("credentials"), exclusive=False)
         elif action == ACT_CHIP and message.arg is not None:
             self.bring_forward(message.arg)
+            if message.by_key:
+                self.set_focus(None)
+                self.refresh_status()
         elif action == ACT_NEW:
             self.run_worker(self.run_action_id("new_session"), exclusive=False)
 
@@ -1770,6 +1838,12 @@ class TerminalScreen(Screen):
         sid = arg or sidebar.selected_session
         if name == CMD_CLOSE:
             self.close_sidebar()
+        elif name == CMD_BACK:
+            self.return_to_canvas()
+        elif name == CMD_FOLD:
+            sidebar.toggle_fold()
+        elif name == CMD_OPEN_TARGET:
+            self._open_target(arg)
         elif name == CMD_PICK and sid is not None:
             self.bring_forward(sid)
             self._after_pick()
@@ -2105,18 +2179,17 @@ class TerminalScreen(Screen):
             self._mark_fleet_dirty()
 
     def _tell_keyboard_moved(self, slot: SessionSlot, state: AttachmentState) -> None:
-        """A toast when the keyboard comes to this client or leaves it (D22; Frontend §9). The state
-        already holds the move, with the holder before it."""
+        """Tell the operator when the keyboard comes to this client or leaves it (D22; Frontend §9). Coming to this
+        client is the session frame's one notice (`_note_keyboard_gained`), with no toast beside it; leaving is a toast.
+        The state already holds the move, with the holder before it."""
         move = state.token_history[-1]
         before = move["previous"]
         had = before is not None and before.get("client_id") == state.client_id
         has = state.holds_keyboard
-        if has and not had and move["reason"] == "takeover":
-            self._toast_took(slot, before)
-            return
         if has and not had:
-            text = KEYBOARD_GAINED.get(move["reason"], "You now hold the keyboard.")
-        elif had and not has:
+            self._note_keyboard_gained(slot, move["reason"], before)
+            return
+        if had and not has:
             holder = state.holder
             who = "nobody" if holder is None else str(holder.get("user") or holder.get("client_id"))
             if holder is None:
@@ -2129,16 +2202,15 @@ class TerminalScreen(Screen):
             return
         self.app.notify(text, title="keyboard", markup=False)
 
-    def _toast_took(self, slot: SessionSlot, before: dict | None) -> None:
-        """This client took the keyboard (Take back, Take it, or typing as the owner): the row says it, and the
-        toast says whose it was and how to give it back (mockup A1)."""
-        ids = [s.session_id for s in self.slots] or [slot.session_id]
-        label = display_id(slot.session_id, ids)
-        who = None if before is None else str(before.get("user") or before.get("client_id"))
-        sentence = ("You took the keyboard." if who is None else
-                    f"You took the keyboard from {who}. Its input is refused from now.")
-        self.app.toast(f"{slot.target} · {label}\n{sentence} To give it back: Who's here, then Hand to selected.",
-                       title="keyboard · you took it")
+    def _note_keyboard_gained(self, slot: SessionSlot, reason: str, before: dict | None) -> None:
+        """The session frame's one line for the keyboard coming to this client (Frontend §9): `you type now: ana left`.
+        It shows for `toasts.seconds`, on the session it concerns, wherever the keys are."""
+        who = "nobody" if before is None else str(before.get("user") or before.get("client_id"))
+        detail = {"detach": f"{who} left", "handoff": f"{who} handed it to you", "owner": "the owner gave it to you",
+                  "release": f"{who} gave it back", "takeover": f"you took it from {who}"}.get(reason, "")
+        slot.keyboard_notice = "you type now" + (f": {detail}" if detail else "")
+        slot.keyboard_notice_until = self.app.wall_clock() + self.app.cfg["toasts.seconds"]
+        self.refresh_status()
 
     def _on_reattach(self, slot: SessionSlot, state: AttachmentState, step: object) -> None:
         # A new attachment starts clean: whatever dump the dropped one was owed will never arrive.
@@ -2681,6 +2753,15 @@ class TerminalScreen(Screen):
             await self.app.screen.handle_menu_key(event)
             return
         leader = event.key == self.app.cfg["keys.leader"]
+        if event.key == A.DETACH_KEY and not leader and not self._leader_pending:
+            # Ctrl+] alone leaves the front session (it lives on), from the canvas and from the lists; with none open it
+            # is nothing, and it is never the session's.
+            event.stop()
+            self._end_pan()
+            self.close_scroll_view()
+            if self._front is not None:
+                self.action_detach()
+            return
         if self.pump is None and not leader and not self._leader_pending:
             return  # nothing to send to yet: the key goes on to the app (Ctrl-Q quits while attaching)
         if (event.key == "escape" and self.pump is not None and self.pump.state.reattach is not None
@@ -3311,10 +3392,10 @@ class TerminalScreen(Screen):
     def do_switch(self) -> None:
         """`^\\ s`: the sidebar takes the keys, for picking another session."""
         if self.sidebar_open and self.sidebar is not None:
-            self.sidebar.focus()
+            self.sidebar.focus_pane(PANE_SESSIONS)
             self.refresh_status()
         else:
-            self.open_sidebar()
+            self.open_sidebar(pane=PANE_SESSIONS)
 
     def do_next(self) -> None:
         self._step(1)
@@ -3327,6 +3408,16 @@ class TerminalScreen(Screen):
         if message.action.startswith(SIDEBAR_HINT):
             name = message.action.removeprefix(SIDEBAR_HINT)
             self._sidebar_command(name)
+            return
+        if message.action.startswith(RAIL_HINT):
+            name = message.action.removeprefix(RAIL_HINT)
+            row = self.rail.selected_row if self.rail is not None else None
+            if name == "enter" and row is not None and row.action is not None:
+                self.on_rail_activated(Rail.Activated(row.action, row.arg, by_key=True))
+            elif name == CMD_NEW:
+                await self.run_action_id("new_session")
+            elif name == CMD_BACK:
+                self.return_to_canvas()
             return
         if message.action.startswith(FLEET_VIEW_HINT):
             name = message.action.removeprefix(FLEET_VIEW_HINT)
@@ -3370,7 +3461,8 @@ class TerminalScreen(Screen):
         facts = self.facts()
         leader = A.leader_label(self.app.cfg["keys.leader"])
         keys = A.leader_keys(self.app.cfg.leader_overrides())
-        return [(action, f"{leader} {keys[action.id]}" if action.id in keys else "",
+        # An action with a key of its own shows it (Detach is Ctrl+]; its leader letter still works, unadvertised).
+        return [(action, action.direct_key or (f"{leader} {keys[action.id]}" if action.id in keys else ""),
                  A.blocked(action.id, facts)) for action in A.menu_actions() if A.permitted(action, facts)]
 
     def set_menu_open(self, is_open: bool) -> None:
@@ -3389,7 +3481,7 @@ class TerminalScreen(Screen):
             keys = A.leader_keys(self.app.cfg.leader_overrides())
             facts = self.facts()
             hints = [Hint(keys[a.id], a.hint or a.label, a.id) for a in A.leader_actions()
-                     if a.hint and A.blocked(a.id, facts) is None]
+                     if a.hint and a.direct_key is None and A.blocked(a.id, facts) is None]
             hints.append(Hint(A.leader_label(self.app.cfg["keys.leader"]), "sends the key itself"))
             return KeysTarget("the leader", tuple(hints))
         if self.dialogs:
@@ -3404,6 +3496,8 @@ class TerminalScreen(Screen):
             return self._fleet_view_keys_target()
         if self._sidebar_has_keys():
             return self._sidebar_keys_target()
+        if self._rail_has_keys():
+            return self._rail_keys_target()
         return None
 
     def _scroll_keys_target(self) -> KeysTarget:
@@ -3429,7 +3523,7 @@ class TerminalScreen(Screen):
         click = FLEET_VIEW_HINT
         view = self.fleet_view
         if view is not None and view.tab == TAB_ALERTS:
-            return KeysTarget("fleet view", (Hint("n", "New session", click + CMD_NEW),
+            return KeysTarget("full view", (Hint("n", "New session", click + CMD_NEW),
                                              Hint("Tab", "Next tab", click + CMD_TAB),
                                              Hint("Esc", "Back", click + CMD_CLOSE)))
         if view is not None and view.tab == TAB_TARGETS:
@@ -3439,7 +3533,7 @@ class TerminalScreen(Screen):
             if "target.edit" in self.app.permissions:
                 writes = (Hint("a", "Add target", click + CMD_TARGET_NEW),
                           Hint("e", "Edit target", click + CMD_TARGET_EDIT if editable else None),
-                          Hint("d", "Delete target…", click + CMD_TARGET_DELETE if editable else None))
+                          Hint("D", "Delete target…", click + CMD_TARGET_DELETE if editable else None))
             return KeysTarget("targets", (Hint("n", "New session", click + CMD_NEW), *writes,
                 Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("/", "Query", click + CMD_FILTER),
                 Hint("Space", "Mark", click + CMD_MARK), Hint("l", "Save login…", click + CMD_SAVE_LOGIN),
@@ -3447,31 +3541,45 @@ class TerminalScreen(Screen):
                 Hint("Tab", "Next tab", click + CMD_TAB), Hint("Esc", "Back", click + CMD_CLOSE)),
                 self._targets_query_error)
         if self.compact:
-            return KeysTarget("fleet view", (Hint("n", "New session", click + CMD_NEW),
+            return KeysTarget("full view", (Hint("n", "New session", click + CMD_NEW),
                                              Hint("t", "Take back", click + CMD_TAKE_BACK),
                                              Hint("Esc", "Back", click + CMD_CLOSE)), "tap a row")
-        return KeysTarget("fleet view", (
+        return KeysTarget("full view", (
             Hint("⏎", "Open", click + CMD_PICK), Hint("n", "New session", click + CMD_NEW),
             Hint("t", "Take back", click + CMD_TAKE_BACK), Hint("w", "Who's here", click + CMD_WHOS_HERE),
             Hint("x", "End…", click + CMD_END), Hint("/", "Filter", click + CMD_FILTER),
             Hint("Esc", "Back", click + CMD_CLOSE)))
 
+    def _rail_keys_target(self) -> KeysTarget:
+        """The rail's own keys as hints, each a click: Enter runs the row, `n` is New session."""
+        click = RAIL_HINT
+        return KeysTarget("rail", (Hint("↑↓", "Choose", None), Hint("⏎", "Open", click + "enter"),
+                                   Hint("n", "New session", click + CMD_NEW),
+                                   Hint("Esc", "Back", click + CMD_BACK)))
+
     def _sidebar_keys_target(self) -> KeysTarget:
-        """The sidebar's own keys as hints, each a click (design §2.3): the whole row on a laptop, `t` and Esc
-        on a phone (mockups S1, S2, S3)."""
+        """The side panel's own keys as hints, each a click (design §2.3), by the list the keys are on: the whole row on a
+        laptop, `t` and Esc on a phone (mockups S1, S2, S3)."""
         cfg = self.app.cfg
         click = SIDEBAR_HINT
-        if self.compact:
-            return KeysTarget("fleet", (Hint("t", "Take back", click + CMD_TAKE_BACK),
-                                        Hint("Esc", "Close", click + CMD_CLOSE)), "tap a row")
-        hints = [Hint("⏎", "Open", click + CMD_PICK), Hint("t", "Take back", click + CMD_TAKE_BACK),
-                 Hint("w", "Who's here", click + CMD_WHOS_HERE), Hint("/", "Filter", click + CMD_FILTER)]
-        if self._window_width() >= cfg["sidebar.wide_from"]:
-            hints.append(Hint("F", "Full view", click + CMD_FULL_VIEW))
-        hints.append(Hint("Esc", "Close", click + CMD_CLOSE))
+        pane = self.sidebar.pane if self.sidebar is not None else PANE_SESSIONS
+        fold = Hint("z", "Fold", click + CMD_FOLD)
+        back = Hint("Esc", "Back", click + CMD_BACK)
         range_label = self.canvas.view_range.label if self.canvas is not None else ""
         note = f"{self._target()} shows {range_label}" if range_label and self._front is not None else ""
-        return KeysTarget("fleet", tuple(hints), note)
+        if pane == PANE_TARGETS:
+            hints = [Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("n", "New session", click + CMD_NEW),
+                     Hint("/", "Filter", click + CMD_FILTER), back, fold]
+            if not self.compact and self._window_width() >= cfg["sidebar.wide_from"]:
+                hints.append(Hint("F", "Full view", click + CMD_FULL_VIEW))
+            return KeysTarget("targets", tuple(hints), note)
+        if self.compact:
+            return KeysTarget("sessions", (Hint("t", "Take back", click + CMD_TAKE_BACK), back), "tap a row")
+        hints = [Hint("⏎", "Open", click + CMD_PICK), Hint("t", "Take back", click + CMD_TAKE_BACK),
+                 Hint("w", "Who's here", click + CMD_WHOS_HERE), Hint("/", "Filter", click + CMD_FILTER), back, fold]
+        if self._window_width() >= cfg["sidebar.wide_from"]:
+            hints.append(Hint("F", "Full view", click + CMD_FULL_VIEW))
+        return KeysTarget("sessions", tuple(hints), note)
 
     def status_inputs(self) -> StatusInputs:
         cfg = self.app.cfg
@@ -3509,7 +3617,7 @@ class TerminalScreen(Screen):
         hints = [Hint("c", "New session here", "new_session")]
         if len(self.slots) > 1:
             hints.append(Hint("n", "Next open session", "next"))
-        hints.append(Hint(f"{leader} {keys['fleet']}", "Fleet", "fleet"))
+        hints.append(Hint(f"{leader} {keys['fleet']}", "Targets", "fleet"))
         if self.dialogs:
             hints.append(Hint("Esc", "close"))
         return EndedStatus(f"✕ {self.ended.row}", bool((state.recording or {}).get("active"))
@@ -3533,6 +3641,13 @@ class TerminalScreen(Screen):
             start += len(part) + 3
         return text
 
+    def _styled_notice(self, notice: str, width: int) -> Text:
+        """The one-line keyboard notice for the frame's bottom border, in the accent the who-types words carry."""
+        roles = role_colours(self.app.cfg)
+        text = Text(notice[:width] if len(notice) <= width else notice[:max(width - 1, 0)] + "…")
+        text.stylize(Style(color=roles["on_accent"], bgcolor=roles["accent"], bold=True))
+        return text
+
     def refresh_status(self) -> None:
         if self._unmounted:
             return
@@ -3541,10 +3656,16 @@ class TerminalScreen(Screen):
             self.status.set_inputs(inputs)
         if self.is_mounted:
             frame = self.query_one("#canvases")
-            focused = not self._sidebar_has_keys() and not self._view_has_keys() and not self.dialogs
+            focused = (not self._sidebar_has_keys() and not self._view_has_keys() and not self._rail_has_keys()
+                       and not self.dialogs)
             frame.styles.border = ("heavy" if focused else "solid", role_colours(self.app.cfg)["border_on_surface"])
             number = self.slots.index(self._front) + 1 if self._front in self.slots else 0
             frame.border_title = self._styled_title(frame_title(inputs, number, max(frame.outer_size.width - 6, 0)))
+            front = self._front
+            notice = (front.keyboard_notice if front is not None
+                      and self.app.wall_clock() < front.keyboard_notice_until else "")
+            frame.border_subtitle = self._styled_notice(notice, max(frame.outer_size.width - 6, 0))
+            frame.styles.border_subtitle_align = "left"
 
 
 

@@ -105,8 +105,9 @@ def test_user_theme_falls_back_to_opposite_lightness_direction(tmp_path, variant
     assert contrast_ratio(cfg["theme.surface"], background) >= 1.2
 
 
-@pytest.mark.parametrize("width", [65, 120])
-def test_keyboard_hints_outlast_name_and_ordinary_hints(width):
+@pytest.mark.parametrize(("width", "kept"), [(65, {"take_back", "detach", "menu"}),
+                                              (120, {"take_back", "scroll", "detach", "keys", "menu"})])
+def test_keyboard_hints_outlast_name_and_ordinary_hints(width, kept):
     from model_frames import state_of
     from test_status_row import ME, ME_USER, PEER, PEER_USER, THREE, _inputs
 
@@ -115,8 +116,8 @@ def test_keyboard_hints_outlast_name_and_ordinary_hints(width):
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     pieces = build_pieces(_inputs(state), width)
     actions = {p.action for p in pieces}
-    assert {"take_back", "scroll"} <= actions
+    # Detach is protected at every width, so under 80 columns Scroll and `? keys` give way before it.
+    assert kept <= actions
     # Whole items may return in freed cells under Round 3 Amendment 2.
     assert all(not p.text.startswith("rtr-") or len(p.text) >= 5 for p in pieces)
-    assert {"menu", "keys"} <= actions
     assert len("".join(p.text for p in pieces)) == width

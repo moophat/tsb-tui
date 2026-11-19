@@ -199,7 +199,7 @@ def test_the_full_views_hints_and_pan_hints_are_clicks_too(serve, wait_until) ->
             screen.close_sidebar()
             screen.open_fleet_view()
             await wait_until(pilot, lambda: screen.fleet_view.layout.rows, "the view's rows")
-            await wait_until(pilot, lambda: "keys → fleet view" in screen.status.text, "the view's hints")
+            await wait_until(pilot, lambda: "keys → full view" in screen.status.text, "the view's hints")
             row = screen.status
             await pilot.click(StatusRow, offset=(row.text.index("x End…") + 1, 0))
             await wait_until(pilot, lambda: isinstance(app.screen, ConfirmEndScreen), "End… from the view's hint")
@@ -429,7 +429,7 @@ def test_tooltips_name_each_glyphs_word_and_key_and_follow_the_glyph_set_and_the
     assert on[2].startswith("▦ Targets") and "Fleet" not in on[2], on
     assert "full view" in on[3] and "sidebar" not in on[3], on
     assert on[4].startswith("1 rtr-core-01 · you type") and on[4].endswith("Ctrl+\\ 1"), on
-    assert on[5] == "+ New session Ctrl+\\ c", on
+    assert on[5] == "+ New session Ctrl+\\ n", on
     assert on[6].startswith("Who's here… · "), on
 
     ascii_set = asyncio.run(_check({"TSB_TUI_GLYPHS_SET": "ascii"}))

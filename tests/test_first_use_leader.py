@@ -128,6 +128,7 @@ def test_menu_match_highlight_preserves_spacing_and_footer_keys(serve, wait_unti
         async with app.run_test(size=(120, 40)) as pilot:
             workspace = await fixture_login(app, pilot)
             workspace.open_sidebar()
+            await pilot.press('tab')  # the Targets list has the keys after login; Tab moves to the Sessions list
             await pilot.pause()
             footer = workspace.status.render_line(0)
             text = footer.text

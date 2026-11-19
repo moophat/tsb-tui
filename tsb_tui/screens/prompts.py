@@ -9,7 +9,7 @@ Two kinds, by whether they take the keyboard (D23):
   the session cannot choose by accident. Only a digit that names a choice is ever taken; every other key
   goes to the session as ever (D17), where the core refuses it while the choice is pending.
 * **Not blocking** — the quiet prompt and the operator alerts. They never capture keys: their buttons are
-  plain clickable text that cannot hold focus, so a click never moves the session's keys away, and `^\\ a`
+  plain clickable text that cannot hold focus, so a click never moves the session's keys away, and `^\\ y`
   reaches the same answer from the keyboard. The TUI raises no question of its own (quiet-prompt rule 9);
   these show what the core asked.
 
@@ -209,7 +209,7 @@ class QuietBox(Vertical):
 
 
 class AnswerScreen(ModalScreen[None]):
-    """`^\\ a`: the quiet prompt's two answers as a small dialog, for the keyboard (G3)."""
+    """`^\\ y`: the quiet prompt's two answers as a small dialog, for the keyboard (G3)."""
 
     DEFAULT_CSS = """
     AnswerScreen { align: center middle; }
@@ -566,7 +566,7 @@ class EndedScreen(ModalScreen[None]):
                 yield Choice(f"[ New session on {self._target} ]", "new", id="ended-new")
                 if len(self._terminal.slots) > 1:
                     yield Choice("[ Next open session ]", "next", id="ended-next")
-                yield Choice("[ Fleet sidebar ]", "fleet", id="ended-fleet")
+                yield Choice("[ Targets and sessions ]", "fleet", id="ended-fleet")
 
     def on_mount(self) -> None:
         self._terminal.dialogs.append(self)

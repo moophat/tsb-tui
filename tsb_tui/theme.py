@@ -181,8 +181,8 @@ def lift(fg: str, bg: str, ratio: float) -> str:
     return lifted
 
 
-def surface_colour(bg: str, variant: str) -> str:
-    """Nearest quantized HSL-lightness change reaching 1.2:1 (P1 O7).
+def surface_colour(bg: str, variant: str, ratio: float = 1.2) -> str:
+    """Nearest quantized HSL-lightness change reaching `ratio` (1.2:1 for the surface, P1 O7).
 
     Hue and saturation stay fixed; try the variant direction, then its opposite.
     Bisection brackets the first passing RGB quantization boundary.
@@ -193,17 +193,27 @@ def surface_colour(bg: str, variant: str) -> str:
     def colour(value: float) -> str:
         return "#" + "".join(f"{round(c * 255):02x}" for c in colorsys.hls_to_rgb(h, value, saturation))
 
-    if contrast_ratio(colour(high), bg) < 1.2:
+    if contrast_ratio(colour(high), bg) < ratio:
         high = 0.0 if variant == "dark" else 1.0
         # One of white or black always reaches 1.2:1 against any valid background.
 
     for _ in range(48):
         mid = (low + high) / 2
-        if contrast_ratio(colour(mid), bg) >= 1.2:
+        if contrast_ratio(colour(mid), bg) >= ratio:
             high = mid
         else:
             low = mid
     return colour(high)
+
+
+# The side panel's Sessions section continues the walk from the Targets section's surface (the P1 surface) to the
+# smallest further step in the theme's direction that reaches this ratio against it.
+SESSIONS_STEP_RATIO = 1.1
+
+
+def sessions_surface(surface: str, variant: str) -> str:
+    """The Sessions section's tint: one more smallest lightness step from the Targets surface, in the theme's direction."""
+    return surface_colour(surface, variant, SESSIONS_STEP_RATIO)
 
 
 def _rich_hex(colour: Any) -> str:

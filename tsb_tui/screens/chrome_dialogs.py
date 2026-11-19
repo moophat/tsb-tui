@@ -38,14 +38,16 @@ ENGINE_PIN_COMMIT = "34f39002c6e3974b54e6a6d400bd83777c5ea558"
 SIDEBAR_KEYS = (
     ("n", "New session"),
     ("↑ ↓  j k", "move through the rows (the wheel does too)"),
-    ("⏎", "open the selected session"),
+    ("⏎", "Sessions: open the selected session · Targets: New session on the selected target"),
+    ("Tab", "the next list: rail, Targets, Sessions (Shift+Tab goes back)"),
     ("t", "take back the keyboard of the selected session"),
     ("w", "who's here, for a session open here"),
     ("x", "end the selected session, after a confirmation"),
     ("/", "filter by target, id or login"),
     ("m", "mine│all"),
-    ("F", "the full fleet view"),
-    ("Esc", "close the sidebar"),
+    ("F", "the full view"),
+    ("z", "fold the other list; z again restores (a click on a list's title folds it too)"),
+    ("Esc", "back to the session open here"),
 )
 FLEET_VIEW_KEYS = (
     ("↑ ↓  j k", "move through the rows (PgUp, PgDn, Home, End, the wheel)"),
@@ -57,7 +59,7 @@ FLEET_VIEW_KEYS = (
     ("space  l  p", "Targets tab: mark a target · save a login for the marked or selected · map a credential"),
     ("a", "Targets tab: Add target (needs target.edit)"),
     ("e", "Targets tab: edit a target (needs target.edit)"),
-    ("d", "Targets tab: delete a target (needs target.edit)"),
+    ("D", "Targets tab: delete a target (needs target.edit)"),
     ("Tab", "the next tab"),
     ("Ctrl-Q", "quit; every session keeps running"),
     ("Esc", "back to the session"),
@@ -305,7 +307,10 @@ def keys_lines(cfg: Any, facts: A.Facts | None = None) -> list[str]:
     """Every action's key from the one table, then the keys of the sidebar, the full view and Pan."""
     leader = A.leader_label(cfg["keys.leader"])
     keys = A.leader_keys(cfg.leader_overrides())
-    lines = [f"{leader} alone opens the Menu; {leader} {leader} sends {leader} to the session.", ""]
+    lines = [f"{leader} alone opens the Menu; {leader} {leader} sends {leader} to the session.",
+             (f"{A.DETACH_LABEL} detaches the front session from the canvas and from the lists; {leader} F1 sends F1 to "
+              f"it, {leader} {A.DETACH_LABEL} sends {A.DETACH_LABEL}."),
+             ""]
     for group in A.GROUPS:
         entries = [a for a in A.ACTIONS if a.scope == A.SCOPE_SESSION and a.group == group
                    and A.permitted(a, facts or A.Facts(None))]
@@ -313,14 +318,15 @@ def keys_lines(cfg: Any, facts: A.Facts | None = None) -> list[str]:
             continue
         lines.append(group)
         for action in entries:
-            key = f"{leader} {keys[action.id]}" if action.id in keys else leader if action.id == "menu" else "—"
+            key = (action.direct_key or f"{leader} {keys[action.id]}") if action.id in keys else (
+                leader if action.id == "menu" else "—")
             lines.append(f"  {key:<8} {action.label:<24} {action.description}")
     for scope, name in DIALOG_SCOPES.items():
         entries = [a for a in A.ACTIONS if a.scope == scope and a.key]
         if entries:
             lines.append(f"{name} (while it is open)")
             lines += [f"  {a.key:<8} {a.label:<24} {a.description}" for a in entries]
-    for title, entries in (("In the fleet sidebar", SIDEBAR_KEYS), ("In the full fleet view", FLEET_VIEW_KEYS),
+    for title, entries in (("In the side panel", SIDEBAR_KEYS), ("In the full view", FLEET_VIEW_KEYS),
                            ("In Pan", PAN_KEYS), ("In the scroll view", SCROLL_KEYS)):
         lines.append(title)
         lines += [f"  {key:<8} {what}" for key, what in entries]

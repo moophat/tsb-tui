@@ -80,13 +80,13 @@ def test_create_edit_and_delete_with_confirmation(serve, wait_until, screen_text
             assert "user" not in server.target_definitions["form-target"]
             assert ("GET", "/targets/form-target/definition") in [(m, p) for m, p, _ in server.requests]
             await wait_until(pilot, lambda: view.selected_session == "form-target", "edited row", timeout_s=TARGET_FORM_WAIT_S)
-            await pilot.press("d")
+            await pilot.press("D")
             await wait_for_target_workers(app, pilot, "delete confirmation")
             await wait_until(pilot, lambda: isinstance(app.screen, ConfirmTargetDeleteScreen), "delete confirmation", timeout_s=TARGET_FORM_WAIT_S)
             assert "form-target" in screen_text(app) and "Open sessions stay open" in screen_text(app)
             await pilot.press("escape")
             assert "form-target" in server.targets
-            await pilot.press("d")
+            await pilot.press("D")
             await wait_for_target_workers(app, pilot, "delete confirmation again")
             await wait_until(pilot, lambda: isinstance(app.screen, ConfirmTargetDeleteScreen), "delete confirmation again", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.query_one("#target-delete-confirm", Button).press()
@@ -129,7 +129,7 @@ def test_keys_follow_auth_me_permission(serve, wait_until, permission):
         async with app.run_test(size=(120, 40)) as pilot:
             screen, _ = await open_targets(app, pilot, wait_until)
             hints = screen._fleet_view_keys_target().hints
-            assert {"n", "e", "d"}.issubset({hint.key for hint in hints}) == permission
+            assert {"n", "e", "D"}.issubset({hint.key for hint in hints}) == permission
             assert any(m == "GET" and p == "/auth/me" for m, p, _ in server.requests)
             await pilot.press("a")
             await pilot.pause()

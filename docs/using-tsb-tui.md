@@ -174,6 +174,29 @@ The password arrives on a descriptor or an owner-only file. Whoever starts drive
   `{"id":7,"ok":false,"error":"<code>","why":"<words>"}`. **Events** (`"ev":...`) arrive between answers.
   Blank lines and lines starting with `#` are skipped. Commands run one at a time, in order.
 
+### The keys, for a person at the TUI
+
+You see the rail on the left, the **Targets and sessions** panel beside it (Targets above, Sessions below), the
+session in the middle and one row of hints at the bottom. Every key you can use now is on that row.
+
+| Key | Does |
+|---|---|
+| `Ctrl-]` | **Detach.** You leave the front session; it keeps running. Works from the session and from the lists. |
+| `Ctrl-\` then `Ctrl-]` | Sends a real Ctrl-] to the session (telnet's escape character, for one). |
+| `Ctrl-\` alone, or `F1` | Opens the Menu: every action, searchable. |
+| `Ctrl-\` then `F1` | Sends F1 to the session. |
+| `Ctrl-\` then `→` or `←` | The next or previous session open here. `Ctrl-\` then `1` to `9` picks one by number. |
+| `Ctrl-\` then `f` | Shows or hides Targets and sessions. `Tab` and `Shift+Tab` walk rail, Targets, Sessions. |
+| `Ctrl-\` then `F` | The full view: Sessions, Targets and Alerts. `Esc` goes back. |
+| `n` | New session (in the rail, the panel and the full view). After `Ctrl-\`, `n` is the same. |
+| `z` | In the panel: fold the other list; `z` again restores it. |
+| `Ctrl-\` then `y` | Answer the question a session asked ("Kill the session?"). |
+| `Ctrl-\` then `h` | Event log: what the session told this client. |
+| `Ctrl-\` then `C` | **Vault…**: your saved logins. |
+
+Every other key goes to the session. Detach leaves a session running; End session is `Ctrl-\` then `x` and asks
+first.
+
 ## 4. A worked example on a network device
 
 Task: on a Junos switch, run two read-only commands and end the session. The device and the session id below
@@ -384,16 +407,18 @@ Most targets are routers, switches and consoles, not Linux.
 ## 11. Targets: add, edit, delete
 
 A target is a device or server TSB can open a session on. You can add, change and remove targets from the TUI or from
-`drive`. In the TUI this needs the `target.edit` permission on your login: without it, `n`, `e` and `d` do nothing. The core, not the client, decides what your login may see and change; when it refuses, it
+`drive`. In the TUI this needs the `target.edit` permission on your login: without it, `a`, `e` and `D` do nothing. The core, not the client, decides what your login may see and change; when it refuses, it
 says why and the client shows its message.
 
-**In the TUI.** Open the full Fleet view (`Ctrl-\` then `F`) and press `Tab` to the Targets tab. Then:
+**In the TUI.** The side panel's Targets list is the first thing you see after login (`Ctrl-\` then `f` shows or hides
+the panel). For the full list, open the full view (`Ctrl-\` then `F`) and press `Tab` to the Targets tab. Then:
 
 | Key | Does |
 |---|---|
-| `n` | Opens the **New target** form. |
+| `n` | Opens **New session** on the selected target. |
+| `a` | Opens the **New target** form. |
 | `e` | Opens the **Edit target** form on the selected target, filled with its stored definition. The id cannot change. |
-| `d` | Asks "Delete `<target>`? Open sessions stay open. This cannot be undone." Choose **Delete it** or **Keep it** (`Esc` keeps it). |
+| `D` | Asks "Delete `<target>`? Open sessions stay open. This cannot be undone." Choose **Delete it** or **Keep it** (`Esc` keeps it). |
 
 The form asks for:
 

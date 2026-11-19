@@ -153,7 +153,7 @@ _DEFAULT_MODE_KEYS = [
     # Ctrl-\ is the one key left out: it is the leader (D15) and is sent only as `^\ ^\`, which
     # test_leader_and_menu proves.
     ("ctrl+circumflex_accent", b"\x1e"),  # IOS's abort for a hung ping or traceroute
-    ("ctrl+right_square_bracket", b"\x1d"),  # telnet's escape character
+    # Ctrl+] (telnet's escape character) is the TUI's own: it detaches the front session (test_redesign_focus).
     ("alt+a", b"\x1ba"),
     ("ctrl+left", b"\x1b[1;5D"),  # the engine's xterm form; see test_term_keys' recorded divergences
 ]

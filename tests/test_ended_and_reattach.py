@@ -127,7 +127,7 @@ def test_a_dropped_socket_whose_record_says_the_session_ended_shows_that_end(wai
     asyncio.run(_check())
 
 
-def test_esc_closes_the_dialog_and_the_row_keeps_the_end_with_c_and_fleet(wait_until) -> None:
+def test_esc_closes_the_dialog_and_the_row_keeps_the_end_with_c_and_targets(wait_until) -> None:
     """G8: after Esc the row still says what happened, and `c` / `^\\ f` still lead somewhere."""
 
     async def _check() -> None:
@@ -140,7 +140,7 @@ def test_esc_closes_the_dialog_and_the_row_keeps_the_end_with_c_and_fleet(wait_u
                 await wait_until(pilot, lambda: app.screen is screen, "the dialog to close")
                 row = screen.status.text
                 assert "✕ ended · stub-target · killed" in row
-                assert "c New session here" in row and "Ctrl+\\ f Fleet" in row and "Esc close" not in row
+                assert "c New session here" in row and "Ctrl+\\ f Targets" in row and "Esc close" not in row
                 await pilot.press("c")
                 await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "New session")
                 assert app.screen.query_one("#target-id").value == "stub-target"
@@ -180,7 +180,7 @@ def test_4011_and_a_dropped_socket_show_the_reattaching_row_and_esc_stops_it(
                 await pilot.press("escape")
                 await wait_until(pilot, lambda: "not reattaching" in screen.status.text, "the stop")
                 assert "◌ not reattaching · the session lives on" in screen.status.text
-                assert "▦ Fleet" in screen.status.text and "F1 Menu" not in screen.status.text
+                assert "▦ Targets" in screen.status.text and "F1 Menu" not in screen.status.text
                 await pilot.pause(0.3)
                 assert stub.attaches == 1, "Esc must stop further attempts"
 
