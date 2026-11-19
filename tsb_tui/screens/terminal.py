@@ -165,6 +165,7 @@ from .fleet_view import (
     FleetRow,
     FleetView,
     FleetViewModel,
+    RowSource,
     TargetEntry,
 )
 from .prompts import (
@@ -871,7 +872,7 @@ class TerminalScreen(Screen):
             self.sidebar.set_model(self._sidebar_model(scan, live, chips, stale, asks),
                                    front_id=front_id)
         if self.view_open and self.fleet_view is not None:
-            self.fleet_view.set_model(self._fleet_view_model(live, needing, stale, asks))
+            self.fleet_view.set_model(self._fleet_view_model(live, scan, stale, asks))
 
     def _sidebar_model(self, scan: FleetScan, live: dict[str, dict], chips: list, stale: set[str],
                        asks: set[str]) -> SidebarModel:
@@ -1051,26 +1052,37 @@ class TerminalScreen(Screen):
 
     # -- the full view's model --
 
-    def _fleet_view_model(self, live: dict[str, dict], needing: list[dict], stale: set[str],
+    def _fleet_view_model(self, live: dict[str, dict], scan: FleetScan, stale: set[str],
                           asks: set[str]) -> FleetViewModel:
-        """The rows of the full view from the same records the sidebar reads: the sessions open here first, in the
-        order they were opened (their rail numbers), then the rest in the order the core listed them."""
+        """The full view's model from the same records the sidebar reads: the sessions open here first, in the
+        order they were opened (their rail numbers), then the rest in the order the core listed them. The table
+        holds the records and the ways to read them; a row is built only for a line the view paints, so a rebuild
+        of a long list builds about one screen of rows, not one per record."""
         fleet = self.fleet
         assert fleet is not None
         me = self._me()
         open_ids = [slot.session_id for slot in self.slots]
-        merged = {**fleet.records, **live}
         labels = fleet.display_ids(live)
-        by_target: dict[str, int] = {}
-        for record in merged.values():
-            by_target[record.get("target_id", "")] = by_target.get(record.get("target_id", ""), 0) + 1
-        now = self.app.wall_clock()
+        by_target = scan.by_target
+        columns = scan.columns
         numbers = {sid: index for index, sid in enumerate(open_ids, start=1)}
+        needing = scan.needs_you
         needing_ids = {record["id"] for record in needing}
+        now = self.app.wall_clock()  # one clock for the model: while the view is open the tick builds it again
 
         def row(record: dict) -> FleetRow:
             entry = self._entry(record, "view", me, numbers, needing_ids, stale, asks, labels, by_target, now)
             return self._fleet_row(record, entry, me, numbers, labels, now)
+
+        def head(record: dict) -> tuple[str, str, bool]:
+            return record["id"], columns[record["id"]][0], record.get("state") in ("killed", "terminated")
+
+        def search(record: dict) -> str:
+            target, login = columns[record["id"]]
+            return f"{target} {labels[record['id']]} {login} {record.get('owner') or ''}"
+
+        def cells(record: dict) -> tuple[str, ...]:
+            return self._fleet_cells(record, columns[record["id"]][1], me, numbers, labels, now)
 
         visible = fleet.visible(open_here=open_ids, live=live)
         first = [record for record in visible if record["id"] in numbers]
@@ -1085,11 +1097,11 @@ class TerminalScreen(Screen):
         on_targets = view is not None and view.tab == TAB_TARGETS
         return FleetViewModel(
             needs=tuple(row(record) for record in needing),
-            rows=tuple(row(record) for record in [*first, *rest]), mode=fleet.filter_mode,
+            rows=(), lazy_rows=RowSource([*first, *rest], head, search, cells, row), mode=fleet.filter_mode,
             alert_lines=alert_rows, back_label=back,
             tabs=tuple(self.app.cfg["fleet_view.tabs"]), detail_for=self._details_for,
             buttons_for=self._buttons_for,
-            targets=self._target_entries(merged) if on_targets else (),
+            targets=self._target_entries(scan.merged) if on_targets else (),
             target_edit="target.edit" in self.app.permissions,
             targets_count=self.targets.count_label(),
             targets_note=TARGETS_UNAVAILABLE if self.targets.unavailable else "",
@@ -1262,33 +1274,45 @@ class TerminalScreen(Screen):
         if row is not None:
             self._new_session_dialog(row.id, row.type)
 
-    def _fleet_row(self, record: dict, entry: SidebarEntry, me: str | None, numbers: dict[str, int],
-                   labels: Mapping[str, str], now: float) -> FleetRow:
+    @staticmethod
+    def _fleet_cells(record: dict, login: str, me: str | None, numbers: dict[str, int], labels: Mapping[str, str],
+                     now: float) -> tuple[str, ...]:
+        """The ten cells a table row shows, in the order of the columns, from the record alone: what the columns
+        are sized by (every listed row) and what a built row holds. `login` is who types, as the sidebar reads it."""
         sid = record["id"]
         state = record.get("state")
-        state_text, state_role = _STATE_CELLS.get(state, (str(state or "?"), "muted"))
         ended = state in ("killed", "terminated")
-        holder = record.get("control_holder")
-        keys = "· nobody" if holder is None else entry.login
-        types = ("yours · nobody" if record.get("owner") == me else "nobody types") if holder is None else (
-            "you type" if entry.login == "you" else f"{entry.login} types")
         ends = ""
         stamp = parse_timestamp(record.get("ends_at"))
         if stamp is not None and not ended:
             left = format_duration(stamp.timestamp() - now)
             by = _ENDS_BY_WORD.get(record.get("ends_by") or "")
             ends = ("▲ " if record.get("ending") else "") + left + (f" · {by}" if by else "")
+        owner = record.get("owner")
+        return (record.get("target_id", ""), labels[sid], str(record.get("session_type") or ""),
+                _STATE_CELLS.get(state, (str(state or "?"), "muted"))[0],
+                "· nobody" if record.get("control_holder") is None else login,
+                str(numbers[sid]) if sid in numbers else "",
+                str(len(record["clients"])) if "clients" in record else "·",
+                "you" if owner == me else str(owner or ""), ends,
+                "●" if (record.get("recording") or {}).get("active") else "")
+
+    def _fleet_row(self, record: dict, entry: SidebarEntry, me: str | None, numbers: dict[str, int],
+                   labels: Mapping[str, str], now: float) -> FleetRow:
+        sid = record["id"]
+        state_role = _STATE_CELLS.get(record.get("state"), ("", "muted"))[1]
+        _target, id_label, type_, state_text, keys, open_, clients, owner, ends, _rec = self._fleet_cells(
+            record, entry.login, me, numbers, labels, now)
+        types = ("yours · nobody" if record.get("owner") == me else "nobody types") if (
+            record.get("control_holder") is None) else ("you type" if entry.login == "you" else f"{entry.login} types")
         note = ""
         if entry.reason is not None:
             note = _NEEDS_NOTES.get(entry.reason, "ends in {clock}").format(clock=entry.countdown or "")
-        owner = record.get("owner")
         return FleetRow(
-            session_id=sid, who=entry.who, target=entry.target,
-            id_label=labels[sid], type=str(record.get("session_type") or ""),
-            state=state_text, state_role=state_role, keys=keys, open=str(numbers[sid]) if sid in numbers else "",
-            clients=str(len(record["clients"])) if "clients" in record else "·",
-            owner="you" if owner == me else str(owner or ""), ends=ends, rec=entry.rec, front=entry.front,
-            note=note, types=types, search=entry.search, ended=ended)
+            session_id=sid, who=entry.who, target=entry.target, id_label=id_label, type=type_,
+            state=state_text, state_role=state_role, keys=keys, open=open_, clients=clients, owner=owner,
+            ends=ends, rec=entry.rec, front=entry.front, note=note, types=types, search=entry.search,
+            ended=record.get("state") in ("killed", "terminated"))
 
     def on_fleet_view_command(self, message: FleetView.Command) -> None:
         message.stop()
@@ -2055,7 +2079,7 @@ class TerminalScreen(Screen):
         stale, asks = self._attention()
         open_ids = [slot.session_id for slot in self.slots]
         scan = self.fleet.scan(open_here=open_ids, stale_with_me=stale, question_for_me=asks, live=live)
-        self.fleet_view.set_model(self._fleet_view_model(live, scan.needs_you, stale, asks))
+        self.fleet_view.set_model(self._fleet_view_model(live, scan, stale, asks))
 
     def _refresh_painted_clocks(self) -> None:
         """The clocks of the rows the sidebar paints, read from the records at the new `now`. No entry is built
