@@ -265,3 +265,41 @@ Before the fix, on the same tree, same command: 4 failures in 60 un-instrumented
 - The 1-in-`make test` failure is classified per the brief's rule (3/3 standalone green) but the full suite was not re-run end to end after it.
 - The fix was proven green 36/36 on the affected test plus the whole file, the lists file and the nine suites; the race itself is Textual's (`Resize` posted only to `shown|resized` after a lazy full-map rebuild adds the widget), which this repo does not own — the product-side fallback removes the hang's trigger, and no Textual file was touched.
 - The instrumented debug runs (plugin under `.lane-logs/`, removed) perturbed the race's rate; their role was evidence only, not the proof runs.
+
+## Round 5 — pin the timezone the P3 tests render `since` in
+
+**AI-Model:** deepseek-v4.1-flash
+
+tsb-tui #107's CI failed four baselines. `since HH:MM` is the session's `created_at` in local time (rule 7, product
+behaviour unchanged), and the committed baselines had been captured on a machine at UTC+7 (`since 19:00`); the CI
+runner rendered `since 12:00`.
+
+### The change
+
+`tests/test_redesign_lists.py`: a module-level autouse fixture, `_utc_timezone`, sets `TZ=UTC` and calls
+`time.tzset()` for each test, then restores the process's previous `TZ` (or removes it) and calls `time.tzset()`
+again. The expected words keep computing local time the way the product does, so they agree under the pinned zone,
+and the galleries are covered too. No product code changed.
+
+### Regenerated baselines (only those whose `since` text changed)
+
+- `tests/snapshots/redesign-p3/alike-since-80x24.svg`
+- `tests/snapshots/redesign-p3/alike-since-160x45.svg`
+- `tests/snapshots/redesign-p3/targets-opens2-80x24.svg`
+- `tests/snapshots/redesign-p3/targets-opens2-160x45.svg`
+
+Each diff is the two `since` words per file, `19:00` → `12:00`; no other baseline and no other line changed.
+
+### Gate
+
+Each run its own `pytest` process over `tests/test_redesign_lists.py`, `PYTHONPATH=program/contract/client:.`,
+`-p no:cacheprovider`, output to `.lane-logs/`:
+
+| Environment | Exit | Result |
+|---|---|---|
+| `TZ` unset | 0 | 46 passed |
+| `TZ=UTC` | 0 | 46 passed |
+| `TZ=Asia/Ho_Chi_Minh` | 0 | 46 passed |
+| `make lint` | 0 | ruff clean; engine shared object and headers verified |
+
+`git diff --name-only` lists only `tests/test_redesign_lists.py` and those four baselines.

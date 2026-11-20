@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import html
+import os
 import re
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -26,6 +28,23 @@ from workspace_support import fixture_login, named_sessions, open_here
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.target_form import TargetFormScreen
+
+
+@pytest.fixture(autouse=True)
+def _utc_timezone():
+    """Rule 7 renders `since HH:MM` in local time, as the product does; pin the test process to UTC so the
+    expected words and the P3 baselines agree whatever zone the machine runs in."""
+    previous = os.environ.get("TZ")
+    os.environ["TZ"] = "UTC"
+    time.tzset()
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = previous
+        time.tzset()
 
 
 def _painted(screen) -> list[str]:
