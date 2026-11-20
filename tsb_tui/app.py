@@ -656,11 +656,13 @@ class TsbTuiApp(App):
         if self._alert_streamer is not None:
             return
         self.alerts = AlertModel.from_config(self.cfg)
-        self._alert_streamer = AlertStreamer.from_config(
+        streamer: AlertStreamer
+        streamer = AlertStreamer.from_config(
             self.client, self.alerts, self.cfg,
-            on_event=lambda alert: self._alerts_from_thread(),
-            on_change=self._alerts_from_thread)
-        self._alert_streamer.start()
+            on_event=lambda alert: self._alerts_from_thread(streamer),
+            on_change=lambda: self._alerts_from_thread(streamer))
+        self._alert_streamer = streamer
+        streamer.start()
 
     def stop_alerts(self) -> None:
         """End the stream: at logout and at quit."""
@@ -680,11 +682,20 @@ class TsbTuiApp(App):
         for listener in list(self._alert_listeners):
             listener()
 
-    def _alerts_from_thread(self) -> None:
+    def _alerts_from_thread(self, streamer: AlertStreamer) -> None:
+        """Runs on the watcher's thread: hand the change to the UI thread, unless that watcher was stopped."""
+        if streamer is not self._alert_streamer:
+            return
         try:
-            self.call_from_thread(self.alerts_changed)
+            self.call_from_thread(self._apply_alerts, streamer)
         except RuntimeError:
             pass  # the app is going away
+
+    def _apply_alerts(self, streamer: AlertStreamer) -> None:
+        """Runs on the UI thread: drop a change from a watcher stopped while it was in flight, else notify."""
+        if streamer is not self._alert_streamer:
+            return
+        self.alerts_changed()
 
     def dismiss_alert(self, alert: Alert) -> None:
         self.alerts.dismiss(alert.alert_id)

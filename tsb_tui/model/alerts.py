@@ -157,7 +157,8 @@ class AlertStreamer:
 
     @property
     def running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        return (not self._stop.is_set() and self._thread is not None
+                and self._thread.is_alive())
 
     def start(self) -> None:
         if self._thread is not None:
@@ -166,16 +167,21 @@ class AlertStreamer:
         self._thread.start()
 
     def stop(self) -> None:
-        """End the stream now: closing it wakes a read that would otherwise wait for the next event (the
-        core's comment lines are not events), so the thread does not outlive logout or quit."""
+        """End the stream now, without waiting for the worker: closing it wakes a read that would otherwise wait
+        for the next event (the core's comment lines are not events), and the thread is a daemon that ends after
+        the step it is in. Nothing on the event loop waits for it, since its event is itself waiting for that loop."""
         self._stop.set()
         stream = self._stream
         if stream is not None:
             with contextlib.suppress(Exception):  # best effort: the thread ends either way
                 stream.close()
-        if self._thread is not None:
-            self._thread.join(timeout=min(self._read_timeout, 2.0) + 0.5)
-            self._thread = None
+
+    def join(self, timeout: float | None = None) -> None:
+        """Wait for the worker to end: for a caller with no running loop (a test, a shutdown path). Never call
+        it on the event loop: an event in flight may be waiting for that same loop."""
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout)
 
     def _run(self) -> None:
         step = 0

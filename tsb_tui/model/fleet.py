@@ -433,7 +433,8 @@ class FleetPoller:
 
     @property
     def running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        return (not self._stop.is_set() and self._thread is not None
+                and self._thread.is_alive())
 
     @classmethod
     def from_config(cls, client: Any, config: Any, *,
@@ -480,7 +481,13 @@ class FleetPoller:
             self._stop.wait(self._interval)
 
     def stop(self) -> None:
+        """Ask the poller to end and return at once: the thread is a daemon and ends after the step it is in.
+        Nothing on the event loop waits for it, since its reply is itself waiting for that loop."""
         self._stop.set()
-        if self._thread is not None:
-            self._thread.join(timeout=5.0)
-            self._thread = None
+
+    def join(self, timeout: float | None = None) -> None:
+        """Wait for the worker to end: for a caller with no running loop (a test, a shutdown path). Never call
+        it on the event loop: a reply in flight may be waiting for that same loop."""
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout)
