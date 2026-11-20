@@ -193,6 +193,34 @@ def _ending(record: dict[str, Any]) -> bool:
     return bool(record.get("ending", False))
 
 
+def others_by_target(merged: Mapping[str, dict[str, Any]], me: str | None) -> dict[str, str]:
+    """A target row's others word (ruled 2026-11-20), from the session list the TUI already reads: per target,
+    the sessions on it in state live or detached whose owner is not the caller. One owner: `<name> on it`; two
+    or more owners: `<n> others on it`. Targets with none are absent."""
+    out: dict[str, set] = {}
+    for record in merged.values():
+        target = record.get("target_id")
+        if (target is not None and record.get("state") in ("live", "detached")
+                and record.get("owner") is not None and record.get("owner") != me):
+            out.setdefault(target, set()).add(record.get("owner"))
+    return {target: (f"{next(iter(owners))} on it" if len(owners) == 1 else f"{len(owners)} others on it")
+            for target, owners in out.items()}
+
+
+def session_rank(record: dict[str, Any], open_here: set[str], me: str | None) -> int:
+    """The ruled session order (2026-11-20): open here, then yours live, then yours detached, then joinable
+    (needs you is the full view's block over the same list). The sort is stable, so the core's order stands
+    within a rank."""
+    if record["id"] in open_here:
+        return 0
+    if record.get("owner") == me:
+        if record.get("state") == "live":
+            return 1
+        if record.get("state") == "detached":
+            return 2
+    return 3
+
+
 def _held_by_other(record: dict[str, Any], me: str | None) -> bool:
     holder = record.get("control_holder")
     return holder is not None and holder.get("user") != me

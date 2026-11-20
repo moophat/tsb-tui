@@ -476,8 +476,15 @@ def test_s1_the_rail_widens_in_place_into_the_fleet_sidebar(size, serve, wait_un
                 # filter's mine│all, New session and the alerts are the full view's, the rail's and the keys'.
                 assert side[0].startswith("┌─ ▦ Targets"), side[0]
                 assert any(row.startswith(("┌─ ▸ Sessions", "┏━ ▸ Sessions")) for row in side), side
-                assert any("1●" in row and "rtr-core-01" in row for row in side), side
-                assert any("2◆" in row and "infra-db-02" in row for row in side), side
+                assert any("1 rtr-core-01" in row for row in side), side
+                # The ruled session rows (P3 part 1): the state word beside its mark and the owner, then the
+                # typer words — `yours` or the other login's — on the row's own lines; at the wide budget the
+                # name yields with an ellipsis when the ruled words do not leave it room.
+                assert any("2 infra-db-02" in row or "2 … ◆ live" in row for row in side), side
+                assert any("● live · yours" in row for row in side), side
+                assert any("◆ live · yours" in row for row in side), side
+                assert any("you type" in row for row in side), side
+                assert any("fixture-peer types" in row for row in side), side
                 assert not any(w in row for row in side for w in ("Needs you", "Open here", "mine│all", "New session")), side
                 assert not any("fw-edge-01" in row for row in side), "a session not open here is the full view's"
                 assert lines[0][rail + width:].strip(), "nothing is drawn beside the sidebar"

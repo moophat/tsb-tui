@@ -112,7 +112,14 @@ def test_panel_split_frames_and_padding(tmp_path, size, count):
             await pilot.pause()
             lines = [sidebar.render_line(y).text for y in range(sidebar.size.height)]
             height = sidebar.size.height
-            sessions_high = {0: 3, 1: 3, 5: 7, 20: height // 2}[count]
+            # The ruled session row takes the lines it paints: one at the wide budget, three at the narrow one
+            # (P3 part 1), so the section's height follows its painted lines, still at least 3 and at most half.
+            per_row = 1 if size[0] >= 160 else 3
+            # The panel is 28 columns in this test at both sizes, so the empty copy wraps at its ` · ` (two
+            # lines) and a ruled row takes three lines narrow, one wide.
+            empty_lines = 2
+            sessions_high = {0: 2 + empty_lines, 1: 2 + per_row, 5: 2 + 5 * per_row, 20: height // 2}[count]
+            sessions_high = min(sessions_high, height // 2)
             assert 3 <= sessions_high <= height // 2
             section = height - sessions_high
             assert lines[0].startswith('┌─ ▦ Targets'), lines[0]
