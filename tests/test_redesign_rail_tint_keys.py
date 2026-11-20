@@ -606,3 +606,59 @@ def test_the_ended_screen_answers_n_and_the_arrows(serve, monkeypatch, wait_unti
             await wait_until(pilot, lambda: screen.front is not None and screen.front.session_id == one
                              and screen.ended is None, "the next open session")
     asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_ctrl_backslash_number_resolves_the_rails_numbered_list(serve, wait_until, monkeypatch, size):
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        held, first, second = named_sessions(url, serve_app, "rtr-00", "rtr-01", "rtr-02")
+        app = TsbTuiApp(url, cfg=load(overrides=["rail.chips=mine_held_by_others,open_here"]))
+        notices = []
+        monkeypatch.setattr(app, "notify", lambda text, **kwargs: notices.append(text))
+        async with app.run_test(size=size) as pilot:
+            with other_client(url, _serve.PEER, held):  # a peer login holds this one of mine
+                screen = await key_login(pilot, app, wait_until)
+                await open_here(app, pilot, wait_until, first, second)
+                screen._refresh_fleet()
+                await wait_until(pilot, lambda: held in screen.fleet.records, "the poll to list the fleet")
+                screen._sync_fleet_widgets()
+                await pilot.pause()
+                chips = [r for r in screen.rail.rows if r.action == ACT_CHIP]
+                assert [r.arg for r in chips] == [first, second], [r.text for r in chips]
+                assert chips[0].text.startswith("1"), [r.text for r in chips]
+                await pilot.press(LEADER, "1")  # the digit of the rail's first row
+                await pilot.pause()
+                assert screen.front is not None and screen.front.session_id == first, screen.front
+                assert screen.slot_for(held) is None and not screen.dialogs, screen.dialogs
+                await pilot.press(LEADER, "3")  # the number the unfiltered list used to give the held session
+                await pilot.pause()
+                assert "No session is numbered 3." in notices, notices
+                assert screen.front.session_id == first, screen.front
+                assert screen.slot_for(held) is None
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_an_ended_session_shows_no_keyboard_notice(serve, wait_until, screen_text, size):
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        (sid,) = named_sessions(url, serve_app, "rtr-core-01")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            with other_client(url, _serve.PEER, sid):  # the peer attaches first and holds the keyboard
+                screen = await key_login(pilot, app, wait_until)
+                await open_here(app, pilot, wait_until, sid)
+                assert not screen.pump.state.holds_keyboard
+            await wait_until(pilot, lambda: screen.pump.state.holds_keyboard,
+                             "the keyboard to come to this client")
+            await wait_until(pilot, lambda: "you type now" in str(screen.query_one("#canvases").border_subtitle),
+                             "the notice in the frame")
+            with serve_app.lock:
+                serve_app._kill(serve_app.sessions[sid])
+            await wait_until(pilot, lambda: screen.ended is not None, "the session to end")
+            await pilot.pause()
+            assert screen.slots[0].keyboard_notice == "", screen.slots[0].keyboard_notice
+            assert "you type now" not in str(screen.query_one("#canvases").border_subtitle)
+            assert "Session ended" in screen_text(app), screen_text(app)
+    asyncio.run(check())

@@ -238,3 +238,68 @@ no moved assertions, no new item-1 test. `close_sidebar` keeps `if not self._rai
 ### Not verified
 
 - No real terminal or PTY run; keys proven through the in-process fixture server.
+
+## Fix round 3 (P2b review round 3)
+
+**AI-Model:** swift-1.5 (Strata) | **Branch:** feat/tui-redesign-p2b (5c77d39) | **Date:** 2026-11-20
+**Status:** DONE — both findings applied, one commit. No push.
+
+The lane first stopped on the ruling's stop-condition: the side panel printed a number for a session not open
+here (`terminal.py` `_sidebar_model` built `numbers` from the unfiltered chips; `sidebar.py` `_row_prefix` prints
+it in the held-by-others group), and `tests/test_sidebar.py:91` pinned that row. The orchestrator ruled option (A)
+(2026-11-20 10:1x): the side panel's `numbers` map is built from the same open-here, rail-ordered list the rail
+and `^\ N` use; a row for a session not open here prints a blank number column.
+
+### Item 1 — one number per session in this window (`terminal.py`)
+
+- `switch_to_number`: N resolves against the rail's numbered list — the scan over the sessions open here, its
+  `chip_ids` filtered to the open-here set (the same filter `_sync_fleet_widgets` applies), then `fleet.chips`
+  over that scan copy. A session not open here has no digit: `^\ N` answers "No session is numbered N." and
+  attaches nothing; such a session is reached from the side panel or the full view, as today.
+- `_sync_fleet_widgets` / `_sidebar_model`: the sidebar's `numbers` map is built from `rail_chips` (the rail's
+  own list), so a held-by-others row prints a blank number column. The full view already numbered only the
+  sessions open here (`_fleet_view_model`'s `numbers` from `open_ids`; `_fleet_cells` prints "" otherwise) — no
+  change there.
+- `chip_number` (the drive `attach` answer's rail number, and the device-login events' `chip` field): reads the
+  same open-here, rail-ordered list, so it reports the one number in this window. Every test that reads `chip`
+  reads a session open here, so no existing assertion moved.
+
+Moved assertion (per the ruling above): `tests/test_sidebar.py`,
+`test_a_row_reads_who_types_the_login_that_types_and_rec_in_columns` — the held entry's `number=3` (the input the
+assertion reads) dropped and line 91 moved from `" 3◆ lab-linux-04 minh      REC "` to
+`"  ◆ lab-linux-04 minh      REC "` (blank number slot). Nothing else in that test changes.
+
+### Item 2 — an ended session shows no keyboard notice (`terminal.py`)
+
+- `_show_end`: when a slot's session ends, its keyboard notice clears at once (`keyboard_notice = ""`,
+  `keyboard_notice_until = 0.0`).
+- `refresh_status`: the frame renders the front slot's notice only while that slot has not ended
+  (`front.ended is None` in the guard), so an ended front slot never shows "you type now".
+
+### Tests first, red on 5c77d39 (both in `tests/test_redesign_rail_tint_keys.py`, keys only, 80x24 and 160x45)
+
+The red run is `.lane-logs/red-r3.txt`: **4 failed** (exit 1).
+
+| Test | Red line on 5c77d39 |
+|---|---|
+| `^\ N` resolves the rail's numbered list (x2) | `assert (SessionSlot(session_id='sess-6'…) is not None and 'sess-6' == 'sess-4')` — with `rail.chips=mine_held_by_others,open_here` and a peer-held session of mine sorted ahead, `^\ 1` left the front on the last-opened session (the held one gated the attach), not the rail's first row; `^\ 3` (the number the unfiltered list used to give the held session) attached the third-listed open session and raised no refusal |
+| ended session shows no keyboard notice (x2) | `AssertionError: you type now: fixture-peer left` — `assert 'you type now…' == ''`: the notice lived on the ended slot, inside its 5s window |
+
+Green: the same two tests, **4 passed** (exit 0). The scenario pins the knob through
+`rail.chips=mine_held_by_others,open_here` so the held session sorts before the open ones in the unfiltered
+list; under the default order the rail filter already kept digits 1..k aligned, and the digit past the open-here
+count is where `^\ N` now refuses.
+
+### Commands (NO_COLOR unset, `PYTHONPATH=program/contract/client:.`, test venv python)
+
+- New tests red: 4 failed (exit 1, `.lane-logs/red-r3.txt`). Green: 4 passed (exit 0, `.lane-logs/green-r3-new.txt`).
+- Gate suite (`test_redesign_layout.py test_redesign_focus.py test_redesign_rail_tint_keys.py test_sidebar.py
+  test_rail.py test_fleet_view.py`): first pass **1 failed, 236 passed** (exit 1) — the moved `test_sidebar.py:91`
+  string was one space short (the blank number slot keeps the mark's space); fixed, rerun: **237 passed**
+  (exit 0, `.lane-logs/gate-r3.txt`).
+- `make lint`: exit 0 (engine-check verified, import lint clean; `.lane-logs/lint-r3.txt`).
+
+### Not verified
+
+- No real terminal or PTY run; keys proven through the in-process fixture server.
+- `tests/test_snapshots.py` and the full suite were not run (outside this round's gate); no baseline changed.

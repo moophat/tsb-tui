@@ -82,13 +82,13 @@ def test_a_row_reads_who_types_the_login_that_types_and_rec_in_columns() -> None
                         front=True),
                  _entry("b", GROUP_OPEN_HERE, number=2, who="◆", target="infra-db-02", login="ci-agent",
                         out_age="2s")]
-    held = [_entry("c", GROUP_MINE_HELD_BY_OTHERS, number=3, who="◆", target="lab-linux-04", login="minh",
+    held = [_entry("c", GROUP_MINE_HELD_BY_OTHERS, who="◆", target="lab-linux-04", login="minh",
                    rec=True)]
     lines = [line.text for line in _view(_model((GROUP_OPEN_HERE, open_here),
                                                 (GROUP_MINE_HELD_BY_OTHERS, held))).lines]
     assert " 1● rtr-core-01  you       REC " in lines
     assert " 2◆ infra-db-02  ci-agent  •2s " in lines
-    assert " 3◆ lab-linux-04 minh      REC " in lines
+    assert "  ◆ lab-linux-04 minh      REC " in lines
     assert len({len(line) for line in lines}) == 1, "every line fills the sidebar's width exactly"
 
 

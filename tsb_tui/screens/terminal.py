@@ -931,12 +931,12 @@ class TerminalScreen(Screen):
             names=tuple((chip.session_id, live[chip.session_id].get("target_id", chip.session_id))
                         for chip in rail_chips if chip.session_id in live)))
         if self.sidebar_open:
-            self.sidebar.set_model(self._sidebar_model(scan, live, chips, stale, asks),
+            self.sidebar.set_model(self._sidebar_model(scan, live, rail_chips, stale, asks),
                                    front_id=front_id)
         if self.view_open and self.fleet_view is not None:
             self.fleet_view.set_model(self._fleet_view_model(live, scan, stale, asks))
 
-    def _sidebar_model(self, scan: FleetScan, live: dict[str, dict], chips: list, stale: set[str],
+    def _sidebar_model(self, scan: FleetScan, live: dict[str, dict], rail_chips: list, stale: set[str],
                        asks: set[str]) -> SidebarModel:
         """The sidebar's model: the filtered records as references, with what `fleet.scan` gave in its one pass —
         the groups, the target counts and each record's two column fields. Nothing in it formats a record:
@@ -946,7 +946,9 @@ class TerminalScreen(Screen):
         assert fleet is not None
         me = self._me()
         groups = scan.groups
-        numbers = {chip.session_id: chip.number for chip in chips}
+        # The same one number the rail shows: open in this window, in the rail's order. A row for a session not
+        # open here prints a blank number column.
+        numbers = {chip.session_id: chip.number for chip in rail_chips}
         needing_ids = {record["id"] for record in scan.needs_you}
         labels = fleet.display_ids(live)
         by_target = scan.by_target
@@ -1035,10 +1037,15 @@ class TerminalScreen(Screen):
         return self._live()
 
     def chip_number(self, session_id: str) -> int | None:
-        """The session's number on the rail, or None when it has no chip."""
+        """The session's number on the rail, or None when it has no chip. A session has a number only while it
+        is open in this window (D41), so this reads the same list the rail shows."""
         assert self.fleet is not None
         stale, asks = self._attention()
-        chips = self.fleet.chips(open_here=[s.session_id for s in self.slots], front=None, question_for_me=asks,
+        open_ids = [s.session_id for s in self.slots]
+        scan = self.fleet.scan(open_here=open_ids, stale_with_me=stale, question_for_me=asks, live=self._live())
+        open_set = set(open_ids)
+        rail_ids = [sid for sid in scan.chip_ids if sid in open_set]
+        chips = self.fleet.chips(scan=replace(scan, chip_ids=rail_ids), front=None, question_for_me=asks,
                                  stale_with_me=stale, live=self._live())
         return next((chip.number for chip in chips if chip.session_id == session_id), None)
 
@@ -1709,11 +1716,17 @@ class TerminalScreen(Screen):
             self._show_end_dialog(slot)
 
     def switch_to_number(self, number: int) -> None:
-        """`^\\ 1`-`^\\ 9`: the session on that rail chip. A chip that is not open here attaches (the gate first)."""
+        """`^\\ 1`-`^\\ 9`: the session on that rail chip. A session has a number only while it is open in this
+        window (D41), so N resolves against the same numbered list the rail shows; a session not open here has
+        no digit and is reached from the side panel or the full view."""
         assert self.fleet is not None
         live = self._live()
         stale, asks = self._attention()
-        chips = self.fleet.chips(open_here=[s.session_id for s in self.slots], front=None, question_for_me=asks,
+        open_ids = [s.session_id for s in self.slots]
+        scan = self.fleet.scan(open_here=open_ids, stale_with_me=stale, question_for_me=asks, live=live)
+        open_set = set(open_ids)
+        rail_ids = [sid for sid in scan.chip_ids if sid in open_set]
+        chips = self.fleet.chips(scan=replace(scan, chip_ids=rail_ids), front=None, question_for_me=asks,
                                  stale_with_me=stale, live=live)
         chip = next((c for c in chips if c.number == number), None)
         if chip is None:
@@ -2333,6 +2346,8 @@ class TerminalScreen(Screen):
         if view is None:
             return
         slot.ended = view
+        slot.keyboard_notice = ""  # an ended session shows no keyboard notice
+        slot.keyboard_notice_until = 0.0
         slot.canvas.dimmed = view.ended
         if slot is self._front:
             self.close_scroll_view()
@@ -3678,7 +3693,7 @@ class TerminalScreen(Screen):
             number = self.slots.index(self._front) + 1 if self._front in self.slots else 0
             frame.border_title = self._styled_title(frame_title(inputs, number, max(frame.outer_size.width - 6, 0)))
             front = self._front
-            notice = (front.keyboard_notice if front is not None
+            notice = (front.keyboard_notice if front is not None and front.ended is None
                       and self.app.wall_clock() < front.keyboard_notice_until else "")
             frame.border_subtitle = self._styled_notice(notice, max(frame.outer_size.width - 6, 0))
             frame.styles.border_subtitle_align = "left"
