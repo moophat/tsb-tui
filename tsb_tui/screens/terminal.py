@@ -913,8 +913,6 @@ class TerminalScreen(Screen):
         front_id = self._front.session_id if self._front is not None else None
         unseen = {slot.session_id for slot in self.slots if slot.unseen}
         scan = fleet.scan(open_here=open_ids, stale_with_me=stale, question_for_me=asks, live=live)
-        chips = fleet.chips(scan=scan, front=front_id, unseen=unseen, question_for_me=asks,
-                            stale_with_me=stale, live=live)
         needing = scan.needs_you
         alerts = self.app.alerts
         # The rail's rows are the sessions open in this window; a session of mine that another login holds is the
