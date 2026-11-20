@@ -190,3 +190,51 @@ and the `c` press stays, proving the alias). Baselines regenerated: only `redesi
   is the two `first-focus` SVGs above.
 - The rail's renumbering bites only when a `rail.chips` knob puts `mine_held_by_others` ahead of `open_here`
   (the default order lists open-here first, so under defaults nothing moves); the test pins it through the knob.
+
+## Fix round 2 (P2b review round 2)
+
+**AI-Model:** swift-1.5 (Strata) | **Branch:** feat/tui-redesign-p2b (483b68b, 4aa65da on main 7d601e8) | **Date:** 2026-11-20
+**Status:** DONE — item 2 done; item 1 reverted to the build's behaviour by the orchestrator's ruling (2026-11-20 09:1x). One commit: the two baselines and this report. No push.
+
+### Item 2 — the two baselines (done)
+
+Round 1 changed the keys row while the Targets filter is edited (`⏎ Done`, `Esc Clear`), so
+`tests/snapshots/redesign-p2a/panel-focused-80x24.svg` and `-160x45.svg` no longer matched. Regenerated only those
+two, the way the test file's own path does: `UPDATE_P2A_SNAPSHOTS=1` on
+`test_redesign_layout.py::test_two_size_baselines` for the `panel-focused` params (the `_snapshot` writer). The old
+SVGs were kept and compared as text.
+
+The text difference is **exactly the keys row** in each file — nothing else changed:
+- 80x24: two lines differ, both the footer row. The keys-row text line
+  (`⏎ New session here / n New session / / Filter / Esc Back / z Fold / F Full view` → `⏎ Done / Esc Clear`) and the
+  background rects on that same footer row (y=562.7), all `#39404f`, re-segmented for the shorter row.
+- 160x45: two lines differ, both the footer row. The keys-row text line (same change) and the background rects on
+  that same footer row (y=1075.1), all `#39404f`, re-segmented.
+
+No panel content, no colour role, no geometry outside the keys row changed. Item 2 passes: the regenerated baselines
+are green under `test_two_size_baselines` without the update flag.
+
+### Item 1 — closing the panel (reverted to the build's behaviour by ruling)
+
+The proposed rule (a close not from the rail hands the keyboard back to the session canvas) was implemented, tested
+and stopped on twice: it broke two existing assertions that pin the rail-keeps-the-keys close, and after moving them
+the tests' next step failed, because a post-close `enter` on a rail row needs the rail to hold the keys. The ruling
+(2026-11-20 09:1x) settles it: **item 1 reverts to the build's behaviour** — a close keeps the keys on the rail when
+the rail held them (the rail stays shown and focused), and hands the keys to the session when a list in the closed
+panel held them. The reason, as ruled: with a session holding the canvas, the rail-keeps-the-keys close is the only
+keyboard route to "Enter on a rail row opens the closed panel" (the redesign plan's Amendment 2, P2b, L1-rail-enter);
+handing the keys to the canvas would leave that row reachable only by mouse.
+
+The three files (`tsb_tui/screens/terminal.py`, `tests/test_redesign_focus.py`,
+`tests/test_redesign_rail_tint_keys.py`) were restored to the committed branch with `git checkout --`: no `from_rail`,
+no moved assertions, no new item-1 test. `close_sidebar` keeps `if not self._rail_has_keys(): self.set_focus(None)`.
+
+### Commands (NO_COLOR unset, `PYTHONPATH=program/contract/client:.`, test venv python)
+
+- Gate suite (`test_redesign_layout.py test_redesign_focus.py test_redesign_rail_tint_keys.py test_sidebar.py
+  test_rail.py`): **215 passed** (exit 0) — the two regenerated baselines green, the focus and rail tests as committed.
+- `make lint`: exit 0 (engine-check verified, import lint clean).
+
+### Not verified
+
+- No real terminal or PTY run; keys proven through the in-process fixture server.
