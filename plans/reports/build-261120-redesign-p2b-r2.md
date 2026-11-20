@@ -96,3 +96,97 @@ Only the Sessions tint and the marks-only `▸0` to `▸` change them; text read
 - Event log's letter (options above).
 - Marks-only Sessions row with none: `▸` as ruled, or keep `▸0`?
 - At 65 columns, should facts (countdown, input refused, REC) outlast Scroll and `? keys`?
+
+## Fix round after the review
+
+**AI-Model:** glm-5.3-flash (opencode-go) | **Branch:** feat/tui-redesign-p2b, rebased on origin/main 7d601e8, then one fix commit | **Date:** 2026-11-20
+
+### The rebase
+
+`git rebase origin/main` (7d601e8, #103) on 3f88d90 — **no conflicts**; git's three-way merge kept both sides:
+`tsb_tui/model/attachment.py` came out byte-identical to 7d601e8's (`diff` empty), and `tsb_tui/screens/terminal.py`
+carries #103's release path whole (`_free_canvas`, `_freeing`, the pump's `shutdown_feed` / `feed_running` /
+`feed_stopped` / `join_feed` / `_run_sink` untouched) beside P2b's changes. The commit kept its message and trailers
+(git rebase default). Verified after the rebase: `tests/test_drive_login_status.py tests/test_sign_out.py
+tests/test_attach_and_close.py` all pass (41 tests).
+
+### Rulings and their changes
+
+0. Rebase — above.
+1. **Menu + Ctrl+]** (`app.py` `handle_menu_key`): Ctrl+] from a Menu opened directly (F1) detaches the front
+   session (via `run_action_id("detach")`, the Menu closes); only a pending leader followed by Ctrl+] sends the
+   byte. The check sits before the search-mode return, so it holds in the directly-opened (searching) Menu too.
+   The leader-twice path is unchanged; the existing leader-then-Ctrl+] test stays green.
+2. **Rail rows** (`terminal.py` `_sync_fleet_widgets`): the rail's chip ids are filtered to the sessions open in
+   this window first, then capped and numbered (`fleet.chips` over a scan copy with the filtered `chip_ids`);
+   `more` is `len(rail_ids) > MAX_CHIPS`. The side panel's and full view's numbering and the leader digits keep
+   the model's own numbering (unchanged, as flagged in the r2 concerns).
+3. **Keyboard notice** (`terminal.py` `_tell_keyboard_moved`): when the same slot loses the keyboard, the frame's
+   "you type now" notice is cleared at once (`keyboard_notice = ""`, `keyboard_notice_until = 0.0`, status
+   refresh); the leaving toast stays.
+4. **Keys row while the filter is edited** (declined: no behaviour change where the keyboard lands — but the row
+   did advertise keys that do not work there: `⏎ New session here`, `n New session`, `/ Filter`, `Esc Back`,
+   `z Fold`, and wide `F Full view`). Now (`terminal.py` `_sidebar_keys_target`) it shows the editing keys only:
+   `⏎ Done` (Enter ends editing), `Esc Clear` (Esc empties the filter). `Esc Back` is never advertised there now,
+   which is what the sidebar does while editing.
+5. **All keys text** (`widgets/sidebar.py`, the Targets filter line's tip): "/ filter the targets by name or host
+   (an IP included)". No matching changed.
+6. **Custom themes** (`widgets/sidebar.py` `_build_styles`): if any foreground role the panel draws (the style
+   table's nine: text, text_muted, text_faint, accent, steel, warn, danger, rec_list, border_on_surface) falls
+   below 4.5:1 on the Sessions tint, the Sessions section keeps the Targets surface (no second step). Shipped
+   themes pass 4.5:1 on both tints, so they keep the tint; the five-theme tint test is untouched and green.
+7. **Enter on the rail's Targets or Sessions rows** (`terminal.py` `on_rail_activated`): both open the panel with
+   the fleet read (`open_sidebar` default `refresh=True`, the same read a click and `^\ f` do); Targets opens its
+   list, Sessions its list.
+8. **Leader map** (declined: no behaviour change): verified the refusal — a custom `[keys.leader_map]` naming a
+   moved default letter is refused at start-up by `leader_keys` → `KeymapError` → `ConfigError`, message naming
+   the key (e.g. a map putting `event_log` on `n`: "…'new_session' and 'event_log' are both on 'n' after the
+   leader"). One line added to the README's keys paragraph and the user guide's keys section: the letters that
+   moved in this release (n, →, ←, D, y, h) and that a custom leader map naming them must be updated.
+9. **Ended session screen**: `n` is New session (`c` stays an unadvertised alias), next and previous open session
+   are `→` and `←`; the ended row's hints say so (`n New session here`, `→ Next open session`, `← Previous open
+   session`, no `c`). Both layers changed: the `EndedScreen` dialog's bindings (n, c, →, ←; a
+   `previous_session` action added) and the workspace's ended branch in `on_key`.
+10. **The comment above the action table** (`model/actions.py`) names the current letters: New session `n`
+    (`c` an unadvertised alias), Next `→`, Previous `←`.
+
+### Tests first, red on the rebased code (all in `tests/test_redesign_rail_tint_keys.py`, 14 new, keys only)
+
+Each red before its fix; the red run is `.lane-logs/red-first-run.txt` (14 failed).
+
+| Test | Red line on the rebased code |
+|---|---|
+| menu opened directly, Ctrl+] detaches (x2 sizes) | `timed out after 10s waiting for the front session to detach` |
+| rail numbers the open sessions first (x2) | `ValueError: too many values to unpack` on the first run (test bug, fixed), then the chips assertion: today no rail chip exists for the open sessions |
+| frame notice clears when the keyboard leaves (x2) | `timed out after 2s waiting for the notice to clear at once` (the notice lived on) |
+| keys row while the filter is edited (x2) | `[('⏎', 'New session here'), ('n', 'New session'), ('/', 'Filter'), ('Esc', 'Back'), ('z', 'Fold')]` (+ `('F', 'Full view')` wide) |
+| custom theme the tint cannot carry (x2) | `assert {'#3f4657'} == {'#39404f'}` — Sessions painted the tint |
+| Enter on the rail rows reads the fleet (x2) | `timed out after 10s waiting for the fleet read on Enter` |
+| ended screen answers n and the arrows (x2) | `[('c', 'New session here'), ('n', 'Next open session'), ('Ctrl+\\ f', 'Targets')]` |
+
+Green: the same file, 56 passed (42 + 14). Two existing assertions pinned the pre-ruling behaviour and moved with
+the rulings: `test_sidebar.py` `test_the_panels_old_entries_are_the_rails_and_the_keys_now` (the editing row's
+hints) and `test_ended_and_reattach.py` `test_esc_closes_the_dialog…` (renamed; the row says `n New session here`
+and the `c` press stays, proving the alias). Baselines regenerated: only `redesign-p2b/first-focus-80x24` and
+`-160x45` (the keys row while the filter is edited); the diff is that row alone.
+
+### Commands (NO_COLOR unset — `env -u NO_COLOR` on the rerun — `PYTHONPATH=program/contract/client:.` — test venv python)
+
+- New tests red: 14 failed (exit 1, recorded). Green: `tests/test_redesign_rail_tint_keys.py` 56 passed (exit 0;
+  three runs: plain, `NO_COLOR=` empty, `env -u NO_COLOR`).
+- `tests/test_drive_login_status.py tests/test_sign_out.py tests/test_attach_and_close.py`: 41 passed (exit 0).
+- `tests/test_redesign_focus.py tests/test_redesign_rail_tint_keys.py tests/test_rail.py tests/test_sidebar.py
+  tests/test_status_row.py tests/test_leader_and_menu.py tests/test_actions.py tests/test_ended_and_reattach.py`:
+  241 passed (exit 0; the first pass had the four pre-ruling failures above, fixed, then green).
+- `make contract-check`: exit 0 (program clean at c4c2b81bb7a1, v0.18.0). `make lint`: exit 0 (after two unused
+  local names in the new tests were dropped).
+- The leader-map refusal probed live: `leader_keys({"event_log": "n"})`, `({"event_log": "y"})`,
+  `({"next": "n"})` each raise the message naming the key.
+
+### Not verified
+
+- No real terminal or PTY run; everything through the in-process fixture server.
+- `tests/test_snapshots.py` and the full suite were not run (outside this round's gate); the only baseline change
+  is the two `first-focus` SVGs above.
+- The rail's renumbering bites only when a `rail.chips` knob puts `mine_held_by_others` ahead of `open_here`
+  (the default order lists open-here first, so under defaults nothing moves); the test pins it through the knob.

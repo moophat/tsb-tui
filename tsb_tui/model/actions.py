@@ -249,7 +249,8 @@ def _ask_size_blocked(facts: Facts) -> str | None:
     return None
 
 
-# The actions, in the order the Menu lists them within a group. A later phase appends here.
+# The actions, in the order the Menu lists them within a group. A later phase appends here. The letters in
+# force after the leader: New session `n` (`c` stays, unadvertised), Next `→`, Previous `←`.
 ACTIONS: tuple[Action, ...] = (
     Action("menu", "Menu", "every action, searchable", None, GROUP_SESSION, SCOPE_SESSION, "Menu",
            _always, glyph="≡", in_menu=False),

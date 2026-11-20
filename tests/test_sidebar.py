@@ -480,7 +480,8 @@ def test_the_panels_old_entries_are_the_rails_and_the_keys_now(serve, wait_until
             await wait_until(pilot, lambda: screen.sidebar.region.width == 42 and screen._sidebar_has_keys(),
                              "the wide sidebar with the keys")
             text = screen.status.text
-            assert "F Full view" in text and "Esc Back" in text, text
+            # While the filter login lands in is edited the row advertises the editing keys (⏎ ends it, Esc clears).
+            assert "⏎ Done" in text and "Esc Clear" in text, text
             assert not any(w in screen.sidebar.text for w in ("◂ close", "+ New session", "alert"))
             await pilot.press("escape", "F")  # Esc leaves the filter login lands in; F is the list's own key
             await wait_until(pilot, lambda: screen.view_open, "the full view")

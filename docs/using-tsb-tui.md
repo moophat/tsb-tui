@@ -197,6 +197,10 @@ session in the middle and one row of hints at the bottom. Every key you can use 
 Every other key goes to the session. Detach leaves a session running; End session is `Ctrl-\` then `x` and asks
 first.
 
+The letters moved in this release (`n` New session, `→`/`←` next and previous, `D` Delete target, `y` Answer,
+`h` Event log): if your config file rebinds leader letters with `[keys.leader_map]` and names one of them,
+update it — a map that now collides is refused at start-up, naming the key.
+
 ## 4. A worked example on a network device
 
 Task: on a Junos switch, run two read-only commands and end the session. The device and the session id below

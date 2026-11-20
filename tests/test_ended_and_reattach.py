@@ -127,8 +127,9 @@ def test_a_dropped_socket_whose_record_says_the_session_ended_shows_that_end(wai
     asyncio.run(_check())
 
 
-def test_esc_closes_the_dialog_and_the_row_keeps_the_end_with_c_and_targets(wait_until) -> None:
-    """G8: after Esc the row still says what happened, and `c` / `^\\ f` still lead somewhere."""
+def test_esc_closes_the_dialog_and_the_row_keeps_the_end_with_new_and_targets(wait_until) -> None:
+    """G8: after Esc the row still says what happened, and `n` / `^\\ f` still lead somewhere (`c` stays an
+    unadvertised alias)."""
 
     async def _check() -> None:
         with StubServer(_closing(4010)) as url:
@@ -140,7 +141,7 @@ def test_esc_closes_the_dialog_and_the_row_keeps_the_end_with_c_and_targets(wait
                 await wait_until(pilot, lambda: app.screen is screen, "the dialog to close")
                 row = screen.status.text
                 assert "✕ ended · stub-target · killed" in row
-                assert "c New session here" in row and "Ctrl+\\ f Targets" in row and "Esc close" not in row
+                assert "n New session here" in row and "Ctrl+\\ f Targets" in row and "Esc close" not in row
                 await pilot.press("c")
                 await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "New session")
                 assert app.screen.query_one("#target-id").value == "stub-target"

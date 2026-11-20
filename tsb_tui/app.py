@@ -270,11 +270,20 @@ class MenuPalette(CommandPalette):
             event.prevent_default()
             self._action_escape()
             return True
-        if self.search_mode:
-            return False
         from .model import actions
 
         screen = self.app.workspace()
+        if event.key == actions.DETACH_KEY and not (screen is not None and screen.leader_pending):
+            # From the Menu opened directly (F1) Ctrl+] detaches the front session, as it does from the canvas
+            # and the lists; only a pending leader followed by Ctrl+] sends the byte. The Menu closes either way.
+            event.stop()
+            event.prevent_default()
+            self._action_escape()
+            if screen is not None:
+                self.app.run_worker(screen.run_action_id("detach"), exclusive=False)
+            return True
+        if self.search_mode:
+            return False
         event.stop()
         event.prevent_default()
         if event.key == self.app.cfg["keys.leader"] or event.key == actions.DETACH_KEY:

@@ -38,7 +38,7 @@ import logging
 import time
 import traceback
 from collections.abc import Callable, Coroutine, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -918,11 +918,14 @@ class TerminalScreen(Screen):
         needing = scan.needs_you
         alerts = self.app.alerts
         # The rail's rows are the sessions open in this window; a session of mine that another login holds is the
-        # side panel's and the full view's.
+        # side panel's and the full view's. They are filtered first, then capped and numbered (D41): no open
+        # session is pushed out by one that is not open here, and `more` counts open sessions only.
         open_set = set(open_ids)
-        rail_chips = [chip for chip in chips if chip.session_id in open_set]
+        rail_ids = [sid for sid in scan.chip_ids if sid in open_set]
+        rail_chips = fleet.chips(scan=replace(scan, chip_ids=rail_ids), front=front_id, unseen=unseen,
+                                 question_for_me=asks, stale_with_me=stale, live=live)
         self.rail.set_model(RailModel(
-            chips=tuple(rail_chips), more=sum(sid in open_set for sid in scan.chip_ids) > MAX_CHIPS,
+            chips=tuple(rail_chips), more=len(rail_ids) > MAX_CHIPS,
             need_you=len(needing), alerts=alerts.count if alerts.allowed else None,
             edge=self._rail_edge(),
             names=tuple((chip.session_id, live[chip.session_id].get("target_id", chip.session_id))
@@ -1807,13 +1810,15 @@ class TerminalScreen(Screen):
             self.run_worker(self.run_action_id("menu"), exclusive=False)
         elif action in (ACT_FLEET, ACT_MORE):
             if message.by_key and action == ACT_FLEET:
-                self.open_sidebar(refresh=False, pane=PANE_TARGETS)
+                # Enter reads the fleet like a click does.
+                self.open_sidebar(pane=PANE_TARGETS)
             else:
                 self.open_sidebar()
         elif action == ACT_NEEDS:
             if message.by_key:
-                # Enter on Sessions: the keys go to the Sessions list of the side panel, which opens if it is closed.
-                self.open_sidebar(refresh=False, pane=PANE_SESSIONS)
+                # Enter on Sessions opens the panel on its Sessions list, with the same fleet read a click
+                # and `^\ f` do.
+                self.open_sidebar(pane=PANE_SESSIONS)
             else:
                 self.open_needs_you()
         elif action == ACT_ALERTS:
@@ -2190,6 +2195,11 @@ class TerminalScreen(Screen):
             self._note_keyboard_gained(slot, move["reason"], before)
             return
         if had and not has:
+            # The same slot losing the keyboard clears the frame's notice at once (any later token move away
+            # from you); leaving keeps its toast.
+            slot.keyboard_notice = ""
+            slot.keyboard_notice_until = 0.0
+            self.refresh_status()
             holder = state.holder
             who = "nobody" if holder is None else str(holder.get("user") or holder.get("client_id"))
             if holder is None:
@@ -2789,12 +2799,12 @@ class TerminalScreen(Screen):
         if self._front is None:
             return
         if self.ended is not None:
-            # Nothing is left to type into; `c` starts a new session on the same target (F10), `n` goes to the
-            # next session open here.
-            if event.character == "c" and not self.dialogs:
+            # Nothing is left to type into: `n` starts a new session on the same target (F10), `c` its
+            # unadvertised alias, and → and ← move to the next and previous open session.
+            if not self.dialogs and event.character in ("n", "c"):
                 await self.run_action_id("new_session")
-            elif event.character == "n" and not self.dialogs:
-                await self.run_action_id("next")
+            elif not self.dialogs and event.key in ("right", "left"):
+                self._step(1 if event.key == "right" else -1)
             else:
                 await self._send_key(event)
             return
@@ -3568,6 +3578,10 @@ class TerminalScreen(Screen):
         range_label = self.canvas.view_range.label if self.canvas is not None else ""
         note = f"{self._target()} shows {range_label}" if range_label and self._front is not None else ""
         if pane == PANE_TARGETS:
+            if self.sidebar is not None and self.sidebar.editing:
+                # While the filter is edited typing stays typing (`n` is a letter there, Enter ends editing),
+                # so the row advertises the editing keys only: no list key that does not work there.
+                return KeysTarget("targets", (Hint("⏎", "Done", None), Hint("Esc", "Clear", None)), note)
             hints = [Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("n", "New session", click + CMD_NEW),
                      Hint("/", "Filter", click + CMD_FILTER), back, fold]
             if not self.compact and self._window_width() >= cfg["sidebar.wide_from"]:
@@ -3614,9 +3628,11 @@ class TerminalScreen(Screen):
         cfg = self.app.cfg
         leader = A.leader_label(cfg["keys.leader"])
         keys = A.leader_keys(cfg.leader_overrides())
-        hints = [Hint("c", "New session here", "new_session")]
+        # `n` is New session (`c` its unadvertised alias); → and ← move to the next and previous open session.
+        hints = [Hint("n", "New session here", "new_session")]
         if len(self.slots) > 1:
-            hints.append(Hint("n", "Next open session", "next"))
+            hints.append(Hint("→", "Next open session", "next"))
+            hints.append(Hint("←", "Previous open session", "prev"))
         hints.append(Hint(f"{leader} {keys['fleet']}", "Targets", "fleet"))
         if self.dialogs:
             hints.append(Hint("Esc", "close"))

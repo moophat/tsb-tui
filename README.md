@@ -283,7 +283,10 @@ full view, `^\ h` the event log, `^\ v` Pan (a quick look: with `view.follow_cur
 the front session from the canvas and from the lists, so no session sees it. The status row at
 the bottom (`status.position`) says who types and lists what can be done now; each hint, the keyboard
 pill and `≡ Menu` take a click. The Menu is the complete list of actions, searchable. Letters are
-rebound with `[keys.leader_map]` in the config file, by action name.
+rebound with `[keys.leader_map]` in the config file, by action name. Letters moved in this release
+(`n` New session, `→`/`←` next and previous, `D` Delete target, `y` Answer, `h` Event log): a
+`[keys.leader_map]` that names one of them must be updated, and one that now collides is refused at
+start-up, naming the key.
 
 ### Install from source
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import colorsys
+import contextlib
 import re
 
 import pytest
@@ -15,13 +16,14 @@ from test_redesign_keys import login as key_login
 from tsbc import _serve
 from workspace_support import named_sessions, open_here
 
-from tsb_tui.app import TsbTuiApp
+from tsb_tui.app import MenuPalette, TsbTuiApp
 from tsb_tui.config import load
 from tsb_tui.model import actions as A
 from tsb_tui.screens.chrome_dialogs import keys_lines
+from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.theme import contrast_ratio, role_colours
 from tsb_tui.theme_files import packaged_dir
-from tsb_tui.widgets.rail import ACT_CHIP, ACT_NEEDS
+from tsb_tui.widgets.rail import ACT_CHIP, ACT_MORE, ACT_NEEDS
 from tsb_tui.widgets.status_row import StatusInputs, build_pieces
 
 SIZES = [(80, 24), (160, 45)]
@@ -424,3 +426,183 @@ def test_all_keys_says_the_leader_then_ctrl_right_bracket_sends_it(tmp_path):
     assert "Ctrl+\\ Ctrl+] sends Ctrl+]" in text, text
     assert re.search(r"Ctrl\+\] detaches", text)
 
+
+
+# -- the review round --
+
+@pytest.mark.parametrize("size", SIZES)
+def test_menu_opened_directly_ctrl_right_bracket_detaches(serve, wait_until, size):
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            screen = await key_login(pilot, app, wait_until)
+            (sid,) = named_sessions(url, serve_app, "rtr-core-01")
+            await open_here(app, pilot, wait_until, sid)
+            client = screen.pump.state.client_id
+            await pilot.press("f1")  # the Menu, opened directly: no leader is pending
+            await wait_until(pilot, lambda: isinstance(app.screen, MenuPalette), "the Menu to open")
+            await pilot.press(DETACH)
+            await wait_until(pilot, lambda: not screen.slots, "the front session to detach")
+            await wait_until(pilot, lambda: app.screen is screen, "the Menu to close")
+            assert serve_app.received(client) == [], serve_app.received(client)
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_the_rail_numbers_the_open_sessions_first(serve, wait_until, size):
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        ids = named_sessions(url, serve_app, *(f"rtr-{i:02d}" for i in range(11)))
+        held, first, second = ids[:9], ids[9], ids[10]
+        with contextlib.ExitStack() as stack:
+            for sid in held:
+                stack.enter_context(other_client(url, _serve.PEER, sid))  # nine a peer login holds
+            app = TsbTuiApp(url, cfg=load(overrides=["rail.chips=mine_held_by_others,open_here"]))
+            async with app.run_test(size=size) as pilot:
+                screen = await key_login(pilot, app, wait_until)
+                await open_here(app, pilot, wait_until, first, second)
+                screen._refresh_fleet()
+                await wait_until(pilot, lambda: all(s in screen.fleet.records for s in held),
+                                 "the poll to list the fleet")
+                screen._sync_fleet_widgets()
+                await pilot.pause()
+                chips = [r for r in screen.rail.rows if r.action == ACT_CHIP]
+                assert [r.arg for r in chips] == [first, second], [r.text for r in chips]
+                assert chips[0].text.startswith("1") and chips[1].text.startswith("2"), \
+                    [r.text for r in chips]
+                assert [r for r in screen.rail.rows if r.action == ACT_MORE] == [], "no open session is pushed out"
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_the_frame_notice_clears_when_the_keyboard_leaves(serve, wait_until, screen_text, size):
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        (sid,) = named_sessions(url, serve_app, "rtr-core-01")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            with other_client(url, _serve.PEER, sid):  # the peer attaches first and holds the keyboard
+                screen = await key_login(pilot, app, wait_until)
+                await open_here(app, pilot, wait_until, sid)
+                assert not screen.pump.state.holds_keyboard
+            await wait_until(pilot, lambda: screen.pump.state.holds_keyboard, "the keyboard to come to this client")
+            await wait_until(pilot, lambda: "you type now" in screen_text(app), "the notice in the frame")
+            with serve_app.lock:
+                serve_app.sessions[sid]["control_holder"] = {"client_id": "stub-other", "user": _serve.PEER}
+                serve_app._send_token(serve_app.sessions[sid], "takeover")
+            await wait_until(pilot, lambda: not screen.pump.state.holds_keyboard, "the keyboard to leave")
+            await wait_until(pilot, lambda: "you type now" not in screen_text(app), "the notice to clear at once",
+                             timeout_s=2.0)
+            titles = [n.title for n in app._notifications._notifications.values()]
+            assert "keyboard" in titles, titles  # leaving keeps its toast
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_the_keys_row_while_the_filter_is_edited_names_the_editing_keys(serve, wait_until, size):
+    async def check():
+        _, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            screen = await key_login(pilot, app, wait_until)
+            await pilot.pause()
+            assert screen.sidebar.editing
+            hints = [(h.key, h.label) for h in screen.status_inputs().target.hints]
+            assert hints == [("⏎", "Done"), ("Esc", "Clear")], hints
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_custom_theme_the_tint_cannot_carry_puts_sessions_on_the_targets_surface(serve, wait_until, size):
+    async def check():
+        _, url = serve(InputRecordingApp())
+        cfg = load(overrides=["theme.name=nord", "theme.text_muted=#a0acc0"])
+        roles = role_colours(cfg)
+        tint = _walk(roles["surface"], True, 1.1)
+        assert contrast_ratio(roles["text_muted"], roles["surface"]) >= 4.5, "muted passes on the Targets surface"
+        assert contrast_ratio(roles["text_muted"], tint) < 4.5, "muted fails on the second step"
+        for role in PANEL_ROLES:
+            if role != "text_muted":
+                assert contrast_ratio(roles[role], tint) >= 4.5, (role, "still passes on the tint")
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=size) as pilot:
+            screen = await key_login(pilot, app, wait_until)
+            await wait_until(pilot, lambda: len(screen.sidebar.model.targets) > 0, "the targets")
+            await pilot.pause()
+            sidebar = screen.sidebar
+            bars = {roles["accent_soft"], roles["surface_3"]}
+            top = _section_backgrounds(screen, 0, sidebar.targets_height)
+            bottom = _section_backgrounds(screen, sidebar.targets_height, sidebar.size.height)
+            assert {bg for _, _, bg in top} - bars == {roles["surface"]}, "Targets keeps the surface"
+            assert {bg for _, _, bg in bottom} - bars == {roles["surface"]}, "Sessions falls back to the surface"
+            for section in (top, bottom):
+                for text, fg, bg in section:
+                    if text.strip() and fg is not None:
+                        assert contrast_ratio(fg, bg) >= 4.5, (text, fg, bg)
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_enter_on_the_rail_rows_reads_the_fleet_like_a_click(serve, wait_until, monkeypatch, size):
+    monkeypatch.setenv("TSB_TUI_FLEET_VIEW_REFRESH_S", "0")  # manual: only an open's read polls
+    async def check():
+        _, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            screen = await key_login(pilot, app, wait_until)
+            await wait_until(pilot, lambda: screen.poller.calls >= 1, "the poller's first poll")
+            await pilot.press("shift+tab")  # the rail
+            await pilot.press(LEADER, "f")  # closes the panel; the rail keeps the keys
+            await pilot.pause()
+            assert not screen.sidebar_open and screen.rail.has_focus
+            before = screen.poller.calls
+            await pilot.press("down", "enter")  # Targets
+            await wait_until(pilot, lambda: screen.sidebar_open and screen.focus_owner == "targets",
+                             "the panel on Targets")
+            await wait_until(pilot, lambda: screen.poller.calls > before, "the fleet read on Enter")
+            await pilot.press("shift+tab")  # targets -> the rail
+            await pilot.pause()
+            assert screen.rail.has_focus
+            before = screen.poller.calls
+            await pilot.press("up", "enter")  # Sessions, back at the first row
+            await wait_until(pilot, lambda: screen.sidebar_open and screen.focus_owner == "sessions",
+                             "the panel on Sessions")
+            await wait_until(pilot, lambda: screen.poller.calls > before, "the fleet read on Enter")
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_the_ended_screen_answers_n_and_the_arrows(serve, monkeypatch, wait_until, size):
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            screen = await key_login(pilot, app, wait_until)
+            one, two, three = named_sessions(url, serve_app, "core-rtr-01", "sw-2", "sw-3")
+            await open_here(app, pilot, wait_until, one, two, three)
+            with serve_app.lock:
+                serve_app._kill(serve_app.sessions[three])
+            await wait_until(pilot, lambda: screen.ended is not None, "the session to end")
+            hints = [(h.key, h.label) for h in screen.status_inputs().ended.hints]
+            assert hints[0] == ("n", "New session here"), hints
+            assert ("→", "Next open session") in hints and ("←", "Previous open session") in hints, hints
+            assert not any(key == "c" for key, _ in hints), hints  # `c` stays unadvertised
+            await pilot.press("n")
+            await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "New session on n")
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: app.screen is screen and screen.ended is not None, "back to the end")
+            await pilot.press("c")
+            await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "New session on c")
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: app.screen is screen and screen.ended is not None, "back to the end")
+            await pilot.press("left")
+            await wait_until(pilot, lambda: screen.front is not None and screen.front.session_id == two
+                             and screen.ended is None, "the previous open session")
+            with serve_app.lock:
+                serve_app._kill(serve_app.sessions[two])
+            await wait_until(pilot, lambda: screen.ended is not None, "the session to end")
+            await pilot.press("right")
+            await wait_until(pilot, lambda: screen.front is not None and screen.front.session_id == one
+                             and screen.ended is None, "the next open session")
+    asyncio.run(check())

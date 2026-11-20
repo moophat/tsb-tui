@@ -48,7 +48,7 @@ from ..model.fleet import (
     WHO_UNREACHABLE,
 )
 from ..model.targets import TargetRow
-from ..theme import relative_luminance, role_colours, sessions_surface
+from ..theme import contrast_ratio, relative_luminance, role_colours, sessions_surface
 from .mouse import mouse_on, set_tip
 
 # What a click or a key on the sidebar asks the screen to do: `Sidebar.Command.name`.
@@ -556,6 +556,12 @@ def _style_table(roles: dict[str, str], surface: str) -> tuple[dict[str, Style],
     return styles, base + Style(color=roles["border_on_surface"])
 
 
+# Every foreground role the side panel draws (the style table above): a theme whose Sessions tint cannot
+# carry one of them at 4.5:1 falls back to the Targets surface (no second step), text contrast over the tint.
+_PANEL_ROLES = ("text", "text_muted", "text_faint", "accent", "steel", "warn", "danger", "rec_list",
+                "border_on_surface")
+
+
 class Sidebar(Widget):
     """The framed side panel. It keeps its selection and its filter text; everything else comes from the
     model the screen sets. Keys while it is focused are its own (D14)."""
@@ -610,9 +616,14 @@ class Sidebar(Widget):
     def _build_styles(self, roles: dict[str, str], variant: str) -> None:
         """The sidebar's two style tables from the role colours (TT14): every colour is a role, so a theme
         switch that rebuilds them recolours every row without moving any role. Targets keeps the surface; Sessions
-        sits on the next step of the same walk (`sessions_surface`)."""
+        sits on the next step of the same walk (`sessions_surface`), unless a foreground role the panel draws
+        would fall below 4.5:1 on that tint: then Sessions keeps the Targets surface too (no second step), text
+        contrast winning over the tint."""
         self._styles, self._border = _style_table(roles, roles["surface"])
-        self._styles_sessions, self._border_sessions = _style_table(roles, sessions_surface(roles["surface"], variant))
+        tint = sessions_surface(roles["surface"], variant)
+        if any(contrast_ratio(roles[role], tint) < 4.5 for role in _PANEL_ROLES):
+            tint = roles["surface"]
+        self._styles_sessions, self._border_sessions = _style_table(roles, tint)
         # The selected row's bar: the soft accent, bold, while its list has the keys; a dim bar in the second surface
         # (still with its ▸) while the keys are elsewhere.
         self._bar = Style(bgcolor=roles["accent_soft"], bold=True)
@@ -842,7 +853,7 @@ class Sidebar(Widget):
             if index == 0:
                 shown = f"/ {self.filter_text}▏" if self.editing else f"/ {self.filter_text}"
                 return Line((Part(_fit(shown, inner), "filter", CMD_FILTER,
-                                  tip="/ filter the targets by name or host"),))
+                                  tip="/ filter the targets by name or host (an IP included)"),))
             index -= 1
         rows = self.visible_targets()
         if not 0 <= index < len(rows):

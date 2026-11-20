@@ -547,8 +547,10 @@ class EndedScreen(ModalScreen[None]):
     """
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("escape", "close", "Close"),
+        Binding("n", "new_session", "New session here", show=False),
         Binding("c", "new_session", "New session here", show=False),
-        Binding("n", "next_session", "Next open session", show=False),
+        Binding("right", "next_session", "Next open session", show=False),
+        Binding("left", "previous_session", "Previous open session", show=False),
     ]
 
     def __init__(self, terminal: Any, view: EndedView, target: str) -> None:
@@ -582,7 +584,7 @@ class EndedScreen(ModalScreen[None]):
 
     def status_target(self) -> KeysTarget:
         # The ended row (F10) has its own hints and takes the place of `keys →`; this is only the fallback.
-        return KeysTarget("the end", (Hint("c", "New session here"), Hint("Esc", "close")))
+        return KeysTarget("the end", (Hint("n", "New session here"), Hint("Esc", "close")))
 
     def on_choice_pressed(self, message: Choice.Pressed) -> None:
         message.stop()
@@ -606,6 +608,11 @@ class EndedScreen(ModalScreen[None]):
         if len(self._terminal.slots) > 1:
             self.dismiss(None)
             self._terminal.run_worker(self._terminal.run_action_id("next"), exclusive=False)
+
+    def action_previous_session(self) -> None:
+        if len(self._terminal.slots) > 1:
+            self.dismiss(None)
+            self._terminal.run_worker(self._terminal.run_action_id("prev"), exclusive=False)
 
 
 class StaleLayer(Container):
