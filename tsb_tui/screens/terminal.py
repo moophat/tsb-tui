@@ -774,7 +774,9 @@ class TerminalScreen(Screen):
             self.poller.refresh_async()
 
     def _poll_reply(self, generation: int, records: list[dict]) -> None:
-        """Runs on the poller's thread: hand the reply to the UI thread."""
+        """Runs on the poller's thread: hand the reply to the UI thread, unless the workspace is gone."""
+        if self._unmounted:
+            return
         try:
             self.app.call_from_thread(self._apply_poll, generation, records)
         except RuntimeError:
