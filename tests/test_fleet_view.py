@@ -246,7 +246,7 @@ def test_the_view_opens_by_the_leader_and_the_menu_with_the_rail_beside_it_and_e
             await wait_until(pilot, lambda: screen.fleet_view.layout.rows, "the view to list the sessions")
             text = screen.fleet_view.text
             assert "Sessions you own or may join · 2" in text and "Esc back to 1 rtr-core-01" in text
-            assert "keys → fleet view" in screen.status.text and "x End…" in screen.status.text
+            assert "keys → full view" in screen.status.text and "x End…" in screen.status.text
             await pilot.press("escape")
             await wait_until(pilot, lambda: not screen.view_open, "Esc to close the view")
             assert screen.front.session_id == first

@@ -53,10 +53,10 @@ def _texts(model: RailModel) -> list[str]:
 # -- the rows, from the models --
 
 
-def test_a_chip_reads_its_number_who_types_and_whether_it_is_in_front_or_unseen() -> None:
-    """D41: cell 1 the number, cell 2 who types (`●` you, `◆` another login, `·` nobody, `▲` needs you, `?` asks you,
-    `◌` unreachable, `✕` ended), cell 3 `◂` for the session in front or `•` for output not looked at. Mockup T1's
-    own chips: `1●◂`, `2◆•`, `4▲`."""
+def test_a_chip_reads_its_number_and_whether_it_is_in_front_or_unseen() -> None:
+    """P2b: the compact rail lists each session open here as its number and one mark, `◂` for the session in front or
+    `•` for output not looked at since it was last shown: `1◂`, `2•`. Who types no longer has a cell of its own on the
+    rail (the front session's frame title says it)."""
     fleet = Fleet(own_user=ME)
     records = [
         _record("s-1", state="live", control_holder=holder(ME)),
@@ -71,7 +71,7 @@ def test_a_chip_reads_its_number_who_types_and_whether_it_is_in_front_or_unseen(
     ids = [r["id"] for r in records]
     chips = fleet.chips(open_here=ids, front="s-1", unseen=["s-2"], question_for_me=["s-5"])
     model = RailModel(tuple(chips), more=False, need_you=3, alerts=None)
-    assert _texts(model) == ["▸3 ", "▦  ", "◆  ", "≡  ", "┄┄┄", "1●◂", "2◆•", "3▲ ", "4· ", "5? ", "6◌ ", "+  "]
+    assert _texts(model) == ["▲3 ", "▦  ", "◆  ", "≡  ", "┄┄┄", "1◂ ", "2• ", "3  ", "4  ", "5  ", "6  ", "+  "]
 
 
 def test_more_than_nine_chips_end_in_an_ellipsis_before_the_plus() -> None:
@@ -109,10 +109,11 @@ def test_the_edge_rail_is_one_tappable_column() -> None:
 # -- the live rail --
 
 
-def test_the_rail_shows_who_types_in_each_session_open_here_and_the_one_in_front(
+def test_the_rail_lists_each_session_open_here_by_number_and_name_and_the_one_in_front(
         serve, wait_until, screen_text) -> None:
-    """Mockup T1 on the fixture server: a session the operator types in (`●`), one a peer holds (`◆`), numbered in the
-    order they were opened, the last opened in front (`◂`). The worded rail is twelve columns, hairline included."""
+    """Mockup T1 on the fixture server, as P2b rules it: each session open here as its number and target name (cut with
+    an ellipsis at twelve columns), numbered in the order they were opened, the last opened in front (`◂`). The worded
+    rail is twelve columns, hairline included."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -126,8 +127,8 @@ def test_the_rail_shows_who_types_in_each_session_open_here_and_the_one_in_front
                 await open_here(app, pilot, wait_until, mine, theirs)
                 screen.close_sidebar()
                 await wait_until(pilot, lambda: not screen.sidebar_open, "the sidebar to close")
-                await wait_until(pilot, lambda: screen.rail.rows and screen.rail.rows[-2].text == "2◆◂".ljust(11),
-                                 "the second chip to show the peer typing and to be in front")
+                await wait_until(pilot, lambda: screen.rail.rows and screen.rail.rows[-2].text == "2 infra-d…◂",
+                                 "the second chip to be named and in front")
                 # The fixture's alert stream raises `fixture-alert-1` and clears it again, on the streamer's
                 # thread (tsbc._serve.ALERTS): a read while it is raised says `!1`. This test is about who types,
                 # not about alerts, so it reads the rail at a moment with no alert raised (before the raise or
@@ -139,7 +140,7 @@ def test_the_rail_shows_who_types_in_each_session_open_here_and_the_one_in_front
                 lines = screen.rail.text.splitlines()
                 assert lines[:6] == [text.ljust(11) + "│" for text in
                                      ("▸ Sessions", "▦ Targets", "◆ Vault", "! Alerts 0", "≡ Menu", "┄" * 11)]
-                assert lines[6:9] == [text.ljust(11) + "│" for text in ("1●", "2◆◂", "+ New")]
+                assert lines[6:9] == [text.ljust(11) + "│" for text in ("1 rtr-cor…", "2 infra-d…◂", "+ New")]
                 await wait_until(pilot, lambda: screen.rail.region.width == 12, "the worded rail to be laid out")
 
     asyncio.run(_check())
@@ -266,11 +267,11 @@ def test_the_ascii_glyph_set_draws_the_rail_in_ascii_and_the_right_side_puts_the
             lines = screen.rail.text.splitlines()
             assert lines[:2] == ["│" + text.ljust(11) for text in ("> Sessions", "# Targets")]
             assert lines[5] == "│" + "-" * 11
-            assert lines[6] == "│1*<".ljust(12)
+            assert lines[6] == "│1 rtr-cor…<"
             await wait_until(pilot, lambda: screen.rail.region.width == 12, "the worded rail to be laid out")
             assert screen.rail.region.x == 88 and screen.canvas.region.x == 2
             painted = [line[88:100].ljust(12) for line in screen_text(app).splitlines()]
-            assert painted[:2] == lines[:2] and painted[6] == "│1*<".ljust(12), (
+            assert painted[:2] == lines[:2] and painted[6] == "│1 rtr-cor…<", (
                 "what is painted, not only what is read")
 
     asyncio.run(_check())
@@ -298,10 +299,9 @@ def test_the_phone_profile_with_an_edge_rail_is_one_column_that_opens_the_sideba
     asyncio.run(_check())
 
 
-def test_ascii_fallbacks_tell_you_typing_from_another_login_typing_by_role(tmp_path) -> None:
-    """In ASCII mode `●` (you type) and `◆` (another login types) both fell to `*`, so the two
-    who-types states read alike. The fallback is by role, not by glyph: you type `*`, another login `+` (as on main),
-    and the rail's Vault mark stays `*` (the plan's visual rule 2.2)."""
+def test_ascii_fallbacks_keep_the_vault_mark_and_a_session_row_carries_no_who_glyph(tmp_path) -> None:
+    """In ASCII mode the rail's Vault mark stays `*` (the plan's visual rule 2.2); P2b took the who-types glyph off the
+    session rows, so two sessions with different typists read alike on the rail (the frame title says who types)."""
     from tsb_tui.config import load
     from tsb_tui.model.fleet import WHO_ME, WHO_OTHER, Chip
     from tsb_tui.widgets.rail import ACT_CHIP, ACT_VAULT
@@ -315,9 +315,6 @@ def test_ascii_fallbacks_tell_you_typing_from_another_login_typing_by_role(tmp_p
     vault_y = next(y for y, row in enumerate(rows) if row.action == ACT_VAULT)
     you_y = next(y for y, row in enumerate(rows) if row.action == ACT_CHIP and row.arg == "s-1")
     other_y = next(y for y, row in enumerate(rows) if row.action == ACT_CHIP and row.arg == "s-2")
-    vault, you, other = lines[vault_y], lines[you_y], lines[other_y]
-    assert "*" in vault, f"the Vault row must keep its * mark: {vault!r}"
-    assert "*" in you and "+" not in you, f"you type is *: {you!r}"
-    assert "+" in other and "*" not in other, f"another login types is +: {other!r}"
-    assert you != other, "the two who-types states must read differently"
-
+    assert "*" in lines[vault_y], f"the Vault row must keep its * mark: {lines[vault_y]!r}"
+    assert lines[you_y] == lines[other_y].replace("2", "1"), (lines[you_y], lines[other_y])
+    assert "*" not in lines[you_y] and "+" not in lines[other_y]

@@ -210,7 +210,7 @@ def test_an_empty_target_id_points_at_the_targets_tab(serve, wait_until) -> None
         async with app.run_test(size=(120, 36)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target=None, target_type=None)
             dialog.query_one("#create-button", Button).press()
-            await wait_until(pilot, lambda: "Targets tab of the full Fleet view" in str(
+            await wait_until(pilot, lambda: "Targets tab of the full view" in str(
                 dialog.query_one("#new-session-error", Static).render()), "the hint")
             assert "no target list" not in str(dialog.query_one("#new-session-error", Static).render())
             assert _creates(serve_app) == []

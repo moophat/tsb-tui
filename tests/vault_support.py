@@ -29,8 +29,9 @@ def vector(name: str) -> dict:
 
 
 def flat(text: str) -> str:
-    """Screen text as one run of words: the panel borders and the line breaks of wrapped text taken out."""
-    return " ".join(text.replace("│", " ").split())
+    """Screen text as one run of words: the panel borders (the heavy ones of the pane that has the keys too) and the line
+    breaks of wrapped text taken out."""
+    return " ".join(text.replace("│", " ").replace("┃", " ").split())
 
 
 def b64(data: bytes) -> str:

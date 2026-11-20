@@ -178,9 +178,9 @@ def test_take_back_is_not_offered_to_the_keyboard_holder(wait_until, server_fram
     asyncio.run(_check())
 
 
-def test_the_leader_and_a_opens_the_same_two_answers_for_the_keyboard(
+def test_the_leader_and_y_opens_the_same_two_answers_for_the_keyboard(
         wait_until, server_frame_validator) -> None:
-    """G3: `^\\ a` is the keyboard's way to answer, without the box ever capturing a key."""
+    """G3: `^\\ y` is the keyboard's way to answer, without the box ever capturing a key."""
 
     async def _check() -> None:
         stub = _stub(server_frame_validator)
@@ -191,7 +191,7 @@ def test_the_leader_and_a_opens_the_same_two_answers_for_the_keyboard(
                 box = screen.query_one(QuietBox)
                 await wait_until(pilot, lambda: box.display, "the box")
                 assert "Answer: kill the session?" in screen.status.text
-                await pilot.press("ctrl+backslash", "a")
+                await pilot.press("ctrl+backslash", "y")
                 await wait_until(pilot, lambda: isinstance(app.screen, AnswerScreen), "the answer dialog")
                 await pilot.press("k")
                 await wait_until(pilot, lambda: _answers(stub), "the answer")
@@ -207,7 +207,7 @@ def test_the_answer_action_is_not_offered_without_a_question(wait_until, server_
             async with app.run_test(size=(160, 40)) as pilot:
                 screen = await open_stub_terminal(app, pilot, wait_until)
                 assert "Answer: kill the session?" not in screen.status.text
-                await pilot.press("ctrl+backslash", "a")
+                await pilot.press("ctrl+backslash", "y")
                 await pilot.pause(0.1)
                 assert app.screen is screen
 

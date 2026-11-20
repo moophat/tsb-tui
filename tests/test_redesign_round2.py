@@ -20,9 +20,11 @@ def owner_inputs(**overrides):
 
 @pytest.mark.parametrize("width", [80, 120])
 @pytest.mark.parametrize("target", [None, KeysTarget("targets", (Hint("n", "New session", "new_session"),)),
-                                   KeysTarget("fleet view", (Hint("⏎", "Open", "pick"),))])
+                                   KeysTarget("full view", (Hint("⏎", "Open", "pick"),))])
 def test_protected_menu_and_keys_at_ruled_sizes(width, target):
-    pieces = build_pieces(owner_inputs(target=target), width)
+    # The row the product draws is keys only (the pill's facts are the session frame's title); with Detach protected too
+    # the five protected hints and the pill would not fit 80 columns, and the pill is not on the row.
+    pieces = build_pieces(owner_inputs(target=target), width, keys_only=True)
     text = "".join(p.text for p in pieces)
     assert "F1 Menu" in text
     assert "Ctrl+\\ ? keys" in text
@@ -45,14 +47,14 @@ def test_narrow_protected_hints_drop_in_ruled_order():
     for width in range(80, 29, -1):
         pieces = build_pieces(owner_inputs(), width)
         actions = {p.action for p in pieces}
-        kept = tuple(name for name in ("scroll", "keys", "take_back", "menu") if name in actions)
+        kept = tuple(name for name in ("scroll", "keys", "detach", "take_back", "menu") if name in actions)
         if not seen or kept != seen[-1]:
             seen.append(kept)
-    assert seen == [("scroll", "keys", "take_back", "menu"), ("keys", "take_back", "menu"),
-                    ("take_back", "menu"), ("menu",)]
+    assert seen == [("scroll", "keys", "detach", "take_back", "menu"), ("keys", "detach", "take_back", "menu"),
+                    ("detach", "take_back", "menu"), ("take_back", "menu"), ("menu",)]
     pieces = build_pieces(owner_inputs(), 65)
-    assert "scroll" not in {p.action for p in pieces}
-    assert {"keys", "take_back", "menu"} <= {p.action for p in pieces}
+    assert not {"scroll", "keys"} & {p.action for p in pieces}
+    assert {"detach", "take_back", "menu"} <= {p.action for p in pieces}
     assert len("".join(p.text for p in pieces)) == 65
 
 

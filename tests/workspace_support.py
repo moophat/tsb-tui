@@ -153,7 +153,7 @@ async def select_in_sidebar(app: TsbTuiApp, pilot, wait_until: Callable, session
     sessions open here)."""
     screen = app.screen
     assert isinstance(screen, TerminalScreen), screen
-    screen.open_sidebar()
+    screen.open_sidebar(pane="sessions")  # the Sessions list has the keys, not the Targets filter login lands in
     screen._refresh_fleet()
     await pilot.pause(0.3)
     if any(row[1] == session_id for row in screen.sidebar.view.rows):

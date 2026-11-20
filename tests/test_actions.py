@@ -321,8 +321,8 @@ def test_new_on_connection_is_not_offered_on_a_telnet_session() -> None:
 
 
 def test_the_new_actions_have_their_own_letters_after_the_leader() -> None:
-    """`s`, `n`, `p` (tmux's own for choose, next, previous): reachable with the leader, and rebindable by name like
-    the others."""
+    """`s` (tmux's own for choose) and the right and left arrows (next, previous: `n` is New session now): reachable with
+    the leader, and rebindable by name like the others."""
     keys = A.leader_keys()
-    assert (keys["switch"], keys["next"], keys["prev"]) == ("s", "n", "p")
+    assert (keys["switch"], keys["next"], keys["prev"]) == ("s", "→", "←")
     assert A.leader_keys({"next": "j"})["next"] == "j"

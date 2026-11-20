@@ -55,8 +55,11 @@ def test_every_key_of_the_action_table_reaches_the_session_when_it_does_not_foll
     a letter after the leader never races it."""
     monkeypatch.setenv("TSB_TUI_MENU_OPEN_ON_LEADER_AFTER_MS", "10000")
     # scope theme's keys are printed forms the picker's own bindings act on (⏎, Esc), not terminal keys
-    chars = sorted({c for action in A.ACTIONS if action.key and action.scope != A.SCOPE_THEME for c in action.key})
-    assert {"w", "r", "R", "d", "x", "f", "F", "t", "c", "s", "n", "p", "e", "v", "?", ":", "q", "a", "h"} <= set(chars)
+    # The arrows after the leader (next and previous session) are written as `→` and `←` in the table; they are the
+    # arrow keys, which reach the session as arrows (the kitty corpus below), not typed characters.
+    chars = sorted({c for action in A.ACTIONS if action.key and action.scope != A.SCOPE_THEME for c in action.key
+                    if c.isascii()})
+    assert {"w", "r", "R", "d", "x", "f", "F", "t", "s", "n", "e", "v", "?", ":", "q", "y", "h"} <= set(chars)
 
     async def check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -134,7 +137,7 @@ KITTY_CORPUS = [
     ("ctrl+a", b"\x01", b"\x1b[97;5u"),
     ("ctrl+c", b"\x03", b"\x1b[99;5u"),
     ("alt+a", b"\x1ba", b"\x1b[97;3u"),
-    ("ctrl+right_square_bracket", b"\x1d", b"\x1b[93;5u"),
+    # Ctrl+] is not here: it detaches the front session, and is never the session's (test_redesign_focus).
 ]
 
 

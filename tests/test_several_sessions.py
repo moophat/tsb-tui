@@ -23,6 +23,7 @@ from workspace_support import (
     login,
     named_sessions,
     open_here,
+    pick_in_sidebar,
     rail_row,
 )
 
@@ -183,8 +184,9 @@ def test_a_background_session_answers_its_own_queries_only_when_this_client_hold
 
 
 def test_the_leader_and_a_digit_n_p_and_s_switch_sessions_without_reaching_any(serve, wait_until) -> None:
-    """Design §2.4: `^\\ 1`-`^\\ 9` go to that chip's session, `n` and `p` step through the ones open here, `s` gives
-    the keys to the sidebar; none of it is typed into a session (a digit after the leader is the operator's)."""
+    """Design §2.4: `^\\ 1`-`^\\ 9` go to that chip's session, the right and left arrows step through the ones open here
+    (`n` is New session), `s` gives the keys to the sidebar; none of it is typed into a session (a digit after the
+    leader is the operator's)."""
 
     async def _check() -> None:
         serve_app, url = serve(InputRecordingApp())
@@ -198,10 +200,10 @@ def test_the_leader_and_a_digit_n_p_and_s_switch_sessions_without_reaching_any(s
 
             await pilot.press(LEADER, "1")
             await wait_until(pilot, lambda: screen.front.session_id == ids[0], "^\\ 1")
-            await pilot.press(LEADER, "n")
-            await wait_until(pilot, lambda: screen.front.session_id == ids[1], "^\\ n")
-            await pilot.press(LEADER, "p", LEADER, "p")
-            await wait_until(pilot, lambda: screen.front.session_id == ids[2], "^\\ p twice wraps round")
+            await pilot.press(LEADER, "right")
+            await wait_until(pilot, lambda: screen.front.session_id == ids[1], "^\\ →")
+            await pilot.press(LEADER, "left", LEADER, "left")
+            await wait_until(pilot, lambda: screen.front.session_id == ids[2], "^\\ ← twice wraps round")
             await pilot.press(LEADER, "2")
             await wait_until(pilot, lambda: screen.front.session_id == ids[1], "^\\ 2")
             await pilot.press(LEADER, "9")
@@ -242,9 +244,11 @@ def test_detach_brings_the_next_session_forward_and_the_last_one_opens_the_sideb
 
 def test_an_ended_session_keeps_its_chip_with_a_cross_until_the_operator_moves_on(
         serve, monkeypatch, wait_until) -> None:
-    """D36: "its chip shows `✕` until you move on". Killed while in the background it marks its chip, and shows its end
-    dialog when it is brought forward; moving to another session takes it off the rail. The poll is switched off so the
-    cross can only come from the session's own close: sessions open here update at once, from their own frames."""
+    """D36: "its chip stays until you move on". Killed while in the background it keeps its row, and shows its end
+    dialog when it is brought forward; moving to another session takes it off the rail. (The rail's session rows are
+    a number, a name and the activity mark since P2b: the who-types cell, the cross included, is gone.) The poll is
+    switched off so the row can only change from the session's own close: sessions open here update at once, from
+    their own frames."""
     monkeypatch.setenv("TSB_TUI_FLEET_VIEW_REFRESH_S", "0")
 
     async def _check() -> None:
@@ -257,14 +261,15 @@ def test_an_ended_session_keeps_its_chip_with_a_cross_until_the_operator_moves_o
             screen.close_sidebar()
             with serve_app.lock:
                 serve_app._kill(serve_app.sessions[doomed])
-            await wait_until(pilot, lambda: _chip(screen, doomed).startswith("1✕"), "the cross on the chip")
+            await wait_until(pilot, lambda: screen.slot_for(doomed).ended is not None, "the session to end")
+            assert _chip(screen, doomed).startswith("1"), "the ended session keeps its row until the operator moves on"
             assert screen.front.session_id == other and app.screen is screen, "an end in the background shows no dialog"
 
             await click_chip(pilot, screen, doomed)
             await wait_until(pilot, lambda: isinstance(app.screen, EndedScreen), "the end dialog on the switch")
             await pilot.press("escape")
             await wait_until(pilot, lambda: app.screen is screen, "the dialog to close")
-            assert _chip(screen, doomed).startswith("1✕")
+            assert _chip(screen, doomed).startswith("1")
 
             await click_chip(pilot, screen, other)
             await wait_until(pilot, lambda: screen.slot_for(doomed) is None, "the ended session to leave the rail")
@@ -273,9 +278,10 @@ def test_an_ended_session_keeps_its_chip_with_a_cross_until_the_operator_moves_o
     asyncio.run(_check())
 
 
-def test_a_chip_for_a_session_held_by_another_login_attaches_after_the_gate(serve, wait_until) -> None:
-    """D41: "your sessions that another login types in" have a chip although this TUI is not attached; a click brings
-    it to the front, attaching first, and the gate comes before the attach (session-attach CR1)."""
+def test_a_session_held_by_another_login_has_no_rail_row_and_attaches_after_the_gate(serve, wait_until) -> None:
+    """The rail's rows are the sessions open in this window, so a session of yours that another login types in has no
+    row; its row in the full view brings it to the front, attaching first, and the gate comes before the attach
+    (session-attach CR1)."""
 
     async def _check() -> None:
         from tsb_tui.screens.attach_confirm import AttachConfirmScreen
@@ -287,8 +293,10 @@ def test_a_chip_for_a_session_held_by_another_login_attaches_after_the_gate(serv
             async with app.run_test(size=(120, 40)) as pilot:
                 screen = await fixture_login(app, pilot)
                 screen.close_sidebar()
-                await wait_until(pilot, lambda: rail_row(screen, "chip", held) is not None, "its chip")
-                await click_chip(pilot, screen, held)
+                screen._refresh_fleet()
+                await wait_until(pilot, lambda: held in screen.fleet.records, "the poll to list the fleet")
+                assert rail_row(screen, "chip", held) is None, "the rail lists only what is open here"
+                await pick_in_sidebar(app, pilot, wait_until, held)
                 await wait_until(pilot, lambda: isinstance(app.screen, AttachConfirmScreen), "the gate")
                 assert len(serve_app.clients[held]) == 1, "nothing attached before the gate was passed"
                 await pilot.click("#attach-button")

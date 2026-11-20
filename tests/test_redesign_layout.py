@@ -18,8 +18,8 @@ from tsb_tui.screens.fleet_view import (
 from tsb_tui.widgets.rail import ACT_ALERTS, ACT_NEW, RailModel, rail_rows
 
 
-@pytest.mark.parametrize("glyph_set,marks", [("unicode", ["▸0", "▦", "◆", "!0", "≡", "+"]),
-                                             ("ascii", [">0", "#", "*", "!0", "=", "+"])])
+@pytest.mark.parametrize("glyph_set,marks", [("unicode", ["▸", "▦", "◆", "!0", "≡", "+"]),
+                                             ("ascii", [">", "#", "*", "!0", "=", "+"])])
 def test_compact_rail_exact_marks_and_new_last(glyph_set, marks):
     rows = rail_rows(RailModel((), False, 0, 0), 3)
     entries = [glyphs.render(row.text, glyph_set).strip() for row in rows if row.action]
@@ -456,8 +456,9 @@ def test_the_filter_and_its_count_belong_to_the_targets_section(tmp_path):
             await pilot.press('slash', 'c', 'o', 'r', 'e')
             await pilot.pause()
             lines = [sidebar.render_line(y).text for y in range(sidebar.size.height)]
-            assert lines[0].startswith('┌─ ▦ Targets · 2/3'), lines[0]
-            assert lines[1].startswith('│ / core▏'), lines[1]
+            # The Targets list has the keys while its filter is typed into: its frame is the heavy one.
+            assert lines[0].startswith('┏━ ▦ Targets · 2/3'), lines[0]
+            assert lines[1].startswith('┃ / core▏'), lines[1]
             assert 'core-1' in lines[2] and 'core-2' in lines[3] and not any('edge-1' in l for l in lines)
     asyncio.run(check())
 

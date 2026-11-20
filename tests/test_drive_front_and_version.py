@@ -114,6 +114,6 @@ def test_ready_version_matches_about(serve, tmp_path):
 
 def test_all_keys_marks_target_edit_permission():
     lines = keys_lines(config.load())
-    for key, action in [('a', 'Add target'), ('e', 'edit'), ('d', 'delete')]:
+    for key, action in [('a', 'Add target'), ('e', 'edit'), ('D', 'delete')]:
         assert any(line.split() and line.split()[0] == key and 'Targets tab' in line and action in line
                    and line.endswith('(needs target.edit)') for line in lines)

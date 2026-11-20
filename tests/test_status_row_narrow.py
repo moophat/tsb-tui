@@ -128,8 +128,8 @@ STATES = [
 IDS = [s[0] for s in STATES]
 
 
-# The two states whose whole row fits 65 columns with the name on it, so nothing has to leave.
-NAME_FITS_AT_65 = {"you-type", "someone-else-types"}
+# The state whose row still has room for the session name at 65 columns beside the protected hints.
+NAME_AT_65 = {"stale-holder"}
 
 
 def _recording(state) -> bool:
@@ -159,11 +159,13 @@ def test_at_65_columns_hint_scope_and_backfilled_names_match_the_state(
         assert "F1 Menu" not in row and "? keys" not in row
     else:
         assert "F1 Menu" in row and "^\\ ? keys" in row
-    assert "^\\ [ Scroll" in row
+    # Detach carries the key that leaves a session and is protected at every width; Scroll, `? keys`, Detach, Take back
+    # and the Menu are the protected hints, and they leave in that order only when the row has nothing else to give.
+    assert "Ctrl+] detach" in row
     if state_id in {"owner-view-only", "stale-someone-else"}:
         assert "^\\ t Take back" in row
-    assert (SESSION in _expanded_session(row)) == (state_id not in {
-        "owner-view-only", "notice-link", "notice-idle"})
+    # The protected hints take the room the session name had; only a stale row, which hides the Menu and keys, keeps it.
+    assert (SESSION in _expanded_session(row)) == (state_id in NAME_AT_65)
     assert not _dangling(row), f"{state_id}: a dangling separator in {row!r}"
     assert "…" not in _expanded_session(row), f"{state_id}: a phrase was cut with an ellipsis: {row!r}"
     pill = re.match(r"‹(you type|view only|nobody types)›", row)

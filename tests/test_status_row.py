@@ -73,7 +73,7 @@ def test_you_type_reads_as_a_filled_pill_the_session_its_state_and_rec() -> None
     it is being recorded (session record `recording`: the warning is never hidden once attached)."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     text = _text(state)
-    assert text.startswith("‹ you type ›  rtr-core…  ● live  ● REC")
+    assert text.startswith("‹ you type ›  rtr-…  ● live  ● REC")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_type"
 
 
@@ -95,7 +95,8 @@ def test_view_only_while_an_agent_types_in_your_session_says_typing_takes_it() -
     back (terminal-size §5, 5.53) - the owner's brake is useless if nobody knows it is there."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     text = _text(state)
-    assert text.startswith("‹ view only ›  you own it: typing takes it · rtr-…  ● live  ● REC")
+    # Detach (Ctrl+]) never drops, so at 120 columns the name and the state word give way before the other hints.
+    assert text.startswith("‹ view only ›  you own it: typing takes it  ● REC")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_view"
 
 
@@ -108,7 +109,7 @@ def test_view_only_for_a_client_who_may_type_and_for_one_whose_right_is_read_onl
     assert "read-only" not in text
 
     never = state_of(me=(VIEWER, VIEWER_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
-    assert "fixture-user types · your right is read-only · rtr-cor…" in _text(never)
+    assert "fixture-user types · your right is read-only  ● REC" in _text(never)
 
 
 def test_nobody_types_names_who_put_the_keyboard_aside() -> None:
@@ -118,7 +119,7 @@ def test_nobody_types_names_who_put_the_keyboard_aside() -> None:
     state = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     state.apply_frame(token_frame(None, "owner"))
     text = _text(state)
-    assert text.startswith("‹ nobody types ›  fixture-user put the keyboard aside · rtr-core-01")
+    assert text.startswith("‹ nobody types ›  fixture-user put the keyboard aside  ● live  ● REC")
     assert build_pieces(_inputs(state), 120)[0].role == "pill_none"
 
     escrow = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=None, clients=THREE)
@@ -131,11 +132,11 @@ def test_a_take_over_reads_both_ways() -> None:
     mid-command is explained, not mysterious."""
     owner = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     owner.apply_frame(token_frame((ME, ME_USER), "takeover"))
-    assert _text(owner).startswith("‹ you type ›  rtr-core-01  ● live  ● REC  you took the keyboard from fixture-peer")
+    assert _text(owner).startswith("‹ you type ›  ● live  ● REC  you took the keyboard from fixture-peer")
 
     peer = state_of(me=(PEER, PEER_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     peer.apply_frame(token_frame((ME, ME_USER), "takeover"))
-    assert _text(peer).startswith("‹ view only ›  fixture-user took the keyboard (owner) · rtr-core-01")
+    assert _text(peer).startswith("‹ view only ›  fixture-user took the keyboard (owner)  ● live  ● REC")
 
 
 def test_the_pan_range_and_the_unsent_keys_note_follow_the_state() -> None:
@@ -148,7 +149,7 @@ def test_the_pan_range_and_the_unsent_keys_note_follow_the_state() -> None:
     assert "your keys were not sent" in text
     assert "cols" not in _text(state) and "not sent" not in _text(state)
     # The note outranks the range; backfill now lets both fit after other words leave.
-    squeezed = _text(state, 120, range_label="cols 1-76 of 132 ▸", keys_not_sent=True)
+    squeezed = _text(state, 140, range_label="cols 1-76 of 132 ▸", keys_not_sent=True)
     assert "your keys were not sent" in squeezed and "cols 1-76 of 132 ▸" in squeezed
 
 
@@ -170,7 +171,7 @@ def test_a_session_that_is_not_attached_yet_has_no_pill() -> None:
     text = _text(None, attaching=True)
     assert text.startswith("◐ attaching · rtr-core-01")
     assert "‹" not in text
-    assert "^\\ d Detach" in text
+    assert "Ctrl+] detach" in text
     assert "F1 Menu" not in text and "? keys" not in text
 
 
@@ -178,12 +179,12 @@ def test_a_session_that_is_not_attached_yet_has_no_pill() -> None:
 
 
 def test_hints_are_key_first_and_end_with_the_menu_and_the_fleet() -> None:
-    """D11, D43: `^\\ d Detach` reads key then label, and the row ends `F1 Menu   ▦ Fleet ^\\ f`, the
+    """D11, D43: `Ctrl+] detach` reads key then label, and the row ends `F1 Menu   ▦ Targets ^\\ f`, the
     two universal entries, in that order."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     text = _text(state, 200)
     assert text.rstrip().endswith(
-        "^\\ d Detach   ^\\ w Who's here   ^\\ r Size   ^\\ [ Scroll   ^\\ x End…   ^\\ ? keys   F1 Menu   ▦ Fleet ^\\ f")
+        "Ctrl+] detach   ^\\ w Who's here   ^\\ r Size   ^\\ [ Scroll   ^\\ x End…   ^\\ ? keys   F1 Menu   ▦ Targets ^\\ f")
     assert len(text) == 200
 
 
@@ -211,10 +212,10 @@ def test_ordinary_hints_drop_by_priority_while_scroll_stays() -> None:
     (lowest priority first), one at a time and never back. Amendment 3 protects Scroll and Take back
     regardless of the configured ordinary-hint order."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
-    in_order = [name for name in reversed(PRIORITY) if name not in {"take_back", "scroll", "menu", "keys"}]
+    in_order = [name for name in reversed(PRIORITY) if name not in {"take_back", "scroll", "menu", "keys", "detach"}]
     normal, compact = _drop_order(state, True), _drop_order(state, False)
-    assert normal == ["size", "end", "detach", "who", "fleet"], "all seven fit at 200; Fleet and the Menu outlast these"
-    assert compact == ["fleet", "scroll"], "Scroll outlasts Fleet and Menu"
+    assert normal == ["size", "end", "who", "fleet"], "all seven fit at 200; Targets and the Menu outlast these; Detach never goes"
+    assert compact == ["scroll", "keys", "detach"], "Targets is gone by 79; the protected hints leave Scroll, keys, Detach"
     for dropped in (normal,):
         assert dropped == sorted(dropped, key=in_order.index), "a hint left before a lower-priority one"
     for width in (65, 120, 200):
@@ -228,16 +229,18 @@ def test_a_different_priority_drops_a_different_hint_first() -> None:
     the knob is read nowhere (DT19)."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     reversed_priority = ["menu", "fleet", "scroll", "size", "end", "detach", "who"]
-    assert _drop_order(state, True, hint_priority=reversed_priority) == ["who", "detach", "end", "size", "fleet"]
-    assert _drop_order(state, False, hint_priority=reversed_priority) == ["fleet", "scroll"]
+    assert _drop_order(state, True, hint_priority=reversed_priority) == ["who", "end", "size", "fleet"]
+    assert _drop_order(state, False, hint_priority=reversed_priority) == ["scroll", "keys", "detach"]
 
 
 def test_the_phone_row_is_compact_and_carries_the_pan_range_and_scroll() -> None:
     """Design T2: at 65 columns the pill loses its inner spaces and a live session says nothing about
-    being live; what is left is the pill, the session, REC, the pan range and protected Scroll."""
+    being live; what is left is the pill and the protected hints (Detach, Scroll, keys, Menu): the session name and
+    REC give way to them (the frame's title carries both)."""
     state = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
     row = _text(state, 65, range_label="cols 1-61 of 116 ▸")
-    assert row.startswith("‹you type›  rtr-…  ● REC")
+    assert row.startswith("‹you type›")
+    assert "Ctrl+] detach" in row and "^\\ [ Scroll" in row
     assert "● live" not in row
     assert "cols 1-61 of 116 ▸" not in row
     assert row.endswith("F1 Menu") and len(row) == 65
@@ -284,7 +287,7 @@ def test_a_click_on_the_pill_opens_whos_here_and_a_click_on_a_hint_runs_its_acti
         async with app.run_test(size=(200, 30)) as pilot:
             session_id = create_owner_session(app, _serve.TARGET, 80, 24)
             screen = await attached(pilot, app, session_id, wait_until)
-            await wait_until(pilot, lambda: "Detach" in _text_of(screen), "the status row to fill")
+            await wait_until(pilot, lambda: "detach" in _text_of(screen), "the status row to fill")
             row = screen.status
             assert set(row.actions()) == {"who", "detach", "size", "scroll", "end", "keys", "menu", "fleet"}
 
@@ -448,8 +451,8 @@ def test_the_packaged_priority_is_the_one_these_tests_use() -> None:
 def test_at_120_columns_the_answer_and_take_back_hints_come_ahead_of_detach_end_and_fleet_as_f12_draws_them() -> None:
     """Mockup F12, rows "view only, you own it" and "asks you". A state's own hint is the one click that fixes it, so
     at 120 columns it keeps its place and the general hints give way: with a question waiting the row offers Answer,
-    Who's here and the Menu and not Detach, End or Fleet; while another client holds the keyboard of a session the
-    person owns it offers Take back and the Menu. (The packaged `status.hint_priority` is the orchestrator's DEFAULT for
+    Who's here and the Menu and not End or Targets (Detach, whose key leaves a session, never drops); while another
+    client holds the keyboard of a session the person owns it offers Take back and the Menu. (The packaged `status.hint_priority` is the orchestrator's DEFAULT for
     the operator's veto; the mockup wins over the earlier default, which dropped these two first.)"""
 
     asking = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(ME, ME_USER), clients=THREE)
@@ -457,13 +460,13 @@ def test_at_120_columns_the_answer_and_take_back_hints_come_ahead_of_detach_end_
                                         "code": "quiet_prompt.kill", "text": "Kill the session?"}))
     hints = _hints(asking, 120)
     assert hints[0] == "answer" and {"scroll", "menu"} <= set(hints), hints
-    assert not {"detach", "end"} & set(hints), f"general hints kept ahead of Answer at 120: {hints}"
-    narrower = _hints(asking, 100)  # where the row must choose: Answer outlives Detach and End
-    assert narrower == ["scroll", "keys", "menu"], narrower
-    assert "^\\ a Answer: kill the session?" in _text(asking, 120)
+    assert not {"end"} & set(hints), f"general hints kept ahead of Answer at 120: {hints}"
+    narrower = _hints(asking, 100)  # where the row must choose: Answer outlives End; Detach never goes
+    assert narrower == ["detach", "scroll", "keys", "menu"], narrower
+    assert "^\\ y Answer: kill the session?" in _text(asking, 120)
 
     owned = state_of(me=(ME, ME_USER), owner=ME_USER, holder=(PEER, PEER_USER), clients=THREE)
     hints = _hints(owned, 120)
-    assert hints == ["take_back", "scroll", "keys", "menu"], hints
-    assert not {"detach", "end"} & set(hints), hints
+    assert hints == ["take_back", "detach", "scroll", "keys", "menu"], hints
+    assert not {"end"} & set(hints), hints
     assert "^\\ t Take back" in _text(owned, 120)
