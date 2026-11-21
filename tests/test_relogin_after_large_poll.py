@@ -290,16 +290,29 @@ def _relogin_after_large_poll(timing: str, serve, tmp_path, monkeypatch) -> None
             if timing == "before":
                 gate.set()  # the big reply lands and applies fully before logout
                 await _wait_applied(rig, old_screen)
+                gen_baseline = await rig.app_call(lambda: old_screen.fleet.applied_generation)
+                assert gen_baseline > 0, f"poll reply did not apply before sign-out: {gen_baseline}"
                 await rig.cmd("logout", timeout=CMD_TIMEOUT_S)
             elif timing == "during":
+                gen_baseline = await rig.app_call(lambda: old_screen.fleet.applied_generation)
                 logout = rig.send("logout")
-                gate.set()  # the reply is released while logout is running
+                await _wait_logout_began(rig, old_screen)
+                gate.set()  # the reply is released only after sign-out has begun on the workspace
                 await asyncio.wait_for(logout, CMD_TIMEOUT_S)
+                await _wait_poller_finished(old_screen)
+                assert await rig.app_call(lambda: old_screen.fleet.applied_generation) == gen_baseline, (
+                    f"a late poll reply changed the fleet after logout ({timing}): {rec.evidence()}")
             else:  # "after"
+                gen_baseline = await rig.app_call(lambda: old_screen.fleet.applied_generation)
                 await rig.cmd("logout", timeout=CMD_TIMEOUT_S)
                 gate.set()  # the reply lands after logout; it must be dropped
+                await _wait_poller_finished(old_screen)
+                assert await rig.app_call(lambda: old_screen.fleet.applied_generation) == gen_baseline, (
+                    f"a late poll reply changed the fleet after logout ({timing}): {rec.evidence()}")
 
             gen_after_logout = await rig.app_call(lambda: old_screen.fleet.applied_generation)
+            assert gen_after_logout == gen_baseline, (
+                f"a late poll reply changed the fleet after logout ({timing}): {rec.evidence()}")
             login_started = time.monotonic()
             try:
                 answer = await rig.cmd("login", user=_serve.USER, password_file=rig.password_file(),
@@ -315,10 +328,10 @@ def _relogin_after_large_poll(timing: str, serve, tmp_path, monkeypatch) -> None
             logins = [p for method, p, _ in server_app.requests if (method, p) == ("POST", "/auth/login")]
             assert logins, f"no POST /auth/login reached the server ({timing}): {rec.evidence()}"
             # A late poll reply must change nothing on the workspace it belonged to.
-            assert await rig.app_call(lambda: old_screen.fleet.applied_generation) == gen_after_logout, (
+            assert await rig.app_call(lambda: old_screen.fleet.applied_generation) == gen_baseline, (
                 f"a late poll reply changed the fleet after logout ({timing}): {rec.evidence()}")
             print(f"[{timing}] {rec.evidence()} applied_before_logout="
-                  f"{await rig.app_call(lambda: old_screen.fleet.applied_generation)} "
+                  f"{gen_baseline} "
                   f"unmounted={await rig.app_call(lambda: old_screen._unmounted)} "
                   f"login_posts={len(logins)}")
 
@@ -332,6 +345,23 @@ async def _wait_applied(rig: Rig, old_screen) -> None:
             return
         await asyncio.sleep(0.01)
     pytest.fail("the gated poll reply was never applied before logout")
+
+
+async def _wait_logout_began(rig: Rig, old_screen) -> None:
+    """Wait until sign-out has marked the workspace as begun on its first step (`detach_all`)."""
+    for _ in range(200):
+        if await rig.app_call(lambda: old_screen._logout_began):
+            return
+        await asyncio.sleep(0.005)
+    pytest.fail("sign-out never began on the workspace")
+
+
+async def _wait_poller_finished(old_screen, timeout: float = 5.0) -> None:
+    """Wait until the poller worker thread has finished processing."""
+    poller = getattr(old_screen, "poller", None)
+    if poller is not None:
+        await asyncio.to_thread(poller.join, timeout)
+    await asyncio.sleep(0.01)
 
 
 def test_relogin_after_a_poll_reply_before_logout(serve, tmp_path, monkeypatch) -> None:
@@ -380,9 +410,9 @@ def test_drive_presses_enter_only_once_password_holds_focus(serve, tmp_path, mon
     asyncio.run(run())
 
 
-def test_drive_answers_login_failed_when_password_focus_cannot_land(serve, tmp_path, monkeypatch) -> None:
-    """Ruling 1 (the fail-loud half): when the password field never takes the focus, drive answers `login_failed`
-    with a plain reason that the login form could not take the focus, never a silent `timeout`."""
+def test_drive_answers_login_not_submitted_when_password_focus_cannot_land(serve, tmp_path, monkeypatch) -> None:
+    """Ruling 1 (the fail-loud half): when the password field never takes the focus, drive answers `login_not_submitted`
+    with the reason that the login form could not take the focus; nothing was sent to TSB, never a silent `timeout`."""
 
     async def run() -> None:
         _server, url = serve()
@@ -393,13 +423,13 @@ def test_drive_answers_login_failed_when_password_focus_cannot_land(serve, tmp_p
 
             monkeypatch.setattr(Input, "focus", lambda self, *args, **kwargs: None)
             # The form has no focused widget, and the focus never lands: drive must not press into an unfocused
-            # screen, and must answer login_failed, not a silent timeout.
+            # screen, and must answer login_not_submitted, not a silent timeout.
             await rig.app_call(lambda: rig.app.set_focus(None))
             answer = await rig.cmd("login", user=_serve.USER, password_file=rig.password_file(),
                                    timeout=CMD_TIMEOUT_S)
             assert not answer["ok"], answer
-            assert answer.get("error") == "login_failed", answer
-            assert "focus" in str(answer.get("why", "")).lower(), answer
+            assert answer.get("error") == "login_not_submitted", answer
+            assert answer.get("why") == "the login form could not take the focus; nothing was sent to TSB", answer
 
     asyncio.run(run())
 

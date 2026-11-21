@@ -363,6 +363,7 @@ close code afterwards.
 | `not_attached` | attach first (or the session is still attaching) |
 | `not_logged_in` | log in first |
 | `login_failed` | the login was refused; `why` is TSB's own sentence |
+| `login_not_submitted` | the TUI could not submit the login form, so nothing reached TSB; `why` is the TUI's own sentence. Look at the screen, retry once, and report it if it repeats |
 | `attach_failed` | the session could not be attached; `why` says how |
 | `unknown_key` | a key name drive does not know |
 | `owner_not_attached` | `hand_back` found no owner's client; choose `detach`, or keep the keyboard |
