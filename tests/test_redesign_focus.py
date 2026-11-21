@@ -646,7 +646,7 @@ def test_the_frame_says_so_when_the_keyboard_moves_to_you(serve, wait_until, scr
                 assert "you type now" not in str(frame.border_subtitle)
             await wait_until(pilot, lambda: screen.pump.state.holds_keyboard, "the keyboard to come to this client")
             await wait_until(pilot, lambda: "you type now" in screen_text(app), "the notice in the frame")
-            await wait_until(pilot, lambda: any("1●" in screen.sidebar.render_line(y).text
+            await wait_until(pilot, lambda: any("you type" in screen.sidebar.render_line(y).text
                                                 for y in range(screen.sidebar.size.height)),
                              "the panel's row to say you type")
             region = frame.region

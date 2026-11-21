@@ -672,7 +672,11 @@ def test_the_ascii_glyph_set_reaches_the_sidebar_and_the_status_row(serve, monke
             lines = screen.sidebar.text.splitlines()
             assert lines[0].startswith(("┌─ # Targets .", "┏━ # Targets .")), lines[0]  # the section's mark and the dot in ASCII
             assert any(line.startswith(("┌─ > Sessions", "┏━ > Sessions")) for line in lines), lines
-            assert any(">1* rtr-core-01" in line for line in lines), lines
+            assert any("1 rtr-core-01" in line for line in lines), lines
+            # The ruled row says the state beside its mark; which state the first poll read is not this test's
+            # subject — the ascii stand-ins for the who glyph and the separator dot are.
+            assert any(". yours" in line for line in lines), lines
+            assert any("you type" in line for line in lines), lines
             assert not any(glyph in screen.sidebar.text for glyph in "≡▦▸◂●◆▲◌✕◐•┄")
             screen.close_sidebar()
             await wait_until(pilot, lambda: "F1 Menu" in screen.status.text and "# Targets" in screen.status.text,

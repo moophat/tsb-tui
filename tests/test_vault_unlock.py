@@ -50,6 +50,20 @@ async def _prompt(app, pilot, wait_until, kind=PassphraseScreen):
     return app.screen
 
 
+def _prompt_panel_text(app) -> str:
+    """The prompt panel's own painted words: the workspace behind the modal paints into the same compositor
+    rows, so a whole-screen read interleaves its text with the panel's and a wrapped phrase is never one
+    contiguous run. The read is the compositor's strips cut to the panel's region, breaks taken out."""
+    if not isinstance(app.screen, PassphraseScreen) or not app.screen.is_mounted:
+        return ""
+    panels = app.screen.query(".panel")
+    if not panels:
+        return ""
+    x, y, width, height = panels.first().region
+    rows = app.screen._compositor.render_strips()[y:y + height]
+    return flat("\n".join(row.text.rstrip()[x:x + width] for row in rows))
+
+
 async def _answer(app, pilot, passphrase: str, again: str | None = None) -> None:
     screen = app.screen
     screen.query_one("#vault-passphrase", Input).value = passphrase
@@ -198,11 +212,19 @@ def test_init_shows_the_warning_and_the_recording_line_and_sends_nothing_until_b
             await fixture_login(app, pilot, _serve.PEER)      # a login with no vault
             task = asyncio.create_task(save_login(app, "normal", "oper", password="FIXTURE-PW", reference="mine"))
             prompt = await _prompt(app, pilot, wait_until, InitScreen)
-            text = flat(screen_text(app))
+            # Wait on the screen state itself, never on timing: a fresh mount is queryable before its first
+            # paint, so a read straight after `_prompt` can race the warning onto the screen.
+            await wait_until(pilot, lambda: all(words in _prompt_panel_text(app) for words in
+                                                ("forgotten passphrase cannot be recovered",
+                                                 "credentials stored under it are lost",
+                                                 "keep it in a password manager"))
+                             and RECORDING_LINE in _prompt_panel_text(app),
+                             "the warning and the recording line on the prompt")
+            text = _prompt_panel_text(app)
             for words in ("forgotten passphrase cannot be recovered", "credentials stored under it are lost",
                           "keep it in a password manager"):
                 assert words in text, words
-            assert RECORDING_LINE in screen_text(app)
+            assert RECORDING_LINE in text
             assert prompt.query_one("#vault-passphrase", Input).password
             assert prompt.query_one("#vault-passphrase-again", Input).password
             await _answer(app, pilot, CHAIN.passphrase, "another passphrase")

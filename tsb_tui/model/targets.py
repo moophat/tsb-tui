@@ -101,15 +101,34 @@ def parse_query(text: str) -> Query:
                  discovered_by=values.get("source"))
 
 
+def natural_key(text: str) -> tuple:
+    """The natural order of a label (ruled 2026-11-20): case-insensitive, and a run of digits compares as the
+    number it spells, so `rtr-2` comes before `rtr-10`. A numeric run is a run of decimal characters — the ones
+    `int()` parses; a character like `²` counts as digits is text, never a number."""
+    runs: list[tuple[int, object]] = []
+    run = ""
+    digits = False
+    for char in text:
+        if char.isdecimal() == digits:
+            run += char
+        else:
+            runs.append((1 if digits else 0, int(run) if digits else run.lower()))
+            run, digits = char, char.isdecimal()
+    runs.append((1 if digits else 0, int(run) if digits else run.lower()))
+    return tuple(runs)
+
+
 @dataclass(frozen=True)
 class TargetRow:
     """One `TargetRecord` for the tab. `id` is the record's own, for the API; every other string went through
-    `as_text`, and `label` is the id as text, for the screen."""
+    `as_text`, and `label` is the id as text, for the screen. `has_name` says the record carried a `name` (the
+    row grammar's label falls back name, then host, then the type word and the id)."""
 
     id: str
     label: str
     type: str
     name: str
+    has_name: bool
     group: str
     tags: tuple[str, ...]
     discovered_by: str
@@ -122,9 +141,10 @@ def make_row(record: Mapping[str, Any]) -> TargetRow:
     """A row from a `TargetRecord`: a type it does not know is kept as it is (V5), a missing name is the id."""
     target_id = str(record.get("id", ""))
     label = as_text(target_id)
+    name = as_text(record.get("name"))
     tags: Iterable[Any] = record.get("tags") or ()
     return TargetRow(
-        id=target_id, label=label, type=as_text(record.get("type")), name=as_text(record.get("name")) or label,
+        id=target_id, label=label, type=as_text(record.get("type")), name=name or label, has_name=bool(name),
         group=as_text(record.get("group")), tags=tuple(as_text(tag) for tag in tags),
         discovered_by=as_text(record.get("discovered_by")), host=as_text(record.get("host")),
         port=as_text(record.get("port")), last_seen=as_text(record.get("last_seen")))
@@ -216,4 +236,4 @@ class TargetsModel:
 
 
 __all__ = ["FIELDS", "FIELD_LIST", "MAX_LIMIT", "PAGE_LIMIT", "Query", "QueryError", "TargetRow", "TargetsModel",
-           "as_text", "make_row", "parse_query"]
+           "as_text", "make_row", "natural_key", "parse_query"]
