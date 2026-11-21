@@ -17,6 +17,7 @@ import os
 import re
 import threading
 import time
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
@@ -29,8 +30,10 @@ from workspace_support import fixture_login, named_sessions, open_here, sidebar_
 
 from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.model.fleet import session_rank
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.target_form import TargetFormScreen
+from tsb_tui.widgets import sidebar as sidebar_module
 from tsb_tui.widgets.canvas import Canvas
 from tsb_tui.widgets.sidebar import Sidebar
 
@@ -980,6 +983,11 @@ def test_a_narrow_target_facts_line_omits_a_segment_that_does_not_fit(serve, wai
             assert "open" not in joined, "the open numbers are omitted whole, not cut"
             for line in rows:
                 assert "…" not in line, rows
+            # Ruled 2026-11-21: the row's tooltip carries its full facts, the segment the painted line omits included.
+            await pilot.hover(Sidebar, offset=(4, 1))
+            await pilot.pause()
+            tip = str(screen.sidebar.tooltip)
+            assert "open 1" in tip, tip
     asyncio.run(check())
 
 
@@ -1113,4 +1121,86 @@ def test_the_fallback_attach_reports_the_canvas_size(serve, wait_until, monkeypa
             frame = served.attach_frames[0]
             canvas = screen.slot_for(sid).canvas
             assert (frame["cols"], frame["rows"]) == (canvas.size.width, canvas.size.height), (frame, canvas.size)
+    asyncio.run(check())
+
+
+def test_an_ownerless_session_is_never_ranked_as_yours():
+    """Ruled 2026-11-21: a session is ranked as the caller's only when the caller's login is known and equals the
+    record's owner. An absent login, or an ownerless record, ranks joinable — never yours."""
+    ownerless_live = {"id": "s1", "owner": None, "state": "live"}
+    assert session_rank(ownerless_live, set(), None) == 3, "an ownerless live session is not the caller's"
+    peer_live = {"id": "s2", "owner": "ci-agent", "state": "live"}
+    assert session_rank(peer_live, set(), None) == 3, "with no login known, a peer's session is joinable"
+    mine_live = {"id": "s3", "owner": "me", "state": "live"}
+    assert session_rank(mine_live, set(), "me") == 1, "a known login that owns a live session ranks yours"
+
+
+def test_a_wide_target_row_never_paints_past_the_inner_width_at_the_facts_edge(serve, wait_until):
+    """Ruled 2026-11-21: at the wide budget the facts are composed within `inner - 3` cells (the mark, at least one
+    label cell and the space). A row whose full facts are `inner - 2` long drops its last segment whole, never cuts a
+    word, and no painted line passes the inner width."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        name = "sw-edge"
+        served.targets[name] = {"id": name, "type": "ssh", "name": name, "group": "lab", "tags": [],
+                                "discovered_by": "manual", "last_seen": seen,
+                                "host": "192.0.2.10.example", "port": 22}
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.sidebar.size.width - 4 >= 38, "the wide sidebar")
+            sids = named_sessions(url, served, name, name, name, name, name, name)
+            await open_here(app, pilot, wait_until, *sids)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            rows = [line for line in _target_lines(screen) if "sw-edge" in line or "192.0.2.10" in line]
+            joined = "\n".join(rows)
+            assert "192.0.2.10.example" in joined, rows
+            # The open numbers are the last segment: shown whole when they fit the wide budget, dropped whole when
+            # they do not — never cut mid-segment, and never past the inner width.
+            if "open" in joined:
+                assert "open 1,2,3,4,5,6" in joined, rows
+            for line in _painted(screen):
+                assert len(line) == screen.sidebar.size.width, repr(line)
+    asyncio.run(check())
+
+
+def test_painting_a_targets_line_composes_each_target_facts_once(serve, wait_until, monkeypatch):
+    """Ruled 2026-11-21: painting a Targets line does constant work. The spans cache records each row's facts and
+    line count once per refresh; the row pairs and the painted end read that cache. With far more targets than the
+    section paints, one full repaint composes each target's facts at most once."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        # The targets model loads one page (PAGE_LIMIT=100); 90 rows are far more than the section paints.
+        for i in range(90):
+            tid = f"t{i:03d}"
+            served.targets[tid] = {"id": tid, "type": "ssh", "name": tid, "group": "lab", "tags": [],
+                                   "discovered_by": "manual", "last_seen": seen,
+                                   "host": "192.0.2.50", "port": 22}
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched and len(screen.sidebar.model.targets) >= 90,
+                             "the loaded targets")
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            sidebar = screen.sidebar
+            calls: list[str] = []
+            original = sidebar_module._target_facts
+
+            def counting(row, numbers, others, width=None):
+                calls.append(row.id)
+                return original(row, numbers, others, width)
+
+            monkeypatch.setattr(sidebar_module, "_target_facts", counting)
+            sidebar._target_spans_cache = None
+            for y in range(sidebar.size.height):
+                sidebar.render_line(y)
+            counts = Counter(calls)
+            repeats = [tid for tid, n in counts.items() if n > 1]
+            assert not repeats, f"{len(repeats)} targets composed more than once: {counts.most_common(3)}"
     asyncio.run(check())

@@ -386,3 +386,70 @@ Each command its own process, `PYTHONPATH=program/contract/client:.`, `-p no:cac
 `tsb_tui/model/targets.py`, `tsb_tui/screens/terminal.py`, `tsb_tui/widgets/sidebar.py`, and this report.
 
 Not verified: ruff (not installed). No baseline under `tests/snapshots/redesign-p3/` changed.
+
+## Round 8 (2026-11-21): Qodo's second review, four findings
+
+Branch at `9af2027`. Each finding is a claim until a test proves it: the test was written first, its first
+failing line recorded on `9af2027`, then the fix. All four reproduced.
+
+**Finding 1 — an ownerless session is never "yours" (reproduced).**
+The change (`tsb_tui/model/fleet.py`): `session_rank` ranks a session as the caller's only when the caller's
+login is known and equals the record's owner; an absent login or an ownerless record ranks joinable. Its one
+caller (`_ordered_visible`) passes `self._me()`, which is None before a login, so the guard in `session_rank`
+covers it.
+The test: `test_an_ownerless_session_is_never_ranked_as_yours` — red on `9af2027` at
+`tests/test_redesign_lists.py:1131`: `session_rank({"id":"s1","owner":None,"state":"live"}, set(), None)`
+returned `1` (yours), not `3` (joinable). Green after the change.
+
+**Finding 2 — a wide target row never paints past the inner width (reproduced).**
+The change (`tsb_tui/widgets/sidebar.py`): the facts budget is one rule, `_target_facts_budget` — `inner - 3`
+at the wide budget (the mark, at least one label cell and the space), `inner - 1` at the narrow. The span, the
+line count and the painted line all use that same budget, so a wide row's facts are composed within `inner - 3`
+and the painted line is exactly `inner`, never one cell past it.
+The test: `test_a_wide_target_row_never_paints_past_the_inner_width_at_the_facts_edge` — red on `9af2027` at
+`tests/test_redesign_lists.py:1164`: a target whose full facts are `inner - 2` (host `192.0.2.10.example` plus
+`open 1,2,3,4,5,6`, six sessions open here) painted `… 192.0.2.10.example · open 1,2,3,4,5` — the last segment
+cut mid-segment. Green after the change: the open segment is dropped whole, no word cut, every painted line
+exactly the sidebar width.
+
+**Finding 3 — a target row's tooltip carries its full facts (reproduced).**
+The change (`tsb_tui/widgets/sidebar.py`): `_target_facts` returns the full facts and the budgeted facts; the
+painted line keeps the width-limited facts, the tooltip is built from the full facts, so the segment the painted
+line omits is in the tooltip.
+The test: `test_a_narrow_target_facts_line_omits_a_segment_that_does_not_fit` extended to hover the row and
+assert the omitted segment — red on `9af2027` at `tests/test_redesign_lists.py:990`: the tooltip read
+`sw-facts · 192.0.2.100.example`, with no `open 1`. Green after the change: the tooltip carries `open 1`.
+
+**Finding 4 — painting a Targets line does constant work (reproduced).**
+The change (`tsb_tui/widgets/sidebar.py`): `_target_spans` records each target row's full facts, painted facts
+and line count once per refresh; `_target_facts_cache` reads them, and `_target_painted`, `_target_row_pairs`
+and `_target_painted_end` read the cache, never recomputing facts per painted line.
+The test: `test_painting_a_targets_line_composes_each_target_facts_once` — red on `9af2027` at
+`tests/test_redesign_lists.py:1205`: a full repaint of the panel (every `render_line`) composed 98 targets more
+than once (the row pairs and each painted line each recomputed). Green after the change: no target composed more
+than once. The targets model loads one page (`PAGE_LIMIT` 100), so the test loads 90 rows, far more than the
+section paints.
+
+### Gate (round 8)
+
+Each command its own process, `PYTHONPATH=program/contract/client:.`, `-p no:cacheprovider`, output to `.lane-logs/`:
+
+| Command | Exit | Result |
+|---|---|---|
+| the four new tests | 0 | 4 passed |
+| `tests/test_redesign_lists.py` | 0 | 62 passed (the three new tests, the extended narrow test; no earlier test changed) |
+| the nine suites `LANE-BRIEF.md` names, in two batches | 0 | 305 passed, one load flake below |
+| `tests/test_drive_prompt_pattern.py` | 0 | 27 passed |
+| `make test` with the lane's test venv as `PYTHON` | 0 | 2528 passed, 3 skipped (the installer runs reserved to the CI image); no failure |
+| `make contract-check` | 0 | program/ clean at the pinned release |
+| `make lint` | 0 | import-lint clean, engine verified; ruff is not installed in this venv, so Python style was not checked |
+
+**The load flake:** `tests/test_redesign_focus.py::test_ctrl_right_bracket_detaches_from_the_canvas_and_the_lists_and_the_hint_never_drops`
+failed once in the combined nine-suite run (a `detach-hint-160x45` P2b snapshot fill-colour diff, a focus/cursor
+style at the snapshot moment, unrelated to the target rows). It passes standalone three times: run 1 exit 0,
+run 2 exit 0, run 3 exit 0. In the full `make test` run it did not recur (green).
+
+`git diff --name-only` lists only rounds 1–7's set plus this report: `tests/test_redesign_lists.py`,
+`tsb_tui/model/fleet.py`, `tsb_tui/widgets/sidebar.py`. No baseline under `tests/snapshots/redesign-p3/` changed.
+
+Not verified: ruff (not installed).

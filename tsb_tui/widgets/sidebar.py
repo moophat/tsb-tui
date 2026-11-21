@@ -253,11 +253,20 @@ def _target_label(row: TargetRow) -> str:
     return f"{row.type} {row.label}".strip()
 
 
-def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, width: int | None = None) -> str:
-    """A target row's second line (ruled 2026-11-20): the host, the type word when the target is not ssh, the
-    numbers of its sessions open in this window, and the other logins' word, joined by ` · `. With a width budget
-    it is composed one whole segment at a time, in that order: a segment that would overflow the budget is left
-    out whole, never cut (rule 1: no word is cut)."""
+def _target_facts_budget(wide: bool, inner: int) -> int:
+    """The facts budget (ruled 2026-11-21): at the wide budget the facts are composed within `inner - 3` cells
+    (the mark, at least one label cell and the space); the narrow budget stays `inner - 1`. The span, the line
+    count and the painted line all use this one budget."""
+    return inner - 3 if wide else inner - 1
+
+
+def _target_facts(row: TargetRow, numbers: Iterable[int], others: str,
+                  budget: int | None = None) -> tuple[str, str]:
+    """A target row's facts (ruled 2026-11-20): the host, the type word when the target is not ssh, the numbers
+    of its sessions open in this window, and the other logins' word, joined by ` · `. Returns the full facts (for
+    the tooltip) and the facts composed within `budget` (the painted line). With a budget it is built one whole
+    segment at a time, in that order: a segment that would overflow is left out whole, never cut (rule 1: no word
+    is cut). The row pairs, the painted end and the painted line read this once per refresh from the spans cache."""
     segments: list[str] = []
     if row.host:
         segments.append(row.host)
@@ -267,12 +276,13 @@ def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, width: in
         segments.append("open " + ",".join(str(number) for number in sorted(numbers)))
     if others:
         segments.append(others)
+    full = " · ".join(segments)
     facts = ""
     for segment in segments:
         candidate = segment if not facts else f"{facts} · {segment}"
-        if width is None or len(candidate) <= width:
+        if budget is None or len(candidate) <= budget:
             facts = candidate
-    return facts
+    return full, facts
 
 
 def _title(group: str, count: int, width: int) -> str:
@@ -852,7 +862,8 @@ class Sidebar(Widget):
         # neither: `(key, rows)`.
         self._targets_cache: tuple[tuple[object, str, tuple], tuple[TargetRow, ...]] | None = None
         # Each target's painted start index, cached beside the rows it was walked for.
-        self._target_spans_cache: tuple[tuple[TargetRow, ...], tuple, tuple, tuple[int, ...]] | None = None
+        self._target_spans_cache: tuple[tuple[TargetRow, ...], tuple, tuple, tuple[int, ...],
+                                         tuple[tuple[str, str], ...]] | None = None
         # The open sessions whose wide row paints its alike word on a second line, cached beside the model
         # and width the frame's height read them at (`_wide_alike_lines`).
         self._wide_alike_for: tuple[SidebarModel, int] | None = None
@@ -1245,8 +1256,8 @@ class Sidebar(Widget):
         if self.wide:
             return 1
         inner = max(self.sidebar_width - 4, 1)
-        facts = _target_facts(row, self._open_numbers().get(row.id, ()), self._model.others.get(row.id, ""),
-                              max(inner - 1, 0))
+        _, facts = _target_facts(row, self._open_numbers().get(row.id, ()), self._model.others.get(row.id, ""),
+                                 max(_target_facts_budget(False, inner), 0))
         return 2 if facts else 1
 
     def _target_line_index(self, target_id: str) -> int | None:
@@ -1259,7 +1270,9 @@ class Sidebar(Widget):
 
     def _target_spans(self) -> tuple[int, ...]:
         """Each target's painted start index, the filter line excluded. Cached for the visible rows at this
-        width and wide mode, so painting N rows walks nothing."""
+        width and wide mode, so painting N rows walks nothing. The cache also records each row's facts (the full
+        facts and the facts composed within the budgeted line), so the painted line, the row pairs and the painted
+        end read them once per refresh, never recomputing per painted line (ruled 2026-11-21)."""
         cache = self._target_spans_cache
         numbers = self._open_numbers()
         others = self._model.others
@@ -1269,15 +1282,24 @@ class Sidebar(Widget):
         key = (wide, inner)
         if cache is not None and cache[0] is rows and cache[1] == key and cache[2] == (numbers, others):
             return cache[3]
-        spans = []
+        budget = max(_target_facts_budget(wide, inner), 0)
+        spans: list[int] = []
+        facts: list[tuple[str, str]] = []
         at = 0
         for row in rows:
             spans.append(at)
-            facts = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""), max(inner - 1, 0))
-            at += 1 if (wide or not facts) else 2
+            full, budgeted = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""), budget)
+            facts.append((full, budgeted))
+            at += 1 if (wide or not budgeted) else 2
         result = tuple(spans)
-        self._target_spans_cache = (rows, key, (numbers, others), result)
+        self._target_spans_cache = (rows, key, (numbers, others), result, tuple(facts))
         return result
+
+    def _target_facts_cache(self) -> tuple[tuple[str, str], ...]:
+        """Each visible target's (full facts, painted facts), built once per refresh by `_target_spans` and read
+        by the painted line, the row pairs and the painted end."""
+        self._target_spans()  # builds the cache when it is not current for this width and model
+        return self._target_spans_cache[4]
 
     def _target_painted(self, index: int) -> Line | None:
         """The Targets section's painted line `index` (0-based, the filter line first), built when it is painted
@@ -1300,11 +1322,10 @@ class Sidebar(Widget):
         if position is None:
             return None
         row = rows[position]
-        numbers = self._open_numbers()
-        facts = _target_facts(row, numbers.get(row.id, ()), self._model.others.get(row.id, ""),
-                              max(inner - 1, 0))
+        full, facts = self._target_facts_cache()[position]
         label = _target_label(row)
-        tip = " · ".join(part for part in (label, facts) if part) or None
+        # The tooltip carries the row's full facts, the segment the painted line omits included (ruled 2026-11-21).
+        tip = " · ".join(part for part in (label, full) if part) or None
         selected = row.id == self.selected_target
         mark = (SELECTED, "mark") if selected else (" ", "blank")
         within = index - spans[position]
@@ -1404,7 +1425,9 @@ class Sidebar(Widget):
 
     def _target_row_pairs(self) -> tuple[tuple[int, int], ...]:
         """(start, lines) of every painted row of the Targets section, the filter line included. The list
-        paints whole rows and scrolls by them (ruled 2026-11-20 20:1x), so its scroll positions are row starts."""
+        paints whole rows and scrolls by them (ruled 2026-11-20 20:1x), so its scroll positions are row starts.
+        The facts and the line count come from the spans cache, the same budget as the painted line (ruled
+        2026-11-21): a full repaint never recomputes facts per painted line."""
         pairs: list[tuple[int, int]] = []
         if self._has_filter_line():
             pairs.append((0, 1))
@@ -1412,13 +1435,10 @@ class Sidebar(Widget):
         if rows:
             offset = 1 if self._has_filter_line() else 0
             wide = self.wide
-            numbers = self._open_numbers()
-            others = self._model.others
+            facts_cache = self._target_facts_cache()
             for position, span in enumerate(self._target_spans()):
-                facts = _target_facts(rows[position], numbers.get(rows[position].id, ()),
-                                      others.get(rows[position].id, ""),
-                                      max(max(self.sidebar_width - 4, 1) - 1, 0))
-                pairs.append((offset + span, 1 if (wide or not facts) else 2))
+                _full, budgeted = facts_cache[position]
+                pairs.append((offset + span, 1 if (wide or not budgeted) else 2))
         return tuple(pairs)
 
     def _target_painted_end(self) -> int:

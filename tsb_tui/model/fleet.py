@@ -212,10 +212,12 @@ def others_by_target(merged: Mapping[str, dict[str, Any]], me: str | None) -> di
 def session_rank(record: dict[str, Any], open_here: set[str], me: str | None) -> int:
     """The ruled session order (2026-11-20): open here, then yours live, then yours detached, then joinable
     (needs you is the full view's block over the same list). The sort is stable, so the core's order stands
-    within a rank."""
+    within a rank. Ruled 2026-11-21: a session is the caller's only when the caller's login is known and equals
+    the record's owner; an absent login or an ownerless record ranks joinable, never yours."""
     if record["id"] in open_here:
         return 0
-    if record.get("owner") == me:
+    owner = record.get("owner")
+    if me is not None and owner is not None and owner == me:
         if record.get("state") == "live":
             return 1
         if record.get("state") == "detached":
