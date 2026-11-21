@@ -47,6 +47,7 @@ jobs:
           # https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
           printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$keydir/known_hosts"
           docker run --rm \
+            --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-fetch \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work -v "$keydir:/ssh:ro" \
             -e GIT_SSH_COMMAND='ssh -i /ssh/id -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts' \
@@ -72,6 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm \
+            --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-pin \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             ci-tui-py bash -euo pipefail -c 'make contract-init && make contract-check CONTRACT_MAIN_REF=origin/main'
@@ -80,6 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm \
+            --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-unit \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e PYTEST_ADDOPTS='-rsx --runxfail' \
@@ -91,6 +94,7 @@ jobs:
           # PR CI fetches no packaging inputs; the release job builds the zips from the pinned inputs
           # and checks them before publishing. Both built-zip checks run there.
           docker run --rm \
+            --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-packaging \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e PYTEST_ADDOPTS='-rsx --runxfail' \
@@ -116,6 +120,14 @@ jobs:
             echo '::error::the whole unit suite must run without skips or hidden tests'
             exit 1
           fi
+
+      - name: Remove this job's containers
+        if: always()
+        run: |
+          docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-fetch || true
+          docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-pin || true
+          docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-unit || true
+          docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-packaging || true
 
   lint:
     runs-on: [self-hosted, tsb-tui-ci]
@@ -146,6 +158,7 @@ jobs:
           # https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
           printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$keydir/known_hosts"
           docker run --rm \
+            --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-fetch \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work -v "$keydir:/ssh:ro" \
             -e GIT_SSH_COMMAND='ssh -i /ssh/id -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts' \
@@ -171,6 +184,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm \
+            --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-pin \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             ci-tui-py bash -euo pipefail -c 'make contract-init && make contract-check CONTRACT_MAIN_REF=origin/main'
@@ -182,8 +196,16 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm \
+            --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-lint \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
             -e CI -e GITHUB_EVENT_NAME -e HEAD_REF -e BASE_REF \
             ci-tui-py make lint
+
+      - name: Remove this job's containers
+        if: always()
+        run: |
+          docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-fetch || true
+          docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-pin || true
+          docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-lint || true
 
