@@ -72,3 +72,27 @@ In `tests/test_relogin_after_large_poll.py` (lines 290–335):
    - Output: `110 passed`, `import-lint: clean (./ 207 files)`, `clean: no node addresses, dev hostnames, secret paths, or workstation/mount paths`, `engine-check: shared object and all headers verified; object matches PIN`
 4. **Diff scope:**
    - `git diff --name-only` contains strictly allowed files.
+
+---
+
+## Qodo round 2
+
+### The Finding
+`_wait_poller_finished` joined the poller with a timeout and never checked that it ended, then slept 10 ms.
+
+### The Change
+In `tests/test_relogin_after_large_poll.py`:
+1. After `poller.join(timeout)`, asserted thread termination: when `poller._thread is not None and poller._thread.is_alive()`, fails with `pytest.fail(f"the poll worker did not finish within {timeout} s")`.
+2. Replaced the 10 ms sleep with one round trip through the app's event loop (`await rig.app_call(lambda: None)`, passing `rig` in), guaranteeing that any reply the worker handed to the loop has run before the fleet generation is read.
+3. Updated both call sites in `_relogin_after_large_poll` to pass `rig` into `_wait_poller_finished(rig, old_screen)`.
+
+### Gate Results
+1. **Consecutive Pytest runs (3x):**
+   - Run 1: `PYTHONPATH=program/contract/client:. <test-venv>/bin/python -m pytest -q -p no:cacheprovider tests/test_relogin_after_large_poll.py` -> exit code `0` (8 passed in 48.10s)
+   - Run 2: `PYTHONPATH=program/contract/client:. <test-venv>/bin/python -m pytest -q -p no:cacheprovider tests/test_relogin_after_large_poll.py` -> exit code `0` (8 passed in 47.96s)
+   - Run 3: `PYTHONPATH=program/contract/client:. <test-venv>/bin/python -m pytest -q -p no:cacheprovider tests/test_relogin_after_large_poll.py` -> exit code `0` (8 passed in 47.20s)
+2. **Lint & Boundary checks:**
+   - Command: `make lint`
+   - Exit code: `0`
+   - Output: `110 passed`, `import-lint: clean (./ 207 files)`, `clean: no node addresses, dev hostnames, secret paths, or workstation/mount paths`, `engine-check: shared object and all headers verified; object matches PIN`
+

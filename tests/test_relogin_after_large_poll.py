@@ -299,14 +299,14 @@ def _relogin_after_large_poll(timing: str, serve, tmp_path, monkeypatch) -> None
                 await _wait_logout_began(rig, old_screen)
                 gate.set()  # the reply is released only after sign-out has begun on the workspace
                 await asyncio.wait_for(logout, CMD_TIMEOUT_S)
-                await _wait_poller_finished(old_screen)
+                await _wait_poller_finished(rig, old_screen)
                 assert await rig.app_call(lambda: old_screen.fleet.applied_generation) == gen_baseline, (
                     f"a late poll reply changed the fleet after logout ({timing}): {rec.evidence()}")
             else:  # "after"
                 gen_baseline = await rig.app_call(lambda: old_screen.fleet.applied_generation)
                 await rig.cmd("logout", timeout=CMD_TIMEOUT_S)
                 gate.set()  # the reply lands after logout; it must be dropped
-                await _wait_poller_finished(old_screen)
+                await _wait_poller_finished(rig, old_screen)
                 assert await rig.app_call(lambda: old_screen.fleet.applied_generation) == gen_baseline, (
                     f"a late poll reply changed the fleet after logout ({timing}): {rec.evidence()}")
 
@@ -356,12 +356,14 @@ async def _wait_logout_began(rig: Rig, old_screen) -> None:
     pytest.fail("sign-out never began on the workspace")
 
 
-async def _wait_poller_finished(old_screen, timeout: float = 5.0) -> None:
+async def _wait_poller_finished(rig: Rig, old_screen, timeout: float = 5.0) -> None:
     """Wait until the poller worker thread has finished processing."""
     poller = getattr(old_screen, "poller", None)
     if poller is not None:
         await asyncio.to_thread(poller.join, timeout)
-    await asyncio.sleep(0.01)
+        if poller._thread is not None and poller._thread.is_alive():
+            pytest.fail(f"the poll worker did not finish within {timeout} s")
+    await rig.app_call(lambda: None)
 
 
 def test_relogin_after_a_poll_reply_before_logout(serve, tmp_path, monkeypatch) -> None:
