@@ -47,6 +47,7 @@ from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
+from textual.css.query import NoMatches
 from textual.geometry import Size
 from textual.screen import Screen
 from textual.timer import Timer
@@ -387,6 +388,9 @@ class TerminalScreen(Screen):
         self._last_stale: tuple[str | None, str | None] = (None, None)
         self._leaving = False
         self._unmounted = False
+        # Sign-out marks logout as begun on its first step (`detach_all`); a poll reply that lands after that is
+        # dropped, so a late reply never advances a workspace being signed out of.
+        self._logout_began = False
         self._freeing: set[asyncio.Task[None]] = set()
         self._auto_timer: Timer | None = None
         # The session that was in front when the window last changed: the pending debounced request
@@ -832,8 +836,9 @@ class TerminalScreen(Screen):
             self.poller.refresh_async()
 
     def _poll_reply(self, generation: int, records: list[dict]) -> None:
-        """Runs on the poller's thread: hand the reply to the UI thread, unless the workspace is gone."""
-        if self._unmounted:
+        """Runs on the poller's thread: hand the reply to the UI thread, unless the workspace is gone or logout has
+        begun (a reply that lands after sign-out started is dropped)."""
+        if self._unmounted or self._logout_began:
             return
         try:
             self.app.call_from_thread(self._apply_poll, generation, records)
@@ -849,7 +854,7 @@ class TerminalScreen(Screen):
                 pass
 
     def _apply_poll(self, generation: int, records: list[dict]) -> None:
-        if self._unmounted or self.fleet is None or not self.fleet.apply(generation, records):
+        if self._unmounted or self._logout_began or self.fleet is None or not self.fleet.apply(generation, records):
             return
         changed = False
         for slot in self.slots:
@@ -2669,6 +2674,7 @@ class TerminalScreen(Screen):
         while a handoff whose worker never started is closed separately, so by then the
         close has been sent for each of them (sign out's order: the detaches first, then `logout()`). No toast per
         session: the caller says one thing."""
+        self._logout_began = True  # sign-out's first step on this screen: every later poll reply is dropped
         detached: list[str] = []
         # Until no slot remains: a slot admitted before sign-out's gate closed (`_refuse_while_signing_out`) may
         # still appear while a worker is awaited, and each pass leaves it too.
@@ -3736,7 +3742,10 @@ class TerminalScreen(Screen):
         if self.status is not None:
             self.status.set_inputs(inputs)
         if self.is_mounted:
-            frame = self.query_one("#canvases")
+            try:
+                frame = self.query_one("#canvases")
+            except NoMatches:  # the terminal is being torn down (logout's screen-swap): nothing to paint
+                return
             focused = (not self._sidebar_has_keys() and not self._view_has_keys() and not self._rail_has_keys()
                        and not self.dialogs)
             frame.styles.border = ("heavy" if focused else "solid", role_colours(self.app.cfg)["border_on_surface"])

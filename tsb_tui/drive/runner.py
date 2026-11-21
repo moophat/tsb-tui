@@ -338,9 +338,9 @@ class Driver:
         # attempt's.
         login.query_one("#login-error", Static).update("")
         # Enter in the password field submits the form as its button does, and needs no room on a window too small to
-        # show the button.
-        login.query_one("#password", Input).focus()
-        await self.pilot.press("enter")
+        # show the button. Press it only once the LoginScreen is active and `#password` holds the focus; re-focus
+        # within the existing wait if the focus did not land, and answer login_failed if it never lands.
+        await self._press_when_password_focused(login)
 
         def outcome() -> str | None:
             # "in" means the workspace is ready, not merely pushed: `switch_screen` puts the TerminalScreen on
@@ -365,6 +365,24 @@ class Driver:
         self.screen_lock.reset(password_path)
         self.commands.clear_ended_login()
         return str(self.app.username)
+
+    async def _press_when_password_focused(self, login) -> None:
+        """Press enter only once the LoginScreen is active and `#password` holds the focus. Re-focus within the
+        existing wait if the focus did not land; answer `login_failed` with a plain reason if it never lands within
+        drive's wait, so an unfocused form is a refusal the rig understands, never a silent timeout."""
+        from textual.widgets import Input
+
+        from ..screens.login import LoginScreen
+
+        password = login.query_one("#password", Input)
+        deadline = time.monotonic() + self.cfg["drive.wait_timeout_ms"] / 1000.0
+        while time.monotonic() < deadline:
+            if isinstance(self.app.screen, LoginScreen) and self.app.focused is password:
+                await self.pilot.press("enter")
+                return
+            password.focus()
+            await self.pilot.pause(SCREEN_POLL_S)
+        raise DriveError("login_failed", "the login form could not take the focus")
 
     async def refresh_fleet(self) -> None:
         """One `GET /sessions` now, applied as the fleet's poll would: what `sessions` and `attach` list from."""
