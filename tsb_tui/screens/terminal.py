@@ -62,7 +62,6 @@ from ..model.events import TAP_RECORD, TAP_SLOT_CLOSED, EventLog
 from ..model.fleet import (
     ENDED_STATES,
     MAX_CHIPS,
-    WHO_OTHER,
     Fleet,
     FleetPoller,
     FleetScan,
@@ -105,7 +104,6 @@ from ..widgets.rail import (
     ACT_NEEDS,
     ACT_NEW,
     ACT_VAULT,
-    WHO_WORDS,
     Rail,
     RailModel,
 )
@@ -1028,10 +1026,11 @@ class TerminalScreen(Screen):
         target = record.get("target_id", "")
         id_label = labels[sid] if by_target.get(target, 0) > 1 else None
         short = labels[sid]
-        words = f"{login} types" if who == WHO_OTHER else WHO_WORDS.get(who, "")
-        tip = " · ".join(part for part in (f"{target} · {short}", words) if part)
         state = as_text(record.get("state")) or ""
         owner = "yours" if record.get("owner") == me else as_text(record.get("owner"))
+        typer = "" if state in ("killed", "terminated") else (
+            "you type" if login == "you" else ("nobody types" if login in ("", "·") else f"{login} types"))
+        tip = " · ".join(part for part in (f"{target} · {short}", state, owner, typer) if part)
         created = as_text(record.get("created_at")) or ""
         return SidebarEntry(
             session_id=sid, group=group, number=numbers.get(sid), who=who, target=target, id_label=id_label,
@@ -1040,15 +1039,21 @@ class TerminalScreen(Screen):
             out_age=time_state.out_age, search=f"{target} {short} {login} {record.get('owner') or ''}", tip=tip,
             state=state, owner=owner, created_at=created)
 
+    def _ordered_visible(self, visible: list[dict], open_ids: list[str]) -> list[dict]:
+        """The one order the surfaces show: the sessions open here first, in rail order, then the rest stable-sorted
+        by `session_rank` (the ruled order, 2026-11-20), which keeps the core's order within a rank."""
+        numbers = {sid: index for index, sid in enumerate(open_ids)}
+        first = sorted((record for record in visible if record["id"] in numbers), key=lambda r: numbers[r["id"]])
+        rest = sorted((record for record in visible if record["id"] not in numbers),
+                      key=lambda record: session_rank(record, set(), self._me()))
+        return [*first, *rest]
+
     def listed_sessions(self) -> list[dict]:
         """The records the fleet lists under the current filter, in the order the full view shows them: the sessions
-        open here first, in rail order, then the rest in the core's order. What `tsb-tui drive`'s `sessions` reads."""
+        open here first, in rail order, then the rest in the ruled rank. What `tsb-tui drive`'s `sessions` reads."""
         assert self.fleet is not None
         open_ids = [slot.session_id for slot in self.slots]
-        numbers = {sid: index for index, sid in enumerate(open_ids)}
-        visible = self.fleet.visible(open_here=open_ids, live=self._live())
-        first = sorted((r for r in visible if r["id"] in numbers), key=lambda r: numbers[r["id"]])
-        return [*first, *(r for r in visible if r["id"] not in numbers)]
+        return self._ordered_visible(self.fleet.visible(open_here=open_ids, live=self._live()), open_ids)
 
     def live_records(self) -> dict[str, dict]:
         """A record per session open here: the last poll's with this client's own frames read over it."""
@@ -1171,11 +1176,7 @@ class TerminalScreen(Screen):
         def cells(record: dict) -> tuple[str, ...]:
             return self._fleet_cells(record, columns[record["id"]][1], me, numbers, labels, now)
 
-        visible = fleet.visible(open_here=open_ids, live=live)
-        first = [record for record in visible if record["id"] in numbers]
-        first.sort(key=lambda record: numbers[record["id"]])
-        rest = [record for record in visible if record["id"] not in numbers]
-        rest.sort(key=lambda record: session_rank(record, set(), me))  # the ruled order, stable in the core's
+        ordered = self._ordered_visible(fleet.visible(open_here=open_ids, live=live), open_ids)
         alerts = self.app.alerts
         alert_rows = None if not alerts.allowed else tuple(
             f"▲ {alert_label(a)} · {alert_text(a)} {alert_raised(a)}" for a in reversed(list(alerts.active.values())))
@@ -1185,7 +1186,7 @@ class TerminalScreen(Screen):
         on_targets = view is not None and view.tab == TAB_TARGETS
         return FleetViewModel(
             needs=tuple(row(record) for record in needing),
-            rows=(), lazy_rows=RowSource([*first, *rest], head, search, cells, row), mode=fleet.filter_mode,
+            rows=(), lazy_rows=RowSource(ordered, head, search, cells, row), mode=fleet.filter_mode,
             alert_lines=alert_rows, back_label=back,
             tabs=tuple(self.app.cfg["fleet_view.tabs"]), detail_for=self._details_for,
             buttons_for=self._buttons_for,
@@ -1647,10 +1648,11 @@ class TerminalScreen(Screen):
             self.show_front(slot)
             # The canvas's first Resized starts the attach, but a layout pass that already holds the
             # canvas in its composition (any widget's region query rebuilt it after the mount) never
-            # posts that Resize, and the attach would never start. After the screen's next refresh,
-            # start from the window as the hidden path does; `_start_attach` keeps the first starter,
-            # so the canvas's own event still wins when it arrives.
-            self.call_after_refresh(self._start_attach, slot, *self.fit_size())
+            # posts that Resize, and the attach would never start. Read the size after each refresh:
+            # the canvas's own size once it reports one; at most three refreshes, then the window, as
+            # the hidden path does. `_start_attach` keeps the first starter, so the canvas's own event
+            # still wins when it arrives.
+            self.call_after_refresh(self._fallback_attach, slot, canvas, 1)
         else:
             canvas.display = False
             # Never laid out, so no first resize starts the attach: it starts from the window now.
@@ -1946,6 +1948,19 @@ class TerminalScreen(Screen):
         # The canvas's size goes out in the `attach` frame as information only (DT16): no `resize`
         # follows it, so attaching never changes anyone's grid (session-attach R5, CR4).
         self._start_attach(slot, max(event.size.width, 1), max(event.size.height, 1))
+
+    def _fallback_attach(self, slot: SessionSlot, canvas: Canvas, tries: int) -> None:
+        """The re-attach fallback, read after a refresh: the canvas's own size once it reports one. While it
+        still reports `Size(0, 0)`, check again after the next refresh, at most three in all; after the third,
+        start from `fit_size()`. The canvas's own first `Resized` wins whenever it arrives."""
+        if slot.attach_started or slot.closed:
+            return
+        if canvas.size.width > 0 and canvas.size.height > 0:
+            self._start_attach(slot, canvas.size.width, canvas.size.height)
+        elif tries >= 3:
+            self._start_attach(slot, *self.fit_size())
+        else:
+            self.call_after_refresh(functools.partial(self._fallback_attach, slot, canvas, tries + 1))
 
     def _start_attach(self, slot: SessionSlot, cols: int, rows: int) -> None:
         if slot.attach_started or slot.closed:

@@ -34,6 +34,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .attachment import AttachmentState
 
+from .targets import as_text
+
 # The states a consumer may attach to. A state outside this set — including one a later tag adds,
 # which this build does not know — is not attachable (session-list rule 7).
 ATTACHABLE_STATES = frozenset({"live", "detached", "unreachable"})
@@ -202,7 +204,7 @@ def others_by_target(merged: Mapping[str, dict[str, Any]], me: str | None) -> di
         target = record.get("target_id")
         if (target is not None and record.get("state") in ("live", "detached")
                 and record.get("owner") is not None and record.get("owner") != me):
-            out.setdefault(target, set()).add(record.get("owner"))
+            out.setdefault(target, set()).add(as_text(record.get("owner")))
     return {target: (f"{next(iter(owners))} on it" if len(owners) == 1 else f"{len(owners)} others on it")
             for target, owners in out.items()}
 

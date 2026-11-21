@@ -103,16 +103,17 @@ def parse_query(text: str) -> Query:
 
 def natural_key(text: str) -> tuple:
     """The natural order of a label (ruled 2026-11-20): case-insensitive, and a run of digits compares as the
-    number it spells, so `rtr-2` comes before `rtr-10`."""
+    number it spells, so `rtr-2` comes before `rtr-10`. A numeric run is a run of decimal characters — the ones
+    `int()` parses; a character like `²` counts as digits is text, never a number."""
     runs: list[tuple[int, object]] = []
     run = ""
     digits = False
     for char in text:
-        if char.isdigit() == digits:
+        if char.isdecimal() == digits:
             run += char
         else:
             runs.append((1 if digits else 0, int(run) if digits else run.lower()))
-            run, digits = char, char.isdigit()
+            run, digits = char, char.isdecimal()
     runs.append((1 if digits else 0, int(run) if digits else run.lower()))
     return tuple(runs)
 

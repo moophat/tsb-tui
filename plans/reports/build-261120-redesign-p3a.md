@@ -303,3 +303,86 @@ Each run its own `pytest` process over `tests/test_redesign_lists.py`, `PYTHONPA
 | `make lint` | 0 | ruff clean; engine shared object and headers verified |
 
 `git diff --name-only` lists only `tests/test_redesign_lists.py` and those four baselines.
+
+## Round 6 (2026-11-21): the review's twelve findings
+
+Each finding is a claim until a test proves it. Every test is in `tests/test_redesign_lists.py`, driven through
+Pilot against the contract's fixture server (keys, clicks and hovers as the case needs; test doubles only). The
+first failing line below is on the committed tree at 746a7d2.
+
+| # | Test | First failing line on 746a7d2 | Change | Green |
+|---|---|---|---|---|
+| 1 | `test_target_rows_show_broker_text_through_the_sanitizer` | `test_redesign_lists.py:814` — the painted row `┃  normal 192.0.2.20 · ci\x07agent on it     ┃` carries the raw bell | `_target_label`'s id fallback uses the sanitized `row.label` (`widgets/sidebar.py`); `others_by_target` puts each owner through `as_text()` (`model/fleet.py`) | yes |
+| 2 | `test_two_alike_ended_rows_paint_whole_in_wide_mode` | `test_redesign_lists.py:839` — one `since` line painted, not two: the frame counted each ended row as one line at the wide budget | `sessions_height` counts every ended row through `_row_line_count`; `_wide_alike_lines` now reads the ended rows behind `e` together with the open ones (its cache key carries `show_ended`) | yes |
+| 3 | `test_a_session_tooltip_names_the_whole_row` | `test_redesign_lists.py:862` — tooltip `normal · s.sess-2 · you type`, no state, owner or alike word | `_entry` builds the tip from the row's words (target · short · state · owner · typer; an ended row stops at its end word), and `_row_lines` adds the row's `since` word to every painted line's tip (`screens/terminal.py`, `widgets/sidebar.py`) | yes |
+| 4 | `test_open_numbers_number_by_the_rail_when_an_earlier_slot_ended` | `test_redesign_lists.py:883` — the target row said `open 1` while its session row and the rail said 2 | `_open_numbers` builds each open item's entry and uses `entry.number`, skipping an entry with no number; no `enumerate` | yes |
+| 5 | `test_clicking_show_ended_in_the_empty_state_shows_the_ended_rows` | `test_redesign_lists.py:907` — a click on the `e show ended` copy left `show_ended` False | `_command_from_part` handles `CMD_SHOW_ENDED` by `toggle_show_ended()`, as the `e` key does | yes |
+| 6 | `test_clicking_a_add_one_in_the_targets_empty_state_opens_the_form`, `test_clicking_r_retry_in_the_targets_error_state_asks_again` | timeouts waiting for the target form (line 926) and for the retry read (line 954): the click reached the Targets branch, which acted only on the filter and row selection | the Targets branch of `on_click` dispatches the part under the pointer through `_command_from_part`; the filter click and target-row selection are unchanged | yes |
+| 7 | `test_a_narrow_target_facts_line_omits_a_segment_that_does_not_fit` | first red `test_redesign_lists.py:979` (` 192.0.2.100.router.exa…`); the test as kept fails at line 981 (` 192.0.2.100.example · …`) | `_target_facts` takes a width budget and composes one whole segment at a time in order (host, type, open numbers, others), omitting any that would overflow; the narrow facts line is padded with `ljust`, never truncated by `_fit`; every call site passes `inner-1` | yes |
+| 8 | `test_a_wide_target_row_never_paints_past_the_inner_width` | `test_redesign_lists.py:1003` — the wide row painted `▸core-router-wit… 192.0.2.61 · open 1,`, one cell past the inner width | the wide label budget is `max(inner - 2 - len(facts), 0) if facts else inner - 1` | yes |
+| 9 | `test_a_target_tooltip_names_the_whole_row` | `test_redesign_lists.py:1029` — hovering a cut target row gave no tooltip (`None`) | the complete target-row text (label · facts) is the tip of both painted lines; `on_mouse_move` resolves a pointer over the Targets section through `_target_line_at` before the session lines | yes |
+| 10 | `test_listed_sessions_are_in_the_order_the_full_view_shows` | `test_redesign_lists.py:1054` — drive's order `['sess-6', 'sess-2', 'sess-4']` against the full view's `['sess-6', 'sess-4', 'sess-2']` | one shared helper `_ordered_visible` (open here in rail order, then the rest stable-sorted by `session_rank(record, set(), me)`) used by `listed_sessions` and `_fleet_view_model`; its docstring says so. `tsb_tui/drive/GUIDE.md` documents only "Sessions open here come first" and the `live`/`own` filters (line 79), so nothing documented changes; no drive file was touched | yes |
+| 11 | `test_a_target_name_int_cannot_parse_sorts_as_text` | `test_redesign_lists.py:1069` — `ValueError: invalid literal for int() with base 10: '²'` while sorting the Targets list | `natural_key` classifies a numeric run by `isdecimal()` (the characters `int()` parses), so `²` is text (`model/targets.py`) | yes |
+| 12 | `test_the_fallback_attach_reports_the_canvas_size` | `test_redesign_lists.py:1115` — the attach frame says cols 144 (the window-derived fit size) while the painted canvas is 102 wide with the side panel open | **STOP, not fixed.** The fallback must report the canvas's own size, but at the point `call_after_refresh` runs the canvas has no size: measured just after opening a session, `canvas.size = Size(0, 0)` and `fit_size() = (144, 42)`; only after the next layout pass is it `Size(102, 42)`. A helper that reads `canvas.size` after the refresh falls back to `fit_size()` in exactly this case, so the finding is not fixed by it. The options are the orchestrator's: (a) leave the fallback as committed; (b) defer the fallback start until the canvas reports a size (re-check at the next refresh, or rely on the canvas's first `Resized` alone); (c) subtract the open sidebar when the fallback sizes from the window. The lane chose none; the product code is unchanged for this finding | red, kept as evidence |
+
+**Existing tests:** none needed an update (rule 12): no existing assertion of a word or order changed by these
+fixes. **Baselines:** no file under `tests/snapshots/redesign-p3/` changed — every gallery test passes against the
+committed baselines.
+
+### Gate (round 6)
+
+Each command its own process, `PYTHONPATH=program/contract/client:.`, `-p no:cacheprovider`, output to `.lane-logs/`:
+
+| Command | Exit | Result |
+|---|---|---|
+| the twelve new tests, each run alone (red on 746a7d2, then green) | 1, then 0 for 11 of 12 | finding 12 stays red by ruling 4 |
+| `tests/test_redesign_lists.py` | 1 | 58 passed, 1 failed — the finding-12 test |
+| the nine suites `LANE-BRIEF.md` names | 0 | 305 passed |
+| `tests/test_drive_prompt_pattern.py` | 0 | 27 passed |
+| `make test` with the lane's test venv as `PYTHON` | 2 | 2 failed, 2523 passed, 3 skipped: the finding-12 test, and `test_fleet_view_painted_rows.py::test_triggers_before_a_refresh_run_one_rebuild` ("the coalesced rebuild ran more than once", 4 vs 1), which passes standalone 3 of 3 — a load flake |
+| `make contract-check` | 0 | program/ clean at the pinned release |
+| `make lint` | 0 | import-lint clean, engine verified; ruff is not installed in this venv, so Python style was not checked |
+
+`git diff --name-only` lists only: `tests/test_redesign_lists.py`, `tsb_tui/model/fleet.py`,
+`tsb_tui/model/targets.py`, `tsb_tui/screens/terminal.py`, `tsb_tui/widgets/sidebar.py`.
+
+Not verified: ruff; the full suite ran once, with the one load flake named above.
+
+## Round 7 (2026-11-21): finding 12, the fallback attach's size
+
+**The change** (`tsb_tui/screens/terminal.py` only): the re-attach fallback no longer fixes the size when the call
+is scheduled. `_add_slot` schedules `self.call_after_refresh(self._fallback_attach, slot, canvas, 1)`. The helper
+reads the size after each refresh: when the canvas reports a non-zero size it starts the attach with the canvas's
+own size; while it still reports `Size(0, 0)` it checks again after the next refresh, at most three refreshes in
+all, and after the third it starts from `fit_size()` as before. A callback that finds the attach already started
+(the canvas's own first `Resized` won) returns; `_start_attach` keeps the first starter. The hidden-canvas path
+(a canvas never laid out, which starts from the window at once) is unchanged.
+
+**The test:** `test_the_fallback_attach_reports_the_canvas_size` (round 6's red test, unchanged) — red on the
+committed tree at `tests/test_redesign_lists.py:1115`: the attach frame said cols 144 (the window-derived fit
+size) while the painted canvas with the side panel open is 102 wide. With the change it passes: the frame carries
+`(102, 42)`, the canvas's own size.
+
+**The flake check:** `tests/test_fleet_view_painted_rows.py::test_triggers_before_a_refresh_run_one_rebuild`,
+eight standalone runs on this tree, each its own process: run 1 exit 0, run 2 exit 0, run 3 exit 0, run 4 exit 0,
+run 5 exit 0, run 6 exit 0, run 7 exit 0, run 8 exit 0 — 8 of 8 pass. No other tree was run.
+
+### Gate (round 7)
+
+Each command its own process, `PYTHONPATH=program/contract/client:.`, `-p no:cacheprovider`, output to `.lane-logs/`:
+
+| Command | Exit | Result |
+|---|---|---|
+| the finding-12 test | 0 | 1 passed |
+| `tests/test_redesign_lists.py` | 0 | 59 passed (round 6's red now green; no test changed) |
+| the nine suites `LANE-BRIEF.md` names | 0 | 305 passed |
+| `tests/test_drive_prompt_pattern.py` | 0 | 27 passed |
+| the eight flake runs above | 0 each | 8 passed |
+| `make test` with the lane's test venv as `PYTHON` | 0 | 2525 passed, 3 skipped (the installer runs reserved to the CI image); no failure |
+| `make contract-check` | 0 | program/ clean at the pinned release |
+| `make lint` | 0 | import-lint clean, engine verified; ruff is not installed in this venv, so Python style was not checked |
+
+`git diff --name-only` lists only rounds 1–6's set: `tests/test_redesign_lists.py`, `tsb_tui/model/fleet.py`,
+`tsb_tui/model/targets.py`, `tsb_tui/screens/terminal.py`, `tsb_tui/widgets/sidebar.py`, and this report.
+
+Not verified: ruff (not installed). No baseline under `tests/snapshots/redesign-p3/` changed.

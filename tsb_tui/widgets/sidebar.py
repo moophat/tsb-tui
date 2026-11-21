@@ -244,27 +244,35 @@ def _empty_copy(text: str, width: int, role: str, command: str | None = None,
 
 
 def _target_label(row: TargetRow) -> str:
-    """A target row's label (ruled 2026-11-20): its name, then its host, then the type word and the target's id."""
+    """A target row's label (ruled 2026-11-20): its name, then its host, then the type word and the target's id.
+    Every string from a broker record goes through `as_text` first, so no control character reaches the row."""
     if row.has_name:
         return row.name
     if row.host:
         return row.host
-    return f"{row.type} {row.id}".strip()
+    return f"{row.type} {row.label}".strip()
 
 
-def _target_facts(row: TargetRow, numbers: Iterable[int], others: str) -> str:
+def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, width: int | None = None) -> str:
     """A target row's second line (ruled 2026-11-20): the host, the type word when the target is not ssh, the
-    numbers of its sessions open in this window, and the other logins' word, joined by ` · `."""
-    facts: list[str] = []
+    numbers of its sessions open in this window, and the other logins' word, joined by ` · `. With a width budget
+    it is composed one whole segment at a time, in that order: a segment that would overflow the budget is left
+    out whole, never cut (rule 1: no word is cut)."""
+    segments: list[str] = []
     if row.host:
-        facts.append(row.host)
+        segments.append(row.host)
     if row.type and row.type != "ssh":
-        facts.append(row.type)
+        segments.append(row.type)
     if numbers:
-        facts.append("open " + ",".join(str(number) for number in sorted(numbers)))
+        segments.append("open " + ",".join(str(number) for number in sorted(numbers)))
     if others:
-        facts.append(others)
-    return " · ".join(facts)
+        segments.append(others)
+    facts = ""
+    for segment in segments:
+        candidate = segment if not facts else f"{facts} · {segment}"
+        if width is None or len(candidate) <= width:
+            facts = candidate
+    return facts
 
 
 def _title(group: str, count: int, width: int) -> str:
@@ -413,6 +421,7 @@ def _row_lines(entry: SidebarEntry, group: str, *, width: int, selected: bool, w
     owner = "" if ended else (entry.owner or ("·" if entry.login == "·" else ""))
     typer = "" if ended else _typer_words(entry.login)
     typer_role = "text" if entry.login not in ("·", "") else "muted"
+    tip = f"{entry.tip} · {since}" if entry.tip and since else (entry.tip or since or None)
     if not wide:
         # The alike word stands after the typer words when the pair fits whole; when it does not (and on an
         # ended row, which has no typer line) it stands beside the name, which takes the ellipsis first.
@@ -425,21 +434,21 @@ def _row_lines(entry: SidebarEntry, group: str, *, width: int, selected: bool, w
         if on_name:
             parts += [Part(" · ", "muted"), Part(since, "muted")]
         used = sum(len(part.text) for part in parts)
-        lines = [Line((*parts, *_row_tail(used, [], width)), entry.session_id, group, entry.tip or None,
+        lines = [Line((*parts, *_row_tail(used, [], width)), entry.session_id, group, tip,
                       len(parts))]
         second = [Part("  ", "blank"), Part(entry.who, who_role), Part(" ", "blank"), Part(entry.state, "text")]
         if owner:
             second += [Part(" · ", "muted"), Part(owner, "muted")]
         used = sum(len(part.text) for part in second)
         second.append(Part(" " * max(width - used, 0), "blank"))
-        lines.append(Line(tuple(second), entry.session_id, group, entry.tip or None, len(second) - 1))
+        lines.append(Line(tuple(second), entry.session_id, group, tip, len(second) - 1))
         if typer:
             third = [Part("  ", "blank"), Part(typer, typer_role)]
             if on_typer:
                 third += [Part(" · ", "muted"), Part(since, "muted")]
             used = sum(len(part.text) for part in third)
             third.append(Part(" " * max(width - used, 0), "blank"))
-            lines.append(Line(tuple(third), entry.session_id, group, entry.tip or None, len(third) - 1))
+            lines.append(Line(tuple(third), entry.session_id, group, tip, len(third) - 1))
         return lines
     # One line at the wide budget: `N name`, the state beside its mark, ` · owner`, then the typer words and
     # the alike word at the line's end, each after one space; the name yields with an ellipsis first, and a
@@ -465,9 +474,9 @@ def _row_lines(entry: SidebarEntry, group: str, *, width: int, selected: bool, w
         parts.append(Part(" · " if index == 1 else " ", "muted" if index != 0 else "blank"))
         parts.append(Part(text, role))
     used = sum(len(part.text) for part in parts)
-    lines = [Line((*parts, *_row_tail(used, [], width)), entry.session_id, group, entry.tip or None, len(parts))]
+    lines = [Line((*parts, *_row_tail(used, [], width)), entry.session_id, group, tip, len(parts))]
     if over:
-        lines.append(Line(tuple(over), entry.session_id, group, entry.tip or None, len(over) - 1))
+        lines.append(Line(tuple(over), entry.session_id, group, tip, len(over) - 1))
     return lines
 
 
@@ -1126,12 +1135,11 @@ class Sidebar(Widget):
         if not lines and not (self.show_ended and self._model.ended):
             lines = len(self._empty_lines(max(self.sidebar_width - 4, 1)))  # the empty copy wraps at the narrow one
         if self.show_ended:
-            lines += sum(2 if record.get("state") in ENDED_STATES else 3
-                         for record in self._model.ended) if not self.wide else len(self._model.ended)
+            lines += sum(self._row_line_count(record) for record in self._model.ended)
         return min(max(3, lines + 2), max(height // 2, 3))
 
     def _row_line_count(self, item: SidebarEntry | Mapping[str, Any]) -> int:
-        """The lines one open session's ruled row paints: one at the wide budget — two when its alike word
+        """The lines one ruled row paints, open or ended: one at the wide budget — two when its alike word
         needs the second line (ruled 2026-11-20 23:4x); at the narrow one, three for a session still going
         (its state, owner and typer) and two for an ended one (its words end at the end word, rule 6)."""
         if self.wide:
@@ -1140,19 +1148,21 @@ class Sidebar(Widget):
         return 2 if state in ENDED_STATES else 3
 
     def _wide_alike_lines(self) -> dict[str, int]:
-        """The open sessions whose wide row paints its alike word on a second line, per session id (ruled
-        2026-11-20 23:4x): two open rows alike with the same words, and the row's one line cannot hold the
-        ruled words plus `since HH:MM` with the name at its ellipsis. Cached beside the model and width, as
+        """The sessions whose wide row paints its alike word on a second line, per session id (ruled
+        2026-11-20 23:4x): two rows alike with the same words, and the row's one line cannot hold the
+        ruled words plus `since HH:MM` with the name at its ellipsis. The ended rows behind `e` read alike
+        with the open ones, as the frame's height counts them. Cached beside the model, width and `e`, as
         the frame's height reads it on every painted line."""
         width = max(self.sidebar_width - 4, 1)
-        if self._wide_alike_for == (self._model, width):
+        if self._wide_alike_for == (self._model, width, self.show_ended):
             return self._wide_alike_cache
         entries: list[SidebarEntry] = []
         for group, items in self._model.groups:
-            if group != GROUP_OPEN_HERE:
-                continue
-            entries += [item if isinstance(item, SidebarEntry) else _entry_for(item, group, self._model)
-                        for item in items]
+            if group == GROUP_OPEN_HERE:
+                entries += [item if isinstance(item, SidebarEntry) else _entry_for(item, group, self._model)
+                            for item in items]
+        if self.show_ended:
+            entries += [_entry_for(record, GROUP_ENDED, self._model) for record in self._model.ended]
         counts: dict[tuple, int] = {}
         for entry in entries:
             key = _alike_key(entry)
@@ -1164,20 +1174,22 @@ class Sidebar(Widget):
             alike = _since_word(entry.created_at)
             if alike and not _wide_alike_fits(entry, width, alike):
                 lines[entry.session_id] = 2
-        self._wide_alike_for = (self._model, width)
+        self._wide_alike_for = (self._model, width, self.show_ended)
         self._wide_alike_cache = lines
         return lines
 
     def _open_numbers(self) -> dict[str, list[int]]:
-        """Every target's open numbers (ruled 2026-11-20), from the open-here items in their open order, which
-        is their number in this window."""
+        """Every target's open numbers (ruled 2026-11-20): each open-here item's own rail number, skipping an
+        item with no chip. The rail chips keep every open slot, ended ones included, so a position in the group
+        is not the number."""
         numbers: dict[str, list[int]] = {}
         for group, items in self._model.groups:
             if group != GROUP_OPEN_HERE:
                 continue
-            for number, item in enumerate(items, start=1):
-                target = item.target if isinstance(item, SidebarEntry) else item.get("target_id", "")
-                numbers.setdefault(target, []).append(number)
+            for item in items:
+                entry = item if isinstance(item, SidebarEntry) else _entry_for(item, group, self._model)
+                if entry.number is not None:
+                    numbers.setdefault(entry.target, []).append(entry.number)
         return numbers
 
     def _filter_targets(self) -> tuple[TargetRow, ...]:
@@ -1232,7 +1244,9 @@ class Sidebar(Widget):
         """The lines one target's row takes: two at the narrow budget when its second line has words, else one."""
         if self.wide:
             return 1
-        facts = _target_facts(row, self._open_numbers().get(row.id, ()), self._model.others.get(row.id, ""))
+        inner = max(self.sidebar_width - 4, 1)
+        facts = _target_facts(row, self._open_numbers().get(row.id, ()), self._model.others.get(row.id, ""),
+                              max(inner - 1, 0))
         return 2 if facts else 1
 
     def _target_line_index(self, target_id: str) -> int | None:
@@ -1259,7 +1273,7 @@ class Sidebar(Widget):
         at = 0
         for row in rows:
             spans.append(at)
-            facts = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""))
+            facts = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""), max(inner - 1, 0))
             at += 1 if (wide or not facts) else 2
         result = tuple(spans)
         self._target_spans_cache = (rows, key, (numbers, others), result)
@@ -1287,8 +1301,10 @@ class Sidebar(Widget):
             return None
         row = rows[position]
         numbers = self._open_numbers()
-        facts = _target_facts(row, numbers.get(row.id, ()), self._model.others.get(row.id, ""))
+        facts = _target_facts(row, numbers.get(row.id, ()), self._model.others.get(row.id, ""),
+                              max(inner - 1, 0))
         label = _target_label(row)
+        tip = " · ".join(part for part in (label, facts) if part) or None
         selected = row.id == self.selected_target
         mark = (SELECTED, "mark") if selected else (" ", "blank")
         within = index - spans[position]
@@ -1296,12 +1312,13 @@ class Sidebar(Widget):
             return None  # past this row's own lines: the next row's start, or the section's end
         if self.wide or not facts or within == 0:
             if self.wide:
-                room = max(inner - 1 - len(facts), 0) if facts else inner - 1
+                room = max(inner - 2 - len(facts), 0) if facts else inner - 1
                 return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(room, 1)), "text"),
-                             Part(f" {facts}" if facts else "", "text")), row.id, PANE_TARGETS)
+                             Part(f" {facts}" if facts else "", "text")), row.id, PANE_TARGETS, tip)
             return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(inner - 1, 1)), "text")),
-                        row.id, PANE_TARGETS)
-        return Line((Part(" ", "blank"), Part(_fit(facts, max(inner - 1, 1)), "text")), row.id, PANE_TARGETS)
+                        row.id, PANE_TARGETS, tip)
+        return Line((Part(" ", "blank"), Part(facts.ljust(max(inner - 1, 1)), "text")),
+                    row.id, PANE_TARGETS, tip)
 
     def _targets_empty_lines(self, inner: int) -> list[Line]:
         """The Targets section's lines when no target is on show: loading, the 503 with `r retry`, or the ruled
@@ -1399,7 +1416,8 @@ class Sidebar(Widget):
             others = self._model.others
             for position, span in enumerate(self._target_spans()):
                 facts = _target_facts(rows[position], numbers.get(rows[position].id, ()),
-                                      others.get(rows[position].id, ""))
+                                      others.get(rows[position].id, ""),
+                                      max(max(self.sidebar_width - 4, 1) - 1, 0))
                 pairs.append((offset + span, 1 if (wide or not facts) else 2))
         return tuple(pairs)
 
@@ -1547,9 +1565,10 @@ class Sidebar(Widget):
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
         """The tooltip of the part (or the row) under the pointer: the words and key of a glyph, the whole of a row
-        the sidebar had to cut short (D13)."""
+        the sidebar had to cut short (D13). A pointer over the Targets section resolves through `_target_line_at`
+        first, so a cut target row reveals its complete row."""
         tip = None
-        line = self._line_at(event.y)
+        line = self._target_line_at(event.y) if event.y < self.targets_height else self._line_at(event.y)
         if line is not None:
             x = event.x - 2
             cursor = 0
@@ -1617,9 +1636,14 @@ class Sidebar(Widget):
             line = self._target_line_at(event.y)
             if line is not None and mouse_on(self):
                 event.stop()
+                x = event.x - 2
+                cursor = 0
                 for part in line.parts:
-                    if part.command == CMD_FILTER:
-                        self.start_filter()
+                    if cursor <= x < cursor + len(part.text):
+                        if part.command is not None:
+                            self._command_from_part(part)
+                        break
+                    cursor += len(part.text)
                 if line.group == PANE_TARGETS and line.session_id is not None:
                     self.pane = PANE_TARGETS
                     self.target_selected = line.session_id
@@ -1647,6 +1671,8 @@ class Sidebar(Widget):
     def _command_from_part(self, part: Part) -> None:
         if part.command == CMD_FILTER:
             self.start_filter()
+        elif part.command == CMD_SHOW_ENDED:
+            self.toggle_show_ended()
         elif part.command and part.command.startswith("detail:"):
             label = part.command.removeprefix("detail:")
             name = {"t Take back": CMD_TAKE_BACK, "w Who's here": CMD_WHOS_HERE, "⏎ Open": CMD_PICK,

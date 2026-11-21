@@ -10,7 +10,9 @@ AI-Model: glm-5.3-flash
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import html
+import json
 import os
 import re
 import threading
@@ -23,11 +25,14 @@ import pytest
 from input_server import InputRecordingApp
 from tsbc import _serve
 from tsbc._serve import ServeApp
-from workspace_support import fixture_login, named_sessions, open_here
+from workspace_support import fixture_login, named_sessions, open_here, sidebar_offset
 
+from tsb_tui import config
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.screens.target_form import TargetFormScreen
+from tsb_tui.widgets.canvas import Canvas
+from tsb_tui.widgets.sidebar import Sidebar
 
 
 @pytest.fixture(autouse=True)
@@ -786,4 +791,326 @@ def test_two_size_galleries(serve, wait_until, size, case):
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, (case, line)
             _p3_snapshot(app, f"{case}-{size[0]}x{size[1]}")
+    asyncio.run(check())
+
+
+def test_target_rows_show_broker_text_through_the_sanitizer(serve, wait_until):
+    """Every text from a broker record is shown through the control-character sanitizer: a target id with an ESC
+    and another login's owner with a bell paint their control pictures, never the raw control."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        served.targets["tel\u001b7"] = {"id": "tel\u001b7", "type": "telnet", "group": "lab", "tags": [],
+                                        "discovered_by": "manual", "last_seen": seen}
+        peer = named_sessions(url, served, "normal", user=_serve.PEER)
+        served.sessions[peer[0]]["owner"] = "ci\u0007agent"
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched and screen.fleet.records, "the reads")
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            for line in _painted(screen):
+                assert line.isprintable(), repr(line)
+            joined = "\n".join(_target_lines(screen))
+            assert "telnet tel␛7" in joined, joined
+            assert "ci␇agent on it" in joined, joined
+    asyncio.run(check())
+
+
+def test_two_alike_ended_rows_paint_whole_in_wide_mode(serve, wait_until):
+    """A frame's height counts every line its rows paint: at the wide budget two alike ended rows whose one line
+    cannot hold the ruled words plus `since HH:MM` each take a second line, and both rows paint whole."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        cfg = config.load(overrides=["sidebar.width_wide=24"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            first, second = named_sessions(url, served, "normal", "normal")
+            served.sessions[first]["state"] = "killed"
+            served.sessions[second]["state"] = "killed"
+            screen._refresh_fleet()
+            screen.open_sidebar(pane="sessions")
+            await pilot.press("e")
+            await pilot.pause()
+            lines = _session_lines(screen)
+            assert sum("since " in line for line in lines) == 2, lines
+            assert sum("normal" in line for line in lines) == 2, lines
+    asyncio.run(check())
+
+
+def test_a_session_tooltip_names_the_whole_row(serve, wait_until):
+    """A row's tooltip names the whole row as painted: the target, the state beside its owner, the typer words,
+    and the alike word a row that is cut short carries."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            first, second = named_sessions(url, served, "normal", "normal")
+            await open_here(app, pilot, wait_until, first, second)
+            screen.open_sidebar(pane="sessions")
+            await wait_until(pilot, lambda: sum("since " in line.text
+                                                for line in screen.sidebar.view.lines) == 2, "the alike rows")
+            y = next(i for i, line in enumerate(screen.sidebar.view.lines) if line.session_id == first)
+            await pilot.hover(Sidebar, offset=sidebar_offset(screen, y, 6))
+            await pilot.pause()
+            tip = str(screen.sidebar.tooltip)
+            assert "normal" in tip and "live" in tip and "yours" in tip and "you type" in tip, tip
+            assert "since " in tip, tip
+    asyncio.run(check())
+
+
+def test_open_numbers_number_by_the_rail_when_an_earlier_slot_ended(serve, wait_until):
+    """The open numbers on a target row are exactly the sessions open in this window on that target, numbered as
+    the rail numbers them: an open slot that ended leaves its number out, and the later session keeps its own."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            first, second = named_sessions(url, served, "normal", "normal")
+            await open_here(app, pilot, wait_until, first, second)
+            served.sessions[first]["state"] = "killed"
+            screen._refresh_fleet()
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            joined = "\n".join(_target_lines(screen))
+            assert "open 2" in joined, joined
+            assert "open 1" not in joined, joined
+            assert "2 normal" in screen.sidebar.text, screen.sidebar.text
+    asyncio.run(check())
+
+
+def test_clicking_show_ended_in_the_empty_state_shows_the_ended_rows(serve, wait_until):
+    """Every key an empty state advertises also works by one click on it: clicking the `e show ended` copy shows
+    the ended rows."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            (killed,) = named_sessions(url, served, "sw-kill")
+            served.sessions[killed]["state"] = "killed"
+            screen._refresh_fleet()
+            screen.open_sidebar(pane="sessions")
+            await wait_until(pilot, lambda: "e show ended" in "\n".join(_session_lines(screen)),
+                             "the only-ended state")
+            y = screen.sidebar.targets_height + 1
+            await pilot.click(Sidebar, offset=(4, y))
+            await pilot.pause()
+            assert screen.sidebar.show_ended, "a click on the copy did nothing"
+            assert "killed" in "\n".join(_session_lines(screen)), _session_lines(screen)
+    asyncio.run(check())
+
+
+def test_clicking_a_add_one_in_the_targets_empty_state_opens_the_form(serve, wait_until):
+    """A click on the `a add one` copy does what the `a` key does: it opens the target form."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        served.invisible |= set(served.targets)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the empty inventory")
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            assert _target_lines(screen)[1].startswith("No targets yet · a add one"), _target_lines(screen)
+            await pilot.click(Sidebar, offset=(4, 1))
+            await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "the target form")
+    asyncio.run(check())
+
+
+class _TargetsDownApp(_InventoryDown):
+    def __init__(self) -> None:
+        super().__init__()
+        self.list_calls = 0
+
+    def _list_targets(self, query):
+        self.list_calls += 1
+        return self._err(503, "inventory_unavailable", "the inventory is not answering")
+
+
+def test_clicking_r_retry_in_the_targets_error_state_asks_again(serve, wait_until):
+    """A click on the `r retry` copy does what the `r` key does: it asks the inventory again."""
+
+    async def check():
+        served, url = serve(_TargetsDownApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.unavailable, "the 503")
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            assert _target_lines(screen)[1].startswith("Could not load targets · r retry"), _target_lines(screen)
+            calls = served.list_calls
+            await pilot.click(Sidebar, offset=(4, 1))
+            await wait_until(pilot, lambda: served.list_calls > calls, "the retry read")
+    asyncio.run(check())
+
+
+def test_a_narrow_target_facts_line_omits_a_segment_that_does_not_fit(serve, wait_until):
+    """No word is cut and no row overflows: at the narrow budget the facts line is composed one whole segment at
+    a time, and a segment that does not fit whole is left out, never truncated."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        served.targets["sw-facts"] = {"id": "sw-facts", "type": "ssh", "name": "sw-facts", "group": "lab",
+                                      "tags": [], "discovered_by": "manual", "last_seen": seen,
+                                      "host": "192.0.2.100.example", "port": 22}
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            (sid,) = named_sessions(url, served, "sw-facts")
+            await open_here(app, pilot, wait_until, sid)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            rows = [line for line in _target_lines(screen) if "sw-facts" in line or "192.0.2.100" in line]
+            joined = "\n".join(rows)
+            assert "192.0.2.100.example" in joined, rows
+            assert "open" not in joined, "the open numbers are omitted whole, not cut"
+            for line in rows:
+                assert "…" not in line, rows
+    asyncio.run(check())
+
+
+def test_a_wide_target_row_never_paints_past_the_inner_width(serve, wait_until):
+    """A wide target row whose label is cut paints exactly the inner width, never one cell past it."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        name = "core-router-with-a-very-long-inventory-name"
+        served.targets[name] = {"id": name, "type": "ssh", "name": name, "group": "lab", "tags": [],
+                                "discovered_by": "manual", "last_seen": seen, "host": "192.0.2.61", "port": 22}
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            sids = named_sessions(url, served, name, name)
+            await open_here(app, pilot, wait_until, *sids)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            joined = "\n".join(_target_lines(screen))
+            assert "· open 1,2" in joined, joined
+            for line in _painted(screen):
+                assert len(line) == screen.sidebar.size.width, repr(line)
+    asyncio.run(check())
+
+
+def test_a_target_tooltip_names_the_whole_row(serve, wait_until):
+    """Hovering a target row whose label is cut reveals its complete row: every word of the label and of its facts."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        name = "core-router-with-a-very-long-inventory-name"
+        served.targets[name] = {"id": name, "type": "ssh", "name": name, "group": "lab", "tags": [],
+                                "discovered_by": "manual", "last_seen": seen, "host": "192.0.2.61", "port": 22}
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            (sid,) = named_sessions(url, served, name)
+            await open_here(app, pilot, wait_until, sid)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            await pilot.hover(Sidebar, offset=(4, 1))
+            await pilot.pause()
+            tip = str(screen.sidebar.tooltip)
+            assert name in tip and "192.0.2.61" in tip and "open 1" in tip, tip
+    asyncio.run(check())
+
+
+def test_listed_sessions_are_in_the_order_the_full_view_shows(serve, wait_until):
+    """The order the full view shows and the order `listed_sessions` gives drive are one order: the sessions open
+    here in rail order, then the rest in the ruled rank."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            _detached_sid, live_sid, open_sid = named_sessions(url, served, "sw-det", "sw-live", "sw-open")
+            await open_here(app, pilot, wait_until, open_sid)
+            served.sessions[live_sid]["state"] = "live"
+            peer = named_sessions(url, served, "sw-peer", user=_serve.PEER)
+            served.sessions[peer[0]]["state"] = "live"
+            screen.fleet.filter_mode = "all"
+            screen.open_fleet_view()
+            view = screen.fleet_view
+            await pilot.press("m")
+            await pilot.pause(0.5)
+            rows = [r[1] for r in view.layout.rows if r[0] != "needs_you"]
+            listed = [record["id"] for record in screen.listed_sessions()]
+            assert listed == rows, (listed, rows)
+    asyncio.run(check())
+
+
+def test_a_target_name_int_cannot_parse_sorts_as_text(serve, wait_until):
+    """A valid Unicode target name sorts: a run of characters `int()` cannot parse is text, never a number, so
+    the Targets list paints."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        served.targets["router-²"] = {"id": "router-²", "type": "ssh", "name": "router-²", "group": "lab",
+                                      "tags": [], "discovered_by": "manual", "last_seen": seen,
+                                      "host": "192.0.2.80", "port": 22}
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            joined = "\n".join(_target_lines(screen))
+            assert "router-²" in joined, joined
+    asyncio.run(check())
+
+
+class _AttachSizeApp(InputRecordingApp):
+    """The fixture server, taught to record the first text frame (the `attach`) of each socket."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.attach_frames: list[dict] = []
+
+    def websocket(self, path, ws) -> None:
+        original = ws.recv
+
+        def recv():
+            message = original()
+            if message.kind == "text" and not self.attach_frames:
+                with contextlib.suppress(ValueError):
+                    self.attach_frames.append(json.loads(message.data))
+            return message
+
+        ws.recv = recv
+        super().websocket(path, ws)
+
+
+def test_the_fallback_attach_reports_the_canvas_size(serve, wait_until, monkeypatch):
+    """When the canvas posts no resize of its own, the re-attach fallback reports the canvas's painted size, not
+    the window-derived fit size: with the side panel open the attach frame is no wider than the painted canvas."""
+
+    async def check():
+        served, url = serve(_AttachSizeApp())
+        monkeypatch.setattr(Canvas, "on_resize", lambda self, event: None)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            (sid,) = named_sessions(url, served, "normal")
+            await open_here(app, pilot, wait_until, sid)
+            frame = served.attach_frames[0]
+            canvas = screen.slot_for(sid).canvas
+            assert (frame["cols"], frame["rows"]) == (canvas.size.width, canvas.size.height), (frame, canvas.size)
     asyncio.run(check())
