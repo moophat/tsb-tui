@@ -453,3 +453,48 @@ run 2 exit 0, run 3 exit 0. In the full `make test` run it did not recur (green)
 `tsb_tui/model/fleet.py`, `tsb_tui/widgets/sidebar.py`. No baseline under `tests/snapshots/redesign-p3/` changed.
 
 Not verified: ruff (not installed).
+
+## Round 9
+
+**AI-Model:** swift-1.5
+**Date:** 2026-11-21
+**Branch:** `feat/redesign-p3a-rows` at `6caef2e`, no commit, no push.
+
+### Problem
+
+Four tests in `tests/test_redesign_lists.py` asserted immediately after one `await pilot.pause()` following a refresh
+(`screen._refresh_fleet()`). Under CI load one pause is not enough for the refresh fetch to land, so the assertion
+fires before the screen state updates.
+
+### Changes (test-only; product code unchanged)
+
+Each fixed `await pilot.pause()` after a refresh (or a server-state change the refresh must pick up) becomes a
+`wait_until` on the screen state the test then asserts. No sleep, no longer timeout, no retry. The assertions stay
+as they are.
+
+| Test | Line (old) | Old | New predicate |
+|---|---|---|---|
+| `test_show_ended_switch_and_end_words` | 272 | `await pilot.pause()` | `"No live sessions · e show ended" in "\n".join(_session_lines(screen))` |
+| `test_alike_rows_say_since` | 307 | `await pilot.pause()` | `sum("since " in line for line in _session_lines(screen)) == 2` |
+| `test_two_alike_ended_rows_paint_whole_in_wide_mode` | 841 | `await pilot.pause()` | `sum("since " in line for line in _session_lines(screen)) == 2` |
+| `test_open_numbers_number_by_the_rail_when_an_earlier_slot_ended` | 885 | `await pilot.pause()` | `"open 2" in "\n".join(_target_lines(screen))` |
+
+### Proof: 40 standalone runs (10 per test, each its own process)
+
+| Test | Runs | Result |
+|---|---|---|
+| `test_show_ended_switch_and_end_words` | 10/10 | all exit 0 |
+| `test_alike_rows_say_since` | 10/10 | all exit 0 |
+| `test_two_alike_ended_rows_paint_whole_in_wide_mode` | 10/10 | all exit 0 |
+| `test_open_numbers_number_by_the_rail_when_an_earlier_slot_ended` | 10/10 | all exit 0 |
+
+### Gate commands
+
+| Command | Exit |
+|---|---|
+| 40 standalone runs (above) | 0 each |
+| `tests/test_redesign_lists.py` whole | 0 |
+| `make contract-check` | 0 |
+| `make lint` | 0 |
+
+`git diff --name-only` lists only `tests/test_redesign_lists.py`.

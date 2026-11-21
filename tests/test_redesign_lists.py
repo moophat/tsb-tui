@@ -269,7 +269,8 @@ def test_show_ended_switch_and_end_words(serve, wait_until):
             served.sessions[terminated]["state"] = "terminated"
             screen._refresh_fleet()
             screen.open_sidebar(pane="sessions")
-            await pilot.pause()
+            await wait_until(pilot, lambda: "No live sessions · e show ended" in "\n".join(_session_lines(screen)),
+                             "the sessions list after the refresh")
             text = "\n".join(_session_lines(screen))
             assert "killed" not in text and "terminated" not in text, "ended rows are hidden by default"
             assert "No live sessions · e show ended" in text, text
@@ -304,7 +305,8 @@ def test_alike_rows_say_since(serve, wait_until):
             screen._refresh_fleet()
             screen.open_sidebar(pane="sessions")
             await pilot.press("e")
-            await pilot.pause()
+            await wait_until(pilot, lambda: sum("since " in line for line in _session_lines(screen)) == 2,
+                             "the alike rows")
             lines = _session_lines(screen)
             since = [line for line in lines if "since " in line]
             assert len(since) == 2, lines
@@ -838,7 +840,8 @@ def test_two_alike_ended_rows_paint_whole_in_wide_mode(serve, wait_until):
             screen._refresh_fleet()
             screen.open_sidebar(pane="sessions")
             await pilot.press("e")
-            await pilot.pause()
+            await wait_until(pilot, lambda: sum("since " in line for line in _session_lines(screen)) == 2,
+                             "the alike rows")
             lines = _session_lines(screen)
             assert sum("since " in line for line in lines) == 2, lines
             assert sum("normal" in line for line in lines) == 2, lines
@@ -882,7 +885,8 @@ def test_open_numbers_number_by_the_rail_when_an_earlier_slot_ended(serve, wait_
             served.sessions[first]["state"] = "killed"
             screen._refresh_fleet()
             screen.open_sidebar(pane="targets")
-            await pilot.pause()
+            await wait_until(pilot, lambda: "open 2" in "\n".join(_target_lines(screen)),
+                             "the renumbered target row")
             joined = "\n".join(_target_lines(screen))
             assert "open 2" in joined, joined
             assert "open 1" not in joined, joined
