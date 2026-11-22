@@ -21,6 +21,7 @@ While the sidebar has the keys every key is its own (D14), except the leader, wh
 from __future__ import annotations
 
 import bisect
+import itertools
 import textwrap
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -166,6 +167,7 @@ class SidebarModel:
     others: Mapping[str, str] = field(default_factory=dict)  # target id -> `ana on it` / `2 others on it`
     target_edit: bool = False  # the login holds `target.edit`: the empty Targets list offers `a add one`
     targets_unavailable: bool = False  # the inventory answered 503: `Could not load targets · r retry`
+    targets_more_failed: bool = False  # a later page failed (not 401/503): rows stay, count shows no `…`, last line `Could not load more · r retry`
     sessions_loading: bool = False  # the first poll has not landed: `Loading sessions…`
     sessions_error: bool = False  # the poll failed with nothing yet read: `Could not load sessions · r retry`
     ended: tuple[Mapping[str, Any], ...] = ()  # the visible ended records, for `e show ended`
@@ -1431,7 +1433,10 @@ class Sidebar(Widget):
         rows = self.painted_targets()
         if not rows:
             return head + len(self._targets_empty_lines(max(self.sidebar_width - 4, 1)))
-        return head + sum(self._target_row_lines(row) for row in rows)
+        lines = head + sum(self._target_row_lines(row) for row in rows)
+        if self._model.targets_more_failed:
+            lines += 1  # the `Could not load more · r retry` line below the last row (rule 9, 2026-11-22)
+        return lines
 
     def _target_row_lines(self, row: TargetRow) -> int:
         """The lines one target's row takes: two at the narrow budget when its second line has words, else one."""
@@ -1477,6 +1482,11 @@ class Sidebar(Widget):
         for position, span in enumerate(spans):
             count = 1 if wide else (2 if facts[position][1] else 1)
             pairs.append((offset + span, count))
+        if self._model.targets_more_failed and spans:
+            # The last line of the list when a later page failed (rule 9, 2026-11-22): `r retry` sits below the
+            # rows that stayed loaded, one pair at the end of the walk.
+            last = spans[-1]
+            pairs.append((offset + last + (1 if wide else (2 if facts[len(spans) - 1][1] else 1)), 1))
         result = tuple(pairs)
         return result, [start for start, _count in pairs]
 
@@ -1613,10 +1623,15 @@ class Sidebar(Widget):
         label = _target_label(row)
         # The tooltip carries the row's full facts, the segment the painted line omits included (ruled 2026-11-21).
         tip = " · ".join(part for part in (label, full) if part) or None
-        selected = row.id == self.selected_target
+        selected = position == self._target_pos
         mark = (SELECTED, "mark") if selected else (" ", "blank")
         within = index - spans[position]
-        if within >= (1 if (self.wide or not facts) else 2):
+        row_lines = 1 if (self.wide or not facts) else 2
+        if self._model.targets_more_failed and position == len(rows) - 1 and within >= row_lines:
+            # `r retry` sits below the last loaded row when a later page failed (rule 9, 2026-11-22): the copy's
+            # shape is `_empty_copy`'s, with CMD_RETRY naming the targets-more retry.
+            return _empty_copy("Could not load more · r retry", inner, "muted", CMD_RETRY, "targets-more")[0]
+        if within >= row_lines:
             return None  # past this row's own lines: the next row's start, or the section's end
         if self.wide or not facts or within == 0:
             if self.wide:
@@ -1776,7 +1791,7 @@ class Sidebar(Widget):
         pairs = self._target_row_pairs()
         # The pair at the walk's start is counted already; bisect finds its index, not the next one.
         index = bisect.bisect_left(self._pair_starts(pairs), start) + 1
-        for _s, c in pairs[index:]:
+        for _s, c in itertools.islice(pairs, index, None):
             if end + c > top + height:
                 break
             end += c
@@ -2045,6 +2060,11 @@ class Sidebar(Widget):
                 if line.group == PANE_TARGETS and line.session_id is not None:
                     self.pane = PANE_TARGETS
                     self.target_selected = line.session_id
+                    # Highlight the row clicked (rule 10, 2026-11-22): a target in Recent and the main list marks
+                    # the appearance clicked, not both; actions keep using the id.
+                    index = event.y - 1 + self._target_scroll_top
+                    spans = self._target_spans()
+                    self._target_pos = max(0, bisect.bisect_right(spans, index) - 1)
                     self.refresh()
             return
         line = self._line_at(event.y)
@@ -2166,6 +2186,9 @@ class Sidebar(Widget):
             self.post_message(self.Command(CMD_TARGET_NEW))
         elif key == "r" and self._model.targets_unavailable:
             self.post_message(self.Command(CMD_RETRY, "targets"))
+        elif key == "r" and self._model.targets_more_failed:
+            # `r` retries the kept cursor when a later page failed (rule 9, 2026-11-22).
+            self.post_message(self.Command(CMD_RETRY, "targets-more"))
 
     def _sessions_key(self, key: str) -> None:
         if key in ("down", "j"):

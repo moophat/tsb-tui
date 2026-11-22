@@ -450,6 +450,9 @@ class TerminalScreen(Screen):
         self._target_select: str | None = None
         # The page request in flight: its generation and cursor. Only its own reply may clear it or append.
         self._targets_page: tuple[int, str] | None = None
+        # A background refresh stages its pages here, apart from the published `self.targets`, until its last page
+        # lands (rule 2, 2026-11-22). A tick that finds it set starts nothing; a foreground read drops it.
+        self._targets_staging: TargetsModel | None = None
         self._targets_timer: Timer | None = None
 
     # -- the session in front, and what the rest of the screen asks of it --
@@ -581,7 +584,7 @@ class TerminalScreen(Screen):
             # The poller's own first poll, just below, is the read. After login the keys land in the Targets filter.
             self.open_sidebar(refresh=False, pane=PANE_TARGETS, editing=True)
         self.poller.start()
-        self._fetch_targets(background=True)
+        self._fetch_targets()  # the first load after login is a foreground read: page-by-page publishing (rule 2, 2026-11-22)
         self.refresh_status()
 
     def on_unmount(self) -> None:
@@ -800,6 +803,7 @@ class TerminalScreen(Screen):
         self.targets.reset()
         self._targets_query_error = ""
         self._targets_page = None
+        self._targets_staging = None  # opened afresh: a foreground read drops any staging pass in flight
         view.set_window_width(self._window_width())
         view.display = True
         view.reset()  # afresh at the current size: the rows rule 6 selects from are the ones laid out here
@@ -838,7 +842,7 @@ class TerminalScreen(Screen):
     def _poll_reply(self, generation: int, records: list[dict]) -> None:
         """Runs on the poller's thread: hand the reply to the UI thread, unless the workspace is gone or logout has
         begun (a reply that lands after sign-out started is dropped)."""
-        if self._unmounted or self._logout_began:
+        if self._unmounted or self._logout_began or self.app.signing_out:
             return
         try:
             self.app.call_from_thread(self._apply_poll, generation, records)
@@ -854,7 +858,9 @@ class TerminalScreen(Screen):
                 pass
 
     def _apply_poll(self, generation: int, records: list[dict]) -> None:
-        if self._unmounted or self._logout_began or self.fleet is None or not self.fleet.apply(generation, records):
+        if self._unmounted or self._logout_began or self.app.signing_out:
+            return  # sign-out has begun: apply nothing, dirty nothing (the guard at the hand-off too)
+        if self.fleet is None or not self.fleet.apply(generation, records):
             return
         changed = False
         for slot in self.slots:
@@ -988,10 +994,11 @@ class TerminalScreen(Screen):
             leader_hint=f"{leader} {letter}", detail_for=self._details_for, buttons_for=self._buttons_for,
             total=sum(len(records) for records in groups.values()),
             record_fields=fields_of, record_search=search_of, record_entry=entry_for,
-            targets=self.targets.rows, targets_loading=not self.targets.fetched or bool(self.targets.next_cursor),
-            target_has_next=bool(self.targets.next_cursor),
+            targets=self.targets.rows, targets_loading=(not self.targets.fetched or bool(self.targets.next_cursor))
+            and not self.targets.more_failed,
+            target_has_next=bool(self.targets.next_cursor) and not self.targets.more_failed,
             others=others_by_target(scan.merged, me), target_edit="target.edit" in self.app.permissions,
-            targets_unavailable=self.targets.unavailable,
+            targets_unavailable=self.targets.unavailable, targets_more_failed=self.targets.more_failed,
             sessions_loading=self.fleet.updated_at is None,
             sessions_error=self.poller.last_error is not None and self.fleet.updated_at is None,
             ended=ended)
@@ -1262,16 +1269,37 @@ class TerminalScreen(Screen):
         than the newest request is discarded (`TargetsModel`). A refresh waits while a page is in flight: its own
         reply must be the one that extends the list, not one that folds it back."""
         model = self.targets
-        if more:
+        if background:
+            # A background refresh never touches the published list until it is complete (rule 2, 2026-11-22): it
+            # reads into a staging model, chained from its own replies. A tick that finds a pass in flight starts
+            # nothing; `more` chains the next page of the pass already in flight.
+            if more:
+                staging = self._targets_staging
+                if staging is None or staging.next_cursor is None:
+                    return  # no pass in flight, or it has no next page
+                cursor, limit = staging.next_cursor, PAGE_LIMIT
+                query = staging.query
+                generation = staging.begin()
+            else:
+                if self._targets_staging is not None or self._targets_page is not None:
+                    return  # item 12: no overlapping passes — a pass in flight starts nothing, and a poll never
+                    # runs while a foreground page is in flight (rule 1, 2026-11-21)
+                staging = TargetsModel()
+                self._targets_staging = staging
+                query = Query()
+                generation = staging.begin(query)
+                cursor, limit = None, PAGE_LIMIT
+        elif more:
+            self._targets_staging = None  # a foreground read drops any staging pass in flight; its replies never apply
             if model.next_cursor is None or self._targets_page is not None:
                 return  # no next page, or one is in flight
+            model.more_failed = False  # `r` retries the kept cursor: the failed-more line goes while it is in flight (rule 9, 2026-11-22)
             cursor, limit = model.next_cursor, PAGE_LIMIT
             query = model.query
             generation = model.begin()
             self._targets_page = (generation, cursor)
         else:
-            if background and self._targets_page is not None:
-                return
+            self._targets_staging = None  # a foreground read drops any staging pass in flight; its replies never apply
             # A refresh supersedes any page still in flight: the generation moves past every request sent, so
             # a stale reply can never fold the list back (rule 2, 2026-11-21). The refresh reads afresh: rows 0
             # to its own reply, pages chained from it. The page in flight is dropped, not carried over.
@@ -1282,10 +1310,26 @@ class TerminalScreen(Screen):
             generation = model.begin(query)
         call = functools.partial(self.app.client.list_targets, **query.filters(), limit=limit, cursor=cursor)
         self.app.call_api(
-            call, on_done=lambda page: self._targets_reply(generation, query, page, more, cursor),
+            call, on_done=lambda page: self._targets_reply(generation, query, page, more, cursor, background),
             on_error=lambda exc: self._targets_failed(generation, exc, more, background, cursor))
 
-    def _targets_reply(self, generation: int, query: Query, page: dict, more: bool, cursor: str | None) -> None:
+    def _targets_reply(self, generation: int, query: Query, page: dict, more: bool, cursor: str | None,
+                       background: bool = False) -> None:
+        if background:
+            # A staging pass's reply applies to the staging model, chained from its own cursor (rule 2, 2026-11-22).
+            # The published list is untouched until the last page lands. A foreground read dropped the pass: the
+            # staging model is gone, so this reply never applies.
+            staging = self._targets_staging
+            if staging is None:
+                return
+            if staging.apply(generation, query, page, append=more):
+                if staging.next_cursor:
+                    self._fetch_targets(more=True, background=True)  # chain the next staging page
+                else:
+                    self.targets.publish(staging)  # the last page landed: take the staged rows in one step
+                    self._targets_staging = None
+                    self._mark_fleet_dirty()  # the view relayouts once; rule 6 keeps the selection by id
+            return
         if more:
             if self._targets_page != (generation, cursor):
                 return  # not this page's reply: it may neither append nor clear the one in flight
@@ -1313,10 +1357,30 @@ class TerminalScreen(Screen):
         """503 `inventory_unavailable` is a state the tab shows; a refused query keeps the rows and says why in the
         query line; a 401 goes the way every 401 goes; anything else is a toast, unless it was only the timer's read
         (the next tick tries again). Only the newest request may change the tab."""
+        if background:
+            # A staging pass that fails at any page is dropped and the published list stays as it was (rule 2,
+            # 2026-11-22). A 503 marks the published model unavailable as today; a 401 goes the way every 401 goes;
+            # anything else raises no toast (the next tick starts a new pass).
+            self._targets_staging = None
+            if isinstance(exc, ApiError) and exc.code == "inventory_unavailable":
+                self.targets.unavailable = True
+                self._mark_fleet_dirty()
+            elif isinstance(exc, ApiError) and exc.status == 401:
+                self.app.notify_api_error(exc)
+            return
         if more:
             if self._targets_page != (generation, cursor):
                 return  # an old page's refusal is not this page's, and it does not clear it
             self._targets_page = None
+            # A later page that fails (not a 503, not a refused query, not a 401) leaves the loaded rows and records
+            # the failure: the title drops `loading` and the count's ellipsis, the last line reads `r retry`, and `r`
+            # retries from the kept cursor. No toast — the line says it (rule 9, 2026-11-22).
+            if self.targets.is_current(generation) and not (
+                    isinstance(exc, ApiError) and exc.code in ("inventory_unavailable", "invalid_request")
+                    or isinstance(exc, ApiError) and exc.status == 401):
+                self.targets.more_failed = True
+                self._mark_fleet_dirty()
+                return  # the line says it; no toast (rule 9, 2026-11-22)
         if self._unmounted:
             return
         if isinstance(exc, ApiError) and exc.code == "inventory_unavailable":
@@ -1930,6 +1994,9 @@ class TerminalScreen(Screen):
         elif name == CMD_RETRY:
             if arg == "targets":
                 self._fetch_targets()
+            elif arg == "targets-more":
+                # `r` on the failed-more line retries from the kept cursor (rule 9, 2026-11-22).
+                self._fetch_targets(more=True)
             else:
                 if self.poller is not None:
                     self.poller.last_error = None

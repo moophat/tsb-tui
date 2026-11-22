@@ -498,7 +498,7 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
         if model.targets_count is not None:
             loaded = model.targets_count.rstrip("…")
             loading = model.targets_count.endswith("…")
-            first = f"{len(model.targets)}…" if loading else str(len(model.targets))
+            first = str(len(model.targets))
             of_part = f"of {loaded}…" if loading and filter_text.strip() else (
                 f"of {loaded}" if filter_text.strip() else "")
         title = title_parts("Targets", "–", first, of_part, loading, filter_text.strip(), table_w)
@@ -692,8 +692,6 @@ class FleetView(Widget):
         # The targets marked with `space` on the Targets tab: the ones Save a login and Map act on (one batch call).
         self.marked: set[str] = set()
         self.filter_text = ""
-        self.query_text = ""  # the Targets tab's query as typed; `applied_query` is the one last entered
-        self.applied_query = ""
         self.editing = False
         self.show_ended = bool(config["fleet_view.show_ended"])
         self.window_width = 0
@@ -777,7 +775,7 @@ class FleetView(Widget):
             visible, width=width, height=height, tab=self.tab, selected=self.selected,
             filter_text=self.filter_text, editing=self.editing, show_ended=self.show_ended,
             group_by=self._group_by, details=self.window_width >= self._details_from, top=self.scroll_top,
-            query_text=self.query_text, marked=frozenset(self.marked))
+            query_text=self.filter_text, marked=frozenset(self.marked))
 
     def _relayout(self) -> None:
         layout = self._build()
@@ -884,8 +882,6 @@ class FleetView(Widget):
         """Opened afresh: the sessions tab, no filter, the first row, the top."""
         self.tab = TAB_SESSIONS
         self.filter_text = ""
-        self.query_text = ""
-        self.applied_query = ""
         self.editing = False
         self.selected = None
         self.marked.clear()
@@ -1051,7 +1047,7 @@ class FleetView(Widget):
             # rule 10 (2026-11-21): `i` is the target row's key; on a session row it opens nothing.
 
             self.post_message(self.Command(CMD_DETAILS, self.selected_session))
-        elif key == "?":
+        elif key in ("?", "question_mark"):
             self.post_message(self.Command(CMD_KEYS))
         elif key == "enter" and sid is not None:
             self.post_message(self.Command(CMD_PICK, sid))

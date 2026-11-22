@@ -157,3 +157,144 @@ Gate (ruling 22):
 
 Status: DONE — all 20 ruff errors fixed (the F821 defect with a red-then-green test), no behaviour changed beyond that fix; `make lint` exits 0, the touched-file gate is green apart from one load-sensitive test that passes in isolation.
 Summary: sidebar.py F821 fixed to `self.wide` with a new sidebar test (red NameError, green after); import-order/unused-import/underscore/min/B023 fixes across the named files; make lint exit 0, gate 1 failed / 166 passed (the failure load-sensitive, green alone), contract-check exit 0.
+
+## PR #114 review round
+
+Qodo found thirteen defects on PR #114 (HEAD a055ddc); each is ruled by the orchestrator (2026-11-22). For each:
+a test that fails on a055ddc first, then the fix; or, where the finding is wrong against the code, a refutation
+with file:line. New tests live in `tests/test_redesign_lists_review.py`. No commit, no push.
+
+**Item 1 — wide sidebar IndexError (refutation).** `_build_pairs` (`sidebar.py:1478`) computes `count = 1 if wide else
+(2 if facts[position][1] else 1)`; in wide mode the `facts[position]` term is never evaluated, so a row outside the
+window's cached facts is never indexed. A wide sidebar (160x45) with 4,008 targets lays out, paints, and scrolling to
+the end (`_jump_target`) marks the last row. Test `test_wide_sidebar_paints_and_scrolls_to_the_end` is green on
+a055ddc — no IndexError. The ruling's behaviour ("facts outside the window composed on demand") already holds.
+
+**Item 3 — session section keeps the old selection mark (refutation).** `_relayout` (`fleet_view.py:788-790`) captures
+`prev_selected` before building and rebuilds when rule 6 moves the selection; ruling 19 added this, so it is present on
+a055ddc. Test `test_filtering_the_selected_session_moves_the_mark_to_the_new_selection` is green on a055ddc: filtering
+out the selected target leaves exactly one `▸`, on the new selection.
+
+**Item 4 — details screen bypasses dialog registration (refutation).** Textual runs every class's `on_mount` down the
+MRO, so `_Dialog.on_mount` (`chrome_dialogs.py:106`) registers the details screen; the override
+(`target_details.py:72`) does not bypass it. Probes on a055ddc show `_Dialog.on_mount`'s append and `refresh_status`
+run for `TargetDetailsScreen`. Test `test_details_screen_is_a_registered_dialog` is green on a055ddc: the terminal counts
+the screen among its dialogs, and closes it (status restored) on Escape.
+
+**Item 8 — painting copies the remaining pairs (refutation).** `_target_painted_end` walks from `index` in a bounded
+loop that stops at the window's height; with an 8,000-row list, painting near the start touches only the window's rows.
+Test `test_painting_near_the_start_touches_only_the_window_pairs` (a counting wrapper on the pairs list) is green on
+a055ddc: the walk touches at most `window + 2` pairs.
+
+**Item 6 — full view `?` key does nothing (red → fix).** Red on a055ddc: `fleet_view.py:1054` matched only the literal
+`"?"`; Pilot's normalized key event is `question_mark`, so `test_question_mark_opens_all_keys_in_the_full_view` fails
+(`TextScreen` never opens). Fix: `key in ("?", "question_mark")`, as the sidebar does (`sidebar.py:2157`). Green after.
+
+**Item 13 — loading title shows two ellipses (red → fix).** Red on a055ddc: `fleet_view.py:501` built
+`first = f"{len(model.targets)}…"`, so `title_parts` added a second `…`; the title read `Targets · 1/500…… loading`.
+Fix: pass a plain count (`first = str(len(model.targets))`); `title_parts` alone adds the loading mark.
+`test_loading_title_shows_exactly_one_ellipsis` green after (one ellipsis).
+
+**Item 5 — Targets filter control shows the retired query text (red → fix).** Red on a055ddc: `_query_controls`
+(`fleet_view.py:475`) rendered `query_text`, while the rows filter on `filter_text`; typing in the full view's Targets
+filter left the control at `/ filter`. Fix: pass `self.filter_text` to the control and retire `self.query_text` /
+`self.applied_query` (the dead dependency). `test_targets_filter_control_shows_the_filter_text` green after.
+
+**Item 7 — a target in Recent gets two selection marks (red → fix).** Red on a055ddc: `_target_painted` marked by id
+(`selected = row.id == self.selected_target`, `sidebar.py:1617`), so a target shown in `Recent` and the main list
+carried two `▸`. Fix: mark the row at `self._target_pos` (`selected = position == self._target_pos`), and set
+`_target_pos` to the row clicked, so selecting each appearance marks that row; actions keep using `self.selected_target`
+(the id). `test_a_target_in_recent_marks_only_the_row_selected` is red on a055ddc (two marks) and green after (one mark
+per appearance).
+
+Commands: the gate for these items runs under
+`env -u NO_COLOR PYTHONPATH=program/contract:program/contract/client:. TSB_TUI_TERM_LIBRARY=vendor/libghostty-vt/libghostty-vt.so $(PYTHON) -m pytest`.
+All seven new tests green with the fixes applied; items 1, 3, 4, 8 green on a055ddc (refutations), items 5, 6, 13 red on
+a055ddc and green after.
+
+Gate (items 1–8, 13): `tests/test_redesign_lists_review.py` + `test_redesign_lists_filter.py` + `test_targets_tab.py` +
+`test_sidebar.py`: **1 failed, 100 passed** — the failure,
+`test_targets_tab.py::test_a_stale_reply_never_overwrites_the_newer_list`, is load-sensitive and green in isolation
+(1 passed, `~22s`). Item 7 moved the highlighted row in three SVG baselines (`recent-three-160x45`, `group-row-80x24`,
+`group-row-160x45`): the mark glyph moves from the Recent head to the main-list row at position 0 (rule 15, title-only
+diff), regenerated with `UPDATE_P3_SNAPSHOTS=1`.
+
+**Item 10 — sign-out guard restored (red → fix).** Red on a055ddc: `_poll_reply` handed a poll's reply to
+`_apply_poll` and `_apply_poll` applied it with no sign-out check, so a reply landing during sign-out folded a fleet
+back into the workspace. The guard (`self.app.signing_out`) was absent on e0c1031 too (byte-identical), so part 2 did
+not remove it; fixed anyway. Fix: `_poll_reply` returns without handing off, and `_apply_poll` returns without applying,
+when `self.app.signing_out`. `test_a_poll_reply_during_sign_out_applies_nothing` is red on a055ddc (the
+generation advances, the view goes dirty) and green after (`applied_generation` stays, no dirty).
+
+**Item 2 & 12 — a background pass stages apart from the published list (red → fix).** Ruled (2026-11-22): a background
+refresh reads into `self._targets_staging` (a separate `TargetsModel`) and touches the published rows only when its last
+page lands; a tick that finds a pass in flight starts nothing; a failed staging pass is dropped whole, the published
+list stays. Red on a055ddc: `_fetch_targets(background=True)` applied pages straight to `self.targets`, so a background
+pass changed the published rows page by page and a tick during it sent a request. Fix: the first load after login
+(`on_mount`) is a foreground read (page-by-page publishing kept); a background pass creates `self._targets_staging` and
+chains its pages into it, `publish()` copies the staged rows/records/cursor/query/fetched/unavailable/more_failed into
+the published model in one step when the last page lands; `_fetch_targets`' background guard returns on a pass in flight
+and on a foreground page in flight (rule 1 kept); `_targets_failed` drops the staging pass on any failure, marks the
+published model unavailable on a 503 and toasts a 401, raising no toast for other background failures. Tests
+`test_a_background_refresh_stages_pages_apart_from_the_published_list` (published rows unchanged through a held first
+page, selection follows its id, a tick sends no request) and
+`test_a_failed_background_pass_leaves_the_published_list_as_it_was` (a failed pass dropped, published rows stay, not
+unavailable, the next pass starts fresh): both red on a055ddc, green after.
+
+**Item 9 — a failed later page shows the retry line (red → fix).** Ruled (2026-11-22): `TargetsModel.more_failed`
+records a failed `more` page apart from the cursor; the title drops `loading` and the count's ellipsis, the last line
+reads `Could not load more · r retry`, `r` retries from the kept cursor. Red on a055ddc: a chained page that answers an
+error leaves the list `loading` for good (the cursor stays, nothing records the failure), so the title shows the
+ellipsis and no retry line, and a toast fires. Fix: `TargetsModel` gains `more_failed` (cleared on `apply`, `reset`,
+and an `r` retry); `_targets_failed` sets it for a current `more` page that fails with anything but a 401/503/refused
+query and returns without a toast; the sidebar view sets `targets_loading`/`target_has_next` false when it is set (the
+count shows the loaded number, no false total); `_build_pairs` appends the last-line pair after the rows and
+`_target_painted` renders `Could not load more · r retry` there (`CMD_RETRY` with `"targets-more"`); the sidebar `r`
+key posts that command and `CMD_RETRY` calls `_fetch_targets(more=True)`, which reuses the kept `next_cursor`. Test
+`test_a_failed_later_page_shows_the_retry_line_and_r_completes` is red on a055ddc (`more_failed` absent, toast fires)
+and green after (plain count, retry line at the window end, no toast, `r` completes the list).
+
+Gate (all items): `tests/test_redesign_lists_review.py` + `test_redesign_lists_filter.py` + `test_sidebar.py` +
+`test_targets_tab.py` + `test_sign_out.py`: **119 passed** (the earlier load-sensitive failure,
+`test_a_stale_reply_never_overwrites_the_newer_list`, green in this run). `make contract-check` exit 0; `make lint`
+exit 0 (ruff on the path); engine-check verified at PIN. Item 7 moved the highlighted row in three SVG baselines (`recent-three-160x45`,
+`group-row-80x24`, `group-row-160x45`), regenerated with `UPDATE_P3_SNAPSHOTS=1`.
+
+## Wider-suite baseline check (the orchestrator, 2026-11-22 18:3x)
+
+The orchestrator's run of the wider suites on this tree found `tests/test_redesign_lists.py::test_two_size_galleries`
+failing 7 cases (`alike-since` both sizes, `sessions-states` 160x45, `targets-opens1` and `targets-opens2` both sizes);
+they pass on a055ddc. For each case the old (a055ddc) and new renders were captured as full-screen text lines (the SVG's
+per-line `<text>` elements parsed back to rows) and diffed. Every case showed exactly one line, the same pattern: a target
+shown in `Recent` **and** the main list carried `▸` on both rows in a055ddc; the new tree keeps the mark on one row only.
+That is item 7's rule (mark on the selected row only). Each case with its rule:
+
+- `alike-since-80x24` L12, `alike-since-160x45` L31, `sessions-states-160x45` L76, `targets-opens1-80x24` L118,
+  `targets-opens1-160x45` L141, `targets-opens2-80x24` L187, `targets-opens2-160x45` L210 — all: the duplicate `▸` on the
+  second appearance of the selected target goes; one mark remains. Rule: **item 7**. No count, ellipsis, retry-line or
+  row-set difference appeared in any case, so nothing was STOPped. The 7 baselines regenerated with
+  `UPDATE_P3_SNAPSHOTS=1` (all 18 gallery cases green).
+
+The same check on `tests/test_redesign_layout.py::test_two_size_baselines[state=session]` (a `redesign-p2a` baseline the
+orchestrator's list did not name) also failed both sizes. Rendered old vs new: the identical pattern — the target
+`fixture target` carried `▸` on its Recent row and its main-list row in a055ddc; the new tree keeps one. Rule: **item 7**.
+No other difference. The two baselines (`session-80x24`, `session-160x45`) regenerated with `UPDATE_P2A_SNAPSHOTS=1` (all
+6 cases green).
+
+Full required-suite run (`tests/test_redesign_lists.py`, every `tests/test_redesign_*.py`, `tests/test_fleet_view*.py`,
+plus the gate's `test_sidebar.py`/`test_targets_tab.py`/`test_sign_out.py`): **460 passed, 2 failed**. The two failures
+(`test_fleet_view_painted_rows.py::test_a_clock_that_changes_a_row_s_width_is_painted_as_a_rebuild_paints_it` and
+`test_targets_tab.py::test_a_poll_never_folds_the_loaded_pages_back`) are load-sensitive: both green in isolation
+(3 passed, ~35s with `test_a_stale_reply_never_overwrites_the_newer_list`, which failed in an earlier full run for the
+same reason). The intermittent failures move between runs under heavy parallel load; none is a regression from this
+round's changes.
+
+Status: DONE — 13 of 13 review findings. Refutations for items 1, 3, 4, 8 (green on a055ddc); red-first fixes for items
+5, 6, 7, 13, 10, 2, 12, 9 (red on a055ddc, green after the ruling's design applied). The four interlocking terminal.py
+paging/poll/sign-out changes each had their design gap ruled by the orchestrator (2026-11-22) before the fix. Gate
+green; contract-check and lint exit 0. Wider-suite baselines: every difference ruled by item 7, regenerated; no STOP.
+Not verified: the whole test suite under a single clean run (the load-sensitive timing tests fail intermittently in
+parallel, green in isolation).
+Summary: five findings refuted against the code with file:line, eight fixed red-first (`?` key, loading title, filter
+control, Recent double-mark via row-position, sign-out guard, background staging pass, no-overlap guard, failed-more
+retry line); 9 baselines regenerated (7 p3 gallery + 2 p2a session), all ruled by item 7; gates green.

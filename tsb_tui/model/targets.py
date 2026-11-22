@@ -161,6 +161,7 @@ class TargetsModel:
     next_cursor: str | None = None
     fetched: bool = False  # a page has been applied: the count means something
     unavailable: bool = False  # 503 inventory_unavailable: the tab says so
+    more_failed: bool = False  # a later page failed (not 401/503): the list keeps its rows, shows `r retry`
     _generation: int = 0
     _applied: int = 0
 
@@ -203,6 +204,7 @@ class TargetsModel:
         self.next_cursor = page.get("next_cursor") or None
         self.fetched = True
         self.unavailable = False
+        self.more_failed = False  # any page that applies clears the failed-more state (rule 9, 2026-11-22)
         return True
 
     def mark_unavailable(self, generation: int) -> bool:
@@ -228,8 +230,21 @@ class TargetsModel:
         self.next_cursor = None
         self.fetched = False
         self.unavailable = False
+        self.more_failed = False  # a new foreground read clears the failed-more state (rule 9, 2026-11-22)
         self._generation += 2
         self._applied = self._generation
+
+    def publish(self, staged: TargetsModel) -> None:
+        """A complete background pass takes the published list in one step (rule 2, 2026-11-22): the staged rows,
+        records, cursor, query and `fetched` replace them; the generation stays ahead so a reply sent before the
+        pass is stale. The selection follows its target id through rule 6's relayout, not a row index."""
+        self.rows = staged.rows
+        self.records = staged.records
+        self.query = staged.query
+        self.next_cursor = staged.next_cursor
+        self.fetched = staged.fetched
+        self.unavailable = staged.unavailable
+        self.more_failed = staged.more_failed
 
     def count_label(self) -> str | None:
         """The tab's count: `412`, or `500…` while pages are still arriving; None before the first page."""
