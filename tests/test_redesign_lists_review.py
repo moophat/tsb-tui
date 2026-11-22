@@ -365,6 +365,38 @@ def test_a_failed_background_pass_leaves_the_published_list_as_it_was(serve, wai
     asyncio.run(check())
 
 
+def test_the_first_load_failing_with_a_500_raises_no_toast_and_the_next_tick_reads(serve, wait_until):
+    """The first load after login publishes page by page into the published list and is quiet: a failure of it
+    raises no toast (the next tick reads again), and the next tick's pass lands the rows."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        _bulk(served, 1000)
+        real = served._list_targets
+        fail_on = [True]
+
+        def gated(query):
+            if fail_on[0]:
+                return served._err(500, "internal_error", "the broker is not answering")
+            return real(query)
+
+        served._list_targets = gated
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 1)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            assert len(screen.targets.rows) == 0, "the first load failed"
+            live = [n for n in app._notifications if not n.has_expired]
+            assert live == [], live  # the first load's failure raises no toast: the next tick retries
+            fail_on[0] = False
+            screen._fetch_targets(background=True)  # what the next tick does
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 1008
+                             and not screen.targets.next_cursor, "the next tick's pass", 30)
+    asyncio.run(check())
+
+
 def test_a_failed_later_page_shows_the_retry_line_and_r_completes(serve, wait_until):
     """A chained page that answers an error keeps the loaded rows, drops `loading` and the count's ellipsis, and
     writes `Could not load more · r retry` as the list's last line with no toast; `r` fetches the kept cursor and

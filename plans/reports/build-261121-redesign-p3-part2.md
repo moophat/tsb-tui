@@ -321,3 +321,46 @@ items 5, 6, 7, 13, 10, 2, 12, 9, 3 (sidebar), 11. **Item 3's first-pass refutati
 not the Sidebar the finding named) and **item 11 was missed entirely in the first pass**; both are now red-first fixed
 on 1397e5e. Summary: three findings refuted against the code with file:line, ten fixed red-first; 9 baselines
 regenerated (all ruled by item 7); gates green.
+
+## CI regression (the orchestrator, 2026-11-23 00:2x)
+
+**The cause.** Commit `0c1777e` changed the first load after login (`on_mount`) from
+`self._fetch_targets(background=True)` to `self._fetch_targets()`. On the base, a failure of that first read (anything
+but a 401) raised no toast (`_targets_failed`: `elif not background or ... 401`); as a plain foreground read it does,
+which is the extra "HTTP" toast `test_no_resolving_credential_reads_as_a_state_not_an_error` sees.
+
+**Red on 469a4e2:** `tests/test_attach_confirm.py::test_no_resolving_credential_reads_as_a_state_not_an_error` —
+`assert not True` at `tests/test_attach_confirm.py:174` (the `any("HTTP" in m ...)` line).
+
+**Fix (the ruling's smallest change).** A `quiet` flag on the foreground path: `on_mount` reads
+`self._fetch_targets(quiet=True)` — page-by-page publishing into `self.targets`, never the staging model; `quiet`
+propagates through `_targets_reply` to the pages chained from that read; `_targets_failed` honours it as it honours
+`background`: the toast condition is `(not background and not quiet) or (401)`. A 503 stays the unavailable state, a
+refused query the query line, a failed later page rule 9's toast-less retry line; a 401 toasts. The staging pass and
+items 2, 9, 10, 12 are untouched.
+
+**New test (red first).** `tests/test_redesign_lists_review.py::test_the_first_load_failing_with_a_500_raises_no_toast_and_the_next_tick_reads`
+— red on 469a4e2 at the toast assertion (`tests/test_redesign_lists_review.py:392`: the 500's toast was live); green
+after: the first load fails with a 500, no toast, and the next tick's read (the background pass, what `_targets_tick`
+does) publishes all pages.
+
+**The two intermittent tests.** Run alone five times each on this tree (tree = 469a4e2 plus this session's uncommitted
+fix; worktree and stash are disallowed, so the run is on the tree).
+`test_feed_thread.py::test_order_is_kept_across_a_size_frame_and_a_prefix_with_its_dump`: **5 passed, 0 failed**.
+`test_targets_tab.py::test_a_stale_reply_never_overwrites_the_newer_list`: **4 passed, 1 failed** (run 1: timed out
+after 10s waiting for "the refresh's request"). Nothing changed for them.
+
+**A third intermittent found in the gate.** `test_redesign_lists_review.py::test_targets_filter_control_shows_the_filter_text`
+failed once in the suite run; it is identical on 469a4e2 and the fix does not touch page publishing (the flake is the
+test waiting for the exact 500-row window while pages publish fast). Alone five times: **4 passed, 1 failed**; the suite
+re-run is green. Nothing changed for it.
+
+**Gate.** `make contract-check` exit 0; `make lint` exit 0 (engine-check at PIN);
+`$(PYTHON) -m pytest tests/test_redesign_lists_review.py tests/test_attach_confirm.py` exit 0 — 19 passed;
+`$(PYTHON) -m pytest tests/test_sign_out.py tests/test_terminal_keys.py` exit 0 — 16 passed;
+`$(PYTHON) -m pytest tests/test_redesign_*.py tests/test_fleet_view*.py` (all 13 redesign files, both fleet-view
+files) exit 0 — **387 passed**. `git diff --name-only`: only `tsb_tui/screens/terminal.py` and
+`tests/test_redesign_lists_review.py`.
+
+**Not verified:** the two intermittents and the filter flake were not run on main 10a63d7 itself (worktree/stash
+disallowed); the full suite was not re-run (this ruling asks for the gate only).

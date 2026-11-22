@@ -584,7 +584,8 @@ class TerminalScreen(Screen):
             # The poller's own first poll, just below, is the read. After login the keys land in the Targets filter.
             self.open_sidebar(refresh=False, pane=PANE_TARGETS, editing=True)
         self.poller.start()
-        self._fetch_targets()  # the first load after login is a foreground read: page-by-page publishing (rule 2, 2026-11-22)
+        self._fetch_targets(quiet=True)  # the first load after login is a foreground read: page-by-page publishing,
+        # and its failure raises no toast unless it is a 401 — the next tick reads again (rule 2, 2026-11-23)
         self.refresh_status()
 
     def on_unmount(self) -> None:
@@ -1263,11 +1264,13 @@ class TerminalScreen(Screen):
             words.append(f"+{len(mine) - 4} more")
         return (" · ".join(facts), "sessions here: " + (" · ".join(words) if words else "none"))
 
-    def _fetch_targets(self, *, query: Query | None = None, more: bool = False, background: bool = False) -> None:
+    def _fetch_targets(self, *, query: Query | None = None, more: bool = False, background: bool = False,
+                       quiet: bool = False) -> None:
         """`GET /targets` off the UI thread: the query now wanted (or `query`) from its first page, or with `more`
         the next page of the query on show. A page request carries its generation and cursor, and a reply older
         than the newest request is discarded (`TargetsModel`). A refresh waits while a page is in flight: its own
-        reply must be the one that extends the list, not one that folds it back."""
+        reply must be the one that extends the list, not one that folds it back. A `quiet` read publishes as any
+        foreground read does; its failure raises no toast unless it is a 401."""
         model = self.targets
         if background:
             # A background refresh never touches the published list until it is complete (rule 2, 2026-11-22): it
@@ -1310,11 +1313,11 @@ class TerminalScreen(Screen):
             generation = model.begin(query)
         call = functools.partial(self.app.client.list_targets, **query.filters(), limit=limit, cursor=cursor)
         self.app.call_api(
-            call, on_done=lambda page: self._targets_reply(generation, query, page, more, cursor, background),
-            on_error=lambda exc: self._targets_failed(generation, exc, more, background, cursor))
+            call, on_done=lambda page: self._targets_reply(generation, query, page, more, cursor, background, quiet),
+            on_error=lambda exc: self._targets_failed(generation, exc, more, background, cursor, quiet))
 
     def _targets_reply(self, generation: int, query: Query, page: dict, more: bool, cursor: str | None,
-                       background: bool = False) -> None:
+                       background: bool = False, quiet: bool = False) -> None:
         if background:
             # A staging pass's reply applies to the staging model, chained from its own cursor (rule 2, 2026-11-22).
             # The published list is untouched until the last page lands. A foreground read dropped the pass: the
@@ -1350,13 +1353,13 @@ class TerminalScreen(Screen):
                 # Every page is fetched in the background (rule 2, 2026-11-21): the chain continues only from
                 # the newest answer. A reply that applied below it (a refresh's first page, under a page already
                 # applied) extends nothing: its own request chains from its own reply.
-                self._fetch_targets(more=True)
+                self._fetch_targets(more=True, quiet=quiet)
 
     def _targets_failed(self, generation: int, exc: Exception, more: bool, background: bool,
-                        cursor: str | None) -> None:
+                        cursor: str | None, quiet: bool = False) -> None:
         """503 `inventory_unavailable` is a state the tab shows; a refused query keeps the rows and says why in the
         query line; a 401 goes the way every 401 goes; anything else is a toast, unless it was only the timer's read
-        (the next tick tries again). Only the newest request may change the tab."""
+        or the first load after login (the next tick tries again). Only the newest request may change the tab."""
         if background:
             # A staging pass that fails at any page is dropped and the published list stays as it was (rule 2,
             # 2026-11-22). A 503 marks the published model unavailable as today; a 401 goes the way every 401 goes;
@@ -1394,7 +1397,7 @@ class TerminalScreen(Screen):
                 self.targets.revert_to_shown()
                 self._targets_query_error = as_text(exc.message)
                 self._mark_fleet_dirty()
-        elif not background or (isinstance(exc, ApiError) and exc.status == 401):
+        elif (not background and not quiet) or (isinstance(exc, ApiError) and exc.status == 401):
             self.app.notify_api_error(exc)
 
     def _targets_tab_changed(self) -> None:
