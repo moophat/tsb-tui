@@ -272,12 +272,23 @@ def test_mine_all_is_the_full_views_and_the_filter_narrows_the_targets(serve, wa
             total = len(screen.sidebar.model.targets)
             await pilot.press(*"telnet")  # login lands in the Targets filter: typing narrows at once
             await wait_until(pilot, lambda: len(screen.sidebar.visible_targets()) == 1, "the filter to narrow")
-            assert screen.sidebar.render_line(0).text.startswith(f"┏━ ▦ Targets · 1/{total}")
+            # rule 3 (2026-11-21): the title carries the position within the matches, then `of` the total.
+            assert screen.sidebar.render_line(0).text.startswith(f"┏━ ▦ Targets · 1/1 of {total}")
             assert "/ telnet▏" in screen.sidebar.render_line(1).text
+            # rule 5 (2026-11-21): Enter on a target row opens New session on it. Close the dialog; the filter text
+            # stays. rule 5 + ruling 18 (2026-11-22): `/` re-enters the filter of the list that holds the keys, and
+            # Esc clears it first. Drive it through Pilot, assert what the screen shows.
             await pilot.press("enter")
             await wait_until(pilot, lambda: not screen.sidebar.editing, "Enter to leave the filter")
-            assert len(screen.sidebar.visible_targets()) == 1, "Enter keeps the text"
-            await pilot.press("slash", "escape")
+            await wait_until(pilot, lambda: type(app.screen).__name__ == "NewSessionScreen",
+                             "Enter opened New session on the selected target")
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: app.screen is screen, "back to the workspace")
+            assert len(screen.sidebar.visible_targets()) == 1, "the filter text stays"
+            await pilot.press("slash")
+            await pilot.pause()
+            assert screen.sidebar.editing, "`/` re-entered the filter"
+            await pilot.press("escape")
             await wait_until(pilot, lambda: len(screen.sidebar.visible_targets()) == total, "Esc to clear the filter")
 
             screen.open_fleet_view()

@@ -40,7 +40,9 @@ GOLDEN = Path(__file__).resolve().parent / "fleet_view_painted_golden.json"
 # The constant the rows built is allowed above the painted rows: the view builds one row per line it shows, and
 # nothing else builds one on this path.
 PAINTED_EXTRA = 2
-TABLE = "Sessions you own or may join"
+# rule 3 (2026-11-21): the table's title is the position pair; a fresh view selects the table's head, so the
+# painted title leads with `1/` (rule 6, rule 15). The helper reads the pair at the head of its line.
+TABLE = "Sessions ·"
 
 # The painted views the golden holds: the records, the knobs, and what the operator did to the selection. Each is
 # a long list at its own place in it: the top, the bottom of the ended sessions, the middle of them grouped by
@@ -166,7 +168,7 @@ async def paint_case(url: str, tmp_path: Path, case: dict) -> str:
     async with Rig(url, tmp_path=tmp_path, profile="harness", overrides=overrides, size=(120, 40)) as rig:
         rig.app.client = FakeSessionsClient(url, make_records(n))
         await rig.login(ME)
-        screen = await open_view(rig, f"{TABLE} · {live_count(make_records(n))}")
+        screen = await open_view(rig, f"{TABLE} 1/{live_count(make_records(n))}")
         view = screen.fleet_view
         if case.get("ended"):
             await rig.app_call(view.toggle_show_ended)
@@ -195,7 +197,7 @@ def test_one_rebuild_builds_rows_only_for_the_lines_the_view_paints(serve, tmp_p
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await open_view(rig, f"{TABLE} · {live}")
+            screen = await open_view(rig, f"{TABLE} 1/{live}")
             view = screen.fleet_view
             painted = painted_lines(view)
             assert 0 < painted < 60, painted
@@ -204,13 +206,13 @@ def test_one_rebuild_builds_rows_only_for_the_lines_the_view_paints(serve, tmp_p
             assert built.models == 1, "one rebuild ran"
             assert built.rows <= painted + PAINTED_EXTRA, (built.rows, painted)
             assert built.entries <= painted + PAINTED_EXTRA, (built.entries, painted)
-            assert f"{TABLE} · {live}" in view.text
+            assert f"{TABLE} 1/{live}" in view.text
             assert len(view.layout.rows) == live, "every live session stays a position the selection can reach"
             await rig.app_call(view.toggle_show_ended)
             built = await counted_step(rig, counter, screen._sync_fleet_widgets)
             assert built.rows <= painted + PAINTED_EXTRA, (built.rows, painted)
             assert built.entries <= painted + PAINTED_EXTRA, (built.entries, painted)
-            assert f"{TABLE} · 14000" in view.text
+            assert f"{TABLE} 1/14000" in view.text
             assert len(view.layout.rows) == 14000
 
     asyncio.run(check())
@@ -232,7 +234,7 @@ def test_a_tick_moves_the_clocks_of_the_open_view_and_builds_only_the_painted_ro
             rig.app.client = FakeSessionsClient(url, records)
             rig.app.wall_clock = lambda: fixed
             await rig.login(ME)
-            screen = await open_view(rig, f"{TABLE} · {live_count(records)}")
+            screen = await open_view(rig, f"{TABLE} 1/{live_count(records)}")
             view = screen.fleet_view
             assert "▲ 4:10" in view.text, view.text
             painted = painted_lines(view)
@@ -258,7 +260,7 @@ def test_triggers_before_a_refresh_run_one_rebuild(serve, tmp_path, monkeypatch)
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await open_view(rig, f"{TABLE} · 5")
+            screen = await open_view(rig, f"{TABLE} 1/5")
             screen._refresh_view_clocks = lambda: None  # the tick is not one of the triggers
             for _ in range(400):  # the alert stream that opened the view has answered and its rebuild has run
                 if screen.app.alerts.count and not screen._fleet_dirty and not screen._fleet_flush:
@@ -311,7 +313,7 @@ def test_the_selection_moves_over_the_listed_rows_as_before(serve, tmp_path) -> 
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await open_view(rig, f"{TABLE} · {live_count(records)}")
+            screen = await open_view(rig, f"{TABLE} 1/{live_count(records)}")
             view = screen.fleet_view
             rows = list(view.layout.rows)
             assert len(rows) == live_count(records)
@@ -343,7 +345,7 @@ def test_the_selection_follows_its_session_when_the_list_changes(serve, tmp_path
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await open_view(rig, f"{TABLE} · {live_count(records)}")
+            screen = await open_view(rig, f"{TABLE} 1/{live_count(records)}")
             view = screen.fleet_view
             await rig.app_call(view._move, 400)
             chosen = view.selected
@@ -371,16 +373,19 @@ def test_the_filter_and_show_ended_count_every_record_not_the_window(serve, tmp_
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await open_view(rig, f"{TABLE} · {live_count(records)}")
+            screen = await open_view(rig, f"{TABLE} 1/{live_count(records)}")
             view = screen.fleet_view
             view.filter_text = "rtr-007"
             await rig.app_call(view._relayout)
             want = [r for r in records if r["state"] == "live" and r["target_id"] == "rtr-007"]
-            assert f"{TABLE} · {len(want)}" in view.text, view.text
+            # rule 15 (2026-11-21): no match leaves nothing selected in the table, so the pair shows `–/0`.
+            assert f"{TABLE} –/{len(want)}" in view.text, view.text.splitlines()[3]
             assert [sid for _group, sid in view.layout.rows] == [r["id"] for r in want]
             await rig.app_call(view.toggle_show_ended)
             every = [r for r in records if r["target_id"] == "rtr-007"]
-            assert f"{TABLE} · {len(every)}" in view.text, view.text
+            # rule 6 + rule 15 (2026-11-22, ruling 19): with the ended rows now listed and no prior selection,
+            # the head row takes the highlight, so the index is its place (1), not `–`.
+            assert f"{TABLE} 1/{len(every)}" in view.text, view.text.splitlines()[3]
             assert len(view.layout.rows) == len(every)
             # the live sessions are listed before the ended ones, each in the order the core listed them
             ordered = [r for r in every if r["state"] == "live"] + [r for r in every if r["state"] != "live"]
@@ -401,7 +406,7 @@ def test_the_columns_are_sized_by_every_listed_row_not_the_window(serve, tmp_pat
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await open_view(rig, f"{TABLE} · {live_count(records)}")
+            screen = await open_view(rig, f"{TABLE} 1/{live_count(records)}")
             view = screen.fleet_view
             def id_column() -> int:
                 """Where the id of a listed session starts: the same at every scroll when the columns are sized by
@@ -548,7 +553,8 @@ def test_opening_the_view_shows_the_current_rows(serve, tmp_path) -> None:
             await rig.app_call(screen.open_fleet_view)
             view = screen.fleet_view
             assert "rtr-needs" in view.text and "Needs you" in view.text, view.text
-            assert view.selected == ("needs_you", "s.needs"), view.selected
+            # rule 6 (2026-11-21): a fresh view selects the table's head row, in the ruled order.
+            assert view.selected == ("sessions", "s.00000"), view.selected
 
     asyncio.run(check())
 
@@ -662,7 +668,7 @@ def test_a_keystroke_that_only_moves_the_selection_does_not_rescan_the_records(s
                        size=(120, 40)) as rig:
             rig.app.client = FakeSessionsClient(url, records)
             await rig.login(ME)
-            screen = await open_view(rig, f"{TABLE} · {live_count(records)}")
+            screen = await open_view(rig, f"{TABLE} 1/{live_count(records)}")
             view = screen.fleet_view
             view.filter_text = "rtr-0"  # the empty filter short-circuits the search, so a filter is set
             await rig.app_call(view._relayout)

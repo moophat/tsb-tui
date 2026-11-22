@@ -123,7 +123,9 @@ def test_inventory_n_and_permission_gated_a(serve, wait_until, size, permission)
             await pilot.press("/", "n", "a")
             await pilot.pause()
             assert workspace.fleet_view.editing
-            assert workspace.fleet_view.query_text.endswith("na")
+            # rule 1 (2026-11-21): the Targets filter is local free text, stored in `filter_text` (the structured
+            # query and its `query_text` are retired).
+            assert workspace.fleet_view.filter_text.endswith("na")
     asyncio.run(check())
 
 

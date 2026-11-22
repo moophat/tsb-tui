@@ -313,9 +313,9 @@ async def _map_from_marks(app, pilot, wait_until) -> str:
 
 def test_a_query_that_excludes_a_marked_target_leaves_both_marks_and_map_acts_on_both(
         serve, wait_until, screen_text) -> None:
-    """#494 Qodo 4: a mark is the operator's, not the page's. `aa-shell` is marked, then `two-client`; the query
-    `tag:scenario` answers without `aa-shell`, so the title still counts two marks and Map names both — the listed
-    mark first, in the order listed, then the mark the query hid — never the row the selection happens to be on."""
+    """#494 Qodo 4: a mark is the operator's, not the page's. `aa-shell` is marked, then `two-client`; the rule-1
+    filter `scenario` answers without `aa-shell`, so the title still counts two marks and Map names both — the listed
+    mark first, in the order listed, then the mark the filter hid — never the row the selection happens to be on."""
 
     async def check() -> None:
         serve_app, url = serve(VaultServe())
@@ -330,11 +330,12 @@ def test_a_query_that_excludes_a_marked_target_leaves_both_marks_and_map_acts_on
             await pilot.press("space")
             await _select(pilot, view, "two-client")
             await pilot.press("space")
-            workspace._run_query("tag:scenario")  # `aa-shell` is not tagged `scenario`: the query hides its row
+            view.filter_text = "scenario"  # rule 1 (2026-11-22): the local free-text filter; `aa-shell` is not
+            view._relayout()  # tagged `scenario`, so the filter hides its row
             await wait_until(pilot, lambda: [row[1] for row in view.layout.rows] ==
                              sorted(rec["id"] for rec in _serve.TARGETS.values() if "scenario" in rec["tags"]),
                              "the filtered rows")
-            assert "2 marked" in screen_text(app), "the count kept the mark the query hid"
+            assert "2 marked" in screen_text(app), "the count kept the mark the filter hid"
             assert await _map_from_marks(app, pilot, wait_until) == "two-client aa-shell"
 
     asyncio.run(check())
@@ -342,8 +343,8 @@ def test_a_query_that_excludes_a_marked_target_leaves_both_marks_and_map_acts_on
 
 def test_marks_outside_the_loaded_rows_are_acted_on_and_the_selected_row_is_never_a_stand_in(
         serve, wait_until) -> None:
-    """#494 Qodo 4: `type:telnet` leaves no mark in the rows shown, so the old code acted on the selected row
-    (`telnet-scenario`) alone. The marks are the action: both of them, sorted by id, and the selected row not at all."""
+    """#494 Qodo 4: the rule-1 filter `telnet` leaves no mark in the rows shown, so the old code acted on the selected
+    row (`telnet-scenario`) alone. The marks are the action: both of them, sorted by id, and the selected row not at all."""
 
     async def check() -> None:
         serve_app, url = serve(VaultServe())
@@ -355,7 +356,8 @@ def test_marks_outside_the_loaded_rows_are_acted_on_and_the_selected_row_is_neve
             await pilot.press("space")
             await _select(pilot, view, "normal")
             await pilot.press("space")
-            workspace._run_query("type:telnet")  # no mark is in the rows that answer
+            view.filter_text = "telnet"  # rule 1 (2026-11-22): the local free-text filter; no mark is in the rows it shows
+            view._relayout()
             await wait_until(pilot, lambda: [row[1] for row in view.layout.rows] == ["telnet-scenario"],
                              "the filtered rows")
             assert view.selected == ("targets", "telnet-scenario"), "the selection moved to the only row shown"

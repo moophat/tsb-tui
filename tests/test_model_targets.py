@@ -90,12 +90,13 @@ def test_an_unknown_target_type_is_shown_as_is_and_is_never_an_error() -> None:
 
 
 def test_the_count_says_more_while_a_next_page_may_follow() -> None:
-    """11.3: one page and the next on demand, so the count is `N+` while `next_cursor` is present and exact once the
-    broker has no more; before the first page it says nothing, because 0 would claim an empty inventory."""
+    """11.3 + rule 3 (2026-11-22): one page and the next on demand, so the loading count is `N…` while `next_cursor`
+    is present and exact once the broker has no more; before the first page it says nothing, because 0 would claim an
+    empty inventory."""
     model = TargetsModel()
     assert model.count_label() is None
     model.apply(model.begin(), Query(), {"targets": [_record("a"), _record("b")], "next_cursor": "b"})
-    assert model.count_label() == "2+" and model.next_cursor == "b"
+    assert model.count_label() == "2…" and model.next_cursor == "b"
     model.apply(model.begin(), Query(), {"targets": [_record("c")]}, append=True)
     assert [row.id for row in model.rows] == ["a", "b", "c"] and model.count_label() == "3"
 

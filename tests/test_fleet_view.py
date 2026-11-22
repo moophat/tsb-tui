@@ -92,7 +92,8 @@ def test_needs_you_comes_first_and_says_why_then_the_table_lists_every_session()
     stuck = _row("sw-agg-02", who="▲", note="not answering · ends in 4:12", types="linh types", ends="▲ 4:12 · link")
     lines = _text(_layout(_model([stuck, _row("rtr-core-01")], needs=[stuck])))
     heading = [i for i, line in enumerate(lines) if "Needs you" in line]
-    table = [i for i, line in enumerate(lines) if "Sessions you own or may join · 2" in line]
+    # rule 3 (2026-11-21): the table's title carries the position pair; nothing selected shows `–`.
+    table = [i for i, line in enumerate(lines) if "Sessions · –/2" in line]
     assert heading and table and heading[0] < table[0]
     assert any("sw-agg-02" in line and "linh types" in line and "not answering · ends in 4:12" in line
                for line in lines[heading[0]:table[0]])
@@ -245,7 +246,8 @@ def test_the_view_opens_by_the_leader_and_the_menu_with_the_rail_beside_it_and_e
             assert screen.rail.display, "the rail stays beside the view"
             await wait_until(pilot, lambda: screen.fleet_view.layout.rows, "the view to list the sessions")
             text = screen.fleet_view.text
-            assert "Sessions you own or may join · 2" in text and "Esc back to 1 rtr-core-01" in text
+            # rule 3 (2026-11-21): the title pair; rule 6 selects the first row, so the index leads.
+            assert "Sessions · 1/2" in text and "Esc back to 1 rtr-core-01" in text
             assert "keys → full view" in screen.status.text and "x End…" in screen.status.text
             await pilot.press("escape")
             await wait_until(pilot, lambda: not screen.view_open, "Esc to close the view")
@@ -325,8 +327,11 @@ def test_the_view_lists_needs_you_first_and_mine_joinable_and_show_ended_change_
             await wait_until(pilot, lambda: any(r[1] == second for r in view.layout.rows), "the poll's sessions")
             assert (GROUP_NEEDS, second) in view.layout.rows and (GROUP_TABLE, second) in view.layout.rows
             lines = view.text.splitlines()
-            assert next(i for i, l in enumerate(lines) if "Needs you" in l) < next(
-                i for i, l in enumerate(lines) if "Sessions you own" in l)
+            # rule 6 + rule 15 (2026-11-22, ruling 19): the fresh view's highlight is on the table's head row, so
+            # the title's index is that row's place (1), not `–`; `–` is only a Needs-you selection.
+            heading = next(i for i, l in enumerate(lines) if "Needs you" in l)
+            title = next(i for i, l in enumerate(lines) if "Sessions · 1/2" in l)
+            assert heading < title
             assert any("infra-db-02" in l and "unreachable · input refused · not ended" in l for l in lines)
             assert not any(r[1] == theirs for r in view.layout.rows), "the peer's session is not mine"
 

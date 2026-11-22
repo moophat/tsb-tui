@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 
 import pytest
 from textual.app import App, ComposeResult
@@ -16,6 +17,8 @@ from tsb_tui.screens.fleet_view import (
     FleetViewModel,
 )
 from tsb_tui.widgets.rail import ACT_ALERTS, ACT_NEW, RailModel, rail_rows
+
+from conftest import _screen_text
 
 
 @pytest.mark.parametrize("glyph_set,marks", [("unicode", ["▸", "▦", "◆", "!0", "≡", "+"]),
@@ -391,6 +394,19 @@ def test_two_size_baselines(serve, wait_until, size, state):
             screen.refresh_status()
             await pilot.pause(0.3)
 
+            def settle():
+                # The session row is deterministic (rule 6): the highlight sits on the front session's row every run.
+                # The paint of that mark lands a beat after set_focus; read the panel's painted lines and settle only
+                # once the front session's row shows it, so the snapshot never captures an un-repainted frame. At the
+                # narrow budget the mark is on the numbered name line, at the wide one on the single line.
+                for y in range(screen.sidebar.size.height):
+                    t = screen.sidebar.render_line(y).text
+                    if '▸' in t and 'fixture-ta' in t:
+                        return True
+                return False
+            if state == 'session':
+                await wait_until(pilot, settle, 'the front session row to paint its highlight')
+
             def quiet():
                 # The fixture's alert stream raises and clears an alert on its own clock; read at a moment with none.
                 row = next(r for r in screen.rail.rows if r.action == ACT_ALERTS)
@@ -458,13 +474,16 @@ def test_the_filter_and_its_count_belong_to_the_targets_section(tmp_path):
             sidebar.set_model(SidebarModel((), 'mine', None, 'Ctrl+\\ f',
                                            targets=_target_rows('core-1', 'core-2', 'edge-1')))
             await pilot.pause()
-            assert sidebar.render_line(0).text.startswith('┌─ ▦ Targets · 3')
+            # rule 3 (2026-11-21): the title carries the position; P2b's selection rule puts the highlight on
+            # the first row of a fresh list, so the index is 1.
+            assert sidebar.render_line(0).text.startswith('┌─ ▦ Targets · 1/3')
             sidebar.focus()
             await pilot.press('slash', 'c', 'o', 'r', 'e')
             await pilot.pause()
             lines = [sidebar.render_line(y).text for y in range(sidebar.size.height)]
             # The Targets list has the keys while its filter is typed into: its frame is the heavy one.
-            assert lines[0].startswith('┏━ ▦ Targets · 2/3'), lines[0]
+            # rule 4 (2026-11-21): the filtered title carries the index within the matches, then `of` the total.
+            assert lines[0].startswith('┏━ ▦ Targets · 1/2 of 3'), lines[0]
             assert lines[1].startswith('┃ / core▏'), lines[1]
             assert 'core-1' in lines[2] and 'core-2' in lines[3] and not any('edge-1' in l for l in lines)
     asyncio.run(check())
@@ -497,6 +516,8 @@ def test_a_filter_that_leaves_fewer_matches_is_not_left_scrolled_past_its_rows(t
             await pilot.press('slash', 'z', 'z')
             await pilot.pause()
             body = '\n'.join(sidebar.render_line(y).text for y in range(sidebar.size.height))
+            # rule 6 (2026-11-21): the filter leaves two rows; the highlight follows its entity (zzz2), the
+            # scroll lands back at the head (the whole list fits), so both rows show.
             assert 'zzz1' in body and 'zzz2' in body, body
     asyncio.run(check())
 
@@ -522,7 +543,8 @@ def test_the_targets_title_shows_a_plus_when_more_pages_exist(tmp_path):
                                            targets=_target_rows('t0', 't1', 't2', 't3', 't4'), target_has_next=True))
             await pilot.pause()
             title = sidebar.render_line(0).text
-            assert title.startswith('┌─ ▦ Targets · 5+'), title
+            # rule 3 (2026-11-21): `N+` is retired; while pages are out the count so far carries the ellipsis.
+            assert title.startswith('┌─ ▦ Targets · 1/5…'), title
     asyncio.run(check())
 
 
@@ -646,8 +668,11 @@ def test_panel_section_titles_carry_their_marks(tmp_path, monkeypatch, size, mon
             sidebar.blur()
             await pilot.pause()
             lines = [sidebar.render_line(y).text for y in range(sidebar.size.height)]
-            assert lines[0].startswith('┌─ ▦ Targets · 2 ─'), lines[0]
-            assert any(line.startswith('┌─ ▸ Sessions ─') for line in lines)
+            # rule 3 (2026-11-21): the title carries the position; P2b's selection rule puts the highlight on
+            # the first row of a fresh list, so the index is 1.
+            assert lines[0].startswith('┌─ ▦ Targets · 1/2 ─'), lines[0]
+            # rule 3 (2026-11-21): the Sessions title carries the position; no rows means `–/0`.
+            assert any(line.startswith('┌─ ▸ Sessions · –/0 ─') for line in lines), lines
     asyncio.run(check())
 
 

@@ -76,11 +76,9 @@ from ..model.fleet import (
 from ..model.targets import (
     PAGE_LIMIT,
     Query,
-    QueryError,
     TargetRow,
     TargetsModel,
     as_text,
-    parse_query,
 )
 from ..term import (
     UnknownKey,
@@ -113,8 +111,10 @@ from ..widgets.sidebar import (
     CMD_BACK,
     CMD_CLOSE,
     CMD_END,
+    CMD_DETAILS,
     CMD_FILTER,
     CMD_FOLD,
+    CMD_KEYS,
     CMD_FULL_VIEW,
     CMD_MODE,
     CMD_NEW,
@@ -158,7 +158,6 @@ from .fleet_view import (
     CMD_MARK,
     CMD_MORE_TARGETS,
     CMD_OPEN_TARGET,
-    CMD_QUERY,
     CMD_SAVE_LOGIN,
     CMD_TAB,
     CMD_TAB_CHANGED,
@@ -527,6 +526,7 @@ class TerminalScreen(Screen):
         self.rail = Rail(cfg)
         self.sidebar = Sidebar(cfg, leader=cfg["keys.leader"])
         self.fleet_view = FleetView(cfg, leader=cfg["keys.leader"])
+        self.fleet_view.target_records = lambda: self.targets.records
         self._stale_panel = StalePanel(self)
         self._stale_layer = StaleLayer(self._stale_panel)
         self._stale_banner = StaleBanner(cfg)
@@ -797,12 +797,12 @@ class TerminalScreen(Screen):
         self._sidebar_before_view = (self.sidebar_open, self._sidebar_has_keys())
         if self.sidebar_open:
             self.close_sidebar()
-        view.reset()
         self.targets.reset()
         self._targets_query_error = ""
         self._targets_page = None
         view.set_window_width(self._window_width())
         view.display = True
+        view.reset()  # afresh at the current size: the rows rule 6 selects from are the ones laid out here
         self._sync_fleet_widgets()  # the model must be set before `set_tab` below: the tabs come from it
         self._refresh_fleet()
         if tab is not None:
@@ -988,7 +988,7 @@ class TerminalScreen(Screen):
             leader_hint=f"{leader} {letter}", detail_for=self._details_for, buttons_for=self._buttons_for,
             total=sum(len(records) for records in groups.values()),
             record_fields=fields_of, record_search=search_of, record_entry=entry_for,
-            targets=self.targets.rows, targets_loading=not self.targets.fetched,
+            targets=self.targets.rows, targets_loading=not self.targets.fetched or bool(self.targets.next_cursor),
             target_has_next=bool(self.targets.next_cursor),
             others=others_by_target(scan.merged, me), target_edit="target.edit" in self.app.permissions,
             targets_unavailable=self.targets.unavailable,
@@ -1263,8 +1263,8 @@ class TerminalScreen(Screen):
         reply must be the one that extends the list, not one that folds it back."""
         model = self.targets
         if more:
-            if model.next_cursor is None or self._targets_page is not None or model.wanted != model.query:
-                return  # no next page, one is in flight, or the query on show is no longer the one wanted
+            if model.next_cursor is None or self._targets_page is not None:
+                return  # no next page, or one is in flight
             cursor, limit = model.next_cursor, PAGE_LIMIT
             query = model.query
             generation = model.begin()
@@ -1272,9 +1272,13 @@ class TerminalScreen(Screen):
         else:
             if background and self._targets_page is not None:
                 return
-            self._targets_page = None  # a fresh read supersedes any page still in flight
-            query = model.wanted if query is None else query
-            cursor, limit = None, (model.request_limit() if query == model.query else PAGE_LIMIT)
+            # A refresh supersedes any page still in flight: the generation moves past every request sent, so
+            # a stale reply can never fold the list back (rule 2, 2026-11-21). The refresh reads afresh: rows 0
+            # to its own reply, pages chained from it. The page in flight is dropped, not carried over.
+            self._targets_page = None
+            model.reset()
+            query = Query()
+            cursor, limit = None, PAGE_LIMIT
             generation = model.begin(query)
         call = functools.partial(self.app.client.list_targets, **query.filters(), limit=limit, cursor=cursor)
         self.app.call_api(
@@ -1288,6 +1292,7 @@ class TerminalScreen(Screen):
             self._targets_page = None
         if self._unmounted:
             return
+        current = self.targets.is_current(generation)
         if self.targets.apply(generation, query, page, append=more):
             self._mark_fleet_dirty()
             if self._target_select is not None and self.fleet_view is not None:
@@ -1297,9 +1302,11 @@ class TerminalScreen(Screen):
                 if self.targets.row(self._target_select) is not None:
                     self.fleet_view.selected = (GROUP_TARGETS, self._target_select)
                     self._target_select = None
-                elif self.targets.next_cursor:
-                    self._fetch_targets(more=True)
-                self._mark_fleet_dirty()
+            if self.targets.next_cursor and current:
+                # Every page is fetched in the background (rule 2, 2026-11-21): the chain continues only from
+                # the newest answer. A reply that applied below it (a refresh's first page, under a page already
+                # applied) extends nothing: its own request chains from its own reply.
+                self._fetch_targets(more=True)
 
     def _targets_failed(self, generation: int, exc: Exception, more: bool, background: bool,
                         cursor: str | None) -> None:
@@ -1325,18 +1332,6 @@ class TerminalScreen(Screen):
                 self._mark_fleet_dirty()
         elif not background or (isinstance(exc, ApiError) and exc.status == 401):
             self.app.notify_api_error(exc)
-
-    def _run_query(self, text: str) -> None:
-        """The query line was entered: parse it (a refusal is shown in the line, the rows stay), then ask the broker."""
-        self._targets_query_error = ""
-        try:
-            query = parse_query(text)
-        except QueryError as exc:
-            self._targets_query_error = as_text(str(exc))
-            self._mark_fleet_dirty()
-            return
-        self._mark_fleet_dirty()
-        self._fetch_targets(query=query)
 
     def _targets_tab_changed(self) -> None:
         """The Targets tab was opened (read it now, then on `fleet_view.refresh_s`) or left (stop reading it)."""
@@ -1444,8 +1439,10 @@ class TerminalScreen(Screen):
             self._targets_to_vault(view, save=True)
         elif name == CMD_MAP:
             self._targets_to_vault(view, save=False)
-        elif name == CMD_QUERY:
-            self._run_query(arg or "")
+        elif name == CMD_KEYS:
+            self.do_keys()
+        elif name == CMD_DETAILS:
+            self._open_target_details(arg)
         elif name == CMD_MORE_TARGETS:
             self._fetch_targets(more=True)
         elif name == CMD_TAB_CHANGED:
@@ -1463,7 +1460,6 @@ class TerminalScreen(Screen):
             # the query that opened the form. The broker still does all filtering.
             if self.fleet_view is not None:
                 self.fleet_view.query_text = ""
-                self.fleet_view.applied_query = ""
             self._fetch_targets(query=Query())
 
     def _target_write_command(self, command: str, target_id: str | None) -> None:
@@ -1921,8 +1917,14 @@ class TerminalScreen(Screen):
         elif name == CMD_ALERTS:
             self.open_fleet_view(TAB_ALERTS)
         elif name == CMD_FILTER:
+            # Ruling 18 (2026-11-22): `/` enters the filter of the list that holds the keys. The widget posts the
+            # command; the screen acts, as every other list command goes.
             sidebar.start_filter()
             sidebar.focus()
+        elif name == CMD_KEYS:
+            self.do_keys()
+        elif name == CMD_DETAILS:
+            self._open_target_details(arg)
         elif name == CMD_TARGET_NEW:
             self._target_write_command(CMD_TARGET_NEW, None)
         elif name == CMD_RETRY:
@@ -2850,6 +2852,17 @@ class TerminalScreen(Screen):
             event.stop()
             self.pump.stop_reattach()  # Esc stops the reattaching: no further attempt (F12)
             return
+        if event.key == "slash" and not self._leader_pending:
+            # Ruling 18 (2026-11-22): `/` enters the filter of the list that holds the keys; while the session pane
+            # holds them it is input to the target, as every other key. The widget posts the command, the screen acts.
+            # It runs before `event.stop()` so the focused list's own handler stays the single path: a list not
+            # focused gets the key here.
+            if self._sidebar_has_keys():
+                self._sidebar_command(CMD_FILTER)
+                return
+            if self._view_has_keys():
+                self._fleet_view_command(CMD_FILTER)
+                return
         event.stop()
         if leader:
             self._end_pan()
@@ -3081,6 +3094,15 @@ class TerminalScreen(Screen):
     def do_settings(self) -> None:
         self.app.push_screen(TextScreen(self, "Settings · the knobs in force, and where each came from",
                                         lambda: settings_lines(self.app.cfg)))
+
+    def _open_target_details(self, target_id: str | None) -> None:
+        """`i` on a target row (rule 10, 2026-11-21): the record the row shows, from the loaded pages."""
+        record = self.targets.record(target_id)
+        if record is None:
+            return
+        from .target_details import TargetDetailsScreen
+
+        self.app.push_screen(TargetDetailsScreen(self, record))
 
     def do_keys(self) -> None:
         self.app.push_screen(TextScreen(self, "All keys", lambda: keys_lines(self.app.cfg, self.facts())))
@@ -3616,7 +3638,7 @@ class TerminalScreen(Screen):
                           Hint("e", "Edit target", click + CMD_TARGET_EDIT if editable else None),
                           Hint("D", "Delete target…", click + CMD_TARGET_DELETE if editable else None))
             return KeysTarget("targets", (Hint("n", "New session", click + CMD_NEW), *writes,
-                Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("/", "Query", click + CMD_FILTER),
+                Hint("⏎", "New session here", click + CMD_OPEN_TARGET), Hint("/", "Filter", click + CMD_FILTER),
                 Hint("Space", "Mark", click + CMD_MARK), Hint("l", "Save login…", click + CMD_SAVE_LOGIN),
                 Hint("p", "Map…", click + CMD_MAP),
                 Hint("Tab", "Next tab", click + CMD_TAB), Hint("Esc", "Back", click + CMD_CLOSE)),
