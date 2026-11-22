@@ -1019,6 +1019,8 @@ class Sidebar(Widget):
             show_details=self.details_shown, prepared=self._prepared, framed=True, show_ended=self.show_ended)
 
     def _relayout(self) -> None:
+        prev_selected = self.selected  # rule 6 (2026-11-22): the view is built with the old selection; if rule 6
+        # moves it, the painted mark must be rebuilt against the surviving selection.
         view = self._build()
         rows = list(view.rows)
         if self.selected is None:
@@ -1029,7 +1031,7 @@ class Sidebar(Widget):
             following = rows[self._session_pos:]
             self.selected = following[0] if following else (rows[-1] if rows else None)
         self._session_pos = rows.index(self.selected) if self.selected in rows else min(self._session_pos, len(rows))
-        if view.rows != tuple(rows):
+        if view.rows != tuple(rows) or self.selected != prev_selected:
             view = self._build()
         # The Targets list follows rule 6 (2026-11-21) over its painted rows (Recent included): the highlight
         # keeps its place when the entity is still shown; when the row that carried it disappears, the next

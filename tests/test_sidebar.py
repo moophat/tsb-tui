@@ -1024,3 +1024,32 @@ def test_with_more_open_sessions_than_fit_down_scrolls_the_selected_row_onto_scr
             assert screen.sidebar.selected == rows[0] and visible("sw-1"), "up scrolls back to the first row"
 
     asyncio.run(check())
+
+
+def test_a_refresh_that_removes_the_selected_session_moves_the_mark(serve, wait_until) -> None:
+    """Rule 6 on the sidebar's Sessions section: when the highlighted session leaves the list (a refresh), the mark
+    moves to the surviving row below its place, not the row that carried it. The view must be rebuilt against the
+    new selection, so the painted mark stands on the surviving session only."""
+
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        first, second = named_sessions(url, serve_app, "router", "switch")
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)  # no ticks behind the test: the refresh is this test's
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, first, second)
+            screen.open_sidebar(pane="sessions")
+            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 2 and screen.sidebar.has_focus, "rows")
+            screen.sidebar.selected = (GROUP_OPEN_HERE, first)
+            await pilot.pause()
+            marked = [line for line in screen.sidebar.view.lines if line.text.startswith("▸")]
+            assert any(line.session_id == first for line in marked), marked
+            # The highlighted session leaves the open-here list; rule 6 moves the highlight to the surviving row.
+            screen._close_slot(screen.slot_for(first))
+            screen._refresh_fleet()
+            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 1, "the list to drop the session")
+            assert screen.sidebar.selected == (GROUP_OPEN_HERE, second), screen.sidebar.selected
+            marked = [line for line in screen.sidebar.view.lines if line.text.startswith("▸")]
+            assert any(line.session_id == second for line in marked), "the mark stands on the surviving row"
+    asyncio.run(check())

@@ -1025,7 +1025,13 @@ class FleetView(Widget):
         elif key == "shift+tab":
             self.next_tab(-1)
         elif key == "escape":
-            self.post_message(self.Command(CMD_CLOSE))
+            # rule 11 (2026-11-22): a non-editing Escape with a filter on the view clears the filter and relayouts;
+            # the next Escape closes.
+            if self.filter_text:
+                self.filter_text = ""
+                self._relayout()
+            else:
+                self.post_message(self.Command(CMD_CLOSE))
         elif key == "slash" and self.tab in (TAB_SESSIONS, TAB_TARGETS):
             self.start_filter()
         elif key == "m" and self.tab == TAB_SESSIONS:

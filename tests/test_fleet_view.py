@@ -24,6 +24,8 @@ from tsb_tui.screens import fleet_view as fleet_view_module
 from tsb_tui.screens.fleet_view import (
     GROUP_NEEDS,
     GROUP_TABLE,
+    TAB_SESSIONS,
+    TAB_TARGETS,
     FleetRow,
     FleetView,
     FleetViewModel,
@@ -489,3 +491,31 @@ def test_target_counts_are_separate_for_live_and_ended_sections() -> None:
     lines = _text(_layout(model, group_by='target', show_ended=True))
     headers = [line.strip() for line in lines if line.strip().startswith('router ·')]
     assert headers == ['router · 1', 'router · 2']
+
+
+def test_escape_clears_the_filter_first_and_closes_on_the_next(serve, wait_until) -> None:
+    """Rule 11 (2026-11-22): a non-editing Escape with a filter on the view clears the filter and relayouts; the
+    next Escape closes. Tested in both the Sessions tab and the Targets tab."""
+
+    async def check(tab: str) -> None:
+        serve_app, url = serve(InputRecordingApp())
+        (sid,) = named_sessions(url, serve_app, "rtr-core-01")
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, sid)
+            screen.open_fleet_view(tab)
+            view = screen.fleet_view
+            await wait_until(pilot, lambda: view.layout.rows, "the view to list rows")
+            # A filter that matches nothing: Enter applies it (editing off, the text stays) and opens nothing.
+            await pilot.press("slash", *"zzz")
+            await pilot.press("enter")
+            assert view.filter_text == "zzz" and not view.editing, (view.filter_text, view.editing)
+            await pilot.press("escape")
+            assert view.filter_text == "", "the first Escape clears the filter"
+            assert screen.view_open, "the view stays open after clearing the filter"
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: not screen.view_open, "the second Escape closes the view")
+
+    asyncio.run(check(TAB_SESSIONS))
+    asyncio.run(check(TAB_TARGETS))

@@ -289,12 +289,35 @@ plus the gate's `test_sidebar.py`/`test_targets_tab.py`/`test_sign_out.py`): **4
 same reason). The intermittent failures move between runs under heavy parallel load; none is a regression from this
 round's changes.
 
-Status: DONE — 13 of 13 review findings. Refutations for items 1, 3, 4, 8 (green on a055ddc); red-first fixes for items
-5, 6, 7, 13, 10, 2, 12, 9 (red on a055ddc, green after the ruling's design applied). The four interlocking terminal.py
-paging/poll/sign-out changes each had their design gap ruled by the orchestrator (2026-11-22) before the fix. Gate
-green; contract-check and lint exit 0. Wider-suite baselines: every difference ruled by item 7, regenerated; no STOP.
-Not verified: the whole test suite under a single clean run (the load-sensitive timing tests fail intermittently in
-parallel, green in isolation).
-Summary: five findings refuted against the code with file:line, eight fixed red-first (`?` key, loading title, filter
-control, Recent double-mark via row-position, sign-out guard, background staging pass, no-overlap guard, failed-more
-retry line); 9 baselines regenerated (7 p3 gallery + 2 p2a session), all ruled by item 7; gates green.
+## Two items the first pass missed (the orchestrator, 2026-11-22 19:5x)
+
+Qodo re-assessed 1397e5e and kept items 3 and 11; both are right. The first pass got them wrong:
+
+**Item 3 — missed in the first pass.** The first pass refuted item 3 by testing `FleetView._relayout`
+(`fleet_view.py:786`), which already captures `prev_selected` (ruling 19). The finding is `Sidebar._relayout`
+(`sidebar.py:1021`): it copies `rows = list(view.rows)` from the view it just built and rebuilds only
+`if view.rows != tuple(rows)`, never true, so when the highlighted session leaves the open-here list and rule 6 moves
+`self.selected`, the view keeps the old selection's mark. Red on 1397e5e: `test_a_refresh_that_removes_the_selected_session_moves_the_mark`
+(`tests/test_sidebar.py`) — after closing the selected session's slot, `self.selected` moves to the surviving row
+(rule 6 passes) but the painted `▸` is absent, because the view was built with the removed selection. Fix: capture
+`prev_selected = self.selected` before `_build()` and rebuild when `view.rows != tuple(rows) or self.selected != prev_selected`
+(the ruling-19 pattern, applied to the sidebar). Green after.
+
+**Item 11 — not done in the first pass.** The first pass's status listed twelve findings; item 11 was omitted.
+`FleetView.on_key`'s non-editing `escape` branch (`fleet_view.py:1027`) posted `CMD_CLOSE` unconditionally, so Escape
+closed a view with a committed filter. Red on 1397e5e:
+`test_escape_clears_the_filter_first_and_closes_on_the_next` (`tests/test_fleet_view.py`) — after Enter commits a filter
+(`filter_text` nonempty, editing off), the first Escape left `filter_text == "zzz"` and closed the view. Fix: a
+non-editing Escape with a nonempty `filter_text` clears it and relayouts; the next Escape closes. Tested in both the
+Sessions and the Targets tab. Green after.
+
+Gate (the gate files plus `tests/test_redesign_lists.py`, `tests/test_redesign_layout.py`, `tests/test_fleet_view*.py`):
+**274 passed, 0 failed** (`make contract-check` exit 0; `make lint` exit 0; engine-check at PIN). No baseline difference
+arose from these two fixes (item 3 is a mark-move on a session removal, item 11 is Escape behaviour; neither is in a
+snapshot case), so no baseline was regenerated.
+
+Status: DONE — all 13 review findings, honestly. Refutations for items 1, 4, 8 (green on a055ddc); red-first fixes for
+items 5, 6, 7, 13, 10, 2, 12, 9, 3 (sidebar), 11. **Item 3's first-pass refutation was wrong** (it tested FleetView,
+not the Sidebar the finding named) and **item 11 was missed entirely in the first pass**; both are now red-first fixed
+on 1397e5e. Summary: three findings refuted against the code with file:line, ten fixed red-first; 9 baselines
+regenerated (all ruled by item 7); gates green.
