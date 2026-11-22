@@ -9,8 +9,6 @@ AI-Model: strata/strata
 from __future__ import annotations
 
 import asyncio
-import html
-import json
 import os
 import re
 import threading
@@ -19,12 +17,19 @@ from pathlib import Path
 
 import pytest
 from input_server import InputRecordingApp
+from test_fleet_view_painted_rows import ME as _ME
+from test_fleet_view_painted_rows import TABLE as _TABLE
+from test_fleet_view_painted_rows import (
+    FakeSessionsClient,
+    Rig,
+    live_count,
+    make_records,
+    open_view,
+)
 from tsbc import _serve
 from workspace_support import fixture_login, named_sessions, open_here
 
 from tsb_tui.app import TsbTuiApp
-from test_fleet_view_painted_rows import Rig, open_view, FakeSessionsClient, make_records, live_count
-from test_fleet_view_painted_rows import ME as _ME, TABLE as _TABLE
 
 
 def _painted(screen) -> list[str]:
@@ -300,7 +305,7 @@ def test_target_titles_carry_the_position_at_both_sizes(serve, wait_until):
             app = TsbTuiApp(url)
             async with app.run_test(size=size) as pilot:
                 screen = await fixture_login(app, pilot)
-                await wait_until(pilot, lambda: len(screen.targets.rows) == 58 and not screen.targets.next_cursor,
+                await wait_until(pilot, lambda screen=screen: len(screen.targets.rows) == 58 and not screen.targets.next_cursor,
                                  "all 58 targets")
                 screen.open_sidebar(pane="targets")
                 await pilot.pause()
@@ -376,7 +381,7 @@ def test_sessions_titles_carry_the_position(serve, wait_until):
             screen = await fixture_login(app, pilot)
             first, second = named_sessions(url, served, "sw-1", "sw-2")
             await open_here(app, pilot, wait_until, first, second)
-            (theirs,) = named_sessions(url, served, "sw-3", user=_serve.PEER)
+            (_theirs,) = named_sessions(url, served, "sw-3", user=_serve.PEER)
             screen._refresh_fleet()
             screen.open_sidebar(pane="sessions")
             await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 2, "the two open rows")
@@ -602,7 +607,6 @@ def test_scale_8000_targets_keys_and_position(serve, wait_until):
         app = TsbTuiApp(url)
         async with app.run_test(size=(160, 45)) as pilot:
             screen = await fixture_login(app, pilot)
-            t0 = time.monotonic()
             await wait_until(pilot, lambda: len(screen.targets.rows) == 8008, "all pages", 30)
             screen.open_sidebar(pane="targets")
             await pilot.pause()
@@ -630,7 +634,7 @@ def test_slash_enters_the_filter_of_the_list_that_holds_the_keys(serve, wait_unt
     opens afresh with the keys, and `/` starts its Targets filter."""
 
     async def check():
-        served, url = serve(InputRecordingApp())
+        _served, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
         async with app.run_test(size=(160, 45)) as pilot:
             screen = await fixture_login(app, pilot)

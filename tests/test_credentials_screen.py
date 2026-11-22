@@ -325,7 +325,7 @@ def test_a_query_that_excludes_a_marked_target_leaves_both_marks_and_map_acts_on
                                          "host": "192.0.2.50", "port": 22}
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 40)) as pilot:
-            workspace, view = await _targets_tab(app, pilot, wait_until)
+            _workspace, view = await _targets_tab(app, pilot, wait_until)
             await _select(pilot, view, "aa-shell")
             await pilot.press("space")
             await _select(pilot, view, "two-client")
@@ -351,7 +351,7 @@ def test_marks_outside_the_loaded_rows_are_acted_on_and_the_selected_row_is_neve
         serve_app.hold_credential(_serve.USER, "mine")
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 40)) as pilot:
-            workspace, view = await _targets_tab(app, pilot, wait_until)
+            _workspace, view = await _targets_tab(app, pilot, wait_until)
             await _select(pilot, view, "fixture-target")
             await pilot.press("space")
             await _select(pilot, view, "normal")

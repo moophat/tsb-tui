@@ -132,3 +132,28 @@ No production change was needed — the code behaves so; the test passes. Nothin
 
 Status: DONE — ruling 20's rule-12 rewrites applied, ruling 21's STOP rewritten to rule 6 with no production change, three production fixes in `fleet_view.py`; the target-form file and gate are green apart from load-sensitive tests that pass in isolation.
 Summary: the saved-target test renamed and rewritten to rule 6 (selection moves to the next surviving row, title names it, Esc shows the edit); full suite 1 failed / 2554 passed (the now-resolved STOP), target-form + 11-file gate 3 failed / 405 passed (all load-sensitive, green alone), contract-check and lint exit 0.
+
+## Ruling 22 — `make lint` ruff fixes (2026-11-22 14:1x)
+
+The earlier report's `make lint: exit 0` was the local run, where ruff is not on PATH and the Makefile skips it; the orchestrator's `make lint` runs `ruff check tsb_tui tests bench tools` and reported 20 errors. All 20 fixed; no behaviour changed beyond the F821 fix.
+
+The real defect (F821, `tsb_tui/widgets/sidebar.py:1612`): inside `_target_painted`, the branch runs only when `self.wide` is true, so the budget is `_target_facts_budget(self.wide, inner)`; the code read an undefined name `budgeted_wide` (local to `_target_spans`). A wide view whose cached facts are empty raised NameError.
+- Test first: `tests/test_sidebar.py::test_a_wide_target_row_with_no_facts_paints_without_the_nameerror` — a target with no host, group or tags and type `ssh` has no facts, so the cached painted facts are empty; painting its row in the wide sidebar recomposes within the wide budget.
+- Red on the pre-fix build: `NameError: name 'budgeted_wide' is not defined` at `sidebar.py:1612`.
+- Fix: `budgeted_wide` → `self.wide`. Green after (the row paints its label).
+
+Other ruff fixes (behaviour-preserving):
+- `tsb_tui/screens/terminal.py` import block: `CMD_FULL_VIEW` / `CMD_DETAILS` ordering (I001).
+- `tsb_tui/widgets/sidebar.py` 330, 1931: unused unpacked `slash` → `_slash` (RUF059); 1830 `start + 1 if start + 1 <= last_start else last_start` → `min(start + 1, last_start)` (FURB136).
+- `tests/test_credentials_screen.py` 328, 354: unused unpacked `workspace` → `_workspace` (RUF059).
+- `tests/test_redesign_layout.py`: removed unused imports `re` and `conftest._screen_text`, the inner `import re` that redefined it (F401, F811), and sorted the import block (I001).
+- `tests/test_redesign_lists_filter.py`: removed unused imports `html`, `json` and sorted the block (F401, I001); bound the loop variable in the `wait_until` lambda as `lambda screen=screen: …` (B023); unused unpacked `theirs`→`_theirs`, `served`→`_served` (RUF059); removed the unused `t0 = time.monotonic()` (F841).
+- `tests/test_targets_tab.py` 459: unused unpacked `view` → `_view` (RUF059).
+
+Gate (ruling 22):
+- `make lint` exit 0 with ruff on the path: `All checks passed!`, import-lint clean, engine-check verified.
+- Touched test files + `test_redesign_lists_filter.py` + `test_sidebar.py` (167 tests): **1 failed, 166 passed** — the one failure, `test_targets_tab.py::test_a_click_on_the_last_loaded_target_selects_it_while_pages_arrive`, is load-sensitive and green in isolation (2/2, `~12s` each); not caused by these edits.
+- The F821 test green; `make contract-check` exit 0.
+
+Status: DONE — all 20 ruff errors fixed (the F821 defect with a red-then-green test), no behaviour changed beyond that fix; `make lint` exits 0, the touched-file gate is green apart from one load-sensitive test that passes in isolation.
+Summary: sidebar.py F821 fixed to `self.wide` with a new sidebar test (red NameError, green after); import-order/unused-import/underscore/min/B023 fixes across the named files; make lint exit 0, gate 1 failed / 166 passed (the failure load-sensitive, green alone), contract-check exit 0.

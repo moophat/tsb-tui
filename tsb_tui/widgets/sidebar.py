@@ -327,7 +327,7 @@ def title_parts(name: str, index: str, first: str, of_part: str, loading: bool, 
     core = parts[0]
     if loading:
         head, sep, counts = core.partition("· ")
-        index, slash, first = counts.partition("/")
+        index, _slash, first = counts.partition("/")
         fitted = f"{head}{sep}{index}/{first}… loading"  # the count so far is never a false total (rule 3)
         return fitted if len(fitted) < width else parts[0]
     return core
@@ -1609,7 +1609,7 @@ class Sidebar(Widget):
             # numbers come from the open-session map the spans cache keyed on (rule 17's segment order).
             _full, facts = _target_facts(row, self._open_numbers().get(row.id, ()),
                                          self._model.others.get(row.id, ""), row.group,
-                                         max(_target_facts_budget(budgeted_wide, inner), 0))
+                                         max(_target_facts_budget(self.wide, inner), 0))
         label = _target_label(row)
         # The tooltip carries the row's full facts, the segment the painted line omits included (ruled 2026-11-21).
         tip = " · ".join(part for part in (label, full) if part) or None
@@ -1827,7 +1827,7 @@ class Sidebar(Widget):
             acc = last_count
             for start, count in reversed(pairs[:-1]):
                 if acc + count > height:
-                    return start + 1 if start + 1 <= last_start else last_start
+                    return min(start + 1, last_start)
                 acc += count
             return 0
         return max((start for start, count in pairs if count <= height), default=0)
@@ -1928,7 +1928,7 @@ class Sidebar(Widget):
             if self._model.target_has_next and len(parts) == 2:
                 # the word drops last (rule 16): at the narrow budget the pair with its ellipsis stands alone.
                 head, sep, counts = title.partition("· ")
-                index, slash, first = counts.partition("/")
+                index, _slash, first = counts.partition("/")
                 title = f"{head}{sep}{index}/{first}…"
                 label = horizontal + " " + title + " "
             text = tl + label[:max(width - 2, 0)].ljust(max(width - 2, 0), horizontal) + tr

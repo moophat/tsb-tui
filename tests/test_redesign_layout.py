@@ -18,8 +18,6 @@ from tsb_tui.screens.fleet_view import (
 )
 from tsb_tui.widgets.rail import ACT_ALERTS, ACT_NEW, RailModel, rail_rows
 
-from conftest import _screen_text
-
 
 @pytest.mark.parametrize("glyph_set,marks", [("unicode", ["▸", "▦", "◆", "!0", "≡", "+"]),
                                              ("ascii", [">", "#", "*", "!0", "=", "+"])])
@@ -355,7 +353,6 @@ def test_worded_alerts_row_follows_broker_health(serve, wait_until, size):
 
 def _snapshot(app, name):
     import os
-    import re
     from pathlib import Path
 
     svg = re.sub(r'terminal-\d+', 'terminal-p2a', app.export_screenshot(title='P2a', simplify=True))

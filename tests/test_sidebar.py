@@ -366,6 +366,29 @@ def test_the_sidebar_is_30_32_or_42_columns_by_the_window_and_has_no_detail_bloc
 
 
 
+def test_a_wide_target_row_with_no_facts_paints_without_the_nameerror(serve, wait_until) -> None:
+    """Rule 17's painted target line (2026-11-21): the wide sidebar recomposes a row's facts when the cached
+    painted facts are empty. A target with no host, group or tags and type `ssh` has no facts, so the cached facts
+    are empty; painting its row recomposes within the wide budget. Before the fix that recompose read an undefined
+    name (NameError); once fixed the row paints its label."""
+
+    async def _check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        # a target whose facts are empty: no host, ssh, no group, no tags
+        serve_app.targets["no-facts"] = {"id": "no-facts", "type": "ssh", "name": "no facts", "group": "",
+                                         "tags": [], "discovered_by": "manual", "last_seen": _serve.SEEN,
+                                         "host": "", "port": 22}
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            screen.open_sidebar(pane="targets")
+            await wait_until(pilot, lambda: any(row.id == "no-facts" for row in screen.sidebar.model.targets),
+                             "the empty-facts target loaded")
+            lines = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("no facts" in line for line in lines), "the row paints its label"
+    asyncio.run(_check())
+
+
 @pytest.mark.parametrize("mode, window, closes", [
     ("always", 120, False), ("never", 65, False), ("phone", 120, False), ("phone", 65, False)])
 def test_picking_a_session_keeps_sidebar_open_regardless_of_old_close_setting(

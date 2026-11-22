@@ -456,7 +456,7 @@ def test_a_reopened_view_never_appends_an_old_pages_rows(serve, wait_until) -> N
         gate, asked = _gated_pages(serve_app)
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 36)) as pilot:
-            screen, view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
+            screen, _view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
             screen._stop_targets_timer()
             screen.close_fleet_view()
             screen.open_fleet_view(TAB_TARGETS)  # reopened: the model resets and asks its own first page
