@@ -591,6 +591,7 @@ class TerminalScreen(Screen):
     def on_unmount(self) -> None:
         # Anything still in flight must not touch a closed engine: flag first, then cancel, then free.
         self._unmounted = True
+        self._targets_staging = None  # a staging pass outstanding at unmount applies nothing (rule 2, 2026-11-23)
         if self._auto_timer is not None:
             self._auto_timer.stop()
         self._stop_targets_timer()
@@ -1312,18 +1313,23 @@ class TerminalScreen(Screen):
             cursor, limit = None, PAGE_LIMIT
             generation = model.begin(query)
         call = functools.partial(self.app.client.list_targets, **query.filters(), limit=limit, cursor=cursor)
+        pass_model = staging if background else None  # the pass this callback belongs to, captured at submission
         self.app.call_api(
-            call, on_done=lambda page: self._targets_reply(generation, query, page, more, cursor, background, quiet),
-            on_error=lambda exc: self._targets_failed(generation, exc, more, background, cursor, quiet))
+            call, on_done=lambda page: self._targets_reply(generation, query, page, more, cursor, background, quiet,
+                                                           pass_model),
+            on_error=lambda exc: self._targets_failed(generation, exc, more, background, cursor, quiet, pass_model))
 
     def _targets_reply(self, generation: int, query: Query, page: dict, more: bool, cursor: str | None,
-                       background: bool = False, quiet: bool = False) -> None:
+                       background: bool = False, quiet: bool = False, pass_model: TargetsModel | None = None) -> None:
         if background:
-            # A staging pass's reply applies to the staging model, chained from its own cursor (rule 2, 2026-11-22).
-            # The published list is untouched until the last page lands. A foreground read dropped the pass: the
-            # staging model is gone, so this reply never applies.
+            # A staging pass's reply applies to the staging model it was sent for, chained from its own cursor
+            # (rule 2, 2026-11-22). A reply whose pass is not the one now in flight (a dropped pass, an unmount)
+            # applies nothing, chains nothing and clears nothing (rule 1, 2026-11-23). The published list is
+            # untouched until the last page lands.
+            if self._unmounted:
+                return
             staging = self._targets_staging
-            if staging is None:
+            if staging is None or staging is not pass_model:
                 return
             if staging.apply(generation, query, page, append=more):
                 if staging.next_cursor:
@@ -1356,14 +1362,19 @@ class TerminalScreen(Screen):
                 self._fetch_targets(more=True, quiet=quiet)
 
     def _targets_failed(self, generation: int, exc: Exception, more: bool, background: bool,
-                        cursor: str | None, quiet: bool = False) -> None:
+                        cursor: str | None, quiet: bool = False, pass_model: TargetsModel | None = None) -> None:
         """503 `inventory_unavailable` is a state the tab shows; a refused query keeps the rows and says why in the
         query line; a 401 goes the way every 401 goes; anything else is a toast, unless it was only the timer's read
         or the first load after login (the next tick tries again). Only the newest request may change the tab."""
         if background:
             # A staging pass that fails at any page is dropped and the published list stays as it was (rule 2,
-            # 2026-11-22). A 503 marks the published model unavailable as today; a 401 goes the way every 401 goes;
-            # anything else raises no toast (the next tick starts a new pass).
+            # 2026-11-22). A failure whose pass is not the one now in flight (a dropped pass, an unmount) clears
+            # nothing (rule 1, 2026-11-23). A 503 marks the published model unavailable as today; a 401 goes the
+            # way every 401 goes; anything else raises no toast (the next tick starts a new pass).
+            if self._unmounted:
+                return
+            if self._targets_staging is not pass_model:
+                return
             self._targets_staging = None
             if isinstance(exc, ApiError) and exc.code == "inventory_unavailable":
                 self.targets.unavailable = True

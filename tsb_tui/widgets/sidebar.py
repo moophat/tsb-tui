@@ -1031,7 +1031,11 @@ class Sidebar(Widget):
             following = rows[self._session_pos:]
             self.selected = following[0] if following else (rows[-1] if rows else None)
         self._session_pos = rows.index(self.selected) if self.selected in rows else min(self._session_pos, len(rows))
-        if view.rows != tuple(rows) or self.selected != prev_selected:
+        # The rows clause was dead (rule 9, 2026-11-23): `rows` is copied from the view just built, so
+        # `view.rows != tuple(rows)` is never true, and a rows change alone never needs a rebuild — the first
+        # `_build()` already painted the new rows against the selection it had, which is unchanged. Only the
+        # selection moving (rule 6) needs the view rebuilt against the surviving selection.
+        if self.selected != prev_selected:
             view = self._build()
         # The Targets list follows rule 6 (2026-11-21) over its painted rows (Recent included): the highlight
         # keeps its place when the entity is still shown; when the row that carried it disappears, the next
@@ -1625,7 +1629,9 @@ class Sidebar(Widget):
         label = _target_label(row)
         # The tooltip carries the row's full facts, the segment the painted line omits included (ruled 2026-11-21).
         tip = " · ".join(part for part in (label, full) if part) or None
-        selected = position == self._target_pos
+        # The mark shows only when a target is selected (rule 5, 2026-11-23): a fresh sidebar with targets and
+        # nothing selected paints no mark; rule 7's one-mark behaviour stays.
+        selected = self.target_selected is not None and position == self._target_pos
         mark = (SELECTED, "mark") if selected else (" ", "blank")
         within = index - spans[position]
         row_lines = 1 if (self.wide or not facts) else 2
@@ -1840,12 +1846,15 @@ class Sidebar(Widget):
             return 0
         last_start, last_count = pairs[-1]
         if last_count <= height:
-            # the walk runs back from the tail, bounded by the window's rows (rule 11).
+            # the walk runs back from the tail, bounded by the window's rows (rule 11). The limit is a row start
+            # (rule 4, 2026-11-23): the first row that fits whole from the tail, never a start plus one.
             acc = last_count
+            prev_start = last_start
             for start, count in reversed(pairs[:-1]):
                 if acc + count > height:
-                    return min(start + 1, last_start)
+                    return prev_start
                 acc += count
+                prev_start = start
             return 0
         return max((start for start, count in pairs if count <= height), default=0)
 
@@ -2062,11 +2071,15 @@ class Sidebar(Widget):
                 if line.group == PANE_TARGETS and line.session_id is not None:
                     self.pane = PANE_TARGETS
                     self.target_selected = line.session_id
-                    # Highlight the row clicked (rule 10, 2026-11-22): a target in Recent and the main list marks
-                    # the appearance clicked, not both; actions keep using the id.
+                    # Highlight the row clicked (rule 10, 2026-11-22; rule 3, 2026-11-23): the clicked line is
+                    # resolved to a row through the cached pairs, so the filter line and the `Recent` heading are
+                    # taken off before bisecting — a target in Recent and the main list marks the appearance
+                    # clicked, not the row below it; actions keep using the id.
                     index = event.y - 1 + self._target_scroll_top
-                    spans = self._target_spans()
-                    self._target_pos = max(0, bisect.bisect_right(spans, index) - 1)
+                    pairs = self._target_row_pairs()
+                    starts = self._pair_starts(pairs)
+                    headers = (1 if self._has_filter_line() else 0) + (1 if self._recent_targets() else 0)
+                    self._target_pos = max(0, bisect.bisect_right(starts, index) - 1 - headers)
                     self.refresh()
             return
         line = self._line_at(event.y)

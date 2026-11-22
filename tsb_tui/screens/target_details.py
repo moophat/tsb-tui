@@ -12,6 +12,7 @@ import textwrap
 from collections.abc import Mapping
 from typing import Any, ClassVar
 
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -73,10 +74,15 @@ class TargetDetailsScreen(_Dialog):
         # `_Dialog.on_mount` (the registration with the terminal) runs on its own: Textual calls every handler.
         self.sync()
 
+    def on_resize(self, event: events.Resize) -> None:
+        # The panel's laid-out content width changed: wrap again to it (rule 6, 2026-11-23).
+        self.sync()
+
     def sync(self) -> None:
-        """The fields at the panel's current width, wrapped whole."""
-        width = max(self.size.width - 4, 20)
+        """The fields at the panel's laid-out content width, wrapped whole. The screen is full-width, so the
+        screen's own width is not the panel's: wrap at the body Static's content width, which is the panel box
+        inside its border and padding (rule 6, 2026-11-23)."""
         body = self.query_one("#detail-body", Static)
-        body.update("\n".join(detail_lines(self._record, width)))
+        body.update("\n".join(detail_lines(self._record, max(body.size.width, 1))))
 
 __all__ = ["FIELDS", "TargetDetailsScreen", "detail_lines"]

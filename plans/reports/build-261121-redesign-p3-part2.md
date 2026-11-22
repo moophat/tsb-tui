@@ -364,3 +364,63 @@ files) exit 0 — **387 passed**. `git diff --name-only`: only `tsb_tui/screens/
 
 **Not verified:** the two intermittents and the filter flake were not run on main 10a63d7 itself (worktree/stash
 disallowed); the full suite was not re-run (this ruling asks for the gate only).
+
+## Qodo third round (2026-11-23, on 95e0d84)
+
+Eight findings checked against the tree (469a4e2 + the CI-regression fix). Each red first (first failing
+line on HEAD), then the fix, then green; a refutation with file:line where the tree already did it.
+
+- **Item 1 — an old staging reply acts on a newer pass.** Red: `test_an_old_staging_reply_never_touches_a_newer_pass`
+  first failing line `tests/test_redesign_lists_review.py:477` (`assert screen._targets_staging is b`: the old
+  pass's last-page reply published into the pass now in flight and cleared it);
+  `test_an_old_staging_failure_never_clears_a_newer_pass` at `:505` (the old pass's failure cleared the pass in
+  flight). Fix: `_fetch_targets` captures the pass it sent for (`pass_model`) into both callbacks;
+  `_targets_reply`/`_targets_failed` return when `self._targets_staging is not pass_model`. Green.
+- **Item 2 — a staging reply after unmount chains a request.** Red:
+  `test_a_staging_reply_after_unmount_sends_nothing_and_publishes_nothing` first failing line
+  `tests/test_redesign_lists_review.py:553` (`unmount dropped the staging pass`: `on_unmount` left `_targets_staging`
+  set, so the reply applied and chained). Fix: both background callbacks return while `self._unmounted`;
+  `on_unmount` sets `self._targets_staging = None`. Green.
+- **Item 3 — a click selects the row below.** Red: `test_a_click_marks_the_row_clicked` first failing line
+  `tests/test_redesign_lists_review.py:594` (the mark landed on `bulk-0003`, the row below the clicked Recent
+  `bulk-0002`). Fix: `on_click` resolves the clicked line through the cached pairs, taking the filter line and the
+  `Recent` heading off before bisecting. Green.
+- **Item 4 — the scroll limit falls on a row's second line.** Red: `test_the_scroll_limit_stops_on_a_whole_row`
+  first failing line `tests/test_redesign_lists_review.py:617` (`_target_scroll_top` = 55, not a pair start). Fix:
+  `_target_scroll_limit`'s walk-back returns the row start that fits whole (`prev_start`), never `start + 1`. Green.
+- **Item 5 — a fresh sidebar marks its first target with nothing selected.** Red:
+  `test_a_fresh_sidebar_with_no_selection_paints_no_mark` first failing line
+  `tests/test_redesign_lists_review.py:643` (a mark painted on the first row). Fix: `_target_painted` applies the
+  position check only when `target_selected` is set. Green.
+- **Item 6 — the details panel wraps at the screen's width and never re-wraps.** Red:
+  `test_the_details_panel_wraps_at_its_own_width_and_rewraps_on_resize` first failing line
+  `tests/test_redesign_lists_review.py:662` (a 156-char line in a 96-column panel). Fix: `sync` wraps at the body
+  Static's laid-out content width, and `on_resize` re-syncs. Green.
+- **Item 8 — drive's `targets` query no longer matches the tab.** Ruled option (b): no code change.
+  `tsb_tui/drive/GUIDE.md`'s `targets` row now says the query is TSB's structured query (`type:`, `tag:`, `group:`,
+  `source:`), matched by TSB, and that the Targets tab's own filter is local free text and differs. No drive test
+  pins the old text (the only guide test, `test_all_keys_marks_target_edit_permission`, checks the keys table, not
+  this row). No red/green test.
+- **Item 9 — `Sidebar._relayout`'s rows guard can never be true.** Refutation with file:line: `rows = list(view.rows)`
+  is copied from the view just built (`tsb_tui/widgets/sidebar.py:1025`), so `view.rows != tuple(rows)` is never
+  true; and a rows change alone never needs a rebuild — the first `_build()` already painted the new rows against
+  the selection it had, which is unchanged. Only the selection moving (rule 6) needs the rebuild. The dead rows
+  clause was dropped; the guard reads only `self.selected != prev_selected` (`tsb_tui/widgets/sidebar.py:1034`). No
+  test kept for the dropped clause (the ruling asks for one only when the clause is kept).
+
+**Baselines:** 28 snapshot cases changed, all by the selection mark alone (item 5: no mark when nothing selected;
+item 7: one mark on the selected row) — `redesign-p3` `alike-since`, `empty-sessions`, `ended-on`, `only-ended`,
+`sessions-states`, `targets-opens0/1/2`, `filter-list`, `group-row`, `loading-title`, `recent-three`,
+`details-view`, and `redesign-p2a` `panel-focused`, `session`. Every difference is a mark colour/weight/position
+change; no ellipsis, retry line, rows, or other change appeared. Regenerated under the earlier rule.
+
+**Commands (exit codes):** gate suites — `test_redesign_lists.py`, `test_redesign_lists_filter.py`,
+`test_redesign_layout.py` (150 passed), `test_redesign_lists_review.py` + `test_sidebar.py` +
+`test_sidebar_painted_rows.py` + `test_fleet_view.py` + `test_fleet_view_painted_rows.py` +
+`test_terminal_keys.py` + `test_drive_front_and_version.py` + `test_relogin_after_large_poll.py` (137 passed);
+`make contract-check` exit 0; `make lint` exit 0. No commit, no push.
+
+**Not verified:** the full suite was not re-run (the gate only). The intermittent
+`test_the_ascii_glyph_set_reaches_the_sidebar_and_the_status_row` failed once in the first baseline run and passed
+alone — pre-existing intermittency, not caused by this round. Item 9 has no test (clause dropped); item 8 is a doc
+change with no test.

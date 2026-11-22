@@ -13,10 +13,13 @@ import asyncio
 import threading
 
 from input_server import InputRecordingApp
+from tsb_contract_client import ApiError
 from tsbc import _serve
 from workspace_support import fixture_login, named_sessions
 
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.model.targets import Query, TargetsModel
+from tsb_tui.widgets.sidebar import Sidebar
 
 
 def _bulk(served, count, prefix="bulk"):
@@ -445,4 +448,228 @@ def test_a_failed_later_page_shows_the_retry_line_and_r_completes(serve, wait_un
             await wait_until(pilot, lambda: len(screen.targets.rows) == 1008 and not screen.targets.next_cursor,
                              "the completed list", 30)
             assert not screen.targets.more_failed
+    asyncio.run(check())
+
+
+def test_an_old_staging_reply_never_touches_a_newer_pass(serve, wait_until):
+    """A reply from a dropped staging pass applies nothing to the pass now in flight: its success neither
+    publishes into the new pass nor clears it."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        _bulk(served, 1000)
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 1008 and not screen.targets.next_cursor,
+                             "the first load", 30)
+            record = next(iter(screen.targets.records.values()))
+            a = TargetsModel()
+            a_gen = a.begin(Query())
+            screen._fetch_targets()  # the foreground read drops A: its replies must never apply
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 1008 and not screen.targets.next_cursor,
+                             "the foreground read", 30)
+            b = TargetsModel()
+            b.begin(Query())
+            screen._targets_staging = b
+            # Deliver A's last-page reply against B: it applies nothing, publishes nothing, clears nothing.
+            screen._targets_reply(a_gen, Query(), {"targets": [record], "next_cursor": None}, False, None, True)
+            await pilot.pause()
+            assert screen._targets_staging is b, "the old reply cleared the pass in flight"
+            assert len(screen.targets.rows) == 1008, (len(screen.targets.rows), "the old reply published into the list")
+            assert len(b.rows) == 0, b.rows
+    asyncio.run(check())
+
+
+def test_an_old_staging_failure_never_clears_a_newer_pass(serve, wait_until):
+    """A failure from a dropped staging pass clears nothing on the pass now in flight."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        _bulk(served, 1000)
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 1008 and not screen.targets.next_cursor,
+                             "the first load", 30)
+            a = TargetsModel()
+            a_gen = a.begin(Query())
+            screen._fetch_targets()  # the foreground read drops A
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 1008 and not screen.targets.next_cursor,
+                             "the foreground read", 30)
+            b = TargetsModel()
+            b.begin(Query())
+            screen._targets_staging = b
+            exc = ApiError(500, "internal_error", "the broker is not answering")
+            screen._targets_failed(a_gen, exc, False, True, None)
+            await pilot.pause()
+            assert screen._targets_staging is b, "the old reply's failure cleared the pass in flight"
+    asyncio.run(check())
+
+
+
+def test_a_staging_reply_after_unmount_sends_nothing_and_publishes_nothing(serve, wait_until):
+    """A staging page outstanding at unmount applies nothing and chains no request when its reply lands."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        _bulk(served, 1000)
+        calls: list[int] = []
+        real = served._list_targets
+        lock = threading.Lock()
+        gated: set[int] = set()
+        gates: dict[int, tuple[threading.Event, threading.Event]] = {}
+
+        def handler(query):
+            with lock:
+                index = len(calls)
+                calls.append(index)
+            if index in gated:
+                reached, release = gates.setdefault(index, (threading.Event(), threading.Event()))
+                reached.set()
+                assert release.wait(12), "a held page was never released"
+            return real(query)
+
+        served._list_targets = handler
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 1008 and not screen.targets.next_cursor,
+                             "the first load", 30)
+            screen.open_sidebar(pane="targets")
+            gated.add(len(calls))
+            screen._fetch_targets(background=True)
+            await wait_until(pilot, lambda: gates and any(g[0].is_set() for g in gates.values()), "the staging page")
+            n_before = len(calls)
+            screen.on_unmount()
+            assert screen._targets_staging is None, "unmount dropped the staging pass"
+            gates[len(calls) - 1][1].set()
+            await pilot.pause()
+            await pilot.pause(0.2)
+            assert len(calls) == n_before, (len(calls), n_before)  # no chained request
+            assert len(screen.targets.rows) == 1008, "nothing published after unmount"
+    asyncio.run(check())
+
+
+def test_a_click_marks_the_row_clicked(serve, wait_until):
+    """A click on a target row selects and marks that row: each Recent appearance and the first row under an
+    active filter mark the row clicked, not the one below."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        _bulk(served, 60)
+        named_sessions(url, served, "bulk-0001", "bulk-0002")
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            screen.open_sidebar(pane="targets")
+            await wait_until(pilot, lambda: len(screen.targets.rows) > 0, "the rows")
+            sidebar = screen.sidebar
+            recent = sidebar._recent_targets()
+            assert recent, "the login's own sessions put a target in Recent"
+            sidebar.filter_text = "bulk"
+            sidebar._relayout()
+            await pilot.pause()
+            # Click the first Recent row: find its widget row.
+            def y_of(target_id):
+                for y in range(1, sidebar.targets_height - 1):
+                    line = sidebar._target_line_at(y)
+                    if line is not None and line.session_id == target_id:
+                        return y
+                raise AssertionError(f"no painted row for {target_id}")
+            await pilot.click(Sidebar, offset=(3, y_of(recent[0].id)))
+            await pilot.pause()
+            assert sidebar.selected_target == recent[0].id, (sidebar.selected_target, recent[0].id)
+            marks = [ln[2:-2] for ln in (sidebar.render_line(y).text for y in range(sidebar.targets_height))
+                     if ln[2:3] == "▸"]
+            assert len(marks) == 1 and recent[0].name in marks[0], marks
+    asyncio.run(check())
+
+
+def test_the_scroll_limit_stops_on_a_whole_row(serve, wait_until):
+    """The target scroll limit is a row start taken from the cached pair starts, never a start plus one: a
+    final window preceded by a two-line target row clamps and wheel-scrolls to whole rows."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        _bulk(served, 40)
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("sidebar.width", 12)  # a thin sidebar inside a narrow window: two-line target rows
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)
+        async with app.run_test(size=(120, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            screen.open_sidebar(pane="targets")
+            await wait_until(pilot, lambda: len(screen.targets.rows) > 0, "the rows")
+            sidebar = screen.sidebar
+            pairs = sidebar._target_row_pairs()
+            starts = set(sidebar._pair_starts(pairs))
+            assert any(count == 2 for _start, count in pairs), "the window holds two-line target rows"
+            limit = sidebar._target_scroll_limit()
+            assert limit in starts, (limit, sorted(starts))
+            for _ in range(120):
+                sidebar._scroll_section(0, 1)
+            await pilot.pause()
+            starts2 = set(sidebar._pair_starts(sidebar._target_row_pairs()))
+            assert sidebar._target_scroll_limit() in starts2, (sidebar._target_scroll_limit(), sorted(starts2))
+            assert sidebar._target_scroll_top in starts2, (sidebar._target_scroll_top, sorted(starts2))
+    asyncio.run(check())
+
+
+def test_a_fresh_sidebar_with_no_selection_paints_no_mark(serve, wait_until):
+    """A fresh sidebar with targets and nothing selected paints no selection mark."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        _bulk(served, 40)
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            screen.open_sidebar(pane="targets")
+            await wait_until(pilot, lambda: len(screen.targets.rows) > 0, "the rows")
+            sidebar = screen.sidebar
+            sidebar.target_selected = None
+            sidebar._target_pos = 0
+            await pilot.pause()
+            marks = [ln[2:-2] for ln in (sidebar.render_line(y).text for y in range(sidebar.targets_height))
+                     if ln[2:3] == "▸"]
+            assert marks == [], marks
+    asyncio.run(check())
+
+
+def test_the_details_panel_wraps_at_its_own_width_and_rewraps_on_resize(serve, wait_until):
+    """The details panel wraps at its laid-out content width (not the screen's), and re-wraps when that width
+    changes after a resize."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        long_id = "long-0001"
+        served.targets[long_id] = {"id": long_id, "type": "ssh", "name": "x" * 160, "group": "lab", "tags": [],
+                                   "discovered_by": "manual", "last_seen": "2026-10-17T08:30:00Z",
+                                   "host": "192.0.2.50", "port": 22}
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            screen.open_sidebar(pane="targets")
+            await wait_until(pilot, lambda: screen.targets.record(long_id) is not None, "the page", 30)
+            screen._open_target_details(long_id)
+            await wait_until(pilot, lambda: any(d.__class__.__name__ == "TargetDetailsScreen"
+                                                for d in screen.dialogs), "the details open")
+            details = next(d for d in screen.dialogs if d.__class__.__name__ == "TargetDetailsScreen")
+            body = details.query_one("#detail-body")
+            width = body.size.width
+            assert width < 160, (width, "the panel is the 100-column box, not the 160-column screen")
+            for line in body.content.splitlines():
+                assert len(line) <= width, (len(line), width)
+            await pilot.resize_terminal(80, 45)
+            await pilot.pause()
+            new_width = body.size.width
+            assert new_width < width, (new_width, width)
+            for line in body.content.splitlines():
+                assert len(line) <= new_width, (len(line), new_width)
     asyncio.run(check())
