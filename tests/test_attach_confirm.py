@@ -24,6 +24,19 @@ from tsb_tui.screens.terminal import TerminalScreen
 TARGET_ID = "stub-target"
 
 
+class _ListApp(SlowChunkedApp):
+    """`SlowChunkedApp` with a `GET /targets` list route, so the New session screen's inventory loads and the
+    prefilled target is a row it can pick. The rule is only how a test picks its target: the route is added here,
+    in the test file, not in `stub_server.py`."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": TARGET_ID, "type": "ssh", "name": TARGET_ID, "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.50", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
+
+
 async def _login_and_open_new_session(app: TsbTuiApp, pilot) -> None:
     await login(app, pilot)
     assert isinstance(await open_new_session(app, pilot), NewSessionScreen)
@@ -36,7 +49,7 @@ def test_the_host_key_tick_and_the_recording_text_come_before_the_first_attach()
     greyed only for the host key, and until then no socket has been opened."""
 
     async def _check() -> None:
-        stub = SlowChunkedApp(hostkey_on_create=True, recording_on_create=True)
+        stub = _ListApp(hostkey_on_create=True, recording_on_create=True)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
@@ -66,7 +79,7 @@ def test_the_host_key_tick_and_the_recording_text_come_before_the_first_attach()
 
 def test_a_recording_alone_does_not_hold_attach_back_and_neither_does_nothing() -> None:
     async def _check(recording: bool) -> None:
-        stub = SlowChunkedApp(hostkey_on_create=False, recording_on_create=recording)
+        stub = _ListApp(hostkey_on_create=False, recording_on_create=recording)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
@@ -102,7 +115,7 @@ def test_a_later_attach_in_the_same_run_shows_the_recording_text_in_the_status_r
     recorded in the status row for `gates.recording_bar_s`, then lets go of the row. REC is always shown."""
 
     async def _check() -> None:
-        stub = SlowChunkedApp(recording_on_create=True, delay_s=0.05)
+        stub = _ListApp(recording_on_create=True, delay_s=0.05)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test(size=(140, 30)) as pilot:
@@ -131,7 +144,7 @@ def test_every_attach_shows_the_gate_each_time_when_asked(monkeypatch, wait_unti
     monkeypatch.setenv("TSB_TUI_GATES_RECORDING", "every-attach")
 
     async def _check() -> None:
-        stub = SlowChunkedApp(recording_on_create=True)
+        stub = _ListApp(recording_on_create=True)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
@@ -146,7 +159,7 @@ def test_a_session_not_yet_gated_in_this_run_gets_the_gate_on_re_attach(wait_unt
     """The gate is per session per run: a session first seen in the list (not created here) is gated too."""
 
     async def _check() -> None:
-        stub = SlowChunkedApp(recording_on_create=True)
+        stub = _ListApp(recording_on_create=True)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test() as pilot:
@@ -160,7 +173,7 @@ def test_a_session_not_yet_gated_in_this_run_gets_the_gate_on_re_attach(wait_unt
 
 def test_no_resolving_credential_reads_as_a_state_not_an_error() -> None:
     async def _check() -> None:
-        stub = SlowChunkedApp(
+        stub = _ListApp(
             create_error=(409, "no_resolving_credential", "no credential resolves for this target"))
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)

@@ -4,13 +4,32 @@ import logging
 import secrets
 import threading
 
+import device_login_support
 import pytest
 from device_login_support import answer, code, opened, pane_for, password, start
+from stub_server import DeviceLoginApp
 from textual.widgets import Input
 
 
-def test_the_recorded_login_warning_comes_before_login_as(wait_until, screen_text):
+class _ListApp(DeviceLoginApp):
+    """`DeviceLoginApp` with a `GET /targets` list route, so the New session screen's inventory loads."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": "normal", "type": "ssh", "name": "normal", "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.20", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
+
+
+def _use_list_stub(monkeypatch) -> None:
+    monkeypatch.setattr(device_login_support, "DeviceLoginApp", _ListApp)
+
+
+
+def test_the_recorded_login_warning_comes_before_login_as(wait_until, screen_text, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, login_input=True) as (app, pilot, _, dialog, stub):
             pane = await pane_for(dialog, pilot, wait_until, consent=False)
             assert "every answer" in screen_text(app)
@@ -25,8 +44,9 @@ def test_the_recorded_login_warning_comes_before_login_as(wait_until, screen_tex
     asyncio.run(check())
 
 
-def test_login_as_is_asked_before_any_call(wait_until, screen_text):
+def test_login_as_is_asked_before_any_call(wait_until, screen_text, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (app, pilot, _, dialog, stub):
             await pane_for(dialog, pilot, wait_until)
             assert "login as:" in screen_text(app)
@@ -34,8 +54,9 @@ def test_login_as_is_asked_before_any_call(wait_until, screen_text):
     asyncio.run(check())
 
 
-def test_the_hostkey_is_accepted_in_the_pane_before_any_prompt(wait_until, screen_text):
+def test_the_hostkey_is_accepted_in_the_pane_before_any_prompt(wait_until, screen_text, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, hostkey=True) as (app, pilot, _, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             # The host-key view is painted after the frame lands in the pane; read the screen once it is drawn, so the
@@ -50,8 +71,9 @@ def test_the_hostkey_is_accepted_in_the_pane_before_any_prompt(wait_until, scree
     asyncio.run(check())
 
 
-def test_device_text_with_escapes_and_c1_is_plain_text_in_a_device_login_frame(wait_until):
+def test_device_text_with_escapes_and_c1_is_plain_text_in_a_device_login_frame(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[code(text="[red]\x1b[2J\x9b\x7f\r\n\tX")]) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             label = pane.query_one(".device-label")
@@ -61,8 +83,9 @@ def test_device_text_with_escapes_and_c1_is_plain_text_in_a_device_login_frame(w
     asyncio.run(check())
 
 
-def test_a_password_round_shows_tsbs_own_label_outside_the_frame(wait_until):
+def test_a_password_round_shows_tsbs_own_label_outside_the_frame(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             assert str(pane.query_one("#own-password-label").render()) == "Password:"
@@ -70,8 +93,9 @@ def test_a_password_round_shows_tsbs_own_label_outside_the_frame(wait_until):
     asyncio.run(check())
 
 
-def test_echo_false_answers_are_masked_and_cleared_after_sending(wait_until):
+def test_echo_false_answers_are_masked_and_cleared_after_sending(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[code()]) as (_, pilot, _, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             box = pane.query_one(".device-answer", Input)
@@ -84,8 +108,9 @@ def test_echo_false_answers_are_masked_and_cleared_after_sending(wait_until):
     asyncio.run(check())
 
 
-def test_an_empty_input_sends_an_empty_answer(wait_until):
+def test_an_empty_input_sends_an_empty_answer(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (_, pilot, _, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until)
@@ -95,16 +120,17 @@ def test_an_empty_input_sends_an_empty_answer(wait_until):
 
 
 @pytest.mark.parametrize("attempt", [2])
-def test_a_higher_attempt_says_the_device_refused_the_answer(wait_until, attempt):
-    _attempt_check(wait_until, attempt, True)
+def test_a_higher_attempt_says_the_device_refused_the_answer(wait_until, attempt, monkeypatch):
+    _attempt_check(wait_until, attempt, True, monkeypatch)
 
 
-def test_a_code_round_in_the_same_attempt_says_nothing(wait_until):
-    _attempt_check(wait_until, 1, False)
+def test_a_code_round_in_the_same_attempt_says_nothing(wait_until, monkeypatch):
+    _attempt_check(wait_until, 1, False, monkeypatch)
 
 
-def _attempt_check(wait_until, attempt, refused):
+def _attempt_check(wait_until, attempt, refused, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[password(), code(attempt=attempt)]) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until)
@@ -113,16 +139,17 @@ def _attempt_check(wait_until, attempt, refused):
     asyncio.run(check())
 
 
-def test_an_unknown_hostkey_kind_cancels_and_never_offers_accept(wait_until):
-    _unknown(wait_until, hostkey=True, hostkey_kind="future-kind")
+def test_an_unknown_hostkey_kind_cancels_and_never_offers_accept(wait_until, monkeypatch):
+    _unknown(wait_until, monkeypatch, hostkey=True, hostkey_kind="future-kind")
 
 
-def test_an_unknown_prompt_method_cancels_and_says_too_old(wait_until):
-    _unknown(wait_until, rounds=[{"t": "device_login_prompt", "v": 1, "method": "future-method"}])
+def test_an_unknown_prompt_method_cancels_and_says_too_old(wait_until, monkeypatch):
+    _unknown(wait_until, monkeypatch, rounds=[{"t": "device_login_prompt", "v": 1, "method": "future-method"}])
 
 
-def _unknown(wait_until, **kwargs):
+def _unknown(wait_until, monkeypatch, **kwargs):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, **kwargs) as (_, pilot, _, dialog, stub):
             pane = await pane_for(dialog, pilot, wait_until)
             pane.query_one("#device-user", Input).value = "fixture-account"
@@ -134,8 +161,9 @@ def _unknown(wait_until, **kwargs):
     asyncio.run(check())
 
 
-def test_connected_turns_the_overlay_into_the_attached_session_on_the_same_socket(wait_until):
+def test_connected_turns_the_overlay_into_the_attached_session_on_the_same_socket(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (_, pilot, screen, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             slot = screen.front
@@ -147,11 +175,12 @@ def test_connected_turns_the_overlay_into_the_attached_session_on_the_same_socke
     asyncio.run(check())
 
 
-def test_a_display_only_round_between_password_and_acceptance_ends_connected(wait_until):
+def test_a_display_only_round_between_password_and_acceptance_ends_connected(wait_until, monkeypatch):
     display_only = {"t": "device_login_prompt", "v": 1, "method": "keyboard-interactive",
                     "name": "Notice", "instruction": "Welcome", "prompts": []}
 
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[password(), display_only]) as (_, pilot, screen, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             slot = screen.front
@@ -168,6 +197,7 @@ def test_an_injected_error_in_render_frame_produces_the_connect_failed_result(wa
     emitted = []
 
     async def check():
+        _use_list_stub(monkeypatch)
         from tsb_tui.screens import device_login
 
         async with opened(wait_until) as (_, pilot, _, dialog, stub):
@@ -198,6 +228,7 @@ def test_an_attachment_failure_after_connected_never_says_connect_failed(wait_un
     emitted = []
 
     async def check():
+        _use_list_stub(monkeypatch)
         from tsb_tui.screens import device_login
 
         async def no_screen(self):
@@ -226,6 +257,7 @@ def test_an_unexpected_error_is_logged_by_type_and_frames_never_its_message(wait
     caplog.set_level(logging.WARNING)
 
     async def check():
+        _use_list_stub(monkeypatch)
         from tsb_tui.screens import device_login
 
         async def broken(self, frame):
@@ -246,8 +278,9 @@ def test_an_unexpected_error_is_logged_by_type_and_frames_never_its_message(wait
     assert marker not in text, "the exception's message reached the log"
 
 
-def test_input_waits_for_the_recording_gate_after_connected(wait_until):
+def test_input_waits_for_the_recording_gate_after_connected(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, recording=True) as (app, pilot, screen, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until)
@@ -262,8 +295,9 @@ def test_input_waits_for_the_recording_gate_after_connected(wait_until):
 @pytest.mark.parametrize("outcome", ["refused", "timeout", "password_change_requested", "hostkey_refused",
                                      "hostkey_changed", "cancelled", "connect_failed", "worker_unavailable",
                                      "too_long", "forbidden", "future-outcome"])
-def test_every_other_outcome_offers_open_again(wait_until, outcome):
+def test_every_other_outcome_offers_open_again(wait_until, outcome, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, outcome=outcome) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until)
@@ -272,8 +306,9 @@ def test_every_other_outcome_offers_open_again(wait_until, outcome):
     asyncio.run(check())
 
 
-def test_a_close_with_no_result_says_lost_and_refreshes_the_sessions_list(wait_until):
+def test_a_close_with_no_result_says_lost_and_refreshes_the_sessions_list(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, drop=True) as (_, pilot, _, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             before = stub._sessions_calls
@@ -284,8 +319,9 @@ def test_a_close_with_no_result_says_lost_and_refreshes_the_sessions_list(wait_u
     asyncio.run(check())
 
 
-def test_escape_sends_cancel(wait_until):
+def test_escape_sends_cancel(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (_, pilot, _, dialog, stub):
             await start(dialog, pilot, wait_until)
             await pilot.press("escape")
@@ -294,8 +330,9 @@ def test_escape_sends_cancel(wait_until):
     asyncio.run(check())
 
 
-def test_a_screen_lock_hides_the_overlay_and_blocks_answers_and_the_result_waits(wait_until, screen_text):
+def test_a_screen_lock_hides_the_overlay_and_blocks_answers_and_the_result_waits(wait_until, screen_text, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (app, pilot, screen, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             app.screen_lock.lock()
@@ -312,8 +349,9 @@ def test_a_screen_lock_hides_the_overlay_and_blocks_answers_and_the_result_waits
 
 @pytest.mark.parametrize("refusal", ["no_resolving_credential", "vault_locked", "org_credential_locked",
                                      "credential_choice_required", "mapped_credential_missing"])
-def test_the_way_is_offered_after_each_refusal_and_never_chosen(wait_until, refusal):
+def test_the_way_is_offered_after_each_refusal_and_never_chosen(wait_until, refusal, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         from tsb_contract_client import ApiError
         async with opened(wait_until) as (_, pilot, screen, dialog, stub):
             dialog._unlock_tried = True
@@ -325,8 +363,9 @@ def test_the_way_is_offered_after_each_refusal_and_never_chosen(wait_until, refu
 
 
 @pytest.mark.parametrize("status", [422, 503])
-def test_any_503_or_422_hides_the_way_for_the_login_without_reading_the_message(wait_until, status):
+def test_any_503_or_422_hides_the_way_for_the_login_without_reading_the_message(wait_until, status, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         from workspace_support import open_new_session
         async with opened(wait_until, create_error=(status, "unrelated_code", "arbitrary words")) as (_, pilot, screen, dialog, _):
             pane = await pane_for(dialog, pilot, wait_until)
@@ -339,8 +378,9 @@ def test_any_503_or_422_hides_the_way_for_the_login_without_reading_the_message(
     asyncio.run(check())
 
 
-def test_new_session_on_this_connection_sends_reuse_with_the_connection_id(wait_until):
+def test_new_session_on_this_connection_sends_reuse_with_the_connection_id(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (_, pilot, screen, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until)
@@ -357,10 +397,11 @@ def test_new_session_on_this_connection_sends_reuse_with_the_connection_id(wait_
     asyncio.run(check())
 
 
-def test_a_cancel_while_the_create_is_in_flight_opens_no_socket(wait_until):
+def test_a_cancel_while_the_create_is_in_flight_opens_no_socket(wait_until, monkeypatch):
     gate = threading.Event()
 
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, create_gate=gate) as (_, pilot, _, dialog, stub):
             pane = await pane_for(dialog, pilot, wait_until)
             pane.query_one("#device-user", Input).value = "fixture-account"
@@ -375,8 +416,9 @@ def test_a_cancel_while_the_create_is_in_flight_opens_no_socket(wait_until):
     asyncio.run(check())
 
 
-def test_a_slot_whose_attach_failed_after_connected_shows_its_pane_again(wait_until):
+def test_a_slot_whose_attach_failed_after_connected_shows_its_pane_again(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, drop_after_connected=True) as (app, pilot, screen, dialog, _stub):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until)
@@ -410,8 +452,9 @@ async def _front_session(app, screen, dialog, pilot, wait_until):
     return slot
 
 
-def test_a_background_login_prompt_never_takes_focus_from_the_front_session(wait_until):
+def test_a_background_login_prompt_never_takes_focus_from_the_front_session(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[password(), password(2, 2)]) as (app, pilot, screen, dialog, stub):
             session_slot = await _front_session(app, screen, dialog, pilot, wait_until)
             pane = screen.open_device_login("normal", "xterm-256color", screen.fit_size())
@@ -433,8 +476,9 @@ def test_a_background_login_prompt_never_takes_focus_from_the_front_session(wait
     asyncio.run(check())
 
 
-def test_bringing_a_device_login_to_the_front_focuses_its_answer(wait_until):
+def test_bringing_a_device_login_to_the_front_focuses_its_answer(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[password(), password(2, 2)]) as (app, pilot, screen, dialog, _stub):
             session_slot = await _front_session(app, screen, dialog, pilot, wait_until)
             pane = screen.open_device_login("normal", "xterm-256color", screen.fit_size())
@@ -480,6 +524,7 @@ def test_login_ended_during_attachment_ends_at_login(wait_until, monkeypatch, cl
     emitted = []
 
     async def check():
+        _use_list_stub(monkeypatch)
         async def closed_attachment(self):
             self._ws.close_code = close_code
             raise AttachRefused(close_code, "login ended")
@@ -504,6 +549,7 @@ def test_transport_failure_during_attachment_keeps_unattached_path(wait_until, m
     emitted = []
 
     async def check():
+        _use_list_stub(monkeypatch)
         async def transport_failure(self):
             raise ConnectionClosed("transport closed")
         monkeypatch.setattr(device_login.AsyncDeviceLogin, "attachment", transport_failure)

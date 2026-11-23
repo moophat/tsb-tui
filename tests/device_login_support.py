@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 
 from stub_server import DeviceLoginApp, StubServer
 from textual.widgets import Input
-from workspace_support import fixture_login, open_new_session
+from workspace_support import fixture_login
 
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.screens.new_session import NewSessionScreen
 
 
 def password(prompt_id=1, attempt=1):
@@ -29,10 +30,12 @@ async def opened(wait_until, *, rounds=None, recording=False, login_input=False,
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen = await fixture_login(app, pilot)
-            dialog = await open_new_session(app, pilot)
-            dialog._types["normal"] = "ssh"
-            dialog.query_one("#target-id", Input).value = "normal"
-            await pilot.pause()
+            await wait_until(pilot, lambda: any(row.id == "normal" for row in app.workspace().targets.rows),
+                             "the inventory")
+            screen._new_session_dialog("normal", "ssh")
+            await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen) and app.screen.is_mounted
+                             and bool(app.screen.query("#create-button")), "the prefilled dialog")
+            dialog = app.screen
             await wait_until(pilot, lambda: stub.me_reads > 0, "login recording settings")
             await pilot.pause()
             try:

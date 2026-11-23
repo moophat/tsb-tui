@@ -115,7 +115,9 @@ def test_inventory_n_and_permission_gated_a(serve, wait_until, size, permission)
             assert isinstance(app.screen, NewSessionScreen), type(app.screen)
             await pilot.press("a", "n")
             assert app.screen.query_one(Input).value.endswith("an")
-            await pilot.press("escape", "a")
+            # New session's first Escape leaves and clears the filter, a second goes back one level: two
+            # Escapes close it to the inventory list, where `a` opens the target form with target.edit.
+            await pilot.press("escape", "escape", "a")
             await pilot.pause()
             assert isinstance(app.screen, TargetFormScreen) is permission
             if permission:

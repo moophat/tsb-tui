@@ -15,7 +15,7 @@ import asyncio
 
 import pytest
 from stub_server import SlowChunkedApp, StubServer
-from textual.widgets import Select
+from textual.widgets import Input, Select
 from workspace_support import login, open_new_session
 
 from tsb_tui.app import TsbTuiApp
@@ -25,20 +25,35 @@ from tsb_tui.screens.new_session import NewSessionScreen
 TARGET_ID = "stub-target"
 
 
-async def _login_and_open_new_session(app: TsbTuiApp, pilot) -> None:
+class _ListStub(SlowChunkedApp):
+    """`SlowChunkedApp` with a `GET /targets` list route, so the New session screen has a row to load."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": TARGET_ID, "type": "ssh", "name": TARGET_ID, "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z",
+                      "host": "192.0.2.20", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
+
+
+async def _login_and_open_new_session(app: TsbTuiApp, pilot, wait_until) -> None:
     await login(app, pilot)
     screen = await open_new_session(app, pilot)
-    screen.query_one("#target-id").value = TARGET_ID
+    await wait_until(pilot, lambda: any(row.id == TARGET_ID for row in app.workspace().targets.rows),
+                     "the inventory")
+    screen.query_one("#new-session-filter", Input).value = TARGET_ID
+    await pilot.pause()
 
 
-def test_connection_choice_required_offers_candidates_and_retries_with_the_chosen_one() -> None:
+def test_connection_choice_required_offers_candidates_and_retries_with_the_chosen_one(wait_until) -> None:
     async def _check() -> None:
-        stub = SlowChunkedApp(connection_choice_candidates=["stub-conn-a", "stub-conn-b"],
-                              recording_on_create=False)
+        stub = _ListStub(connection_choice_candidates=["stub-conn-a", "stub-conn-b"],
+                         recording_on_create=False)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
-            async with app.run_test() as pilot:
-                await _login_and_open_new_session(app, pilot)
+            async with app.run_test(size=(120, 40)) as pilot:
+                await _login_and_open_new_session(app, pilot, wait_until)
                 await pilot.click("#conn-reuse")
                 await pilot.click("#create-button")
                 await pilot.pause()
@@ -69,16 +84,16 @@ def test_connection_choice_required_offers_candidates_and_retries_with_the_chose
     asyncio.run(_check())
 
 
-def test_connection_choice_offers_only_this_principals_own_candidates_for_the_target() -> None:
+def test_connection_choice_offers_only_this_principals_own_candidates_for_the_target(wait_until) -> None:
     """GET /sessions can list sessions this principal did not create; the picker must never offer
     one of those as if it were this principal's own to reuse."""
 
     async def _check() -> None:
-        stub = SlowChunkedApp(connection_choice_candidates=["stub-conn-a"], recording_on_create=False)
+        stub = _ListStub(connection_choice_candidates=["stub-conn-a"], recording_on_create=False)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
-            async with app.run_test() as pilot:
-                await _login_and_open_new_session(app, pilot)
+            async with app.run_test(size=(120, 40)) as pilot:
+                await _login_and_open_new_session(app, pilot, wait_until)
                 # A session on the same target, owned by someone else, with its own connection —
                 # never a candidate for this principal to pick.
                 stub.sessions["stub-other-owner"] = {
@@ -111,11 +126,13 @@ def test_the_create_carries_the_canvas_the_window_gives_when_auto_size_is_on(wai
     wider than the creator's own screen shows."""
 
     async def _check() -> None:
-        stub = SlowChunkedApp(recording_on_create=False)
+        stub = _ListStub(recording_on_create=False)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test(size=(100, 30)) as pilot:
                 await login(app, pilot)
+                await wait_until(pilot, lambda: any(row.id == TARGET_ID for row in app.workspace().targets.rows),
+                                 "the inventory")
                 await open_new_session(app, pilot, auto_size=True)
                 await pilot.click("#create-button")
                 await wait_until(pilot, lambda: len(stub.sessions) == 1, "the session to be created")
@@ -133,7 +150,7 @@ def test_with_auto_size_off_each_profile_creates_with_the_window_size(
     monkeypatch.setenv("TSB_TUI_SIZE_AUTO_REQUEST", "false")
 
     async def _check() -> None:
-        stub = SlowChunkedApp(recording_on_create=False)
+        stub = _ListStub(recording_on_create=False)
         with StubServer(stub) as url:
             app = TsbTuiApp(url, target=TARGET_ID)
             async with app.run_test(size=(100, 30)) as pilot:

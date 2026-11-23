@@ -28,8 +28,20 @@ KILLED_TEXT = ("Ended by TSB or through it: one of its timers, its owner or an a
 TERMINATED_TEXT = "Ended from outside TSB: by the target, the network or its worker."
 
 
+class _ListApp(SlowChunkedApp):
+    """`SlowChunkedApp` with a `GET /targets` list route, so the New session screen's inventory loads and the
+    row it picks is the stub target. The route lives in this test file, not in stub_server.py."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": "stub-target", "type": "ssh", "name": "stub-target", "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.50", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
+
+
 def _closing(code: int, **kwargs) -> SlowChunkedApp:
-    return SlowChunkedApp(delay_s=0.02, stream_close=(code, 3), **kwargs)
+    return _ListApp(delay_s=0.02, stream_close=(code, 3), **kwargs)
 
 
 async def _ended(pilot, app, wait_until):
@@ -144,7 +156,9 @@ def test_esc_closes_the_dialog_and_the_row_keeps_the_end_with_new_and_targets(wa
                 assert "n New session here" in row and "Ctrl+\\ f Targets" in row and "Esc close" not in row
                 await pilot.press("c")
                 await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "New session")
-                assert app.screen.query_one("#target-id").value == "stub-target"
+                await wait_until(pilot, lambda: any(row.id == "stub-target" for row in app.workspace().targets.rows),
+                                 "the inventory")
+                assert app.screen.selected_target_id == "stub-target"
 
     asyncio.run(_check())
 

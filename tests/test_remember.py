@@ -3,7 +3,24 @@ import asyncio
 import hashlib
 import secrets
 
+import device_login_support
 from device_login_support import answer, code, opened, password, start
+from stub_server import DeviceLoginApp
+
+
+class _ListApp(DeviceLoginApp):
+    """`DeviceLoginApp` with a `GET /targets` list route, so the New session screen's inventory loads."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": "normal", "type": "ssh", "name": "normal", "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.20", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
+
+
+def _use_list_stub(monkeypatch) -> None:
+    monkeypatch.setattr(device_login_support, "DeviceLoginApp", _ListApp)
 
 
 def _save_spy(monkeypatch, *, collision=False):
@@ -24,6 +41,7 @@ def _save_spy(monkeypatch, *, collision=False):
 def test_remember_saves_the_last_password_round_after_connected_through_save_login(wait_until, monkeypatch):
     calls = _save_spy(monkeypatch)
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[password(), password(2, 2)]) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until, secrets.token_urlsafe(), remember=True)
@@ -40,6 +58,7 @@ def test_remember_saves_the_last_password_round_after_connected_through_save_log
 def test_a_connected_login_whose_attach_is_lost_saves_remember_and_offers_no_open_again(wait_until, monkeypatch):
     calls = _save_spy(monkeypatch)
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, drop_after_connected=True) as (_, pilot, _, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             before = stub._sessions_calls
@@ -58,9 +77,9 @@ def test_remember_saves_after_a_201_for_phase_a_fields(wait_until, monkeypatch):
     from textual.widgets import Input
     calls = _save_spy(monkeypatch)
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (_, pilot, _, dialog, stub):
-            dialog.query_one("#target-id", Input).value = "normal"
-            dialog._types["normal"] = "ssh"
+            # The target is picked by the search path: `opened` opens the dialog on the loaded `normal` row.
             dialog.query_one("#login-user", Input).value = "fixture-account"
             dialog.query_one("#login-password", Input).value = secrets.token_urlsafe()
             dialog.query_one("#login-remember").value = True
@@ -78,6 +97,7 @@ def test_remember_saves_after_a_201_for_phase_a_fields(wait_until, monkeypatch):
 def test_a_result_while_locked_saves_after_the_recheck_and_a_signout_drops_it(wait_until, monkeypatch):
     calls = _save_spy(monkeypatch)
     async def check():
+        _use_list_stub(monkeypatch)
         for signout in (False, True):
             async with opened(wait_until) as (app, pilot, _, dialog, stub):
                 pane = await start(dialog, pilot, wait_until)
@@ -101,6 +121,7 @@ def test_a_result_while_locked_saves_after_the_recheck_and_a_signout_drops_it(wa
 def test_a_declined_recording_gate_after_connected_still_saves_the_remembered_password(wait_until, monkeypatch):
     calls = _save_spy(monkeypatch)
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, recording=True) as (app, pilot, screen, dialog, _stub):
             pane = await start(dialog, pilot, wait_until)
             value = secrets.token_urlsafe()
@@ -117,6 +138,7 @@ def test_a_declined_recording_gate_after_connected_still_saves_the_remembered_pa
 def test_a_declined_gate_while_locked_saves_after_the_recheck(wait_until, monkeypatch):
     calls = _save_spy(monkeypatch)
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, recording=True) as (app, pilot, _screen, dialog, stub):
             pane = await start(dialog, pilot, wait_until)
             stub.finish_gate.clear()
@@ -144,6 +166,7 @@ def test_the_declined_gate_shows_the_save_outcome_after_the_slot_closes(wait_unt
 
     async def check(collision):
         calls = _save_spy(monkeypatch, collision=collision)
+        _use_list_stub(monkeypatch)
         expected = ("Not saved: you already have a login named normal.fixture-account" if collision
                     else "Saved normal.fixture-account; TSB now uses it for normal.")
         async with opened(wait_until, recording=True) as (app, pilot, screen, dialog, _stub):
@@ -161,12 +184,13 @@ def test_the_declined_gate_shows_the_save_outcome_after_the_slot_closes(wait_unt
         asyncio.run(check(collision))
 
 
-def test_no_box_is_offered_on_a_keyboard_interactive_round(wait_until):
-    _no_box(wait_until, [code(1)])
+def test_no_box_is_offered_on_a_keyboard_interactive_round(wait_until, monkeypatch):
+    _no_box(wait_until, monkeypatch, [code(1)])
 
 
-def test_a_password_then_a_code_drops_the_candidate_and_says_why(wait_until):
+def test_a_password_then_a_code_drops_the_candidate_and_says_why(wait_until, monkeypatch):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[password(), code()]) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until, secrets.token_urlsafe(), remember=True)
@@ -176,12 +200,13 @@ def test_a_password_then_a_code_drops_the_candidate_and_says_why(wait_until):
     asyncio.run(check())
 
 
-def test_a_code_then_a_password_offers_no_box(wait_until):
-    _no_box(wait_until, [code(1), password(2)])
+def test_a_code_then_a_password_offers_no_box(wait_until, monkeypatch):
+    _no_box(wait_until, monkeypatch, [code(1), password(2)])
 
 
-def _no_box(wait_until, rounds):
+def _no_box(wait_until, monkeypatch, rounds):
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=rounds) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             assert not pane.query_one("#device-remember").display
@@ -195,6 +220,7 @@ def _no_box(wait_until, rounds):
 def test_remember_saves_nothing_when_unticked_or_not_connected(wait_until, monkeypatch):
     calls = _save_spy(monkeypatch)
     async def check():
+        _use_list_stub(monkeypatch)
         for outcome in ("connected", "refused"):
             async with opened(wait_until, outcome=outcome) as (_, pilot, _, dialog, _):
                 pane = await start(dialog, pilot, wait_until)
@@ -222,6 +248,7 @@ def test_the_status_line_says_tsb_now_uses_the_saved_login(wait_until, monkeypat
 def _status(wait_until, monkeypatch, collision):
     calls = _save_spy(monkeypatch, collision=collision)
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (_, pilot, screen, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until, secrets.token_urlsafe(), remember=True)
@@ -233,6 +260,7 @@ def _status(wait_until, monkeypatch, collision):
 def test_the_candidate_is_dropped_on_untick_save_and_end(wait_until, monkeypatch):
     calls = _save_spy(monkeypatch)
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[password(), password(2, 2)]) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until, secrets.token_urlsafe(), remember=True)

@@ -30,7 +30,7 @@ from tsb_tui.screens.new_session import NewSessionScreen
 USER = "fixture-account"
 PASSWORD = "FIXTURE-NOT-A-PASSWORD-typed"
 # What the dialog says; the tests read the rendered text, so a reworded sentence is a deliberate change of both.
-NO_LOGIN_HELD = "TSB holds no login for this target. Type one, or cancel."
+NO_LOGIN_HELD = "No saved login fits this target · type the username and password · Enter tries again"
 HALF_LOGIN = "Type both a username and a password, or leave both empty."
 RECORDED = "Your login answers are recorded."
 
@@ -148,16 +148,28 @@ def test_typed_login_is_sent_with_connection_new_and_cleared_after(serve, wait_u
     asyncio.run(check())
 
 
+class _ListStub(SlowChunkedApp):
+    """`SlowChunkedApp` with a `GET /targets` list route, so the New session screen has a row to highlight."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": "normal", "type": "ssh", "name": "normal", "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.20", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
+
+
 def test_a_refused_login_also_clears_the_fields_and_keeps_the_dialog_open(wait_until) -> None:
     """Whatever the answer: a 502 target_auth_failed ends in the same empty fields, with the core's message shown and
     no copy kept for a second try (the operator types it again)."""
 
     async def check() -> None:
-        stub = SlowChunkedApp(create_error=(502, "target_auth_failed", "the target refused the login"))
+        stub = _ListStub(create_error=(502, "target_auth_failed", "the target refused the login"))
         with StubServer(stub) as url:
             app = TsbTuiApp(url)
             async with app.run_test(size=(120, 40)) as pilot:
                 dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
+                await wait_until(pilot, lambda: app.workspace().targets.row("normal") is not None, "the target row")
                 _type_login(dialog)
                 dialog.query_one("#create-button", Button).press()
                 await wait_until(pilot, lambda: bool(stub.creates), "the create")
@@ -167,7 +179,7 @@ def test_a_refused_login_also_clears_the_fields_and_keeps_the_dialog_open(wait_u
                 assert app.screen is dialog
                 assert dialog.query_one("#login-user", Input).value == ""
                 assert dialog.query_one("#login-password", Input).value == ""
-                assert _text(dialog.query_one("#new-session-error", Static)) == "the target refused the login"
+                assert _text(dialog.query_one("#new-session-core", Static)) == "the target refused the login"
                 assert not _attribute_holds(dialog, PASSWORD)
 
     asyncio.run(check())
@@ -296,9 +308,7 @@ def test_telnet_targets_show_no_login_fields(serve, wait_until) -> None:
         async with app.run_test(size=(120, 40)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target="telnet-scenario", target_type="telnet")
             assert not dialog.query_one("#login-fields").display
-            dialog.query_one("#target-id", Input).value = "normal"
-            dialog._types["normal"] = "ssh"
-            dialog._show_type()
+            dialog.query_one("#new-session-filter", Input).value = "normal"
             await pilot.pause()
             assert dialog.query_one("#login-fields").display
             assert dialog.query_one("#login-user", Input).display and dialog.query_one("#login-password", Input).display
@@ -448,22 +458,20 @@ def test_the_me_answer_after_the_dialog_is_gone_does_nothing(serve, wait_until) 
     asyncio.run(check())
 
 
-def test_the_create_after_a_failed_target_read_carries_the_typed_login(serve, wait_until) -> None:
-    """Qodo round 1, thread 4. The type of a typed id could not be read (the inventory is down): the create that goes
-    ahead anyway carries what the operator typed, on a new connection. A silent fall back to the core's own stored
-    credential would open the session as another account than the one typed."""
+def test_the_create_carries_the_typed_login_on_a_selected_row(serve, wait_until) -> None:
+    """Qodo round 1, thread 4, on the search path. A typed login on a selected ssh row goes ahead on a new
+    connection, carrying what the operator typed. A silent fall back to the core's own stored credential would open the
+    session as another account than the one typed."""
 
     async def check() -> None:
         serve_app, url = serve(_GatedServe())
-        serve_app.read_gate = threading.Event()
-        serve_app.read_gate.set()
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
-            dialog = await _open_dialog(app, pilot, wait_until, target=None, target_type=None)
-            dialog.query_one("#target-id", Input).value = "normal"
+            dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
+            await wait_until(pilot, lambda: len(app.workspace().targets.rows) >= 8, "the inventory")
             _type_login(dialog)
             dialog.query_one("#create-button", Button).press()
-            await wait_until(pilot, lambda: bool(_creates(serve_app)), "the fallback create")
+            await wait_until(pilot, lambda: bool(_creates(serve_app)), "the create")
             body = _creates(serve_app)[-1]
             assert body["connection"] == "new"
             assert body.get("login") == {"user": USER, "auth": {"kind": "password", "password": PASSWORD}}, body
@@ -473,23 +481,20 @@ def test_the_create_after_a_failed_target_read_carries_the_typed_login(serve, wa
     asyncio.run(check())
 
 
-def test_the_create_after_a_failed_target_read_refuses_half_a_login(serve, wait_until) -> None:
-    """Qodo round 1, thread 4. The fields changed while the type was being read (a login typed whole, one field then
-    emptied): the fallback create makes the same half-login check as `_start_create` and sends nothing, instead of
-    creating with no login at all."""
+def test_the_create_refuses_half_a_login_on_a_selected_row(serve, wait_until) -> None:
+    """Qodo round 1, thread 4, on the search path. The fields changed to half a login (one field then emptied):
+    the create makes the same half-login check as `_start_create` and sends nothing, instead of creating with no
+    login at all."""
 
     async def check() -> None:
         serve_app, url = serve(_GatedServe())
-        serve_app.read_gate = threading.Event()
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
-            dialog = await _open_dialog(app, pilot, wait_until, target=None, target_type=None)
-            dialog.query_one("#target-id", Input).value = "normal"
+            dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
+            await wait_until(pilot, lambda: len(app.workspace().targets.rows) >= 8, "the inventory")
             _type_login(dialog)
-            dialog.query_one("#create-button", Button).press()
-            await wait_until(pilot, lambda: serve_app.read_started.is_set(), "the read of the target")
             dialog.query_one("#login-password", Input).value = ""
-            serve_app.read_gate.set()
+            dialog.query_one("#create-button", Button).press()
             await wait_until(pilot, lambda: _text(dialog.query_one("#new-session-error", Static)) == HALF_LOGIN,
                              "the half-login refusal")
             assert not dialog.query_one("#create-button", Button).disabled

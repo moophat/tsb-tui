@@ -265,7 +265,9 @@ def test_fresh_session_opens_new_session_on_the_same_target_and_never_ends_the_o
             _, session_id = await _holder_with_dialog(pilot, app, wait_until, serve_app, url)
             await click_laid_out(pilot, wait_until, "#stale-choice-3")
             await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "New session")
-            assert app.screen.query_one("#target-id").value == STALE
+            await wait_until(pilot, lambda: any(row.id == STALE for row in app.workspace().targets.rows),
+                             "the inventory")
+            assert app.screen.selected_target_id == STALE
             assert [a["choice"] for a in _answers(serve_app)] == ["fresh_session"]
             assert app.client.session(session_id)["state"] not in ("killed", "terminated")
 

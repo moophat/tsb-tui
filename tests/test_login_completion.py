@@ -3,6 +3,7 @@ import asyncio
 import os
 import secrets
 
+import device_login_support
 from device_login_support import answer, code, opened, password, start
 from drive_support import Rig
 from stub_server import DeviceLoginApp, StubServer
@@ -12,6 +13,21 @@ from textual.widgets import Input
 
 # A blocking drive never answers while the writer is open, so the bound only needs to be finite.
 PIPE_ANSWER_BOUND_S = 10.0
+
+
+class _ListApp(DeviceLoginApp):
+    """`DeviceLoginApp` with a `GET /targets` list route, so the New session screen's inventory loads."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": "normal", "type": "ssh", "name": "normal", "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.20", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
+
+
+def _use_list_stub(monkeypatch) -> None:
+    monkeypatch.setattr(device_login_support, "DeviceLoginApp", _ListApp)
 
 
 def _remember(dialog):
@@ -24,6 +40,7 @@ def test_a_created_login_waits_for_unlock_before_remembering(wait_until, monkeyp
     calls = _save_spy(monkeypatch)
 
     async def check():
+        _use_list_stub(monkeypatch)
         for signout in (False, True):
             async with opened(wait_until) as (app, pilot, screen, dialog, _):
                 _remember(dialog)
@@ -53,6 +70,7 @@ def test_a_created_session_opens_before_its_remember_save_finishes(wait_until, m
     from tsb_tui import vault_flow
 
     async def check():
+        _use_list_stub(monkeypatch)
         release, saving = asyncio.Event(), asyncio.Event()
         captured = []
 
@@ -96,6 +114,7 @@ def test_login_notices_leave_the_status_row_after_the_overlay_and_notice_expiry(
     _save_spy(monkeypatch)
 
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, rounds=[password(), password(2, 2)]) as (app, pilot, screen, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until, secrets.token_urlsafe())

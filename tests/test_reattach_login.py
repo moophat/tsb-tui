@@ -86,6 +86,12 @@ class LateCreateStub(RestartStub):
         self.create_gate = create_gate
 
     def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            # The New session screen's inventory: the prefilled `stub-target` is a row it can pick, so Create
+            # presses through the screen. The route lives in this test file, not in stub_server.py.
+            record = {"id": STUB_TARGET, "type": "ssh", "name": STUB_TARGET, "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.50", "port": 22}
+            return 200, [], {"targets": [record]}
         if method == "POST" and path == "/sessions":
             # The stub answers the create on its own timeout, so this bound must exceed the 30 s login wait: a slow
             # run could finish the create before Login. A released gate costs nothing.

@@ -29,18 +29,32 @@ from tsb_tui.screens.terminal import TerminalScreen
 TARGET_ID = "stub-target"
 
 
+class _ListApp(SlowChunkedApp):
+    """`SlowChunkedApp` with a `GET /targets` list route, so the New session screen's inventory loads and the
+    prefilled target is a row it can pick. The route lives in this test file, not in stub_server.py."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": TARGET_ID, "type": "ssh", "name": TARGET_ID, "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.50", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
+
+
 async def _run_flow(screen_text, wait_until) -> None:
-    stub = SlowChunkedApp(delay_s=0.02, max_chunks=400, tail_chunks=5)
+    stub = _ListApp(delay_s=0.02, max_chunks=400, tail_chunks=5)
     with StubServer(stub) as url:
         app = TsbTuiApp(url, target=TARGET_ID)
         async with app.run_test(size=(100, 30)) as pilot:
             # -- Login lands on the workspace with the sidebar open; New session is a dialog over it. --
             workspace = await login(app, pilot)
             assert workspace.sidebar_open and not workspace.slots
+            await wait_until(pilot, lambda: any(row.id == TARGET_ID for row in app.workspace().targets.rows),
+                             "the inventory")
             assert isinstance(await open_new_session(app, pilot), NewSessionScreen)
 
             # -- New session: target prefilled from --target; new connection is the default. --
-            assert app.screen.query_one("#target-id").value == TARGET_ID
+            assert app.screen.selected_target_id == TARGET_ID
             await pilot.click("#create-button")
             await pilot.pause()
             assert len(stub.sessions) == 1
