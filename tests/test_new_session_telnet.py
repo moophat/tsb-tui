@@ -11,7 +11,6 @@ in-process fixture server, which does not itself refuse a telnet reuse, so what 
 from __future__ import annotations
 
 import asyncio
-import threading
 
 from stub_server import SlowChunkedApp, StubServer
 from textual.widgets import Button, Input, RadioButton, Static
@@ -20,12 +19,23 @@ from tsbc import _serve
 from workspace_support import fixture_login, login, open_new_session
 
 from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 
 
 def _creates(serve_app) -> list[dict]:
     return [body for method, path, body in serve_app.requests if (method, path) == ("POST", "/sessions")]
+
+
+class _ListApp(SlowChunkedApp):
+    """`SlowChunkedApp` with a `GET /targets` list route, so the New session screen's inventory loads. The route
+    lives in this test file, not in stub_server.py; `GET /targets/{id}` keeps its configured error."""
+
+    def http(self, method, path, headers, body):
+        if method == "GET" and path.split("?", 1)[0] == "/targets":
+            record = {"id": "stub-target", "type": "ssh", "name": "stub-target", "group": "stub", "tags": [],
+                      "discovered_by": "manual", "last_seen": "2026-09-23T12:00:00Z", "host": "192.0.2.50", "port": 22}
+            return 200, [], {"targets": [record]}
+        return super().http(method, path, headers, body)
 
 
 async def _open_dialog(app, pilot, wait_until, *, target: str | None, target_type: str | None) -> NewSessionScreen:
@@ -51,6 +61,8 @@ def test_a_telnet_target_never_asks_reuse(serve, wait_until) -> None:
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 36)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target="telnet-scenario", target_type="telnet")
+            await wait_until(pilot, lambda: any(row.id == "telnet-scenario" for row in app.workspace().targets.rows),
+                             "the inventory")
             reuse = dialog.query_one("#conn-reuse", RadioButton)
             assert reuse.disabled and dialog.query_one("#conn-new", RadioButton).value
             await pilot.click("#conn-reuse")
@@ -76,6 +88,8 @@ def test_an_ssh_target_keeps_the_reuse_choice(serve, wait_until) -> None:
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 36)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target="normal", target_type="ssh")
+            await wait_until(pilot, lambda: any(row.id == "normal" for row in app.workspace().targets.rows),
+                             "the inventory")
             assert not dialog.query_one("#conn-reuse", RadioButton).disabled
             assert str(dialog.query_one("#new-session-target", Static).render()) == "normal · ssh"
             assert str(dialog.query_one("#connection-note", Static).render()) == ""
@@ -83,134 +97,115 @@ def test_an_ssh_target_keeps_the_reuse_choice(serve, wait_until) -> None:
     asyncio.run(check())
 
 
-def test_a_typed_target_is_read_before_the_create_and_a_telnet_one_gets_new(serve, wait_until) -> None:
-    """11.5: an id typed with no record behind it is read (`GET /targets/{id}`) before Create, so a telnet target typed by
-    hand gets the same rule as one picked from the list: the operator chose `reuse`, the dialog sends `new`."""
+def test_a_telnet_row_from_the_inventory_gets_new_and_asks_no_read(serve, wait_until) -> None:
+    """DEFAULT 22: a telnet row picked from the loaded inventory gets the same rule as one prefilled — the reuse
+    choice is greyed, Create sends `new`, and the screen asks the broker for no `GET /targets/{id}`."""
 
     async def check() -> None:
         serve_app, url = serve()
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 36)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target=None, target_type=None)
-            dialog.query_one("#target-id", Input).value = "telnet-scenario"
-            await pilot.click("#conn-reuse")
+            await wait_until(pilot, lambda: any(row.id == "telnet-scenario" for row in app.workspace().targets.rows),
+                             "the inventory")
+            dialog.query_one("#new-session-filter", Input).value = "telnet scenario"
             await pilot.pause()
-            assert dialog.query_one("#conn-reuse", RadioButton).value, "nothing is known about the type yet"
+            assert dialog.selected_target_id == "telnet-scenario"
+            reuse = dialog.query_one("#conn-reuse", RadioButton)
+            assert reuse.disabled, "a telnet row must not offer reuse"
+            before = len(_creates(serve_app))
             dialog.query_one("#create-button", Button).press()
-            await wait_until(pilot, lambda: isinstance(app.screen, AttachConfirmScreen), "the attach gate")
+            await wait_until(pilot, lambda: len(_creates(serve_app)) > before, "the create")
             reads = [path for method, path, _ in serve_app.requests if method == "GET" and path.startswith("/targets/")]
-            assert reads == ["/targets/telnet-scenario"]
+            assert reads == []
             body = _creates(serve_app)[-1]
             assert body["connection"] == "new" and "connection_id" not in body
 
     asyncio.run(check())
 
 
-def test_a_typed_target_that_does_not_exist_says_so_and_creates_nothing(serve, wait_until) -> None:
-    """11.5: a 404 from the read is shown as "no such target"; no create is made, because a create against an id the
-    inventory does not list could only fail further in, with a sentence about a connection."""
+def test_a_query_that_matches_no_row_shows_guidance_and_creates_nothing(serve, wait_until) -> None:
+    """The retired `no such target` is gone: a text that matches no row is the Add-row guidance, no create is made,
+    and the screen asks the broker for no `GET /targets/{id}`."""
 
     async def check() -> None:
         serve_app, url = serve()
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 36)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target=None, target_type=None)
-            dialog.query_one("#target-id", Input).value = "no-such-device"
+            await wait_until(pilot, lambda: len(app.workspace().targets.rows) >= 8, "the inventory")
+            dialog.query_one("#new-session-filter", Input).value = "no-such-device"
+            await pilot.pause()
+            assert "+ Add 'no-such-device' as a target" in str(dialog.query_one("#target-rows", Static).render())
             dialog.query_one("#create-button", Button).press()
-            await wait_until(pilot, lambda: str(dialog.query_one("#new-session-error", Static).render())
-                             == "no such target", "the refusal")
-            assert not dialog.query_one("#create-button", Button).disabled
+            await pilot.pause(0.3)
+            reads = [path for method, path, _ in serve_app.requests if method == "GET" and path.startswith("/targets/")]
+            assert reads == []
             assert _creates(serve_app) == [] and isinstance(app.screen, NewSessionScreen)
 
     asyncio.run(check())
 
 
-def test_a_typed_id_creates_even_while_the_inventory_is_down() -> None:
-    """11.5, inventory-list: a create still works while the index is down. When `GET /targets/{id}` fails with
-    anything but 404 the type cannot be read, so the dialog creates anyway asking `connection: new` (safe for
-    every protocol) and says so — greyed out would leave the operator unable to open a target the broker can."""
+def test_a_query_that_matches_no_row_creates_nothing_while_the_inventory_is_down(wait_until) -> None:
+    """The retired fallback create is gone: a text that matches no row is the ruled guidance, and no create is made
+    while the inventory is down."""
+
     async def check() -> None:
-        gate = threading.Event()
-        stub = SlowChunkedApp(target_read_error=(503, "inventory_unavailable", "the inventory is not answering"),
-                              create_gate=gate)
+        stub = _ListApp(target_read_error=(503, "inventory_unavailable", "the inventory is not answering"))
         with StubServer(stub) as url:
             app = TsbTuiApp(url)
             async with app.run_test(size=(120, 36)) as pilot:
                 await login(app, pilot)
                 dialog = await open_new_session(app, pilot)
-                dialog.query_one("#target-id", Input).value = "mystery-box"
-                await pilot.click("#conn-reuse")
+                await wait_until(pilot, lambda: len(app.workspace().targets.rows) >= 1, "the inventory")
+                dialog.query_one("#new-session-filter", Input).value = "mystery-box"
                 await pilot.pause()
-                assert dialog.query_one("#conn-reuse", RadioButton).value, "the operator asked for a reuse"
+                assert "No target matches 'mystery-box' · ask an admin to add it · Esc clears" \
+                    in str(dialog.query_one("#no-match", Static).render())
                 dialog.query_one("#create-button", Button).press()
-                for _ in range(300):
-                    if stub.create_started.is_set():
-                        break
-                    await pilot.pause(0.01)
-                assert stub.create_started.is_set(), "no create was made while the inventory was down"
-                assert "type could not be read" in str(dialog.query_one("#new-session-error", Static).render())
-                body = stub.creates[-1]
-                assert body["target_id"] == "mystery-box"
-                assert body["connection"] == "new" and "connection_id" not in body
-                gate.set()
-                for _ in range(300):
-                    if not isinstance(app.screen, NewSessionScreen):
-                        break
-                    await pilot.pause(0.01)
-                assert not isinstance(app.screen, NewSessionScreen)
+                await pilot.pause(0.3)
+                assert stub.creates == []
 
     asyncio.run(check())
 
 
-def test_a_second_click_while_the_fallback_create_is_pending_starts_no_second_create() -> None:
-    """The ruling of 2026-10-22: one read failure makes exactly one create. While the fallback create is in flight
-    Create stays greyed until it ends, so a second click — an impatient operator, a double Enter — cannot open a
-    second session on the same target behind the first, and the broker counts one `POST /sessions`."""
+def test_a_second_click_on_a_no_match_query_starts_no_create(wait_until) -> None:
+    """The retired fallback create is gone: a text that matches no row creates nothing, so a second press of Create
+    on the guidance reaches no broker."""
 
     async def check() -> None:
-        gate = threading.Event()
-        stub = SlowChunkedApp(target_read_error=(503, "inventory_unavailable", "the inventory is not answering"),
-                              create_gate=gate)
+        stub = _ListApp(target_read_error=(503, "inventory_unavailable", "the inventory is not answering"))
         with StubServer(stub) as url:
             app = TsbTuiApp(url)
             async with app.run_test(size=(120, 36)) as pilot:
                 await login(app, pilot)
                 dialog = await open_new_session(app, pilot)
-                dialog.query_one("#target-id", Input).value = "mystery-box"
-                dialog.query_one("#create-button", Button).press()
-                for _ in range(300):
-                    if stub.create_started.is_set():
-                        break
-                    await pilot.pause(0.01)
-                assert stub.create_started.is_set(), "the fallback create never started"
-                assert dialog.query_one("#create-button", Button).disabled, (
-                    "Create stayed clickable while the fallback create was in flight, so a second click could start "
-                    "a second session")
+                await wait_until(pilot, lambda: len(app.workspace().targets.rows) >= 1, "the inventory")
+                dialog.query_one("#new-session-filter", Input).value = "mystery-box"
+                await pilot.pause()
                 dialog.query_one("#create-button", Button).press()
                 await pilot.pause(0.1)
-                assert len(stub.creates) == 1, f"a second create reached the broker: {stub.creates}"
-                gate.set()
-                for _ in range(300):
-                    if not isinstance(app.screen, NewSessionScreen):
-                        break
-                    await pilot.pause(0.01)
-                assert not isinstance(app.screen, NewSessionScreen), "the create never finished"
-                assert len(stub.creates) == 1
+                dialog.query_one("#create-button", Button).press()
+                await pilot.pause(0.1)
+                assert stub.creates == [], f"a create reached the broker: {stub.creates}"
 
     asyncio.run(check())
 
 
-def test_an_empty_target_id_points_at_the_targets_tab(serve, wait_until) -> None:
-    """The dialog no longer says there is no target list: with nothing typed it points the operator at the Targets tab
-    of the full Fleet view, where a target is picked, and asks nothing of the broker."""
+def test_an_empty_query_points_at_the_search(serve, wait_until) -> None:
+    """With nothing typed the dialog points the operator at the searchable list and the full view, and asks nothing
+    of the broker."""
 
     async def check() -> None:
         serve_app, url = serve()
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 36)) as pilot:
             dialog = await _open_dialog(app, pilot, wait_until, target=None, target_type=None)
+            await wait_until(pilot, lambda: len(app.workspace().targets.rows) >= 8, "the inventory")
+            dialog.query_one("#new-session-filter", Input).value = "zzz"
+            await pilot.pause()
             dialog.query_one("#create-button", Button).press()
-            await wait_until(pilot, lambda: "Targets tab of the full view" in str(
+            await wait_until(pilot, lambda: "pick a target from the list" in str(
                 dialog.query_one("#new-session-error", Static).render()), "the hint")
             assert "no target list" not in str(dialog.query_one("#new-session-error", Static).render())
             assert _creates(serve_app) == []

@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 from device_login_support import answer, opened, start
-from test_remember import _save_spy
+from test_remember import _save_spy, _use_list_stub
 from textual.widgets import Input
 from tsb_contract_client import AsyncDeviceLogin
 
@@ -57,12 +57,14 @@ def test_a_create_remembers_only_the_login_and_choice_it_submitted(wait_until, m
     gate = threading.Event()
 
     async def check():
+        _use_list_stub(monkeypatch)
         async with opened(wait_until, create_gate=gate) as (_, pilot, _, dialog, stub):
             original = secrets.token_urlsafe()
+            # The target is picked by the search path: `opened` opens the dialog on the loaded `normal` row.
             dialog.query_one("#login-user", Input).value = "submitted-account"
             dialog.query_one("#login-password", Input).value = original
             dialog.query_one("#login-remember").value = remember
-            dialog._attempt_create()
+            dialog.query_one("#create-button").press()
             await wait_until(pilot, lambda: stub.create_started.is_set(), "create in flight")
             try:
                 dialog.query_one("#login-user", Input).value = "edited-account"
@@ -95,6 +97,7 @@ def test_cancelling_while_the_connected_socket_waits_for_attachment_closes_it(wa
 
         monkeypatch.setattr(AsyncDeviceLogin, "attachment", attachment)
         monkeypatch.setattr(AsyncDeviceLogin, "close", close)
+        _use_list_stub(monkeypatch)
         async with opened(wait_until) as (_, pilot, _, dialog, _):
             pane = await start(dialog, pilot, wait_until)
             await answer(pane, pilot, wait_until)

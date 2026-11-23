@@ -25,7 +25,8 @@ class TargetFormScreen(ModalScreen[dict | None]):
     TargetFormScreen { align: center middle; }
     TargetFormScreen #target-form-panel { width: 80; max-width: 100%; height: auto; max-height: 100%;
                                         border: round $frame; padding: 0 1; }
-    TargetFormScreen Input { height: 3; margin: 0; }
+    # Every field fits inside a 24-row window (L1-focus/geometry): the inputs are compacted to their content height.
+    TargetFormScreen Input { height: 1; margin: 0; border: none; }
     TargetFormScreen Horizontal { height: auto; }
     TargetFormScreen Horizontal > Vertical { width: 1fr; height: auto; }
     TargetFormScreen RadioSet { height: auto; padding: 0; border: none; }
@@ -37,7 +38,9 @@ class TargetFormScreen(ModalScreen[dict | None]):
     def __init__(self, definition: dict | None = None) -> None:
         super().__init__()
         self.initial = dict(definition or {})
-        self.edit_id = definition["id"] if definition is not None else None
+        # A definition with no `id` is the Add row's prefill (the address field, nothing else): a new target, not
+        # an edit. Only a record that carries an id opens the editor.
+        self.edit_id = definition.get("id") if definition is not None else None
         self.busy = False
 
     def compose(self) -> ComposeResult:
@@ -80,7 +83,13 @@ class TargetFormScreen(ModalScreen[dict | None]):
 
     def on_mount(self) -> None:
         self.fill(self.initial)
-        self.query_one("#target-host" if self.edit_id else "#target-id", Input).focus()
+        if self.edit_id is not None:
+            self.query_one("#target-host", Input).focus()
+        elif self.initial.get("id") or self.initial.get("host"):
+            # The Add row's prefill lands in the address field, where the operator continues.
+            self.query_one("#target-host", Input).focus()
+        else:
+            self.query_one("#target-id", Input).focus()
 
     def fill(self, definition: dict) -> None:
         """Fill the same controls for an editor and for drive."""

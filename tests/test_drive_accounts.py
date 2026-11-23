@@ -138,9 +138,10 @@ def test_account_device_login_ended_close_4017(serve, wait_until):
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 40)) as pilot:
             workspace = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: any(row.id == "normal" for row in app.workspace().targets.rows),
+                             "the inventory")
             dialog = await open_new_session(app, pilot)
-            dialog._types["normal"] = "ssh"
-            dialog.query_one("#target-id", Input).value = "normal"
+            dialog.query_one("#new-session-filter", Input).value = "normal"
             await pilot.pause()
             dialog.query_one("#device-login-start").press()
             await wait_until(pilot, lambda: workspace.front is not None and workspace.front.device_login is not None,

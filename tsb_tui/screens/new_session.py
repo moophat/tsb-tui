@@ -1,23 +1,36 @@
-"""New Session — the target (from the Targets tab of the full Fleet view, `--target`, or typed), and the connection
-choice Contract §15.3 requires from this first tag. A telnet connection carries one session, so for a telnet target
-the dialog asks `new` and the reuse choice is greyed (DEFAULT 22); the type of a target typed in is read from
-`GET /targets/{id}` before the create. Every string from a target record is shown as text, never as markup. The recording warning and the host-key
-acknowledgement happen right before the attach itself (screens/attach_confirm.py), not here —
-every attach passes through there, including a later re-attach from Sessions, so gating on it at
-creation time only would miss that case.
+"""New session — a searchable list of the loaded inventory, the add-target path, and the choices the contract asks for.
 
-An ssh target's dialog also takes a login for this one connection (login-at-connect phase A, rulings A13 and 15:36 (6)):
-Username and Password, both empty meaning "use what TSB holds". What is typed goes to the core in the create's `login`
-and nowhere else unless Remember was chosen: the completion holds the submitted login for that save,
-and the dialog clears both fields whatever the answer."""
+`n` opens it on the pages the workspace already loaded (rule 2, P3): typing filters the rows by literal name, host
+text, group, tags and label — nothing is resolved, nothing new is asked of the broker. `⏎` on a row creates at once
+when there is one way to open it; a choice shows only where the contract asks for one: a live connection of this
+login (Contract §15.3), a `credential_choice_required` or `connection_choice_required` answer, or a gate (the
+recording notice, a first-use host key, a typed login). A target you have a session on gets an ask: `go to
+session N` first and highlighted, then `another session` and `new connection`. A no-match query shows the Add row
+for a login with `target.edit`, or the ruled words for one without; the form opens with the typed text in the
+address field when it reads as an IP address or a host name, nothing else inferred, and a successful save returns
+to this screen with the saved record selected — the create stays the operator's press.
+
+Every refusal is one ruled line per code (the table below): what happened, why, and one recovery key; nothing
+retries by itself. The retired `no such target` and `a target id is required` are gone: a text that matches no row
+is guidance, and the screen never asks the broker for `GET /targets/{id}`.
+
+The login fields (login-at-connect phase A): Username and Password, both empty meaning "use what TSB holds". What
+is typed goes to the core in the create's `login` and nowhere else unless Remember was chosen; the dialog clears
+both fields whatever the answer. The recording warning and the host-key acknowledgement happen at the attach gate
+(screens/attach_confirm.py), not here.
+"""
 
 from __future__ import annotations
 
+import re
 from typing import Any, ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import (
+    Horizontal,
+    Vertical,
+)
 from textual.content import Content
 from textual.screen import Screen
 from textual.widgets import (
@@ -33,6 +46,7 @@ from tsb_contract_client import ApiError
 
 from .._transport import HttpError
 from ..model.targets import as_text
+from ..widgets.sidebar import _target_facts, _target_label, target_title
 
 TERM = "xterm-256color"
 
@@ -50,24 +64,61 @@ ORG_CREDENTIAL_LOCKED = "org_credential_locked"
 CREDENTIAL_CHOICE_REQUIRED = "credential_choice_required"
 LAYER_WORDS = {"personal": "yours", "org": "granted"}
 CHOICE_TITLE = "More than one saved login fits this target. Choose the one to connect with:"
-ORG_LOCKED_NOTE = "The administrator who stored it must unlock; your passphrase cannot help."
+
+# The ruled refusal table (P4 L1-open-refusals): one line per code — what happened, why, and the person's own
+# recovery key; nothing retries by itself. `<label>` is the row's label.
+REFUSAL_COPY = {
+    "target_connect_failed": "Could not connect to {label} · the target did not accept the connection · r tries again",
+    "target_auth_failed": "The target refused the login · check the username and password · Enter tries again",
+    "hostkey_changed": "The host key changed for {label} · nothing was opened · Esc closes",
+    NO_RESOLVING_CREDENTIAL: "No saved login fits this target · type the username and password · Enter tries again",
+    VAULT_LOCKED: "Your vault is locked · type your passphrase · Enter unlocks and repeats once",
+    ORG_CREDENTIAL_LOCKED: "The admin who holds that saved login has not unlocked it · your passphrase cannot help "
+                           "· ask the admin · Esc closes",
+    "mapped_credential_missing": "The saved login this target maps to is gone · pick another, or type a username "
+                                 "and password · Enter tries again",
+    "device_not_trusted": "This device is not trusted for that login · nothing was opened · Esc closes",
+    # After a pick from the list, a 404 means the target left the caller's view; the no-match wording is for a query.
+    "target_not_found": "{label} is no longer in your list · r refreshes the list",
+    "inventory_unavailable": "The broker's inventory is unavailable · r retries when it answers",
+}
 
 # A telnet connection carries one session (DEFAULT 22): the worker refuses a reuse, so the dialog never asks one.
 TELNET = "telnet"
 TELNET_NO_REUSE = "a telnet connection carries one session"
-TARGET_REQUIRED = "a target id is required — pick one in the Targets tab of the full view (Ctrl+\\ F)"
-NO_SUCH_TARGET = "no such target"
-# The inventory could not answer for this id (a 503, a transport error): the type is unknown, so the create asks
-# `connection: new`, which is safe for every protocol, and says what it could not read.
-TYPE_UNKNOWN = "the target's type could not be read — creating a new connection"
+TARGET_REQUIRED = "pick a target from the list, or type text to search — the full view is Ctrl+\\ F"
 
+# The no-match guidance, ruled in P4 (the same words for a login without target.edit).
+NO_MATCH_ADD = "+ Add '{query}' as a target"
+NO_MATCH_NO_RIGHTS = "No target matches '{query}' · ask an admin to add it · Esc clears"
+
+# The ask for a target you have a session on: the session you have, this window's number, then the two opens.
+GO_TO_SESSION = "go to session {number}"
+ANOTHER_SESSION = "another session"
+NEW_CONNECTION = "new connection"
 
 # The login fields (login-at-connect phase A). The warning is the fixed sentence of ruling B7; the other three are
-# the dialog's own words, except NO_LOGIN_HELD, which is the A13 ruling's.
+# the dialog's own words.
 RECORDED_LOGIN_WARNING = "Your login answers are recorded."
 HALF_LOGIN = "Type both a username and a password, or leave both empty."
 LOGIN_NEEDS_NEW = "a typed login is for a new connection"
-NO_LOGIN_HELD = "TSB holds no login for this target. Type one, or cancel."
+
+# An address reads as an IP address or a host name: the literal forms only, no lookup. The text goes to the form's
+# address field as the operator typed it; single words are names, not addresses.
+_IPV4 = re.compile(r"\d{1,3}(\.\d{1,3}){3}")
+_IPV6 = re.compile(r"[0-9a-fA-F:]+")
+_HOSTNAME = re.compile(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+
+
+def reads_as_address(text: str) -> bool:
+    """True for a typed text that is an IP address (v4, or v6 with at least one colon) or a dotted host name."""
+    if not text:
+        return False
+    if _IPV4.fullmatch(text):
+        return all(0 <= int(part) <= 255 for part in text.split("."))
+    if ":" in text and _IPV6.fullmatch(text):
+        return True
+    return bool(_HOSTNAME.fullmatch(text))
 
 
 def credential_candidates(detail: dict) -> list[tuple[str, str]] | None:
@@ -99,21 +150,44 @@ def create_size(app: Any) -> tuple[int, int]:
 class NewSessionScreen(Screen):
     DEFAULT_CSS = """
     NewSessionScreen #new-session-panel { height: auto; max-height: 100%; }
+    NewSessionScreen #target-rows, NewSessionScreen #no-match, NewSessionScreen #ask-lines { height: auto; }
+    NewSessionScreen #new-session-error { height: auto; width: 1fr; }
+    NewSessionScreen #new-session-core { height: auto; width: 1fr; }
+    NewSessionScreen #reuse-box { height: auto; }
+        NewSessionScreen #target-rows { max-height: 3; }
     NewSessionScreen #create-button, NewSessionScreen #cancel-button, NewSessionScreen #device-login-start {
         height: 1; min-height: 1; border: none; margin: 0; padding: 0 1;
     }
     NewSessionScreen #login-remember { height: 1; border: none; padding: 0; }
+    # The dialog must fit every control inside a 24-row window (L1-focus/geometry): the painted target window is
+    # 3 rows, and the filter, the two choice RadioSets and the login row are compacted to their content height.
+    NewSessionScreen #new-session-filter { height: 1; border: none; }
+    NewSessionScreen #connection-choice, NewSessionScreen #credential-choice { height: auto; border: none; padding: 0; }
+    NewSessionScreen #login-row > Input { height: 1; border: none; }
     """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("up", "row_up", "Up"),
+        Binding("down", "row_down", "Down"),
+        Binding("k", "row_up"),
+        Binding("j", "row_down"),
+        # Priority: the filter Input holds the keys, and `⏎` there is the open press, not a submit event.
+        Binding("enter", "act_row", "Open", priority=True),
+        Binding("r", "refresh_list", "Refresh list"),
+        # `/` enters the filter, `a` adds a target (shown only with `target.edit`). Non-priority:
+        # while the filter holds the keys these are typing, and they act when the focus is on the dialog's controls.
+        Binding("slash", "focus_filter", "Filter"),
+        Binding("a", "add_target", "Add target"),
+    ]
 
     def __init__(self, target: str | None = None, target_type: str | None = None, *, refusal: str = "") -> None:
         super().__init__()
         self._initial_target = target or ""
-        # The type of each target id this dialog knows: the one it was opened on (the Targets tab knows it), and
-        # each one read from `GET /targets/{id}` before a create on a typed id.
+        # The type of the target the screen was opened on (the Targets tab knows it); rows carry their own type
+        # from the loaded pages, so no read is asked for a typed text.
         self._types: dict[str, str] = {target: target_type} if target and target_type is not None else {}
         # The target id the create that raised connection_choice_required was attempted against
-        # — the picker's retry (on_select_changed) reuses it rather than re-reading the Input,
+        # — the picker's retry (on_select_changed) reuses it rather than re-reading the filter,
         # which the operator may have already changed while the GET /sessions round trip was in
         # flight.
         self._pending_target_id: str | None = None
@@ -131,22 +205,36 @@ class NewSessionScreen(Screen):
         self._offers = 0
         self.me_ready = False
         self._refusal = refusal
+        # The search state: the filter text, the rows it matches, the highlighted row (an index into the painted
+        # window, plus the Add row at len(rows)), and the ask the open press raised (rows of words, none pressed).
+        self._filter_text = ""
+        self._sel = 0
+        self._ask: list[tuple[str, str]] = []
+        self._ask_sel = 0
+        # The saved record the continuation is waiting for, once the Add row's form has saved, with
+        # the one timer that watches for it.
+        self._pending_select = ""
+        self._pending_timer = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-session-panel"):
             yield Static("New session", id="new-session-title")
-            yield Static("", id="new-session-target", markup=False)
-            yield Input(value=as_text(self._initial_target), placeholder="target id", id="target-id")
+            yield Input(placeholder="filter targets", id="new-session-filter")
+            yield Static("", id="new-session-position", markup=False)
+            yield Static("", id="target-rows", markup=False)
+            yield Static("", id="no-match", markup=False)
+            yield Static("", id="ask-lines", markup=False)
             with RadioSet(id="connection-choice"):
                 yield RadioButton("New connection (fresh authentication)", value=True, id="conn-new")
                 yield RadioButton("Reuse a connection already open to this target", id="conn-reuse")
             yield Static("", id="connection-note", markup=False)
-            yield Input(placeholder="connection id (blank: the only candidate, if there is one)",
-                       id="connection-id", disabled=True)
-            # Populated only on 409 connection_choice_required (_offer_connection_choice below);
-            # none preselected (error.schema.json: the broker never picks one itself).
-            yield Select[str]([], id="connection-picker",
-                             prompt="choose a connection to reuse", disabled=True)
+            yield Static("", id="new-session-target", markup=False)
+            # Shown when reuse is asked for: the id field on the radio's press, the picker on the core's 409.
+            with Vertical(id="reuse-box"):
+                yield Input(placeholder="connection id (blank: the only candidate, if there is one)",
+                            id="connection-id", disabled=True)
+                yield Select[str]([], id="connection-picker",
+                                  prompt="choose a connection to reuse", disabled=True)
             # Filled on 409 credential_choice_required only (_offer_credential_choice): the core's candidates as plain
             # text, none pressed, and a press is the pick.
             yield Static(CHOICE_TITLE, id="credential-choice-title", markup=False)
@@ -161,15 +249,33 @@ class NewSessionScreen(Screen):
                 yield Checkbox("Remember", id="login-remember")
             yield Button("Type the login in the terminal", id="device-login-start")
             yield Static(self._refusal, id="new-session-error", markup=False)
+            yield Static("", id="new-session-core", markup=False)
             yield Button("New connection" if self._refusal else "Create session", id="create-button", variant="primary")
             yield Button("Cancel", id="cancel-button")
 
     def on_mount(self) -> None:
+        # The children mount as the screen mounts; every work that touches widget ids runs once they are in the
+        # DOM, in this handler, which Textual dispatches after the compose.
         self._login_inputs = tuple(self.query("#login-user, #login-password"))
         self._hide_credential_choice()
-        self.query_one("#target-id", Input).focus()
+        # The reuse box and its picker show only when reuse is asked for; hidden at rest so the dialog fits a 24-row window.
+        self.query_one("#reuse-box").display = False
+        if self._initial_target:
+            # The prefilled target is the highlighted row; its line names it as the Targets tab handed it over.
+            self._select_initial()
+        self.query_one("#new-session-filter", Input).focus()
         self._show_type()
+        self._paint_rows()
         self.app.call_api(self.app.client.me, on_done=self._on_me, on_error=self._on_me_error)
+
+    def _select_initial(self) -> None:
+        rows = self._all_rows()
+        for index, row in enumerate(rows):
+            if row.id == self._initial_target:
+                self._sel = index
+                self.query_one("#new-session-target", Static).update(
+                    f"{as_text(self._initial_target)} · {as_text(self._types.get(self._initial_target, row.type))}")
+                break
 
     def _on_me(self, me: dict) -> None:
         self.app.screen_lock.apply(me.get("locks"))      # the lock settings are re-read whenever the TUI reads /auth/me
@@ -187,8 +293,277 @@ class NewSessionScreen(Screen):
         self.me_ready = True
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id in ("target-id", "login-user", "login-password"):
+        if event.input.id == "new-session-filter":
+            self._filter_text = event.input.value
+            self._ask = []
+            self._follow_selection()
+            self._paint_rows()
             self._show_type()
+        elif event.input.id in ("login-user", "login-password"):
+            self._show_type()
+
+    def _follow_selection(self) -> None:
+        """The highlight follows the entity: a filter that leaves rows puts the mark on the first match."""
+        rows = self._all_rows()
+        if rows:
+            self._sel = min(self._sel, len(rows) - 1)
+            if self._filter_text.strip():
+                self._sel = 0
+        else:
+            self._sel = 0
+
+    # -- the inventory and the painted rows --
+
+    @property
+    def selected_target_id(self) -> str | None:
+        """The id of the highlighted row, for a test that needs the entity, not the painted line."""
+        rows = self._matched_rows()
+        if not rows or self._sel >= len(rows):
+            return None
+        return rows[min(self._sel, len(rows) - 1)].id
+
+    def _all_rows(self):
+        workspace = self.app.workspace()
+        return tuple(workspace.targets.rows) if workspace is not None else ()
+
+    def _matched_rows(self):
+        needle = self._filter_text.strip().lower()
+        rows = self._all_rows()
+        if not needle:
+            return rows
+        out = []
+        for row in rows:
+            if (needle in row.name.lower() or needle in row.host.lower()
+                    or needle in row.group.lower()
+                    or any(needle in tag.lower() for tag in row.tags)
+                    or needle in _target_label(row).lower()):
+                out.append(row)
+        return tuple(out)
+
+    def _open_numbers(self) -> dict[str, list[int]]:
+        """The number each session open in this window has on the rail, per target."""
+        workspace = self.app.workspace()
+        numbers: dict[str, list[int]] = {}
+        if workspace is None:
+            return numbers
+        for index, slot in enumerate(workspace.slots):
+            if not slot.closed:
+                numbers.setdefault(slot.target, []).append(index + 1)
+        return numbers
+
+    def _row_line(self, row) -> str:
+        """One painted row: the mark, the label, and the ruled facts (host, open numbers, group, type word)."""
+        _, facts = _target_facts(row, self._open_numbers().get(row.id, ()), "", row.group, 40)
+        label = _target_label(row)
+        line = f"{label} · {facts}" if facts else label
+        return line
+
+    def _rights(self) -> bool:
+        return "target.edit" in getattr(self.app, "permissions", frozenset())
+
+    def _add_row_shown(self) -> bool:
+        return bool(self._filter_text.strip()) and not self._matched_rows() and self._rights()
+
+    def _paint_rows(self) -> None:
+        rows = self._matched_rows()
+        all_rows = self._all_rows()
+        query = self._filter_text.strip()
+        width = max(self.app.workspace()._window_width(), 40) if self.app.workspace() else 80
+        index = f"{min(self._sel + 1, len(rows))}/{len(rows)}" if rows else "0/0"
+        position = target_title(index, len(rows), len(all_rows), len(all_rows), query, False, width)
+        self.query_one("#new-session-position", Static).update(position)
+        lines: list[str] = []
+        window = rows[:3] if self._sel < 3 else rows[max(0, self._sel - 2): self._sel + 1]
+        for row in window:
+            mark = "▸" if (rows.index(row) == self._sel and not self._ask) else " "
+            lines.append(f"{mark} {self._row_line(row)}")
+        if self._add_row_shown():
+            add = NO_MATCH_ADD.format(query=as_text(query))
+            mark = "▸" if self._sel == len(rows) and not self._ask else " "
+            lines.append(f"{mark} {add}")
+        self.query_one("#target-rows", Static).update("\n".join(lines))
+        no_match = ""
+        if not rows and query and not self._rights():
+            no_match = NO_MATCH_NO_RIGHTS.format(query=as_text(query))
+        self.query_one("#no-match", Static).update(no_match)
+        ask_lines = [f"{'▸' if i == self._ask_sel else ' '} {label}" for i, (label, _) in enumerate(self._ask)]
+        self.query_one("#ask-lines", Static).update("\n".join(ask_lines))
+
+    # -- the keys --
+
+    def action_row_up(self) -> None:
+        if self._ask:
+            self._ask_sel = max(0, self._ask_sel - 1)
+            self._paint_rows()
+            return
+        limit = len(self._matched_rows()) + (1 if self._add_row_shown() else 0)
+        if limit:
+            self._sel = max(0, self._sel - 1)
+            self._paint_rows()
+
+    def action_row_down(self) -> None:
+        if self._ask:
+            self._ask_sel = min(len(self._ask) - 1, self._ask_sel + 1)
+            self._paint_rows()
+            return
+        limit = len(self._matched_rows()) + (1 if self._add_row_shown() else 0)
+        if limit:
+            self._sel = min(limit - 1, self._sel + 1)
+            self._paint_rows()
+
+    def action_refresh_list(self) -> None:
+        """The ruled recovery for `target_not_found` and `inventory_unavailable`: the person's `r` asks the
+        workspace for a foreground read of the list. Nothing is sent to the broker by a refusal itself."""
+        workspace = self.app.workspace()
+        if workspace is not None:
+            workspace._fetch_targets()
+
+    def action_focus_filter(self) -> None:
+        """`/` enters the filter. While it already holds the keys this is typing, so the binding
+        fires only when the focus is on the dialog's controls."""
+        self.query_one("#new-session-filter", Input).focus()
+
+    def action_add_target(self) -> None:
+        """`a` adds a target, shown only to a login holding `target.edit`. It opens
+        the existing form with the typed text in the address field when it reads as an address; without that permission
+        it does nothing (no Add row, no target-create)."""
+        if self._rights():
+            self._open_form()
+
+    def action_act_row(self) -> None:
+        """`⏎` acts on the highlighted row: an ask option, the Add row, or open-direct on a target row."""
+        if self._ask:
+            self._act_ask()
+            return
+        rows = self._matched_rows()
+        if self._add_row_shown() and self._sel == len(rows):
+            self._open_form()
+            return
+        if not rows:
+            return
+        row = rows[min(self._sel, len(rows) - 1)]
+        self._open_target(row)
+
+    def action_cancel(self) -> None:
+        """Back one level: an ask goes back to the list, a filter clears first, and the query stays when a form
+        is dismissed. Every session open in the workspace is as it was."""
+        if self._ask:
+            self._ask = []
+            self._paint_rows()
+            return
+        if self._filter_text:
+            self.query_one("#new-session-filter", Input).value = ""
+            return
+        self.app.pop_screen()
+
+    def _open_form(self) -> None:
+        """The Add row opens the target form with the typed text in the address field when it reads as an IP
+        address or a host name; type, port, name and login stay empty. A successful save lands back here with the
+        saved record selected; nothing is created by itself."""
+        from .target_form import TargetFormScreen
+
+        query = self._filter_text.strip()
+        definition = {"host": query} if reads_as_address(query) else None
+        # Pushed from this screen: Textual delivers the dismiss result to this screen's callback.
+        self.app.push_screen(TargetFormScreen(definition), self._after_form)
+
+    def _after_form(self, record: dict | None) -> None:
+        if record is None:
+            return  # the form was dismissed: this screen stays as it was, query intact
+        self._filter_text = ""
+        self.query_one("#new-session-filter", Input).value = ""
+        target_id = str(record.get("id", ""))
+        # The form's own save callback runs in the workspace, which is where its push lives; this screen keeps
+        # its own continuation state and refreshes the list for the record the save returned.
+        # The workspace's own save path (`a` in the Targets tab) does this refresh; the Add row's save runs its
+        # own callback, so the continuation asks for the read here.
+        self.app.workspace().target_saved(record)
+        self._pending_select = target_id
+        if self.app.workspace().targets.row(target_id) is not None:
+            self._check_pending()
+        else:
+            # One timer until the record lands; it stops with the watch, never a chain of timers.
+            self._pending_timer = self.app.set_interval(0.1, self._check_pending)
+        self._paint_rows()
+
+    def _check_pending(self) -> None:
+        workspace = self.app.workspace()
+        if workspace is None or not self._pending_select:
+            self._stop_pending_watch()
+            return
+        row = workspace.targets.row(self._pending_select)
+        if row is None:
+            return
+        rows = self._all_rows()
+        for index, entry in enumerate(rows):
+            if entry.id == self._pending_select:
+                self._sel = index
+                break
+        self._pending_select = ""
+        self._stop_pending_watch()
+        self._paint_rows()
+
+    def _stop_pending_watch(self) -> None:
+        timer = getattr(self, "_pending_timer", None)
+        if timer is not None:
+            timer.stop()
+            self._pending_timer = None
+
+    # -- open-direct and the asks --
+
+    def _sessions_for(self, target_id: str) -> list[dict]:
+        """This login's session records on this target, from the fleet's merged view."""
+        workspace = self.app.workspace()
+        if workspace is None or workspace.fleet is None:
+            return []
+        scan = workspace.fleet.scan(open_here=[slot.session_id for slot in workspace.slots if not slot.closed])
+        return [record for record in scan.merged.values()
+                if record.get("target_id") == target_id and record.get("owner") == self.app.username]
+
+    def _live_connections(self, target_id: str) -> list[str]:
+        """This login's connection ids with a session of theirs not ended on the target (the same read the
+        picker's remedy makes: `GET /sessions`, each session's `connection_id`)."""
+        sessions = self._sessions_for(target_id)
+        return list(dict.fromkeys(
+            record["connection_id"] for record in sessions
+            if record.get("connection_id") and record.get("state") not in ("ended", "killed", "terminated")))
+
+    def _open_target(self, row) -> None:
+        """`⏎` on a target row: the ask for a target with a session when this login has a session on it, the §15.3 choice when a live
+        connection exists, and one create at once when there is one way."""
+        workspace = self.app.workspace()
+        slots = [slot for slot in workspace.slots if not slot.closed]
+        numbers = [index + 1 for index, slot in enumerate(slots) if slot.target == row.id]
+        live = self._live_connections(row.id)
+        if numbers:
+            first = min(numbers)
+            sid = slots[first - 1].session_id
+            options = [(GO_TO_SESSION.format(number=first), ("go", sid))]
+            if live:
+                options.append((ANOTHER_SESSION, ("reuse", live[0])))
+            options.append((NEW_CONNECTION, ("new", None)))
+            self._ask = options
+            self._ask_sel = 0
+            self._paint_rows()
+            return
+        if live and not self._typed_login():
+            self._ask = [(ANOTHER_SESSION, ("reuse", live[0])), (NEW_CONNECTION, ("new", None))]
+            self._ask_sel = 0
+            self._paint_rows()
+            return
+        self._create_from_row(row.id)
+
+    def _act_ask(self) -> None:
+        _label, (kind, arg) = self._ask[self._ask_sel]
+        self._ask = []
+        if kind == "go":
+            self.app.pop_screen()
+            self.app.workspace().bring_forward(arg)
+            return
+        row = self._matched_rows()[min(self._sel, len(self._matched_rows()) - 1)]
+        self._create_from_row(row.id, reuse_connection=arg if kind == "reuse" else None)
+
+    # -- the create (unchanged machinery, now keyed on the selected row) --
 
     def _typed_login(self) -> bool:
         return bool(self.query_one("#login-user", Input).value or self.query_one("#login-password", Input).value)
@@ -200,17 +575,25 @@ class NewSessionScreen(Screen):
             box.value = ""
 
     def on_unmount(self) -> None:
+        self._stop_pending_watch()
         self._clear_login()
         self._login_inputs = ()
 
+    def _type_of(self, target_id: str) -> str | None:
+        """The row's type from the loaded pages; the prefilled target's, handed over by the Targets tab, otherwise."""
+        workspace = self.app.workspace()
+        row = workspace.targets.row(target_id) if workspace is not None and target_id else None
+        return row.type if row is not None else self._types.get(target_id)
+
     def _is_telnet(self, target_id: str) -> bool:
-        return self._types.get(target_id) == TELNET
+        return self._type_of(target_id) == TELNET
 
     def _show_type(self) -> None:
-        """F4's first line (the target and its type) and the telnet rule: with a telnet target the reuse choice is
-        greyed and says why, and `new` is the choice."""
-        target_id = self.query_one("#target-id", Input).value.strip()
-        target_type = self._types.get(target_id)
+        """The selected row's target line and the telnet rule: with a telnet target the reuse choice is greyed
+        and says why, and `new` is the choice."""
+        rows = self._matched_rows()
+        target_id = rows[min(self._sel, len(rows) - 1)].id if rows else ""
+        target_type = self._type_of(target_id)
         self.query_one("#new-session-target", Static).update(
             f"{as_text(target_id)} · {as_text(target_type)}" if target_type is not None and target_id else "")
         telnet = self._is_telnet(target_id)
@@ -231,37 +614,35 @@ class NewSessionScreen(Screen):
         if event.radio_set.id == "connection-choice":
             reuse = event.pressed.id == "conn-reuse"
             self.query_one("#connection-id", Input).disabled = not reuse
+            self.query_one("#reuse-box").display = reuse
         elif event.radio_set.id == "credential-choice":
             event.stop()
             self._pick_credential(event.radio_set.pressed_index)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "create-button":
-            self._attempt_create()
+            rows = self._matched_rows()
+            if not rows:
+                self.query_one("#new-session-error", Static).update(TARGET_REQUIRED)
+                return
+            self._create_from_row(rows[min(self._sel, len(rows) - 1)].id)
         elif event.button.id == "cancel-button":
             self.action_cancel()
         elif event.button.id == "device-login-start":
             if not self.me_ready or self.app.screen_lock.locked:
                 return
-            target = self.query_one("#target-id", Input).value.strip()
+            rows = self._matched_rows()
+            target = rows[min(self._sel, len(rows) - 1)].id if rows else ""
             size = self._create_size()
-            if self._types.get(target) != "ssh":
+            if self._type_of(target) != "ssh":
                 self.query_one("#new-session-error", Static).update("Choose an SSH target to answer login prompts.")
                 return
             self._clear_login()
             self.app.pop_screen()
             self.app.workspace().open_device_login(target, TERM, size, recording_login=self._recording_login)
 
-    def action_cancel(self) -> None:
-        """Back to the workspace: every session open there is as it was."""
-        self.app.pop_screen()
-
-    def _attempt_create(self) -> None:
+    def _create_from_row(self, target_id: str, reuse_connection: str | None = None) -> None:
         error = self.query_one("#new-session-error", Static)
-        target_id = self.query_one("#target-id", Input).value.strip()
-        if not target_id:
-            error.update(TARGET_REQUIRED)
-            return
         if self._half_login(target_id):
             error.update(HALF_LOGIN)
             return
@@ -270,10 +651,7 @@ class NewSessionScreen(Screen):
         self._pending_target_id = target_id
         self._unlock_tried = False
         self.query_one("#create-button", Button).disabled = True
-        if target_id not in self._types:
-            self._read_target(target_id)
-            return
-        self._start_create(target_id)
+        self._start_create(target_id, reuse_connection)
 
     def _half_login(self, target_id: str) -> bool:
         """One of the two login fields filled and the other empty, on a target that shows them: the core is never
@@ -295,14 +673,16 @@ class NewSessionScreen(Screen):
             login["recording_acknowledged"] = True
         return login
 
-    def _start_create(self, target_id: str) -> None:
+    def _start_create(self, target_id: str, reuse_connection: str | None = None) -> None:
         if self._half_login(target_id):
-            # The fields changed while the type of a typed id was being read.
+            # The fields changed while the row's type was being checked.
             self.query_one("#new-session-error", Static).update(HALF_LOGIN)
             self.query_one("#create-button", Button).disabled = False
             return
         connection = "reuse" if self.query_one("#conn-reuse", RadioButton).value else "new"
         connection_id = self.query_one("#connection-id", Input).value.strip() or None
+        if reuse_connection is not None:
+            connection, connection_id = "reuse", reuse_connection
         if self._is_telnet(target_id):
             connection, connection_id = "new", None  # a telnet connection carries one session (DEFAULT 22)
         if connection_id and connection != "reuse":
@@ -311,50 +691,6 @@ class NewSessionScreen(Screen):
         if login is not None:
             connection, connection_id = "new", None  # a login is for a fresh authentication
         self._create(target_id, connection, connection_id, login)
-
-    def _read_target(self, target_id: str) -> None:
-        """A typed id has no record behind it here: read it (`GET /targets/{id}`) so the telnet rule applies."""
-        self.app.call_api(self.app.client.get_target, target_id,
-                          on_done=lambda record: self._on_target_read(target_id, record),
-                          on_error=self._on_read_error)
-
-    def _on_target_read(self, target_id: str, record: dict) -> None:
-        if self.app.screen is not self:
-            return
-        self._types[target_id] = str(record.get("type", ""))
-        self._show_type()
-        self._start_create(target_id)
-
-    def _on_read_error(self, exc: ApiError | HttpError | OSError) -> None:
-        if self.app.screen is not self:
-            self.app.notify_api_error(exc)
-            return
-        if isinstance(exc, ApiError) and exc.status == 404:
-            self.query_one("#create-button", Button).disabled = False
-            self.query_one("#new-session-error", Static).update(NO_SUCH_TARGET)
-            return
-        if isinstance(exc, ApiError) and exc.status == 401:
-            self.query_one("#create-button", Button).disabled = False
-            self.app.notify_api_error(exc)
-            return
-        # Anything else (a 503, a transport error) means the type could not be read, not that the target is
-        # absent: create anyway, asking `connection: new`, which is safe whichever protocol it turns out to be.
-        # The fallback create is one create: Create stays greyed from the moment it starts until it ends
-        # (`_on_create_error` re-enables it, `_on_create_done` takes the dialog away), so a second click
-        # meanwhile starts nothing.
-        # It carries what the operator typed, as `_start_create` does, and makes the same check of it: never a silent
-        # fall back to the credential the core holds. The core refuses a login on a target that is not ssh.
-        target_id = self._pending_target_id
-        if target_id is None:
-            self.query_one("#new-session-error", Static).update(TYPE_UNKNOWN)
-            self.query_one("#create-button", Button).disabled = False
-            return
-        if self._half_login(target_id):
-            self.query_one("#new-session-error", Static).update(HALF_LOGIN)
-            self.query_one("#create-button", Button).disabled = False
-            return
-        self.query_one("#new-session-error", Static).update(TYPE_UNKNOWN)
-        self._create(target_id, "new", None, self._login_to_send(target_id))
 
     def _create_size(self) -> tuple[int, int]:
         return create_size(self.app)
@@ -426,11 +762,19 @@ class NewSessionScreen(Screen):
         # routes to Login), and this screen should not still be queried after that happens.
         self._clear_login()
         self.query_one("#create-button", Button).disabled = False
+        self.query_one("#new-session-core", Static).update("")
+        if isinstance(exc, ApiError) and exc.code in REFUSAL_COPY:
+            label = _target_label(self.app.workspace().targets.row(self._pending_target_id)) \
+                if self._pending_target_id and self.app.workspace() and \
+                self.app.workspace().targets.row(self._pending_target_id) is not None else \
+                as_text(self._pending_target_id or "")
+            # The ruled line, with the core's own message under it (the row never replaces what the broker said).
+            self.query_one("#new-session-error", Static).update(REFUSAL_COPY[exc.code].format(label=label))
+            self.query_one("#new-session-core", Static).update(as_text(exc.message))
         if (isinstance(exc, ApiError) and exc.code == NO_RESOLVING_CREDENTIAL
                 and self.query_one("#login-fields").display):
             # Empty fields meant "what TSB holds", and it holds nothing (ruling A13): the dialog stays open and says
             # what to do, with the cursor where the login begins. The toast `notify_api_error` raises is unchanged.
-            self.query_one("#new-session-error", Static).update(NO_LOGIN_HELD)
             self.query_one("#login-user", Input).focus()
             self.app.notify_api_error(exc)
             return
@@ -445,12 +789,10 @@ class NewSessionScreen(Screen):
             self.query_one("#create-button", Button).disabled = True
             self.app.run_worker(self._unlock_then_repeat(), exclusive=False)
             return
-        if isinstance(exc, ApiError) and exc.code == ORG_CREDENTIAL_LOCKED:
-            self.query_one("#new-session-error", Static).update(f"{exc.message}. {ORG_LOCKED_NOTE}")
-            return
-        if isinstance(exc, ApiError):
-            self.query_one("#new-session-error", Static).update(exc.message)
-        self.app.notify_api_error(exc)
+        if isinstance(exc, ApiError) and exc.code not in REFUSAL_COPY:
+            # A code the table does not name (a malformed credential list, any other answer): the core's own words.
+            self.query_one("#new-session-error", Static).update(as_text(exc.message))
+            self.app.notify_api_error(exc)
 
     async def _unlock_then_repeat(self) -> None:
         """The core answered the create `vault_locked`: ask the passphrase, unlock in untrusted mode and repeat the
@@ -492,7 +834,6 @@ class NewSessionScreen(Screen):
             for index, (ref, layer) in enumerate(candidates)))
         self.query_one("#credential-choice-title", Static).display = True
         choice.display = True
-        choice.focus()
         return True
 
     def _pick_credential(self, index: int | None) -> None:
@@ -532,6 +873,7 @@ class NewSessionScreen(Screen):
             return
         picker.set_options([(connection_id, connection_id) for connection_id in candidates])
         picker.disabled = False
+        picker.display = True
         picker.focus()
 
     def on_select_changed(self, event: Select.Changed) -> None:

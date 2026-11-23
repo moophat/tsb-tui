@@ -315,7 +315,11 @@ def test_an_error_code_the_tui_does_not_know_is_handled_by_its_http_status(serve
             await open_new_session(app, pilot, wait_until)
             dialog = app.screen
             assert isinstance(dialog, NewSessionScreen)
-            dialog.query_one("#target-id").value = _serve.TARGET
+            await wait_until(pilot, lambda: any(row.id == _serve.TARGET for row in app.workspace().targets.rows),
+                             "the inventory")
+            dialog.query_one("#new-session-filter").value = "fixture target"
+            await pilot.pause()
+            assert dialog.selected_target_id == _serve.TARGET
             serve_app.answer = ("POST", "/sessions", 409, "a_code_from_the_future")
             await pilot.click("#create-button")
             await wait_until(pilot, lambda: "a sentence the TUI must show as it is" in str(
@@ -324,6 +328,8 @@ def test_an_error_code_the_tui_does_not_know_is_handled_by_its_http_status(serve
             assert dialog.query_one("#connection-picker").disabled, "an unknown 409 was read as a connection choice"
             assert not any(s["state"] != "killed" and s["owner"] == _serve.USER for s in serve_app.sessions.values()), (
                 "a refused create made a session")
+            dialog.query_one("#new-session-filter").value = ""
+            await pilot.pause()
             dialog.action_cancel()
             await wait_until(pilot, lambda: app.screen is screen, "the dialog to close")
 
