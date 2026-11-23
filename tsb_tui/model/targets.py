@@ -245,6 +245,10 @@ class TargetsModel:
         self.fetched = staged.fetched
         self.unavailable = staged.unavailable
         self.more_failed = staged.more_failed
+        # Publishing moves the published generation past every request already sent (rule 1, 2026-11-23): a
+        # foreground reply sent before this pass is stale and applies nothing, chains nothing.
+        self._generation = max(self._generation, staged._generation) + 2
+        self._applied = self._generation
 
     def count_label(self) -> str | None:
         """The tab's count: `412`, or `500…` while pages are still arriving; None before the first page."""

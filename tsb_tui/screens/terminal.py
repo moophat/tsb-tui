@@ -450,6 +450,9 @@ class TerminalScreen(Screen):
         self._target_select: str | None = None
         # The page request in flight: its generation and cursor. Only its own reply may clear it or append.
         self._targets_page: tuple[int, str] | None = None
+        # A foreground first page is in flight from its send to its reply (rule 1, 2026-11-23): a tick starts
+        # nothing while it is, so no staging pass overlaps the first load and an older reply cannot replace a newer.
+        self._targets_foreground = False
         # A background refresh stages its pages here, apart from the published `self.targets`, until its last page
         # lands (rule 2, 2026-11-22). A tick that finds it set starts nothing; a foreground read drops it.
         self._targets_staging: TargetsModel | None = None
@@ -1281,13 +1284,17 @@ class TerminalScreen(Screen):
                 staging = self._targets_staging
                 if staging is None or staging.next_cursor is None:
                     return  # no pass in flight, or it has no next page
+                if self._targets_page is not None or self._targets_foreground:
+                    return  # item 12 (2026-11-23): no overlapping passes — a staging pass never chains a page
+                    # while a foreground page is in flight, so the two reads never run at once
                 cursor, limit = staging.next_cursor, PAGE_LIMIT
                 query = staging.query
                 generation = staging.begin()
             else:
-                if self._targets_staging is not None or self._targets_page is not None:
+                if self._targets_staging is not None or self._targets_page is not None \
+                        or self._targets_foreground:
                     return  # item 12: no overlapping passes — a pass in flight starts nothing, and a poll never
-                    # runs while a foreground page is in flight (rule 1, 2026-11-21)
+                    # runs while a foreground page is in flight (rule 1, 2026-11-21; rule 1, 2026-11-23)
                 staging = TargetsModel()
                 self._targets_staging = staging
                 query = Query()
@@ -1308,6 +1315,7 @@ class TerminalScreen(Screen):
             # a stale reply can never fold the list back (rule 2, 2026-11-21). The refresh reads afresh: rows 0
             # to its own reply, pages chained from it. The page in flight is dropped, not carried over.
             self._targets_page = None
+            self._targets_foreground = True  # the first page is in flight until its reply or error (rule 1, 2026-11-23)
             model.reset()
             query = Query()
             cursor, limit = None, PAGE_LIMIT
@@ -1339,6 +1347,8 @@ class TerminalScreen(Screen):
                     self._targets_staging = None
                     self._mark_fleet_dirty()  # the view relayouts once; rule 6 keeps the selection by id
             return
+        if not more:
+            self._targets_foreground = False  # the foreground first page's reply arrived (rule 1, 2026-11-23)
         if more:
             if self._targets_page != (generation, cursor):
                 return  # not this page's reply: it may neither append nor clear the one in flight
@@ -1382,6 +1392,8 @@ class TerminalScreen(Screen):
             elif isinstance(exc, ApiError) and exc.status == 401:
                 self.app.notify_api_error(exc)
             return
+        if not more:
+            self._targets_foreground = False  # the foreground first page's error arrived (rule 1, 2026-11-23)
         if more:
             if self._targets_page != (generation, cursor):
                 return  # an old page's refusal is not this page's, and it does not clear it
@@ -1529,6 +1541,13 @@ class TerminalScreen(Screen):
             self.fleet.filter_mode = arg if arg in ("mine", "all") else (
                 "all" if self.fleet.filter_mode == "mine" else "mine")
             self._mark_fleet_dirty()
+        elif name == CMD_RETRY:
+            # `r` on the full view's Targets tab runs a foreground read, which clears `unavailable` when it
+            # succeeds (rule 2, 2026-11-23).
+            if arg == "targets":
+                self._fetch_targets()
+            elif arg == "targets-more":
+                self._fetch_targets(more=True)
 
     def target_saved(self, record: dict | None) -> None:
         if record is not None:

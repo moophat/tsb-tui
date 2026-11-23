@@ -435,7 +435,11 @@ def test_a_stale_reply_never_overwrites_the_newer_list(serve, wait_until) -> Non
             screen, _view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
             screen._stop_targets_timer()  # no ticks behind the test: the refresh is the one this test names
             screen._fetch_targets()  # a refresh while the chain's page is in flight supersedes it
-            await wait_until(pilot, lambda: len(asked) >= 2 and not asked[-1].get("cursor"), "the refresh's request")
+            # Wait for the refresh's own first-page request to be recorded (the requests after the view opened),
+            # not for the last one to read as a first page: the refresh chains a page right after, so `asked[-1]`
+            # flips to a cursor and the old predicate never holds. Waiting on what it reads keeps it deterministic.
+            await wait_until(pilot, lambda: len(asked) >= 3 and any(not q.get("cursor") for q in asked[2:]),
+                             "the refresh's request", 40)
             gate.set()  # the older page lands after the newest answer
             await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,
                              "the chain to finish", 40)
@@ -473,7 +477,10 @@ def test_a_reopened_view_never_appends_an_old_pages_rows(serve, wait_until) -> N
 
 def test_a_poll_never_folds_the_loaded_pages_back(serve, wait_until) -> None:
     """Rule 2 (2026-11-21): a refresh re-reads from the first page and chains every page behind it; a reply older
-    than the newest request never shrinks what the chain loaded, and a poll with pages in flight asks nothing."""
+    than the newest request never shrinks what the chain loaded. Both halves: (1) a tick while the chain's page is
+    in flight asks nothing (rule 12: no overlapping passes), measured from a deterministic start once the chained
+    page's request is recorded in `asked`; (2) with every page loaded, a poll re-reads afresh and the list never
+    folds back."""
     async def check() -> None:
         serve_app, url = serve()
         for index in range(600):
@@ -484,14 +491,20 @@ def test_a_poll_never_folds_the_loaded_pages_back(serve, wait_until) -> None:
         async with app.run_test(size=(140, 36)) as pilot:
             screen, _view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
             screen._stop_targets_timer()
+            # First half: a tick while the chain's page is in flight asks nothing (rule 12). Deterministic start:
+            # wait until the last request recorded in `asked` is the chained page the gate holds (its cursor present),
+            # so a foreground chain is in flight and no superseding first page is pending; then the tick, a brief
+            # pause, and nothing new must have been asked.
+            await wait_until(pilot, lambda: asked and asked[-1].get("cursor"), "the chained page's request", 40)
             before = len(asked)
             screen._fetch_targets(background=True)  # the tick while the chain's page is in flight
             await pilot.pause(0.05)
             assert len(asked) == before, "a poll ran while a page was in flight"
+            # Second half: release the gate, finish the chain, then a poll with every page loaded re-reads afresh.
             gate.set()
             await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,
                              "the chain to finish", 40)
-
+            before = len(asked)
             screen._fetch_targets(background=True)  # a poll with every page loaded: it re-reads afresh
             await wait_until(pilot, lambda: len(asked) >= before + 2, "the poll's chain")
             await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,

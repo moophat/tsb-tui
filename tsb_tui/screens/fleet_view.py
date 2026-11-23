@@ -54,6 +54,7 @@ from ..widgets.sidebar import (
     CMD_MODE,
     CMD_NEW,
     CMD_PICK,
+    CMD_RETRY,
     CMD_TAKE_BACK,
     CMD_WHOS_HERE,
     SELECTED,
@@ -506,7 +507,7 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
             title += f" · {len(marked)} marked"
         body.append(_text(f" {title}", "group", table_w))
         title_at = len(body) - 1
-        if model.targets_note:
+        if model.targets_note and not model.targets:
             body.append(_text("   " + model.targets_note, "warn", table_w))
         elif not model.targets:
             body.append(_text("   No targets to show." if model.targets_count is not None
@@ -526,6 +527,10 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                 rows.append(key)
                 body.append(partial(_target_row, entry, columns, selected=selected == key, width=table_w,
                                     marked=entry.target_id in marked))
+            if model.targets_note:
+                # A 503 keeps the loaded rows (rule 2, 2026-11-23): the unavailable state is the section's last
+                # line, the same copy as rule 9's retry line.
+                body.append(_text("   Could not load targets · r retry", "muted", table_w))
             place = next((i for i, key in enumerate(rows) if key == selected), None)
             index = str(place + 1) if place is not None else "–"
             body[title_at] = _text(f" {title_parts('Targets', index, first, of_part, loading, filter_text.strip(), table_w)}"
@@ -799,12 +804,21 @@ class FleetView(Widget):
             # The place is the old row's index among the table rows (rule 15), so a filter edit runs the rule
             # at that place on the new rows.
             old = self._listed_rows
-            at = min(self._pos, len(old))
             if self.selected in old and self.selected[0] == table_group:  # rule 15: a Needs-you row is not a table
-                # position, so the place stands at its overall index; only a table row maps to a table place.
+                # A table row's place is read among the new table rows (rule 5, 2026-11-23): the next surviving
+                # table row takes the selection, else the last table row, else the last row of all. `rows` is the
+                # combined list with Needs-you rows first, so slicing `rows[at:]` on a table place is wrong.
                 at = [i for i, key in enumerate(old) if key[0] == table_group].index(old.index(self.selected))
-            following = rows[at:]
-            self.selected = following[0] if following else (rows[-1] if rows else None)
+                new_table = [key for key in rows if key[0] == table_group]
+                following_table = new_table[at:]
+                self.selected = (following_table[0] if following_table else
+                                 (new_table[-1] if new_table else (rows[-1] if rows else None)))
+            else:
+                # A disappeared Needs-you row keeps today's combined-row rule (rule 6): the place is the old row's
+                # index in the rows as they were listed.
+                at = min(self._pos, len(old))
+                following = rows[at:]
+                self.selected = following[0] if following else (rows[-1] if rows else None)
         # The place is the row's index among the table rows (rule 15: the pair counts the table), so a filter
         # edit runs rule 6 at that place on the new rows. A Needs-you row is not a position: the place stands.
         places = [i for i, key in enumerate(rows) if key[0] == table_group]
@@ -1047,6 +1061,9 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_SAVE_LOGIN))
         elif key == "p" and self.tab == TAB_TARGETS:
             self.post_message(self.Command(CMD_MAP))
+        elif key == "r" and self.tab == TAB_TARGETS and self._model.targets_note:
+            # `r` on the unavailable last line runs a foreground read (rule 2, 2026-11-23).
+            self.post_message(self.Command(CMD_RETRY, "targets"))
         elif key == "enter" and self.tab == TAB_TARGETS and self.selected_session is not None:
             self.post_message(self.Command(CMD_OPEN_TARGET, self.selected_session))
         elif key == "i" and self.tab == TAB_TARGETS and self.selected_session is not None:

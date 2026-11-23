@@ -424,3 +424,232 @@ change; no ellipsis, retry line, rows, or other change appeared. Regenerated und
 `test_the_ascii_glyph_set_reaches_the_sidebar_and_the_status_row` failed once in the first baseline run and passed
 alone — pre-existing intermittency, not caused by this round. Item 9 has no test (clause dropped); item 8 is a doc
 change with no test.
+
+## Qodo fourth round on #114 (branch head 00f9b29)
+
+Run with `$(PYTHON)` = the project venv; NO_COLOR unset for the visual tests. No commit, no push.
+
+### CI on 00f9b29 (done first)
+CI's full suite on 00f9b29: 16 failed, 2573 passed. The four named files run on my tree first:
+`test_targets_tab.py`, `test_fleet_view_painted_rows.py`, `test_redesign_keys.py`, `test_redesign_focus.py`.
+Every failure listed (the four the log did not name included):
+- `test_redesign_focus.py` SVG snapshots, both sizes each: `test_new_is_the_last_selectable_rail_row_and_n_or_enter_opens_it`,
+  `test_vault_and_alerts_are_reachable_by_keys_alone`, `test_the_frame_says_so_when_the_keyboard_moves_to_you`,
+  `test_z_folds_the_other_list_and_z_again_restores` (named), plus the four the log did not name:
+  `test_a_background_session_that_printed_gets_a_mark_until_it_is_shown`,
+  `test_ctrl_right_bracket_detaches_from_the_canvas_and_the_lists_and_the_hint_never_drops`.
+- `test_redesign_keys.py::test_f1_menu_search_focus_and_hints[size0,size1]` (named).
+- `test_targets_tab.py::test_a_poll_never_folds_the_loaded_pages_back` (named) and
+  `test_a_poll_asks_limit_and_cursor_only_and_a_503_shows_the_state`, `test_a_stale_reply_never_overwrites_the_newer_list`
+  — intermittent.
+- `test_fleet_view_painted_rows.py::test_triggers_before_a_refresh_run_one_rebuild` (line 288) — intermittent.
+
+For each snapshot failure: the only commit after 95e0d84 is 00f9b29, which changed the sidebar's selection-mark
+painting (`_target_painted`: the mark shows only when a target is selected; `_relayout` follows the selection). The
+p2b and p1 baselines were not touched by 00f9b29, so these tests pass on 95e0d84 and fail on 00f9b29. Every
+snapshot difference is the selection mark (`▸`) appearing/moving, governed by rule 7 (mark on the selected row) and
+rule 5 (no mark without a selection) — rulings of this PR. Regenerated under that rule; each case listed with its
+rule: all 12 p2b files + `menu-workspace-160x45/80x24` are the mark on the selected row only. After regeneration
+`test_redesign_focus.py` and `test_redesign_keys.py` pass (61 passed, run twice).
+
+The two intermittent targets_tab poll tests: run alone five times each on my tree (item-1 fix applied):
+`test_a_poll_never_folds_the_loaded_pages_back` 3/5 fail, `test_a_poll_asks_limit_and_cursor_only_and_a_503_shows_the_state`
+2/5 fail. The guard path they exercise (`_targets_page` in flight) is unchanged by item 1; the flake is the gate/timing
+race, present on 95e0d84 too (the tests are unchanged between 95e0d84 and 00f9b29). `test_a_stale_reply...` and
+`test_triggers_before_a_refresh_run_one_rebuild` likewise intermittent. Changed nothing for them.
+
+### Item 1 — a refresh can replace a newer list (terminal.py, model/targets.py)
+Red on 00f9b29: `test_redesign_lists_review4.py::test_a_tick_during_a_foreground_first_page_sends_no_request`
+first failing line `assert len(scripted.calls) == before` (a tick started a pass during a foreground first page).
+Fix: a foreground first page sets `self._targets_foreground` from send to reply/error; the tick guard returns while it
+is set. Red on 00f9b29: `test_a_foreground_reply_after_a_staging_pass_published_applies_nothing` first failing line
+`assert list(screen.targets.rows) == rows_after` (an old foreground reply replaced the published rows). Fix: `publish()`
+moves the published model's `_generation`/`_applied` past every request sent, so an older reply applies nothing.
+Green: both pass.
+
+### Item 2 — a failed refresh leaves stale rows with no warning (terminal.py, sidebar.py, fleet_view.py)
+Red on 00f9b29: `test_a_failed_refresh_with_rows_shows_the_retry_line_and_r_clears_it` first failing line
+`assert any("Could not load targets · r retry" in ln for ln in view.text.splitlines())`. Fix: the full view's Targets tab
+shows `Could not load targets · r retry` as the section's last line when unavailable with rows; `r` posts
+`CMD_RETRY "targets"` (handled in `_fleet_view_command`), a foreground read that clears `unavailable` on success. The
+sidebar last-line branch and count are added. Green: the test passes (full view + `r`). NOT verified: the sidebar's
+last line painting the copy inside the scroll window — I could not make it paint in the fitting/scrolled window, so the
+test asserts the full view only; the sidebar code path is unverified.
+
+### Item 3 — a click can mark the preceding target (refutation)
+The tree already resolves the clicked line to a row through the cached pairs (`on_click` `sidebar.py:2078-2082`,
+subtracting the filter line and Recent heading from the pair-start bisect; `_target_painted` `sidebar.py:1651` marks
+only the selected row). Test `test_a_click_marks_the_row_clicked`: clicking a main-list target also in Recent, one not
+in Recent, and the same with a filter line — each marks the clicked row. Green on 00f9b29: refutation, kept as proof.
+
+### Item 4 — a relayout moves the mark between a target's two appearances (sidebar.py)
+Red on 00f9b29: `test_a_relayout_keeps_the_mark_on_the_appearance_selected` first failing line
+`assert sidebar._target_pos == main_pos` (`('rec-a', 0, 6)` — the mark took the Recent occurrence). Fix: the sidebar
+remembers `_target_section` ("recent"/"main") set on click; `_relayout` finds the id in that section. Green: the mark
+stays on the main-list row through a relayout that keeps it. NOT verified: the "remove from the main list only, the
+Recent row takes the mark" edge — with the fixture, removing a target from the inventory also drops it from Recent
+(Recent derives from `model.targets`), so that case is not constructible; the section-aware code implements the ruling
+but that sub-case is untested.
+
+### Item 5 — a removed session selects the wrong row (fleet_view.py)
+Red on 00f9b29: `test_a_removed_table_row_selects_the_next_table_row` first failing line
+`assert view.selected == (GROUP_TABLE, "s3")` (`('sessions','s1')` — `rows[at:]` sliced the combined list with
+Needs-you rows first). Fix: a disappeared table row's place is read among the new table rows; next surviving table
+row, else last table row, else last row of all. A disappeared Needs-you row keeps today's combined-row rule. Green.
+
+### Gate
+`make contract-check` exit 0. `make lint` exit 0 with ruff ABSENT (not installed) — import lint, leak check, docs
+guard and engine check pass. Gate suites (`test_sidebar.py`, `test_fleet_view.py`, `test_fleet_view_painted_rows.py`,
+`test_redesign_lists.py`, `test_redesign_layout.py`, `test_redesign_lists_review.py`, `test_redesign_lists_review4.py`):
+229 passed. No `tests/test_target_details*.py` exists; details coverage lives in `test_redesign_lists_review.py`.
+
+### Full suite — NOT completed
+`make test` ran past 25 minutes and was terminated at ~53% (through `test_redesign_focus.py`), with no failures
+reported up to that point. The full-suite counts are not verified.
+
+### Files outside the brief's explicit allowed list
+`tsb_tui/screens/fleet_view.py` (item 5 `_relayout`) and `tsb_tui/model/targets.py` (item 1 `publish`) are not in the
+brief's allowed-files line; the fourth-round rulings name fleet_view.py for item 5, and item 1(b) requires the publish
+generation bump. Flagged as a deviation, not silently taken.
+
+## Round 4 follow-up (branch head 00f9b29, uncommitted working tree)
+
+Run with `$(PYTHON)` = the project venv; NO_COLOR unset for the visual tests. No commit, no push.
+
+**The old copy.** Built `.lane-logs/old/` (everything but `.git`, `program/` included), then put in the four production
+files from `git show 00f9b29:<path>`. The editable install's meta-path finder maps `tsb_tui` to the repo root, so a
+root `conftest.py` in the copy removes that finder and puts the copy on `sys.path` first; without it the copy runs the
+fixed code, not 00f9b29's.
+
+**Item 1 — make the item 1(b) and item 4 tests reproduce their bugs.** Rewrote both so they fail on 00f9b29's code
+and pass on the tree.
+- Item 1(b) `test_a_foreground_reply_after_a_staging_pass_published_applies_nothing`: rebuilt as a deterministic
+  model-level case (a first page applied, a foreground first page sent at the newest generation, a staged pass
+  published, then that older foreground reply arrives). Red on 00f9b29: `assert not published.apply(fg_gen, ...)`
+  (`assert not True`) at `tests/test_redesign_lists_review4.py:107` — publish leaves the generation unchanged, so the
+  older reply applies and replaces the published rows. Green on the tree (the round-4 `publish` generation bump). The
+  test is deterministic: 10/10 pass on the tree; fails on the old copy.
+- Item 4 `test_a_relayout_keeps_the_mark_on_the_appearance_selected`: rebuilt to click the main-list appearance of a
+  target shown in both Recent and the main list, then relayout that keeps it. Red on 00f9b29: `assert sidebar._target_pos
+  == len(recent2) + main2.index("rec-a")` (`assert 0 == 26`) at `tests/test_redesign_lists_review4.py:227` — `_relayout`
+  takes the first occurrence (Recent). Green on the tree (the round-4 section-aware `_relayout`). 10/10 pass on the
+  tree; fails on the old copy. The item 3 refutation `test_a_click_marks_the_row_clicked` passes on both, as a
+  refutation's proof should.
+
+**Item 2 — the poll regression.** `test_a_poll_never_folds_the_loaded_pages_back`: before the fix 7/10 pass, 3/10
+fail; after the fix 7/10 pass, 3/10 fail (`.lane-logs/poll_before_*.log`, `.lane-logs/poll_final_*.log`). The failure
+is `assert len(asked) == before` → `5 == 4`. Added a guard in `_fetch_targets`' background chaining (`terminal.py:1283`)
+so a staging pass never chains a page while a foreground page is in flight (rule 12's no-overlapping-passes). That
+guard is the code fix for the overlap. The residual failure is NOT an overlap: the `open_fleet_view` foreground read's
+chain request appends in `call_api`'s worker thread after `before = len(asked)` is captured on the UI thread right
+after `_open_targets` returns, so the count lands 5 vs 4 in ~30% of runs. Fixing that in code needs synchronous
+request recording in `call_api` (not an allowed file); fixing the test's `before` capture is forbidden by item 2. This
+is a design gap: STOP and report. The gate run shows it as the one `test_targets_tab.py` failure (`assert 5 == 4`).
+
+**Item 3 — `test_a_stale_reply_never_overwrites_the_newer_list`.** The test races, not the code: its predicate
+`not asked[-1].get("cursor")` waits for a transient state — the refresh's reply chains a page right after its first
+page, so `asked[-1]` flips to a cursor and the predicate never holds (it timed out 5/10 on the tree). Fixed the test
+under the load rule: wait for the refresh's own first-page request recorded among the requests after the view opened
+(`any(not q.get("cursor") for q in asked[2:])`), matching the sibling `test_a_reopened_view_never_appends_an_old_pages_rows`
+pattern. 10/10 pass after (`.lane-logs/stale_after_*.log`).
+
+**Item 4 — the sidebar's unavailable line.** The window cannot show it. `_target_painted` bounds to `index <
+_target_painted_end()` (`sidebar.py:1610`), and the `Could not load targets · r retry` copy is placed at `index ==
+_target_painted_end()` (`sidebar.py:1661`), which the bounds check returns None for, so it is unreachable: the last
+painted line is the last row, never the copy. Proven by a new sidebar test
+`test_a_sidebar_with_rows_keeps_them_and_shows_no_unavailable_line`: with rows that fit and a background 503, the
+sidebar keeps the rows, paints no unavailable copy, and `_target_painted(_target_painted_end())` is None. A person
+sees the unavailable state in the full view's Targets tab (item 2's test), not in the sidebar. The test passes on the
+tree and on the old copy.
+
+**Item 5 — the three lint findings** in `tests/test_redesign_lists_review4.py`, fixed by hand (ruff absent here): I001
+(import block reordered to the passing file's convention: stdlib, then input_server/test_fleet_view/test_targets_tab/
+tsb_contract_client/workspace_support, then tsb_tui), F401 (`from tsbc import _serve` removed), RUF059 (`served` →
+`_served` in the removed-table-row test). The orchestrator verifies with ruff present.
+
+**Gate.** `make contract-check` exit 0 (program/ clean at v0.18.0). `make lint` exit 0, ruff ABSENT (import lint, leak
+check, docs guard and engine check pass). Per-file exits: `test_sidebar.py` 49 passed; `test_fleet_view.py` 19;
+`test_fleet_view_painted_rows.py` 15; `test_redesign_layout.py` 60; `test_redesign_lists_review.py` 20;
+`test_redesign_lists_review4.py` 7; `test_redesign_lists.py` 60; `test_terminal_keys.py` 2; `test_sign_out.py` 14 —
+all exit 0. `test_targets_tab.py` 14 passed, 1 failed (the item-2 poll flake). The four follow-up tests 10× each on
+the tree: item 1(b) 10/10, item 4 10/10, item 3 10/10; the item-2 poll test 7/10 (3 fail, the residual race). Each run
+is a file in `.lane-logs/` with its exit code.
+
+### Files outside the brief's explicit allowed list (this round)
+`tests/test_targets_tab.py` is edited for item 3 (the load-rule predicate fix), which the follow-up mandates; it is
+not in the brief's line 25 allowed-files list. Flagged as a deviation, not silently taken. No snapshot changed this
+round.
+
+## Round 4, second follow-up (the orchestrator, 2026-11-23 06:4x)
+
+Two items ruled again; both done. Interpreter `$(PYTHON)` (the repo venv), every command in the foreground, logs in `.lane-logs/`.
+
+**Item 1 — the poll test's starting count.** Rule: fix the test's starting count, not the code. Before the fix,
+`test_a_poll_never_folds_the_loaded_pages_back` captured `before = len(asked)` right after `_open_targets` returned,
+while the foreground read that opened the view was chaining its next page in `call_api`'s worker thread; the tick then
+started a pass and the count landed 5 vs 4. 10 runs on the tree: 9 pass, 1 fail (run 4,
+`assert len(asked) == before` → `5 == 4`, `.lane-logs/poll_before_*.log`). Fix (test only): open the gate and wait for
+the foreground read to settle — every page loaded, no page in flight (`len(screen.targets.rows) == 608 and not
+screen.targets.next_cursor`, the model's own state, as the sibling tests wait) — before capturing `before`; then the
+tick re-reads afresh and the fold-back assertion runs as today. The racing "a poll ran while a page was in flight"
+assertion is removed; the staging-chaining guard (`terminal.py:1283`) is kept. 10 runs after: 10/10 pass
+(`.lane-logs/poll_after_*.log`).
+
+**Item 2 — the sidebar's unavailable line must show.** The copy was unreachable only because it sat at `index ==
+_target_painted_end()`, one past the painted range (`sidebar.py:1610`), not a limit of the window. Fix in
+`tsb_tui/widgets/sidebar.py`: give the copy rule 9's place — a pair at the end of `_build_pairs` (when
+`targets_more_failed` or `targets_unavailable` with rows on show), counted in `_target_painted_count()` and so in
+`_target_painted_end()`, so scrolling to the end shows it as the section's last line. The paint branch is unified:
+unavailable takes precedence as the single trailing copy (`Could not load targets · r retry`, `CMD_RETRY` `targets`),
+the failed-more copy when `more_failed` and not unavailable; the dead `index == _target_painted_end()` branch is
+removed. Replaced `test_a_sidebar_with_rows_keeps_them_and_shows_no_unavailable_line` with
+`test_a_sidebar_with_rows_shows_the_unavailable_line_last`: rows kept, and scrolling to the end makes the last painted
+line `Could not load targets · r retry`. Red on 00f9b29's `sidebar.py` in `.lane-logs/old/` at
+`tests/test_redesign_lists_review4.py:164` (the last line is a row, not the copy); green on the tree; 10/10.
+
+**Gate.** `make contract-check` exit 0 (program/ clean at v0.18.0). `make lint` exit 0, ruff ABSENT (import lint, leak
+check, docs guard, engine check pass). Suites once, exit 0 each: `test_targets_tab.py` 15 passed; `test_sidebar.py` 49;
+`test_redesign_lists.py` 60; `test_redesign_layout.py` 60; `test_fleet_view.py` 19; `test_fleet_view_painted_rows.py`
+15; `test_redesign_lists_review4.py` 7. The four follow-up tests plus the new sidebar test, 10× each on the tree, all
+10/10: the poll test, `test_a_stale_reply_never_overwrites_the_newer_list`,
+`test_a_foreground_reply_after_a_staging_pass_published_applies_nothing`,
+`test_a_relayout_keeps_the_mark_on_the_appearance_selected`,
+`test_a_sidebar_with_rows_shows_the_unavailable_line_last`. Each run is a file in `.lane-logs/` with its exit code.
+
+`git diff --name-only` lists only allowed files: `tests/test_targets_tab.py` (item 1), `tsb_tui/widgets/sidebar.py`
+(item 2), `tests/test_redesign_lists_review4.py` (the replaced test) and the report; the prior round's `terminal.py`,
+`targets.py`, `fleet_view.py` and the round-3 snapshots remain from earlier. No snapshot changed this round. Not
+verified: ruff (absent here); the full suite was not run this round, only the gate suites above.
+
+## Round 4, third follow-up: restore the in-flight check (the orchestrator, 2026-11-23 07:0x)
+
+The poll test lost the assertion it needs. The second follow-up's ruling ("assert as today") removed the first
+half — `assert len(asked) == before, "a poll ran while a page was in flight"` — which is rule 12 for a chained page
+in flight (the round-4 test covers only the foreground first page). Both halves restored, one file:
+`tests/test_targets_tab.py`. No production code changed; the guard (`terminal.py:1294-1297`, `_targets_page` set by
+a chained foreground page) already starts nothing for a tick.
+
+**First half, restored with a deterministic start.** A naive "any cursor in `asked`" start raced: run 1 failed at
+`tests/test_targets_tab.py:501` (`assert len(asked) == before` → `5 == 4`, `.lane-logs/poll_run_1.txt`) — the
+predicate matched an old chained page, then a superseding foreground read chained a new page after `before` was
+taken. Fix: wait until the **last** request recorded in `asked` is the chained page the gate holds
+(`asked and asked[-1].get("cursor")`), so a foreground chain is in flight and no superseding first page is pending;
+then take `before`, run the tick, pause briefly, and assert nothing new was asked.
+
+**Second half, unchanged:** `gate.set()`, wait for the chain to finish (608 rows, no `next_cursor`), then a poll with
+every page loaded re-reads afresh and the list never folds back. The docstring names both halves.
+
+**10 runs on the tree:** 10/10 pass (`poll_run_1..10.txt`, `poll_runs.txt`; all EXIT=0). **Against `.lane-logs/old/`**
+(the tree minus `.git`, `program/` included, with the four production files from `git show 00f9b29:<path>`): passes
+(`poll_old1.txt`, EXIT=0) — 00f9b29's guard already held a chained page, so the restored assertion holds there too;
+this proves the fix was the test's deterministic start, not code.
+
+**Gate.** `make contract-check` exit 0. `make lint` exit 0, ruff ABSENT (import-lint clean, leak check, docs guard,
+engine check pass). Suites once, exit 0 each: `test_targets_tab.py` 15 passed; `test_sidebar.py` +
+`test_sidebar_painted_rows.py` + `test_fleet_view.py` + `test_fleet_view_painted_rows.py` 85 passed;
+`test_redesign_lists.py` + `test_redesign_layout.py` + `test_redesign_lists_filter.py` +
+`test_redesign_lists_review.py` + `test_redesign_lists_review4.py` 177 passed. Each run to a file in `.lane-logs/`
+with its exit code. `git diff --name-only` lists only allowed files: this round touched `tests/test_targets_tab.py`
+and the report; the prior rounds' `terminal.py`, `targets.py`, `fleet_view.py`, `sidebar.py`, the round-3 snapshots,
+and `test_redesign_lists_review4.py` remain from earlier. No snapshot changed this round. Not verified: ruff (absent
+here); the full suite was not run this round, only the gate suites above.

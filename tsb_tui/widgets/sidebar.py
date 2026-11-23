@@ -935,6 +935,9 @@ class Sidebar(Widget):
         # The selected rows' places, for rule 6 (2026-11-21): when a row disappears across a refresh, a page
         # arrival or a filter edit, the next surviving row below its place takes the highlight, else the last.
         self._target_pos = 0
+        # The section the target selection was made in, "recent" or "main" (rule 4, 2026-11-23): a relayout keeps
+        # the mark on that appearance while the target is shown there, and moves it to the other only when it is gone.
+        self._target_section: str | None = None
         self._session_pos = 0
         # Each target's painted start index, cached beside the rows it was walked for.
         self._target_spans_cache: tuple[tuple[TargetRow, ...], tuple, object, tuple, tuple[int, ...],
@@ -1044,8 +1047,22 @@ class Sidebar(Widget):
         rows = self.painted_targets()
         ids = [row.id for row in rows]
         if self.target_selected is not None and self.target_selected in ids:
-            self._target_pos = ids.index(self.target_selected)
+            # Rule 4 (2026-11-23): the mark follows the section the selection was made in. Find the id in that
+            # section; if it is gone from there, the other appearance takes the mark; positions are within painted.
+            recent = self._recent_targets()
+            recent_ids = [row.id for row in recent]
+            main_ids = [row.id for row in self.visible_targets()]
+            tid = self.target_selected
+            if self._target_section == "recent" and tid in recent_ids:
+                self._target_pos = recent_ids.index(tid)
+            elif self._target_section == "main" and tid in main_ids:
+                self._target_pos = len(recent) + main_ids.index(tid)
+            elif tid in recent_ids:
+                self._target_pos = recent_ids.index(tid)
+            else:
+                self._target_pos = len(recent) + main_ids.index(tid)
         elif self.target_selected is not None:
+            # Gone from both appearances (rule 6): the next surviving row below its place, else the last.
             following = ids[self._target_pos:]
             self.target_selected = following[0] if following else (ids[-1] if ids else None)
             self._target_pos = ids.index(self.target_selected) if self.target_selected in ids else 0
@@ -1440,8 +1457,11 @@ class Sidebar(Widget):
         if not rows:
             return head + len(self._targets_empty_lines(max(self.sidebar_width - 4, 1)))
         lines = head + sum(self._target_row_lines(row) for row in rows)
-        if self._model.targets_more_failed:
-            lines += 1  # the `Could not load more · r retry` line below the last row (rule 9, 2026-11-22)
+        if self._model.targets_more_failed or self._model.targets_unavailable:
+            # One trailing copy line below the last row: `Could not load targets · r retry` when the inventory is
+            # down (rule 2, 2026-11-23), else `Could not load more · r retry` (rule 9, 2026-11-22). It is a pair in
+            # `_build_pairs`, so it counts here and scrolling to the end shows it as the section's last line.
+            lines += 1
         return lines
 
     def _target_row_lines(self, row: TargetRow) -> int:
@@ -1488,9 +1508,11 @@ class Sidebar(Widget):
         for position, span in enumerate(spans):
             count = 1 if wide else (2 if facts[position][1] else 1)
             pairs.append((offset + span, count))
-        if self._model.targets_more_failed and spans:
-            # The last line of the list when a later page failed (rule 9, 2026-11-22): `r retry` sits below the
-            # rows that stayed loaded, one pair at the end of the walk.
+        if (self._model.targets_more_failed or self._model.targets_unavailable) and spans:
+            # The section's last line sits below the rows that stayed loaded, one pair at the end of the walk:
+            # the unavailable copy when the inventory is down (rule 2, 2026-11-23), else the failed-more copy
+            # (rule 9, 2026-11-22). It is a real pair, so `_target_painted_end()` counts it and scrolling to the
+            # end shows it inside the painted range.
             last = spans[-1]
             pairs.append((offset + last + (1 if wide else (2 if facts[len(spans) - 1][1] else 1)), 1))
         result = tuple(pairs)
@@ -1635,10 +1657,15 @@ class Sidebar(Widget):
         mark = (SELECTED, "mark") if selected else (" ", "blank")
         within = index - spans[position]
         row_lines = 1 if (self.wide or not facts) else 2
-        if self._model.targets_more_failed and position == len(rows) - 1 and within >= row_lines:
-            # `r retry` sits below the last loaded row when a later page failed (rule 9, 2026-11-22): the copy's
-            # shape is `_empty_copy`'s, with CMD_RETRY naming the targets-more retry.
-            return _empty_copy("Could not load more · r retry", inner, "muted", CMD_RETRY, "targets-more")[0]
+        if (self._model.targets_more_failed or self._model.targets_unavailable) and position == len(rows) - 1 \
+                and within >= row_lines:
+            # The section's last line sits below the last loaded row, in `_empty_copy`'s shape with CMD_RETRY.
+            # The unavailable copy shows whenever the inventory is down (rule 2, 2026-11-23), the failed-more copy
+            # when a later page failed (rule 9, 2026-11-22). It is a pair at the end of `_build_pairs`, so `index`
+            # reaches it inside the painted range, not one past it.
+            unavailable = self._model.targets_unavailable
+            copy = "Could not load targets · r retry" if unavailable else "Could not load more · r retry"
+            return _empty_copy(copy, inner, "muted", CMD_RETRY, "targets" if unavailable else "targets-more")[0]
         if within >= row_lines:
             return None  # past this row's own lines: the next row's start, or the section's end
         if self.wide or not facts or within == 0:
@@ -2080,6 +2107,8 @@ class Sidebar(Widget):
                     starts = self._pair_starts(pairs)
                     headers = (1 if self._has_filter_line() else 0) + (1 if self._recent_targets() else 0)
                     self._target_pos = max(0, bisect.bisect_right(starts, index) - 1 - headers)
+                    # The section the click landed in (rule 4, 2026-11-23): a relayout keeps the mark there.
+                    self._target_section = "recent" if self._target_pos < len(self._recent_targets()) else "main"
                     self.refresh()
             return
         line = self._line_at(event.y)
