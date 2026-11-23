@@ -79,6 +79,9 @@ async def settle(pilot, wait_until, screen, *, alerts_quiet=False):
             row = next((r for r in screen.rail.rows if r.action == ACT_ALERTS), None)
             return row is None or row.text.strip() in ("! Alerts 0", "!0")
         await wait_until(pilot, quiet, "a moment with no alert raised")
+    if hasattr(screen, "_fleet_dirty") and screen._fleet_dirty:
+        await wait_until(pilot, lambda: not screen._fleet_dirty, "fleet widgets to flush")
+    await pilot.pause()
 
 
 async def workspace_with_sessions(app, pilot, wait_until, serve_app, url, *names, size_cols=80):
@@ -734,7 +737,8 @@ def test_z_folds_the_other_list_and_z_again_restores(serve, wait_until, screen_t
         app = TsbTuiApp(url)
         async with app.run_test(size=size) as pilot:
             screen, (_sid,) = await workspace_with_sessions(app, pilot, wait_until, serve_app, url, "rtr-core-01")
-            await wait_until(pilot, lambda: len(screen.sidebar.model.targets) > 1, "the targets")
+            await wait_until(pilot, lambda: len(screen.sidebar.model.targets) == 8 and not screen.sidebar.model.targets_loading
+                             and not screen.sidebar.model.sessions_loading, "the targets and sessions", 40)
             sidebar = screen.sidebar
             height = sidebar.size.height
             before = (sidebar.targets_height, sidebar.sessions_height)
@@ -742,6 +746,8 @@ def test_z_folds_the_other_list_and_z_again_restores(serve, wait_until, screen_t
             await pilot.press("z")  # the Sessions list has the keys: Targets fold
             await pilot.pause()
             assert (sidebar.targets_height, sidebar.sessions_height) == (1, height - 1)
+            await wait_until(pilot, lambda: "▦ Targets · 1/8" in sidebar.render_line(0).text,
+                             "folded targets title", 40)
             title = sidebar.render_line(0).text
             assert "▦ Targets" in title and re.search(r"· \d+", title), title
             await snap(pilot, wait_until, screen, app, f"fold-targets-{size[0]}x{size[1]}")
@@ -751,6 +757,8 @@ def test_z_folds_the_other_list_and_z_again_restores(serve, wait_until, screen_t
             await pilot.press("tab", "tab", "z")  # rail, then Targets, which has the keys: Sessions fold
             await pilot.pause()
             assert (sidebar.targets_height, sidebar.sessions_height) == (height - 1, 1)
+            await wait_until(pilot, lambda: "▸ Sessions · 1" in sidebar.render_line(height - 1).text,
+                             "folded sessions line", 40)
             line = sidebar.render_line(height - 1).text
             assert "▸ Sessions" in line and "· 1" in line, line
             await snap(pilot, wait_until, screen, app, f"fold-sessions-{size[0]}x{size[1]}")
