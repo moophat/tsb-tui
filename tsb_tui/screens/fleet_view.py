@@ -54,12 +54,14 @@ from ..widgets.sidebar import (
     CMD_MODE,
     CMD_NEW,
     CMD_PICK,
+    CMD_RETRY,
     CMD_TAKE_BACK,
     CMD_WHOS_HERE,
     SELECTED,
     SEPARATOR,
     Line,
     Part,
+    title_parts,
 )
 
 CMD_TARGET_NEW = "target_new"
@@ -69,12 +71,13 @@ CMD_TARGET_DELETE = "target_delete"
 CMD_TAB = "tab"
 CMD_ENDED = "ended"  # the show-ended box
 CMD_OPEN_TARGET = "open_target"  # `⏎` on the Targets tab: New session on the selected target
-CMD_QUERY = "query"  # the Targets query was entered: `arg` is its text
 CMD_MORE_TARGETS = "more_targets"  # the selection reached the last row loaded: the next page, if there is one
 CMD_TAB_CHANGED = "tab_changed"  # the tab shown changed: `arg` is its name
 CMD_SAVE_LOGIN = "save_login"  # `l` on the Targets tab: save a login for the marked targets, else the selected one
 CMD_MARK = "mark"  # `space` on the Targets tab: mark or unmark the selected target
 CMD_MAP = "map_credential"  # `p` on the Targets tab: map one of my credentials to the marked targets, else the selected
+CMD_KEYS = "keys"  # `?` on a list: All keys, without the leader (rule 5, 2026-11-21)
+CMD_DETAILS = "details"  # `i` on a target row: the details view of that record (rule 10, 2026-11-21)
 
 TAB_SESSIONS = "sessions"
 TAB_TARGETS = "targets"
@@ -248,22 +251,25 @@ def _table(model: FleetViewModel, filter_text: str, show_ended: bool) -> _Table:
     the model shares the cache, so the entry is reused only when the row source it was built from is the same."""
     needle = filter_text.strip().lower()
     key = (needle, show_ended)
-    rows, lazy = model.rows, model.lazy_rows
-    cached = model.cache.get("table")
-    if cached is not None and cached[0] == key and cached[1] is rows and cached[2] is lazy:
-        return cached[3]
+    rows = model.rows
+    # The cache is keyed by the filter pair, so the title's unfiltered count and the filter's table coexist: a
+    # keystroke that only moves the selection reads the table it was built for (rule 11).
+    tables = model.cache.setdefault("tables", {})
+    entry = tables.get(key)
+    if entry is not None and entry[0] is rows:
+        return entry[1]
     source = model.source
     cached_heads = model.cache.get("heads")
-    if cached_heads is not None and cached_heads[0] is rows and cached_heads[1] is lazy:
-        heads = cached_heads[2]
+    if cached_heads is not None and cached_heads[0] is rows:
+        heads = cached_heads[1]
     else:
         heads = [source.head(item) for item in source.items]
-        model.cache["heads"] = (rows, lazy, heads)
+        model.cache["heads"] = (rows, heads)
     chosen = [(item, head) for item, head in zip(source.items, heads)
               if (show_ended or not head[2]) and (not needle or needle in source.search(item).lower())]
     ordered = [pair for pair in chosen if not pair[1][2]] + [pair for pair in chosen if pair[1][2]]
     table = _Table(source, [item for item, _head in ordered], [head for _item, head in ordered])
-    model.cache["table"] = (key, rows, lazy, table)
+    tables[key] = (rows, table)
     return table
 
 
@@ -311,6 +317,23 @@ def _keep_columns(names: Sequence[str], sizes: Mapping[str, int], drop_order: Se
 def _target_cells(entry: TargetEntry) -> dict[str, str]:
     return {"name": entry.name, "type": entry.type, "group": entry.group, "tags": entry.tags,
             "source": entry.source, "sessions": entry.sessions, "can": entry.can}
+
+
+def filter_targets(entries: Sequence[TargetEntry], text: str, hosts: Mapping[str, str]) -> list[TargetEntry]:
+    """The Targets tab's local filter (rule 1, 2026-11-21): the trimmed text is matched, case-insensitive, as
+    one substring against the name, the host (the loaded record's, via `hosts`), the group, each tag and the
+    source. Nothing is resolved and nothing is asked of the broker: every page is already loaded (rule 2)."""
+    needle = text.strip().lower()
+    if not needle:
+        return list(entries)
+    out: list[TargetEntry] = []
+    for entry in entries:
+        host = hosts.get(entry.target_id, "")
+        if (needle in entry.name.lower() or needle in host.lower() or needle in entry.group.lower()
+                or any(needle in tag.lower() for tag in entry.tags.split(", "))
+                or needle in entry.source.lower()):
+            out.append(entry)
+    return out
 
 
 def _target_columns(entries: Sequence[TargetEntry], width: int) -> list[tuple[str, int]]:
@@ -417,11 +440,11 @@ def _controls(model: FleetViewModel, filter_text: str, editing: bool, show_ended
 
 
 def _query_controls(model: FleetViewModel, query_text: str, editing: bool) -> list[Part]:
-    """The Targets tab's query line: what is typed (or `/ query`), and the refusal of the last query if there was one."""
-    shown = f"/ {query_text}▏" if editing else (f"/ {query_text}" if query_text else "/ query")
-    parts = [Part(shown, "filter" if query_text or editing else "muted", CMD_FILTER, tip=QUERY_HINT)]
-    if model.query_error:
-        parts += [Part("    ", "blank"), Part("✕ " + model.query_error, "danger")]
+    """The Targets tab's filter line (rule 1, 2026-11-21): free text matched against the loaded rows; the
+    refusal of the last broker query is gone with the structured query."""
+    shown = f"/ {query_text}▏" if editing else (f"/ {query_text}" if query_text else "/ filter")
+    parts = [Part(shown, "filter" if query_text or editing else "muted", CMD_FILTER,
+                  tip="/ filter the targets by name, host, group, tag or source")]
     parts.append(Part(" ", "blank"))
     return parts
 
@@ -468,13 +491,23 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
     body: list[Line | Callable[[], Line]] = []
     rows: list[tuple[str, str]] = []
     row_at: dict[tuple[str, str], int] = {}
+    table_pos: list[tuple[str, str]] = []
 
     if tab == TAB_TARGETS:
-        title = f" {TARGETS_TITLE} · {model.targets_count}" if model.targets_count is not None else f" {TARGETS_TITLE}"
+        first = "–"
+        of_part, loading = "", False
+        if model.targets_count is not None:
+            loaded = model.targets_count.rstrip("…")
+            loading = model.targets_count.endswith("…")
+            first = str(len(model.targets))
+            of_part = f"of {loaded}…" if loading and filter_text.strip() else (
+                f"of {loaded}" if filter_text.strip() else "")
+        title = title_parts("Targets", "–", first, of_part, loading, filter_text.strip(), table_w)
         if marked:
             title += f" · {len(marked)} marked"
-        body.append(_text(title, "group", table_w))
-        if model.targets_note:
+        body.append(_text(f" {title}", "group", table_w))
+        title_at = len(body) - 1
+        if model.targets_note and not model.targets:
             body.append(_text("   " + model.targets_note, "warn", table_w))
         elif not model.targets:
             body.append(_text("   No targets to show." if model.targets_count is not None
@@ -482,8 +515,8 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
         else:
             columns = _target_columns(model.targets, table_w)
             header = [Part(" ", "blank"), Part("  ", "blank")]
-            for index, (name, size) in enumerate(columns):
-                if index:
+            for col_i, (name, size) in enumerate(columns):
+                if col_i:
                     header.append(Part(" " * GAP, "blank"))
                 header.append(Part(_fit(TARGET_HEADERS[name], size), "header"))
             header.append(Part(" " * max(table_w - sum(len(p.text) for p in header), 0), "blank"))
@@ -494,6 +527,14 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                 rows.append(key)
                 body.append(partial(_target_row, entry, columns, selected=selected == key, width=table_w,
                                     marked=entry.target_id in marked))
+            if model.targets_note:
+                # A 503 keeps the loaded rows (rule 2, 2026-11-23): the unavailable state is the section's last
+                # line, the same copy as rule 9's retry line.
+                body.append(_text("   Could not load targets · r retry", "muted", table_w))
+            place = next((i for i, key in enumerate(rows) if key == selected), None)
+            index = str(place + 1) if place is not None else "–"
+            body[title_at] = _text(f" {title_parts('Targets', index, first, of_part, loading, filter_text.strip(), table_w)}"
+                                   + (f" · {len(marked)} marked" if marked else ""), "group", table_w)
     elif tab == TAB_ALERTS and model.alert_lines is not None:
         body.append(_text(" Active alerts · " + str(len(model.alert_lines)), "group", table_w))
         for text in model.alert_lines or ("No active alerts.",):
@@ -512,7 +553,12 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                 body.append(partial(_needs_row, row, selected=selected == key, width=table_w, target_w=target_w,
                                     id_w=id_w, types_w=types_w))
             body.append(_text("", "blank", table_w))
-        body.append(_text(f" {TABLE_TITLE} · {len(table.items)}", "group", table_w))
+        total = len(_table(model, "", show_ended).items)
+        needle = filter_text.strip()
+        of_part = f"of {total}" if needle else ""
+        body.append(_text(f" {title_parts('Sessions', '–', str(len(table.items)), of_part, False, needle, table_w)}",
+                          "group", table_w))
+        title_at = len(body) - 1
         if not table.items:
             body.append(_text("   No sessions to show.", "muted", table_w))
         else:
@@ -539,7 +585,14 @@ def fleet_view_lines(model: FleetViewModel, *, width: int, height: int, tab: str
                 key = (GROUP_TABLE, sid)
                 row_at[key] = len(body)
                 rows.append(key)
+                table_pos.append(key)
                 body.append(partial(_item_row, table.source, item, columns, selected=selected == key, width=table_w))
+
+        place = next((i for i, key in enumerate(table_pos) if key == selected), None)
+        # rule 15 (2026-11-21): the position counts the table only; a Needs-you selection shows `–`.
+        index = str(place + 1) if selected is not None and selected[0] == GROUP_TABLE and place is not None else "–"
+        body[title_at] = _text(f" {title_parts('Sessions', index, str(len(table.items)), of_part, False, needle, table_w)}",
+                               "group", table_w)
 
     room = max(height - len(head), 0)
     foot: list[Line] = []
@@ -635,19 +688,22 @@ class FleetView(Widget):
         self._leader = leader
         self._details_from = int(config["fleet_view.details_from"])
         self._group_by = config["fleet_view.group_by"]
+        # The loaded records the view may read for the filter's host field (rule 1, 2026-11-21): the screen owns
+        # them; the view never reaches into the screen.
+        self.target_records: Callable[[], Mapping[str, Any]] | None = None
         self._model = FleetViewModel((), (), config["sidebar.start_filter"], None, "")
         self.tab = TAB_SESSIONS
         self.selected: tuple[str, str] | None = None
         # The targets marked with `space` on the Targets tab: the ones Save a login and Map act on (one batch call).
         self.marked: set[str] = set()
         self.filter_text = ""
-        self.query_text = ""  # the Targets tab's query as typed; `applied_query` is the one last entered
-        self.applied_query = ""
         self.editing = False
         self.show_ended = bool(config["fleet_view.show_ended"])
         self.window_width = 0
         self.scroll_top = 0
+        self._pos = 0  # the highlighted row's place, for rule 6 (2026-11-21)
         self._layout = FleetLayout((), (), 0, 0)
+        self._listed_rows: list[tuple[str, str]] = []
 
     def _build_styles(self, roles: dict[str, str]) -> None:
         """The fleet view's style table from the role colours (TT14): every colour is a role, so a theme
@@ -692,6 +748,9 @@ class FleetView(Widget):
                      and (name != TAB_ALERTS or self._model.alert_lines is not None))
 
     def set_model(self, model: FleetViewModel) -> None:
+        # A copy of the model made by `replace` shares the cache dict, so a key that only moves the selection
+        # reads the table the layout built for these rows (rule 11, 2026-11-21). A poll builds a new model with
+        # new rows: the cache misses and the table is rebuilt.
         self._model = model
         if self.tab not in self.tabs:
             self.tab = TAB_SESSIONS  # the Alerts tab went away (a 403): back to the sessions
@@ -702,22 +761,73 @@ class FleetView(Widget):
             self.window_width = width
             self._relayout()
 
+    def _hosts(self) -> Mapping[str, str]:
+        """Each loaded target's host, for the filter (rule 1): read from the screen's records through the callable
+        the screen set, never by reaching into the screen."""
+        records = self.target_records() if self.target_records is not None else {}
+        return {tid: str(record.get("host") or "") for tid, record in records.items()}
+
     def _build(self) -> FleetLayout:
         height = self.size.height or 40
         width = self.size.width or self.window_width or 80
         model = self._model
-        # A model whose tabs the login cannot see never reaches the layout's tab row.
+        # A model whose tabs the login cannot see never reaches the layout's tab row. The Targets rows are the
+        # filter's survivors over the loaded entries (rule 1); the title counts them under the filter.
+        if self.tab == TAB_TARGETS and self.filter_text.strip():
+            model = replace(model, targets=tuple(filter_targets(model.targets, self.filter_text, self._hosts())))
         visible = replace(model, tabs=self.tabs)
         return fleet_view_lines(
             visible, width=width, height=height, tab=self.tab, selected=self.selected,
             filter_text=self.filter_text, editing=self.editing, show_ended=self.show_ended,
             group_by=self._group_by, details=self.window_width >= self._details_from, top=self.scroll_top,
-            query_text=self.query_text, marked=frozenset(self.marked))
+            query_text=self.filter_text, marked=frozenset(self.marked))
 
     def _relayout(self) -> None:
         layout = self._build()
-        if self.selected not in layout.rows:
-            self.selected = layout.rows[0] if layout.rows else None
+        rows = list(layout.rows)
+        # rule 6 (2026-11-22): the place counts the active tab's table. On the Sessions tab that is GROUP_TABLE;
+        # on the Targets tab every row is a target row (rule 1), so the table is GROUP_TARGETS.
+        table_group = GROUP_TARGETS if self.tab == TAB_TARGETS else GROUP_TABLE
+        prev_selected = self.selected  # rule 6 (2026-11-22): the layout is built with the old selection; if rule 6
+        # moves it, the title's index and the row's mark must be rebuilt against the surviving selection.
+        if self.selected is None:
+            # rule 6 (2026-11-21): with no highlight, the head row of the table; a Needs-you row is not a
+            # position (`–` in the title, rule 15), so the fresh view starts at the table's first row.
+            self.selected = next((key for key in rows if key[0] == table_group), None)
+            self._pos = 0
+        elif self._pos < len(rows) and rows[self._pos] == self.selected:
+            pass
+        elif self.selected not in rows:
+            # Rule 6 (2026-11-21): the highlighted row disappeared across a refresh, a page arrival or a filter
+            # edit; the next surviving row below its place takes it, else the last row. The place is the old
+            # row's index in the rows as they were listed, so a filter edit runs the rule at that place.
+            # The place is the old row's index among the table rows (rule 15), so a filter edit runs the rule
+            # at that place on the new rows.
+            old = self._listed_rows
+            if self.selected in old and self.selected[0] == table_group:  # rule 15: a Needs-you row is not a table
+                # A table row's place is read among the new table rows (rule 5, 2026-11-23): the next surviving
+                # table row takes the selection, else the last table row, else the last row of all. `rows` is the
+                # combined list with Needs-you rows first, so slicing `rows[at:]` on a table place is wrong.
+                at = [i for i, key in enumerate(old) if key[0] == table_group].index(old.index(self.selected))
+                new_table = [key for key in rows if key[0] == table_group]
+                following_table = new_table[at:]
+                self.selected = (following_table[0] if following_table else
+                                 (new_table[-1] if new_table else (rows[-1] if rows else None)))
+            else:
+                # A disappeared Needs-you row keeps today's combined-row rule (rule 6): the place is the old row's
+                # index in the rows as they were listed.
+                at = min(self._pos, len(old))
+                following = rows[at:]
+                self.selected = following[0] if following else (rows[-1] if rows else None)
+        # The place is the row's index among the table rows (rule 15: the pair counts the table), so a filter
+        # edit runs rule 6 at that place on the new rows. A Needs-you row is not a position: the place stands.
+        places = [i for i, key in enumerate(rows) if key[0] == table_group]
+        if self.selected in rows and self.selected[0] == table_group:
+            self._pos = places.index(rows.index(self.selected))
+        else:
+            self._pos = min(self._pos, len(places))
+        self._listed_rows = rows  # the rule reads the place against the rows the last layout listed
+        if layout.rows != tuple(rows) or self.selected != prev_selected:
             layout = self._build()
         self.scroll_top = layout.top
         self._layout = layout
@@ -736,8 +846,11 @@ class FleetView(Widget):
         rows = self._layout.rows
         if not rows:
             return
-        index = rows.index(self.selected) if self.selected in rows else -1
-        self.selected = rows[max(0, min(index + step, len(rows) - 1))] if index >= 0 else rows[0]
+        # rule 6 (2026-11-21): a move continues from the highlight's recorded place, so the first key after a
+        # filter edit walks the survivors from where the highlight was, not from the head.
+        index = rows.index(self.selected) if self.selected in rows else self._pos
+        self.selected = rows[max(0, min(index + step, len(rows) - 1))] if rows else None
+        self._pos = rows.index(self.selected) if self.selected in rows else 0
         self._relayout()
         if step > 0:
             self._ask_more_targets()
@@ -746,6 +859,7 @@ class FleetView(Widget):
         rows = self._layout.rows
         if rows:
             self.selected = rows[-1 if last else 0]
+            self._pos = len(rows) - 1 if last else 0
             self._relayout()
             if last:
                 self._ask_more_targets()
@@ -782,18 +896,17 @@ class FleetView(Widget):
         """Opened afresh: the sessions tab, no filter, the first row, the top."""
         self.tab = TAB_SESSIONS
         self.filter_text = ""
-        self.query_text = ""
-        self.applied_query = ""
         self.editing = False
         self.selected = None
         self.marked.clear()
         self.scroll_top = 0
+        self._pos = 0  # rule 6 (2026-11-21): opened afresh, the place starts at the head
         self._relayout()
 
     def toggle_mark(self) -> None:
         """Mark or unmark the selected target (Targets tab)."""
         if self.tab == TAB_TARGETS and self.selected is not None:
-            self.marked ^= {self.selected[1]}
+            self.marked ^= {self.selected[1]}  # the marked target stays highlighted: rule 6 keeps its place
             self._relayout()
 
     def clear_marks(self) -> None:
@@ -801,12 +914,15 @@ class FleetView(Widget):
         self._relayout()
 
     def picked_targets(self) -> list[str]:
-        """The targets an action on the Targets tab concerns: every target marked (the ones in the rows loaded, in
-        the order listed, then the marks a query hid, sorted by id - `self.marked` is a set, so the order they were
-        marked is not kept), else the selected one."""
+        """The targets an action on the Targets tab concerns: every target marked (the ones in the rows the filter
+        shows, in the order listed, then the marks a rule-1 filter hid, sorted by id - `self.marked` is a set, so the
+        order they were marked is not kept), else the selected one."""
         if not self.marked:
             return [self.selected[1]] if self.tab == TAB_TARGETS and self.selected is not None else []
-        listed = [entry.target_id for entry in self._model.targets]
+        targets = self._model.targets
+        if self.tab == TAB_TARGETS and self.filter_text.strip():  # rule 1 (2026-11-22): the filter defines the rows
+            targets = filter_targets(targets, self.filter_text, self._hosts())
+        listed = [entry.target_id for entry in targets]
         return [name for name in listed if name in self.marked] + sorted(self.marked.difference(listed))
 
     # -- text for a test and for the report --
@@ -923,7 +1039,13 @@ class FleetView(Widget):
         elif key == "shift+tab":
             self.next_tab(-1)
         elif key == "escape":
-            self.post_message(self.Command(CMD_CLOSE))
+            # rule 11 (2026-11-22): a non-editing Escape with a filter on the view clears the filter and relayouts;
+            # the next Escape closes.
+            if self.filter_text:
+                self.filter_text = ""
+                self._relayout()
+            else:
+                self.post_message(self.Command(CMD_CLOSE))
         elif key == "slash" and self.tab in (TAB_SESSIONS, TAB_TARGETS):
             self.start_filter()
         elif key == "m" and self.tab == TAB_SESSIONS:
@@ -939,8 +1061,17 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_SAVE_LOGIN))
         elif key == "p" and self.tab == TAB_TARGETS:
             self.post_message(self.Command(CMD_MAP))
+        elif key == "r" and self.tab == TAB_TARGETS and self._model.targets_note:
+            # `r` on the unavailable last line runs a foreground read (rule 2, 2026-11-23).
+            self.post_message(self.Command(CMD_RETRY, "targets"))
         elif key == "enter" and self.tab == TAB_TARGETS and self.selected_session is not None:
             self.post_message(self.Command(CMD_OPEN_TARGET, self.selected_session))
+        elif key == "i" and self.tab == TAB_TARGETS and self.selected_session is not None:
+            # rule 10 (2026-11-21): `i` is the target row's key; on a session row it opens nothing.
+
+            self.post_message(self.Command(CMD_DETAILS, self.selected_session))
+        elif key in ("?", "question_mark"):
+            self.post_message(self.Command(CMD_KEYS))
         elif key == "enter" and sid is not None:
             self.post_message(self.Command(CMD_PICK, sid))
         elif key == "t" and sid is not None:
@@ -953,40 +1084,24 @@ class FleetView(Widget):
             self.post_message(self.Command(CMD_NEW))
 
     def _editing_key(self, event: events.Key) -> None:
-        if self.tab == TAB_TARGETS:
-            self._editing_query_key(event)
-            return
+        # The Targets filter is local (rule 1, 2026-11-21): typing, Enter and Esc work as the sessions filter's;
+        # Enter opens the selected row, as outside the filter does (rule 5).
         key = event.key
         if key == "escape":
             self.filter_text = ""
             self.editing = False
         elif key == "enter":
             self.editing = False
+            if self.tab == TAB_TARGETS and self.selected_session is not None:
+                self.post_message(self.Command(CMD_OPEN_TARGET, self.selected_session))
         elif key == "backspace":
             self.filter_text = self.filter_text[:-1]
         elif event.is_printable and event.character:
             self.filter_text += event.character
         self._relayout()
 
-    def _editing_query_key(self, event: events.Key) -> None:
-        """The query is the broker's: typing changes nothing on screen but the line, `⏎` asks, and `Esc` drops what was
-        typed since the last query asked."""
-        key = event.key
-        if key == "escape":
-            self.query_text = self.applied_query
-            self.editing = False
-        elif key == "enter":
-            self.editing = False
-            self.applied_query = self.query_text
-            self.post_message(self.Command(CMD_QUERY, self.query_text))
-        elif key == "backspace":
-            self.query_text = self.query_text[:-1]
-        elif event.is_printable and event.character:
-            self.query_text += event.character
-        self._relayout()
 
-
-__all__ = ["CMD_ENDED", "CMD_MAP", "CMD_MARK", "CMD_MORE_TARGETS", "CMD_OPEN_TARGET", "CMD_QUERY", "CMD_SAVE_LOGIN", "CMD_TAB",
-           "CMD_TAB_CHANGED",
+__all__ = ["CMD_DETAILS", "CMD_ENDED", "CMD_KEYS", "CMD_MAP", "CMD_MARK", "CMD_MORE_TARGETS", "CMD_OPEN_TARGET",
+           "CMD_SAVE_LOGIN", "CMD_TAB", "CMD_TAB_CHANGED",
            "SEPARATOR", "FleetLayout", "FleetRow", "FleetView", "FleetViewModel", "RowSource", "TargetEntry",
            "built_rows", "fleet_view_lines", "visible_rows"]

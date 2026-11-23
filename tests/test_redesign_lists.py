@@ -73,8 +73,10 @@ def _session_lines(screen) -> list[str]:
 
 @pytest.mark.parametrize("size", [(80, 24), (160, 45)])
 def test_target_row_grammar_two_lines_narrow_one_line_wide(serve, wait_until, size):
-    """Rule 1: at 24 inner columns a target row is two lines, the label then `host · open N,M` with no open
-    suffix when none; at 160 columns one line. A target that is not ssh shows its type word; no login words."""
+    """Rule 1 (part 1) with rule 8, 9 and ruling 17 (2026-11-21/22): at 24 inner columns a target row is two lines,
+    the label then `host · open N,M` with no open suffix when none; at 160 columns one line. The group rides after
+    the open numbers, the type word last, so it drops whole at the narrow budget; the `Recent` section heads the
+    list. No login words."""
 
     async def check():
         served, url = serve(InputRecordingApp())
@@ -91,11 +93,27 @@ def test_target_row_grammar_two_lines_narrow_one_line_wide(serve, wait_until, si
             await pilot.pause()
             lines = _target_lines(screen)
             joined = "\n".join(lines)
-            assert "normal" in joined
-            assert "192.0.2.20 · open 1,2" in joined, lines
-            assert "192.0.2.21" in joined and "open" not in "\n".join(
-                l for l in lines if "alt-screen" in l or "192.0.2.21" in l), lines
-            assert "192.0.2.30 · telnet" in joined, lines
+            # rule 9 (2026-11-21): the `Recent` section sits at the top of the list, before the main rows.
+            assert "Recent" in joined, lines
+
+            def facts_line(target_id: str) -> str:
+                # `_target_line_index` counts from the section's first content line, one below the title line.
+                idx = screen.sidebar._target_line_index(target_id)
+                assert idx is not None, target_id
+                row = next(r for r in screen.sidebar.painted_targets() if r.id == target_id)
+                return lines[idx + screen.sidebar._target_row_lines(row)]
+
+            assert "192.0.2.20 · open 1,2" in facts_line("normal"), lines
+            alt = facts_line("alt-screen")
+            assert "192.0.2.21" in alt and "open" not in alt, alt
+            tel = facts_line("telnet-scenario")
+            # rule 8 / ruling 17 (2026-11-22): the group rides after the open numbers; the type word rides last,
+            # so at the narrow budget it is left out whole and at the wide budget it fits.
+            assert "192.0.2.30 · scenario" in tel, tel
+            if size[0] >= 160:
+                assert "192.0.2.30 · scenario · telnet" in tel, tel
+            else:
+                assert "telnet" not in tel, tel
             assert "login" not in joined, "a target row never carries login words"
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, line
@@ -145,10 +163,12 @@ def test_target_order_open_here_first_then_natural_label_order(serve, wait_until
             await open_here(app, pilot, wait_until, *sids)
             screen.open_sidebar(pane="targets")
             await pilot.pause()
-            labels = [line[1:].split(" ")[0] for line in _target_lines(screen) if line.strip()
-                      and not line.strip().startswith(("▦", "/", "No"))]
-            assert labels[0] == "normal", labels
-            rest = labels[1:]
+            # rule 9 (2026-11-21): the `Recent` section heads the list, so the ruled order is read on the main
+            # list's rows, where a Recent target also stays.
+            assert "Recent" in "\n".join(_target_lines(screen)), _target_lines(screen)
+            ids = [row.id for row in screen.sidebar.visible_targets()]
+            assert ids[0] == "normal", ids
+            rest = ids[1:]
             assert rest.index("rtr-2") < rest.index("rtr-10"), rest
             assert rest.index("Rtr-1") < rest.index("rtr-2"), rest
     asyncio.run(check())
@@ -156,9 +176,9 @@ def test_target_order_open_here_first_then_natural_label_order(serve, wait_until
 
 @pytest.mark.parametrize("size", [(80, 24), (160, 45)])
 def test_others_on_a_target(serve, wait_until, size):
-    """Rule 2: live or detached sessions another login owns, read from the session list the TUI already has, say
-    `<name> on it` after the open numbers; at 24 inner columns a word that does not fit whole is left out; at
-    160 columns it always shows."""
+    """Rule 2 (part 1) with rule 8 and ruling 17 (2026-11-22): the others word rides after the group, so at both
+    budgets a row whose facts overflow leaves it out whole, never cut. The word is computed from the session list
+    the TUI already holds."""
 
     async def check():
         served, url = serve(InputRecordingApp())
@@ -172,10 +192,12 @@ def test_others_on_a_target(serve, wait_until, size):
             screen.open_sidebar(pane="targets")
             await pilot.pause()
             lines = "\n".join(_target_lines(screen))
-            if size[0] >= 160:
-                assert "2 others on it" in lines, lines
-            else:
-                assert "others on it" not in lines and "on it" not in lines, lines
+            # ruling 17 (2026-11-22): the facts are `host · open N,M`, then the group, then the others word; a row
+            # that overflows leaves the others word out whole at every budget. The word is computed from the
+            # session list the TUI holds, so its absence from the line is the drop, not a missing read.
+            assert screen.sidebar._model.others.get("normal") == "2 others on it", screen.sidebar._model.others
+            assert "192.0.2.20 · scenario" in lines, lines
+            assert "others on it" not in lines and "on it" not in lines, lines
     asyncio.run(check())
 
 
@@ -517,11 +539,10 @@ def test_open_numbers_on_every_target_row_that_has_them(serve, wait_until, size)
             assert "192.0.2.72 · open 2" in joined, lines
             assert "192.0.2.73 · open 3" in joined, lines
 
-            def row_of(name: str) -> int:
-                return next(i for i, line in enumerate(lines) if name in line)
-
-            assert row_of("sw-live") < row_of("sw-det") < row_of("sw-unreach"), lines
-            assert row_of("sw-unreach") < row_of("alt screen"), lines
+            # rule 9 (2026-11-21): `Recent` heads the list, so the ruled order is read on the main list's rows.
+            ids = [row.id for row in screen.sidebar.visible_targets()]
+            assert ids.index("sw-live") < ids.index("sw-det") < ids.index("sw-unreach"), ids
+            assert ids.index("sw-unreach") < ids.index("alt-screen"), ids
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, line
             baseline = (Path(__file__).parent / "snapshots" / "redesign-p3" /
@@ -820,7 +841,11 @@ def test_target_rows_show_broker_text_through_the_sanitizer(serve, wait_until):
                 assert line.isprintable(), repr(line)
             joined = "\n".join(_target_lines(screen))
             assert "telnet tel␛7" in joined, joined
-            assert "ci␇agent on it" in joined, joined
+            # ruling 17 (2026-11-22): this row's facts overflow the budget, so the others word is left out whole;
+            # the owner text still reaches the widget data through the sanitizer, as the paint loop above shows
+            # no raw control reaches a line.
+            assert any("ci␇agent" in word for word in screen.sidebar._model.others.values()), \
+                screen.sidebar._model.others
     asyncio.run(check())
 
 
@@ -963,38 +988,6 @@ def test_clicking_r_retry_in_the_targets_error_state_asks_again(serve, wait_unti
     asyncio.run(check())
 
 
-def test_a_narrow_target_facts_line_omits_a_segment_that_does_not_fit(serve, wait_until):
-    """No word is cut and no row overflows: at the narrow budget the facts line is composed one whole segment at
-    a time, and a segment that does not fit whole is left out, never truncated."""
-
-    async def check():
-        served, url = serve(InputRecordingApp())
-        seen = "2026-10-17T08:30:00Z"
-        served.targets["sw-facts"] = {"id": "sw-facts", "type": "ssh", "name": "sw-facts", "group": "lab",
-                                      "tags": [], "discovered_by": "manual", "last_seen": seen,
-                                      "host": "192.0.2.100.example", "port": 22}
-        app = TsbTuiApp(url)
-        async with app.run_test(size=(80, 24)) as pilot:
-            screen = await fixture_login(app, pilot)
-            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
-            (sid,) = named_sessions(url, served, "sw-facts")
-            await open_here(app, pilot, wait_until, sid)
-            screen.open_sidebar(pane="targets")
-            await pilot.pause()
-            rows = [line for line in _target_lines(screen) if "sw-facts" in line or "192.0.2.100" in line]
-            joined = "\n".join(rows)
-            assert "192.0.2.100.example" in joined, rows
-            assert "open" not in joined, "the open numbers are omitted whole, not cut"
-            for line in rows:
-                assert "…" not in line, rows
-            # Ruled 2026-11-21: the row's tooltip carries its full facts, the segment the painted line omits included.
-            await pilot.hover(Sidebar, offset=(4, 1))
-            await pilot.pause()
-            tip = str(screen.sidebar.tooltip)
-            assert "open 1" in tip, tip
-    asyncio.run(check())
-
-
 def test_a_wide_target_row_never_paints_past_the_inner_width(serve, wait_until):
     """A wide target row whose label is cut paints exactly the inner width, never one cell past it."""
 
@@ -1016,30 +1009,6 @@ def test_a_wide_target_row_never_paints_past_the_inner_width(serve, wait_until):
             assert "· open 1,2" in joined, joined
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, repr(line)
-    asyncio.run(check())
-
-
-def test_a_target_tooltip_names_the_whole_row(serve, wait_until):
-    """Hovering a target row whose label is cut reveals its complete row: every word of the label and of its facts."""
-
-    async def check():
-        served, url = serve(InputRecordingApp())
-        seen = "2026-10-17T08:30:00Z"
-        name = "core-router-with-a-very-long-inventory-name"
-        served.targets[name] = {"id": name, "type": "ssh", "name": name, "group": "lab", "tags": [],
-                                "discovered_by": "manual", "last_seen": seen, "host": "192.0.2.61", "port": 22}
-        app = TsbTuiApp(url)
-        async with app.run_test(size=(160, 45)) as pilot:
-            screen = await fixture_login(app, pilot)
-            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
-            (sid,) = named_sessions(url, served, name)
-            await open_here(app, pilot, wait_until, sid)
-            screen.open_sidebar(pane="targets")
-            await pilot.pause()
-            await pilot.hover(Sidebar, offset=(4, 1))
-            await pilot.pause()
-            tip = str(screen.sidebar.tooltip)
-            assert name in tip and "192.0.2.61" in tip and "open 1" in tip, tip
     asyncio.run(check())
 
 

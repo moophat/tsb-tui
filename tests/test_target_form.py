@@ -210,32 +210,49 @@ def test_target_edit_refusal_keeps_the_form(serve, wait_until):
     asyncio.run(check())
 
 
-def test_saved_target_is_selected_after_it_leaves_the_query(serve, wait_until):
-    """Saving still selects the changed row when its type no longer matches the opening query."""
+def test_a_saved_target_that_leaves_the_filter_moves_the_selection_by_rule_6(serve, wait_until):
+    """Rule 6 + rule 1 (2026-11-22, ruling 21): a free-text filter the target matches; edit so it no longer
+    matches; save. The saved target leaves the filtered list and the selection moves to the next surviving row
+    below where it stood (rule 6), the title naming that row; clearing the filter (Esc, rule 5) shows the saved
+    target with its new values."""
     async def check():
-        _, url = serve()
+        server, url = serve()
+        server.targets["two-client"]["tags"] = ["prod"]  # a survivor that sorts after `query-target`
         app = TsbTuiApp(url)
         async with app.run_test(size=(120, 40)) as pilot:
             screen, view = await open_targets(app, pilot, wait_until)
             await pilot.press("a")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "form", timeout_s=TARGET_FORM_WAIT_S)
             app.screen.fill({"id": "query-target", "type": "ssh", "host": "example"})
+            app.screen.query_one("#target-tags", Input).value = "prod"
             app.screen.query_one("#target-save", Button).press()
             await wait_for_target_workers(app, pilot, "new row")
-            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "query-target", "new row selected", timeout_s=TARGET_FORM_WAIT_S)
-            assert app.screen is screen and view.selected_session == "query-target"
-            screen._run_query("type:ssh")
-            await wait_until(pilot, lambda: screen.targets.query.type == "ssh", "filtered rows", timeout_s=TARGET_FORM_WAIT_S)
-            await pilot.press("e")
+            await wait_until(pilot, lambda: app.screen is screen and view.selected_session == "query-target",
+                             "new row selected", timeout_s=TARGET_FORM_WAIT_S)
+            # rule 1: the filter is free text matched against the loaded rows; `prod` matches two targets
+            view.filter_text = "prod"
+            view._relayout()
+            await wait_until(pilot, lambda: [row[1] for row in view.layout.rows] == ["query-target", "two-client"],
+                             "the filter's survivors")
+            assert view.selected_session == "query-target", view.selected
+            # edit so the target no longer matches the filter (change the matched tag) and save
+            await pilot.press("e")  # `e` opens the editor while the keys are not in filter-editing
             await wait_for_target_workers(app, pilot, "editor")
             await wait_until(pilot, lambda: isinstance(app.screen, TargetFormScreen), "editor", timeout_s=TARGET_FORM_WAIT_S)
-            app.screen.query_one("#target-telnet", RadioButton).value = True
+            app.screen.query_one("#target-tags", Input).value = "gone"
             app.screen.query_one("#target-save", Button).press()
-            await wait_for_target_workers(app, pilot, "saved row outside old query")
-            await wait_until(pilot, lambda: app.screen is screen and screen.targets.row("query-target") is not None
-                             and screen.targets.row("query-target").type == "telnet", "saved row outside old query",
-                             timeout_s=TARGET_FORM_WAIT_S)
-            assert view.selected_session == "query-target"
+            await wait_for_target_workers(app, pilot, "saved row outside the filter")
+            # rule 6: the saved target left the filtered list; the selection is the next surviving row below its place
+            await wait_until(pilot, lambda: [row[1] for row in view.layout.rows] == ["two-client"],
+                             "the saved target left the filter")
+            assert view.selected_session == "two-client", (view.selected, view.layout.rows)
+            title = next(ln for ln in view.text.splitlines() if ln.startswith(" Targets ·"))
+            assert "Targets · 1/1 of 9 · 'prod'" in title, title
+            # rule 5: Esc clears the filter; the saved target returns with its new values
+            view.editing = True  # as slash enters the filter, so Esc clears it
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: view.filter_text == "" and screen.targets.row("query-target") is not None
+                             and "gone" in screen.targets.row("query-target").tags, "the cleared filter shows the edit")
     asyncio.run(check())
 
 

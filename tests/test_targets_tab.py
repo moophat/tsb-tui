@@ -1,10 +1,12 @@
 """The Targets tab of the full Fleet view (design F14, E3 phase 11): the inventory the core lists for this login,
-queried through the broker, with every target string shown as text, and `⏎` opening New session on the target.
+every page loaded in the background, the filter matched locally over the loaded rows, every target string shown as
+text, and `⏎` opening New session on the target.
 
-Why it matters (Rule 9): the tab is how an operator finds one device among many, so a filter that was matched here
-instead of in the broker would answer a different question at 10 000 targets; a CMDB name carrying markup or an escape
-must reach the screen as characters (R17), because a terminal takes an escape for a command; and a telnet target
-opened with `reuse` is a 502 the operator cannot explain (R19). Server: the contract's in-process fixture server
+Why it matters: rule 1 (2026-11-21) makes the filter local free text, so `GET /targets` carries `limit` and `cursor`
+only and a typed `field:value` is matched literally, never parsed; rule 2 (2026-11-21) loads every page after the
+login, so a match beyond the first page shows without any key paging. A CMDB name carrying markup or an escape must
+reach the screen as characters (R17), because a terminal takes an escape for a command; and a telnet target opened
+with `reuse` is a 502 the operator cannot explain (R19). Server: the contract's in-process fixture server
 (`tsbc serve`), whose `TARGETS` hold the telnet record and the one with markup in its name.
 """
 
@@ -22,7 +24,7 @@ from workspace_support import fixture_login
 
 from tsb_tui.app import TsbTuiApp
 from tsb_tui.screens.attach_confirm import AttachConfirmScreen
-from tsb_tui.screens.fleet_view import TAB_TARGETS, FleetView
+from tsb_tui.screens.fleet_view import GROUP_TARGETS, TAB_TARGETS, FleetView
 from tsb_tui.screens.new_session import NewSessionScreen
 
 
@@ -58,12 +60,12 @@ class _ScriptedTargets:
 
 
 
-async def _open_targets(app: TsbTuiApp, pilot, wait_until, rows: int | None = None):
+async def _open_targets(app: TsbTuiApp, pilot, wait_until, rows: int | None = None, timeout_s: float = 10.0):
     screen = await fixture_login(app, pilot)
     screen.open_fleet_view(TAB_TARGETS)
     view = screen.fleet_view
     await wait_until(pilot, lambda: len(view.layout.rows) >= (rows or len(_serve.TARGETS))
-                     and view.layout.rows[0][0] == "targets", "the targets to be listed")
+                     and view.layout.rows[0][0] == "targets", "the targets to be listed", timeout_s)
     return screen, view
 
 
@@ -75,9 +77,7 @@ async def _select(pilot, view, target_id: str) -> None:
     raise AssertionError(f"{target_id} could not be selected: {view.selected}")
 
 
-async def _type_query(pilot, text: str) -> None:
-    await pilot.press("slash", *("colon" if char == ":" else "space" if char == " " else char for char in text),
-                      "enter")
+
 
 
 def _gets(serve_app) -> list[str]:
@@ -131,42 +131,38 @@ def test_a_target_name_holding_markup_or_an_escape_is_shown_as_text(serve, wait_
     asyncio.run(check())
 
 
-def test_the_query_filters_through_the_broker(serve, wait_until) -> None:
-    """`/type:telnet` reaches the broker as `GET /targets?type=telnet` and the tab shows what it answered (one row);
-    `/type:rdp`, which the broker refuses 422, keeps the previous rows and shows the broker's message in the query
-    line, so a typo costs the operator nothing they had."""
+def test_the_filter_matches_locally_and_asks_the_broker_nothing(serve, wait_until) -> None:
+    """Rule 1 (2026-11-21): the typed text is matched locally against the loaded rows, case-insensitive; the title
+    carries the filter's form. `GET /targets` carries `limit` and `cursor` only, so a `field:value` text is plain
+    text that asks the broker nothing and earns no refusal — the structured query is retired."""
 
     async def check() -> None:
         serve_app, url = serve()
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 36)) as pilot:
             _screen, view = await _open_targets(app, pilot, wait_until)
-            await _type_query(pilot, "type:telnet")
-            await wait_until(pilot, lambda: [row[1] for row in view.layout.rows] == ["telnet-scenario"],
-                             "the broker's filtered list")
-            assert any(path.startswith("/targets?") and "type=telnet" in path for path in _gets(serve_app))
-            assert "Targets 1" in view.text
-            await _type_query(pilot, "x")  # a bare word: refused here, nothing asked of the broker
             before = len(_gets(serve_app))
-            await _type_query(pilot, "type:telnet tag:telnet")
-            await wait_until(pilot, lambda: len(_gets(serve_app)) > before, "the tagged query to reach the broker")
-            assert "tag=telnet" in _gets(serve_app)[-1] and "type=telnet" in _gets(serve_app)[-1]
-
-            # Clear the line and ask for a type the broker refuses.
-            await pilot.press("slash")
-            for _ in range(len(view.query_text)):
+            await pilot.press("slash", *"telnet")
+            await wait_until(pilot, lambda: [row[1] for row in view.layout.rows] == ["telnet-scenario"],
+                             "the filter's survivors")
+            # rule 6 + rule 15 (2026-11-22, ruling 19): the filter's single survivor is the table head, so it is
+            # selected and the index is its place (1); the matches, the total and the typed text show.
+            assert "Targets · 1/1 of 8 · 'telnet'" in view.text, view.text
+            assert len(_gets(serve_app)) == before, "a typed filter asked the broker for nothing"
+            for _ in range(6):
                 await pilot.press("backspace")
-            await pilot.press("t", "y", "p", "e", "colon", "r", "d", "p", "enter")
-            await wait_until(pilot, lambda: "not a target type" in view.text, "the broker's refusal in the query line")
-            assert [row[1] for row in view.layout.rows] == ["telnet-scenario"], "the previous rows stay"
+            await pilot.press(*("colon" if char == ":" else char for char in "type:rdp"))
+            await pilot.pause(0.2)
+            assert len(_gets(serve_app)) == before, "a field:value text is matched literally, never parsed"
+            assert "not a target type" not in view.text, "the structured query's refusal is gone"
+            assert view.layout.rows == (), view.layout.rows
 
     asyncio.run(check())
 
 
-def test_a_bare_word_is_refused_with_the_field_list_and_asks_nothing(serve, wait_until) -> None:
-    """11.2: `GET /targets` has no text search, so a word without `field:` is refused in the query line with the fields
-    that exist, and no request is made: matching it here over the rows fetched so far would be a partial answer
-    that looks like the broker's."""
+def test_a_bare_word_filters_locally_and_asks_nothing(serve, wait_until) -> None:
+    """Rule 1 (2026-11-21): a word with no `field:` is matched as text against the loaded rows, never refused, and
+    asks the broker nothing. A word that matches a group shows every target of that group."""
 
     async def check() -> None:
         serve_app, url = serve()
@@ -174,10 +170,18 @@ def test_a_bare_word_is_refused_with_the_field_list_and_asks_nothing(serve, wait
         async with app.run_test(size=(140, 36)) as pilot:
             _screen, view = await _open_targets(app, pilot, wait_until)
             before = len(_gets(serve_app))
-            await _type_query(pilot, "cisco")
-            await wait_until(pilot, lambda: "write field:value" in view.text, "the refusal in the query line")
-            assert "type:" in view.text and "source:" in view.text
-            assert len(_gets(serve_app)) == before and len(view.layout.rows) == len(_serve.TARGETS)
+            await pilot.press("slash", *"cisco")
+            await pilot.pause(0.2)
+            assert "write field:value" not in view.text, "the refusal of a bare word is retired"
+            assert len(_gets(serve_app)) == before, "a bare word asked the broker nothing"
+            assert view.layout.rows == (), view.layout.rows
+            for _ in range(5):
+                await pilot.press("backspace")
+            await pilot.press(*"lab")
+            await pilot.pause(0.2)
+            ids = [row[1] for row in view.layout.rows]
+            assert ids == ["fixture-nocred", "fixture-target", "rich-name"], ids
+            assert "of 8 · 'lab'" in view.text, view.text
 
     asyncio.run(check())
 
@@ -213,25 +217,25 @@ def test_enter_on_a_telnet_target_opens_new_session_with_connection_new(serve, w
     asyncio.run(check())
 
 
-def test_a_next_page_is_asked_when_the_selection_reaches_the_last_row(serve, wait_until) -> None:
-    """11.3: one page of a stated `limit`, the next on demand, and the count reads `N+` while the broker has more. The
-    broker keeps the filter and the order across pages; the tab only asks for the next page when the operator reaches
-    the end of what it has."""
+def test_every_page_is_loaded_after_the_view_opens(serve, wait_until) -> None:
+    """Rule 2 (2026-11-21): every published page is fetched in the background after the view opens, following
+    `next_cursor` until none; no key asks a page, and once the last page landed the count reads the whole list."""
 
     async def check() -> None:
         serve_app, url = serve()
-        for index in range(120):
+        for index in range(600):
             serve_app.targets[f"bulk-{index:03d}"] = {**_serve.TARGETS["normal"], "id": f"bulk-{index:03d}",
                                                       "name": f"bulk {index}"}
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 36)) as pilot:
-            _screen, view = await _open_targets(app, pilot, wait_until, rows=100)
-            assert len(view.layout.rows) == 100 and "Targets 100+" in view.text
-            assert all("cursor" not in path for path in _gets(serve_app)), "the first page has no cursor"
-            await pilot.press("end")
-            await wait_until(pilot, lambda: len(view.layout.rows) == 128, "the next page")
-            assert "Targets 128" in view.text and "cursor=" in _gets(serve_app)[-1]
-            assert [row[1] for row in view.layout.rows] == sorted(row[1] for row in view.layout.rows)
+            _screen, view = await _open_targets(app, pilot, wait_until, rows=608, timeout_s=60)
+            pages = _gets(serve_app)
+            assert all("limit=500" in path for path in pages), pages
+            assert "cursor=" not in pages[0] and any("cursor=" in path for path in pages[1:]), pages
+            ids = [row[1] for row in view.layout.rows]
+            assert len(ids) == 608 and len(set(ids)) == 608, "a page arrived twice or none"
+            assert ids == sorted(ids), "the rows are the broker's id order"
+            assert "Targets 608" in view.text, view.text
 
     asyncio.run(check())
 
@@ -361,189 +365,175 @@ def test_the_tab_reads_the_inventory_while_it_is_shown_and_not_after(serve, wait
     asyncio.run(check())
 
 
-def test_a_poll_asks_the_query_being_fetched_and_a_503_keeps_it(serve, wait_until) -> None:
-    """A query entered but not yet answered is the one the tab is fetching: a refresh while it is pending must ask
-    that query, never the one still on show, or the poll's reply becomes the newest and the operator's query is
-    dropped. A 503 to the new query says the inventory is down but must not put the old query back under the poll."""
-    async def check() -> None:
-        _app, url = serve()
-        app = TsbTuiApp(url)
-        async with app.run_test(size=(140, 36)) as pilot:
-            screen, _view = await _open_targets(app, pilot, wait_until)
-            scripted = _ScriptedTargets(app)
-            reached, release = scripted.hold(0)
-            screen._run_query("type:telnet")
-            await wait_until(pilot, reached.is_set, "the new query's request")
+def test_a_poll_asks_limit_and_cursor_only_and_a_503_shows_the_state(serve, wait_until) -> None:
+    """Rule 1 (2026-11-21): every `GET /targets` the tab asks carries `limit` and `cursor` only, never a filter
+    parameter, and a poll never runs while a page is in flight. A 503 `inventory_unavailable` is the state the tab
+    shows; the next newest request answers it and the state goes."""
 
-            screen._fetch_targets(background=True)  # what the timer would do while the query is pending
-            await wait_until(pilot, lambda: len(scripted.calls) >= 2, "the poll")
-            assert scripted.calls[1]["type"] == "telnet", "a poll ran the query still on show, not the one pending"
-            await wait_until(pilot, lambda: [row.id for row in screen.targets.rows] == ["telnet-scenario"],
-                             "the poll's page")
-            release.set()  # the older reply lands after the newer one
-            await pilot.pause(0.1)
-            assert [row.id for row in screen.targets.rows] == ["telnet-scenario"]
-
-            scripted.fail[2] = ApiError(503, "inventory_unavailable", "the inventory is not answering")
-            screen._run_query("type:ssh")
-            await wait_until(pilot, lambda: screen.targets.unavailable, "the 503")
-            screen._fetch_targets(background=True)
-            await wait_until(pilot, lambda: len(scripted.calls) >= 4, "the poll after the 503")
-            assert scripted.calls[3]["type"] == "ssh", "a 503 must keep the new query as the one polled"
-
-    asyncio.run(check())
-
-
-def test_an_old_querys_error_never_shows_beside_newer_results(serve, wait_until) -> None:
-    """`invalid_request` is the broker's refusal of a query, so it belongs to the query line only while that query is
-    the one on show: an older query's refusal landing after a newer query's rows would put a message on screen about
-    a list the operator is not looking at."""
-    async def check() -> None:
-        _app, url = serve()
-        app = TsbTuiApp(url)
-        async with app.run_test(size=(140, 36)) as pilot:
-            screen, view = await _open_targets(app, pilot, wait_until)
-            scripted = _ScriptedTargets(app)
-            reached, release = scripted.hold(0)
-            scripted.fail[0] = ApiError(422, "invalid_request", "type rdp is not a target type")
-            screen._run_query("type:rdp")
-            await wait_until(pilot, reached.is_set, "the refused query's request")
-            screen._run_query("type:ssh")
-            await wait_until(pilot, lambda: [row.id for row in screen.targets.rows] == sorted(
-                row_id for row_id, record in _serve.TARGETS.items() if record["type"] == "ssh"), "the newer query")
-            release.set()  # the older query's refusal lands last
-            await pilot.pause(0.1)
-            assert screen._targets_query_error == "" and "not a target type" not in view.text
-
-    asyncio.run(check())
-
-
-def test_a_reopened_view_never_duplicates_a_page(serve, wait_until) -> None:
-    """A page request carries its generation and cursor: an old page's reply landing after the view was reopened must
-    neither append those rows to the new list nor clear the in-flight flag of the page the reopened view is waiting
-    for, or that page is asked twice and its rows double."""
     async def check() -> None:
         serve_app, url = serve()
-        for index in range(120):
+        for index in range(600):
             serve_app.targets[f"bulk-{index:03d}"] = {**_serve.TARGETS["normal"], "id": f"bulk-{index:03d}",
                                                       "name": f"bulk {index}"}
+        gate, asked = _gated_pages(serve_app)
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 36)) as pilot:
-            screen, view = await _open_targets(app, pilot, wait_until, rows=100)
-            scripted = _ScriptedTargets(app)
-            old_page, release_old = scripted.hold(0)
-            screen._fetch_targets(more=True)
-            await wait_until(pilot, old_page.is_set, "the first view's page request")
-
-            screen.close_fleet_view()
-            screen.open_fleet_view(TAB_TARGETS)
-            await wait_until(pilot, lambda: len(view.layout.rows) == 100 and screen.targets.next_cursor is not None,
-                             "the reopened view's first page")
-            new_page, release_new = scripted.hold(2)  # call 1 is the reopened view's first page
-            screen._fetch_targets(more=True)
-            await wait_until(pilot, new_page.is_set, "the reopened view's page request")
-
-            release_old.set()  # the first view's page lands after the reopened view asked for its own
-            await pilot.pause(0.1)
-            assert len(screen.targets.rows) == 100, "an old page was appended to the reopened list"
-            screen._fetch_targets(more=True)  # a page is already in flight: this must not ask for another
+            screen, _view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
+            screen._stop_targets_timer()
+            before = len(asked)
+            screen._fetch_targets(background=True)  # the tick while the chain's page is in flight
             await pilot.pause(0.05)
-            assert len(scripted.calls) == 3, "an old page's reply cleared the reopened view's in-flight flag"
-            release_new.set()
-            await wait_until(pilot, lambda: len(screen.targets.rows) == 128, "the reopened view's next page")
+            assert len(asked) == before, "a poll ran while a page was in flight"
+            gate.set()
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,
+                             "the chain to finish", 40)
+            paths = _gets(serve_app)
+            assert all("limit=500" in path and "type=" not in path and "tag=" not in path
+                       and "group=" not in path and "source=" not in path for path in paths), paths
+
+            scripted = _ScriptedTargets(app)
+            scripted.fail[0] = ApiError(503, "inventory_unavailable", "the inventory is not answering")
+            screen._fetch_targets(background=True)
+            await wait_until(pilot, lambda: screen.targets.unavailable, "the 503")
+            screen._fetch_targets(background=True)
+            await wait_until(pilot, lambda: not screen.targets.unavailable and len(screen.targets.rows) == 608,
+                             "the poll after the 503 answered", 40)
+
+    asyncio.run(check())
+
+
+def _gated_pages(served):
+    """`served._list_targets` with every cursor page held until the gate opens, so a test lands an old page's reply
+    after a newer request. The call runs in `call_api`'s own worker thread, so the UI keeps running while it is held."""
+    gate = threading.Event()
+    original = served._list_targets
+    asked: list[dict] = []
+
+    def gated(query):
+        asked.append(dict(query))
+        if query.get("cursor") and not gate.is_set():
+            gate.wait(timeout=10)
+        return original(query)
+
+    served._list_targets = gated
+    return gate, asked
+
+
+def test_a_stale_reply_never_overwrites_the_newer_list(serve, wait_until) -> None:
+    """Rule 2 (2026-11-21): a reply applies only when it answers the newest request. A page held in flight, a refresh
+    that supersedes it, and the old page landing last must leave the list the newest answer built — never folded
+    back, never doubled."""
+
+    async def check() -> None:
+        served, url = serve()
+        for index in range(600):
+            served.targets[f"bulk-{index:03d}"] = {**_serve.TARGETS["normal"], "id": f"bulk-{index:03d}",
+                                                   "name": f"bulk {index}"}
+        gate, asked = _gated_pages(served)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(140, 36)) as pilot:
+            screen, _view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
+            screen._stop_targets_timer()  # no ticks behind the test: the refresh is the one this test names
+            screen._fetch_targets()  # a refresh while the chain's page is in flight supersedes it
+            # Wait for the refresh's own first-page request to be recorded (the requests after the view opened),
+            # not for the last one to read as a first page: the refresh chains a page right after, so `asked[-1]`
+            # flips to a cursor and the old predicate never holds. Waiting on what it reads keeps it deterministic.
+            await wait_until(pilot, lambda: len(asked) >= 3 and any(not q.get("cursor") for q in asked[2:]),
+                             "the refresh's request", 40)
+            gate.set()  # the older page lands after the newest answer
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,
+                             "the chain to finish", 40)
+            ids = [row.id for row in screen.targets.rows]
+            assert len(ids) == len(set(ids)), "an old page's rows doubled the list"
+
+    asyncio.run(check())
+
+
+def test_a_reopened_view_never_appends_an_old_pages_rows(serve, wait_until) -> None:
+    """Rule 2 (2026-11-21): a page request carries its generation. The view reopened while an old page is in flight
+    applies only its own chain: the old reply never appends its rows to the reopened list."""
+    async def check() -> None:
+        serve_app, url = serve()
+        for index in range(600):
+            serve_app.targets[f"bulk-{index:03d}"] = {**_serve.TARGETS["normal"], "id": f"bulk-{index:03d}",
+                                                      "name": f"bulk {index}"}
+        gate, asked = _gated_pages(serve_app)
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(140, 36)) as pilot:
+            screen, _view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
+            screen._stop_targets_timer()
+            screen.close_fleet_view()
+            screen.open_fleet_view(TAB_TARGETS)  # reopened: the model resets and asks its own first page
+            await wait_until(pilot, lambda: len(asked) >= 3 and any(not q.get("cursor") for q in asked[2:]),
+                             "the reopened view's first page", 40)
+            gate.set()  # the first view's page lands after the reopened view asked for its own
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,
+                             "the reopened view's own chain", 40)
+            ids = [row.id for row in screen.targets.rows]
+            assert len(ids) == len(set(ids)), "a page arrived twice"
 
     asyncio.run(check())
 
 
 def test_a_poll_never_folds_the_loaded_pages_back(serve, wait_until) -> None:
-    """A refresh re-reads only as many rows as the operator has paged through, but it must not run while a page is
-    in flight: its request would be the newer one and its shorter answer would replace the page just asked for.
-    And a refresh that lands older than a page must not shrink what that page extended."""
+    """Rule 2 (2026-11-21): a refresh re-reads from the first page and chains every page behind it; a reply older
+    than the newest request never shrinks what the chain loaded. Both halves: (1) a tick while the chain's page is
+    in flight asks nothing (rule 12: no overlapping passes), measured from a deterministic start once the chained
+    page's request is recorded in `asked`; (2) with every page loaded, a poll re-reads afresh and the list never
+    folds back."""
     async def check() -> None:
         serve_app, url = serve()
-        for index in range(250):
+        for index in range(600):
             serve_app.targets[f"bulk-{index:03d}"] = {**_serve.TARGETS["normal"], "id": f"bulk-{index:03d}",
                                                       "name": f"bulk {index}"}
+        gate, asked = _gated_pages(serve_app)
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 36)) as pilot:
-            screen, _view = await _open_targets(app, pilot, wait_until, rows=100)
-            scripted = _ScriptedTargets(app)
-            page_reached, release_page = scripted.hold(0)
-            screen._fetch_targets(more=True)
-            await wait_until(pilot, page_reached.is_set, "the next page's request")
-
-            screen._fetch_targets(background=True)  # the tick while the page is in flight
+            screen, _view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
+            screen._stop_targets_timer()
+            # First half: a tick while the chain's page is in flight asks nothing (rule 12). Deterministic start:
+            # wait until the last request recorded in `asked` is the chained page the gate holds (its cursor present),
+            # so a foreground chain is in flight and no superseding first page is pending; then the tick, a brief
+            # pause, and nothing new must have been asked.
+            await wait_until(pilot, lambda: asked and asked[-1].get("cursor"), "the chained page's request", 40)
+            before = len(asked)
+            screen._fetch_targets(background=True)  # the tick while the chain's page is in flight
             await pilot.pause(0.05)
-            assert len(scripted.calls) == 1, "a refresh ran while a page was in flight"
-            release_page.set()
-            await wait_until(pilot, lambda: len(screen.targets.rows) == 200, "the page to extend the list")
-
-            refresh = len(scripted.calls)
-            refresh_reached, release_refresh = scripted.hold(refresh)
-            screen._fetch_targets(background=True)
-            await wait_until(pilot, refresh_reached.is_set, "the refresh's request")
-            screen._fetch_targets(more=True)  # a page asked for after the refresh was sent: the newer request
-            await wait_until(pilot, lambda: len(screen.targets.rows) == 258, "the page after the refresh")
-            release_refresh.set()  # the shorter refresh lands last
-            await pilot.pause(0.1)
-            assert len(screen.targets.rows) == 258, "an older refresh folded the loaded pages back"
+            assert len(asked) == before, "a poll ran while a page was in flight"
+            # Second half: release the gate, finish the chain, then a poll with every page loaded re-reads afresh.
+            gate.set()
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,
+                             "the chain to finish", 40)
+            before = len(asked)
+            screen._fetch_targets(background=True)  # a poll with every page loaded: it re-reads afresh
+            await wait_until(pilot, lambda: len(asked) >= before + 2, "the poll's chain")
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,
+                             "the poll's chain to finish", 40)
+            assert len(screen.targets.rows) == 608, "a refresh folded the loaded pages back"
 
     asyncio.run(check())
 
 
-def test_a_refused_query_keeps_the_shown_list_pageable(serve, wait_until, monkeypatch) -> None:
-    """The ruling of 2026-10-22: a 422 `invalid_request` is the broker's answer to one query, and the rows on show
-    were fetched with another. The query wanted goes back to the shown one, so the next page and the polls ask for
-    what the operator is looking at. Left as the refused query, paging stops (the tab refuses to page while a
-    different query is wanted) and every poll re-asks a query the broker already refused, so an operator with 10 000
-    targets loses the list they had for one typo."""
-    monkeypatch.setenv("TSB_TUI_FLEET_VIEW_REFRESH_S", "0")  # no timer: the test asks each read itself
-
+def test_a_click_on_the_last_loaded_target_selects_it_while_pages_arrive(serve, wait_until) -> None:
+    """Rule 2 (2026-11-21): every page loads in the background, so a click on the last row loaded selects it and the
+    chain brings the rest; no key, click or reach-to-the-last-row asks for a page."""
     async def check() -> None:
         serve_app, url = serve()
-        for index in range(120):
+        for index in range(600):
             serve_app.targets[f"bulk-{index:03d}"] = {**_serve.TARGETS["normal"], "id": f"bulk-{index:03d}",
                                                       "name": f"bulk {index}"}
-        app = TsbTuiApp(url)
-        async with app.run_test(size=(140, 36)) as pilot:
-            screen, view = await _open_targets(app, pilot, wait_until, rows=100)
-            assert len(view.layout.rows) == 100 and screen.targets.next_cursor is not None
-            first_page = len(_gets(serve_app))
-
-            screen._run_query("type:rdp")  # the broker refuses this type; the rows stay
-            await wait_until(pilot, lambda: "not a target type" in view.text, "the refusal in the query line")
-            assert len(view.layout.rows) == 100, "a refused query took the rows that were shown"
-            assert len(_gets(serve_app)) == first_page + 1
-
-            screen._fetch_targets(more=True)  # the selection is at the last row: ask for the next page
-            await wait_until(pilot, lambda: len(view.layout.rows) == 128,
-                             "the next page of the query on show")
-            page = _gets(serve_app)[-1]
-            assert "cursor=" in page and "rdp" not in page, f"the page was asked for the refused query: {page}"
-
-            screen._fetch_targets(background=True)  # what the tab's timer does on its tick
-            await wait_until(pilot, lambda: len(_gets(serve_app)) > first_page + 2, "the poll after the refusal")
-            poll = _gets(serve_app)[-1]
-            assert "rdp" not in poll, f"a poll re-asked the refused query: {poll}"
-            assert len(view.layout.rows) == 128, "the rows shown did not survive the refusal"
-
-    asyncio.run(check())
-
-
-def test_a_click_on_the_last_loaded_target_asks_for_the_next_page(serve, wait_until) -> None:
-    """F14's next page is asked when the selection reaches the last target loaded. A mouse has no `↓`, so a click on
-    that row must ask it too, or an operator on a touch screen can never see past the first page."""
-    async def check() -> None:
-        serve_app, url = serve()
-        for index in range(120):
-            serve_app.targets[f"bulk-{index:03d}"] = {**_serve.TARGETS["normal"], "id": f"bulk-{index:03d}",
-                                                      "name": f"bulk {index}"}
+        gate, asked = _gated_pages(serve_app)
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 140)) as pilot:
-            _screen, view = await _open_targets(app, pilot, wait_until, rows=100)
-            last = view.layout.rows[-1][1]
-            y = next(index for index, line in enumerate(view.layout.lines) if line.session_id == last)
+            screen, view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
+            y = max(index for index, line in enumerate(view.layout.lines) if line.group == GROUP_TARGETS)
+            last = view.layout.lines[y].session_id
+            before = len(asked)
             await pilot.click(FleetView, offset=(5, y))
-            await wait_until(pilot, lambda: len(view.layout.rows) == 128, "a click on the last row to ask for a page")
+            assert view.selected == ("targets", last), (view.selected, last)
+            assert len(asked) == before, "a click asked for a page: the chain is the only pager"
+            gate.set()
+            await wait_until(pilot, lambda: len(view.layout.rows) == 608 and not screen.targets.next_cursor,
+                             "the chain to finish", 40)
 
     asyncio.run(check())

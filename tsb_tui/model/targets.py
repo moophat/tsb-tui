@@ -23,8 +23,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-# One page of `GET /targets`. The contract bounds `limit` to 1..500; the size of a page is the TUI's.
-PAGE_LIMIT = 100
+# One page of `GET /targets`. The contract bounds `limit` to 1..500; the TUI asks for the biggest page.
+PAGE_LIMIT = 500
 MAX_LIMIT = 500
 
 FIELDS = ("type", "tag", "group", "source")
@@ -157,14 +157,17 @@ class TargetsModel:
     query: Query = field(default_factory=Query)
     wanted: Query = field(default_factory=Query)  # the query now asked for, before its first page lands
     rows: tuple[TargetRow, ...] = ()
+    records: dict[str, Mapping[str, Any]] = field(default_factory=dict)  # each row's raw `TargetRecord`
     next_cursor: str | None = None
     fetched: bool = False  # a page has been applied: the count means something
     unavailable: bool = False  # 503 inventory_unavailable: the tab says so
+    more_failed: bool = False  # a later page failed (not 401/503): the list keeps its rows, shows `r retry`
     _generation: int = 0
     _applied: int = 0
 
     def begin(self, query: Query | None = None) -> int:
-        """A generation for the request about to be made; a query passed is the one now wanted."""
+        """A generation for the request about to be made; a query passed is the one now wanted. A refresh's
+        `reset` leaves a gap so a page sent before it can never read as the newest request (rule 2)."""
         if query is not None:
             self.wanted = query
         self._generation += 1
@@ -178,8 +181,10 @@ class TargetsModel:
         return self.wanted
 
     def is_current(self, generation: int) -> bool:
-        """Whether a reply answers the newest request: only that one may change what the tab shows."""
-        return generation == self._generation
+        """Whether a reply answers the newest request: only that one may change what the tab shows. A page sent
+        while an older request was the newest is stale even after that request landed (rule 2, 2026-11-21): a
+        reply never applies below the newest applied one."""
+        return generation == self._generation and generation >= self._applied
 
     def apply(self, generation: int, query: Query, page: Mapping[str, Any], *, append: bool = False) -> bool:
         """Show a page. False unless the reply answers the newest request; a next page of a query that is no
@@ -191,10 +196,15 @@ class TargetsModel:
         fresh = tuple(make_row(record) for record in page.get("targets") or ())
         self._applied = generation
         self.rows = (*self.rows, *fresh) if append else fresh
+        if append:
+            self.records.update({row.id: record for row, record in zip(fresh, page.get("targets") or ())})
+        else:
+            self.records = {row.id: record for row, record in zip(fresh, page.get("targets") or ())}
         self.query = query
         self.next_cursor = page.get("next_cursor") or None
         self.fetched = True
         self.unavailable = False
+        self.more_failed = False  # any page that applies clears the failed-more state (rule 9, 2026-11-22)
         return True
 
     def mark_unavailable(self, generation: int) -> bool:
@@ -203,6 +213,7 @@ class TargetsModel:
             return False
         self._applied = generation
         self.rows = ()
+        self.records = {}
         self.next_cursor = None
         self.fetched = True
         self.unavailable = True
@@ -210,24 +221,47 @@ class TargetsModel:
 
     def reset(self) -> None:
         """The view opened afresh: no rows, no query, and the generation moves past every request already sent,
-        so no earlier reply can be applied after it."""
+        so no earlier reply can be applied after it. A page sent before the refresh is stale by rule 2 (2026-11-21)
+        even if its generation is the newest number, so the applied floor sits above every request in flight."""
         self.query = Query()
         self.wanted = Query()
         self.rows = ()
+        self.records = {}
         self.next_cursor = None
         self.fetched = False
         self.unavailable = False
-        self._generation += 1
+        self.more_failed = False  # a new foreground read clears the failed-more state (rule 9, 2026-11-22)
+        self._generation += 2
+        self._applied = self._generation
+
+    def publish(self, staged: TargetsModel) -> None:
+        """A complete background pass takes the published list in one step (rule 2, 2026-11-22): the staged rows,
+        records, cursor, query and `fetched` replace them; the generation stays ahead so a reply sent before the
+        pass is stale. The selection follows its target id through rule 6's relayout, not a row index."""
+        self.rows = staged.rows
+        self.records = staged.records
+        self.query = staged.query
+        self.next_cursor = staged.next_cursor
+        self.fetched = staged.fetched
+        self.unavailable = staged.unavailable
+        self.more_failed = staged.more_failed
+        # Publishing moves the published generation past every request already sent (rule 1, 2026-11-23): a
+        # foreground reply sent before this pass is stale and applies nothing, chains nothing.
+        self._generation = max(self._generation, staged._generation) + 2
         self._applied = self._generation
 
     def count_label(self) -> str | None:
-        """The tab's count: `412`, or `100+` while another page may follow; None before the first page."""
+        """The tab's count: `412`, or `500…` while pages are still arriving; None before the first page."""
         if not self.fetched or self.unavailable:
             return None
-        return f"{len(self.rows)}+" if self.next_cursor else str(len(self.rows))
+        return f"{len(self.rows)}…" if self.next_cursor else str(len(self.rows))
 
     def row(self, target_id: str | None) -> TargetRow | None:
         return next((row for row in self.rows if row.id == target_id), None)
+
+    def record(self, target_id: str | None) -> Mapping[str, Any] | None:
+        """The raw `TargetRecord` of a shown row, for the details view; None when the row is not on show."""
+        return self.records.get(target_id) if target_id else None
 
     def request_limit(self) -> int:
         """The `limit` of a refresh: it re-reads as many rows as the operator has paged through, up to the contract's

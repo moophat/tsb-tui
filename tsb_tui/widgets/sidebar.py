@@ -20,6 +20,8 @@ While the sidebar has the keys every key is its own (D14), except the leader, wh
 
 from __future__ import annotations
 
+import bisect
+import itertools
 import textwrap
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -70,6 +72,8 @@ CMD_OPEN_TARGET = "open_target"  # Enter on a target: New session on it (the ful
 CMD_TARGET_NEW = "target_new"  # `a` on an empty Targets list: Add target (a `target.edit` holder's)
 CMD_RETRY = "retry"  # `r` on a loading error: ask the core again (`arg` names what: targets or sessions)
 CMD_SHOW_ENDED = "show_ended"  # `e` in the Sessions list: show or hide the ended sessions
+CMD_KEYS = "keys"  # `?` on a list: All keys, without the leader (rule 5, 2026-11-21)
+CMD_DETAILS = "details"  # `i` on a target row: the details view of that record (rule 10, 2026-11-21)
 PANE_TARGETS = "targets"
 PANE_SESSIONS = "sessions"
 GROUP_ENDED = "ended"  # the ended rows shown behind `e` (ruled 2026-11-20)
@@ -163,6 +167,7 @@ class SidebarModel:
     others: Mapping[str, str] = field(default_factory=dict)  # target id -> `ana on it` / `2 others on it`
     target_edit: bool = False  # the login holds `target.edit`: the empty Targets list offers `a add one`
     targets_unavailable: bool = False  # the inventory answered 503: `Could not load targets · r retry`
+    targets_more_failed: bool = False  # a later page failed (not 401/503): rows stay, count shows no `…`, last line `Could not load more · r retry`
     sessions_loading: bool = False  # the first poll has not landed: `Loading sessions…`
     sessions_error: bool = False  # the poll failed with nothing yet read: `Could not load sessions · r retry`
     ended: tuple[Mapping[str, Any], ...] = ()  # the visible ended records, for `e show ended`
@@ -260,22 +265,29 @@ def _target_facts_budget(wide: bool, inner: int) -> int:
     return inner - 3 if wide else inner - 1
 
 
-def _target_facts(row: TargetRow, numbers: Iterable[int], others: str,
+def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, group: str = "",
                   budget: int | None = None) -> tuple[str, str]:
-    """A target row's facts (ruled 2026-11-20): the host, the type word when the target is not ssh, the numbers
-    of its sessions open in this window, and the other logins' word, joined by ` · `. Returns the full facts (for
-    the tooltip) and the facts composed within `budget` (the painted line). With a budget it is built one whole
-    segment at a time, in that order: a segment that would overflow is left out whole, never cut (rule 1: no word
-    is cut). The row pairs, the painted end and the painted line read this once per refresh from the spans cache."""
+    """A target row's facts (ruled 2026-11-20, group added 2026-11-21): the host, the type word when the
+    target is not ssh, the numbers of its sessions open in this window, the group, and the other logins'
+    word, joined by ` · `. Returns the full facts (for the tooltip) and the facts composed within `budget`
+    (the painted line). With a budget it is built one whole segment at a time, in that order: a segment
+    that would overflow is left out whole, never cut (rule 1: no word is cut). The order puts the group
+    after the open numbers and before the others word, so the greedy fit leaves `others on it` out first,
+    then the group. The row pairs, the painted end and the painted line read this once per refresh from
+    the spans cache."""
     segments: list[str] = []
     if row.host:
         segments.append(row.host)
-    if row.type and row.type != "ssh":
-        segments.append(row.type)
     if numbers:
         segments.append("open " + ",".join(str(number) for number in sorted(numbers)))
+    if group:
+        segments.append(group)
     if others:
         segments.append(others)
+    # ruling 17 (2026-11-22): the second line is `host · open N,M`, then the group, then the others word, each
+    # whole; the type word rides last, after them, so it drops before the ruled segments overflow.
+    if row.type and row.type != "ssh":
+        segments.append(row.type)
     full = " · ".join(segments)
     facts = ""
     for segment in segments:
@@ -292,6 +304,60 @@ def _title(group: str, count: int, width: int) -> str:
         if len(text) <= width:
             return text
     return f"{titles[-1]} · {count}"[:width]
+
+
+def title_parts(name: str, index: str, first: str, of_part: str, loading: bool, query: str,
+                width: int) -> str:
+    """The section title of rule 3 (2026-11-21): `▦ Targets · 14/230`, the filter form `3/12 of 230 · 'rtr'`,
+    the loading form `14/500… loading`. The section mark (P2a's ruled marks, `▦`/`▸`) leads the title; the
+    drop order is rule 16's: the quoted text first, then `of N`, then `loading`; the index pair always shows.
+    `width` is the name-only budget: the mark and its space are taken out of it by the callers."""
+    # `loading` is part of the count form: `14/500… loading`, so the ellipsis rides with the pair and the word
+    # drops as one piece (rule 16).
+    core = f"{name} · {index}/{first}"
+    parts = [core + "…" if loading else core]
+    if loading:
+        parts.append("loading")
+    if of_part:
+        parts.append(of_part)
+    if query:
+        parts.append(f"· '{query}'")
+    for drop in range(3):  # all, then the quoted text, then `of N`; the count pair stays
+        fitted = " ".join(parts[: len(parts) - drop])
+        if len(fitted) < width:  # the title box is two columns inside the frame (rule 16)
+            return fitted
+    core = parts[0]
+    if loading:
+        head, sep, counts = core.partition("· ")
+        index, _slash, first = counts.partition("/")
+        fitted = f"{head}{sep}{index}/{first}… loading"  # the count so far is never a false total (rule 3)
+        return fitted if len(fitted) < width else parts[0]
+    return core
+
+
+def marked_title(mark: str, title: str, width: int) -> str:
+    """The ruled mark (P2a: `▦ Targets`, `▸ Sessions`) leads the rule-3 title; the mark is never dropped."""
+    fitted = f"{mark} {title}"
+    return fitted if len(fitted) < width else title
+
+
+def target_title(index: str, matches: int, total: int, loaded: int, query: str, loading: bool,
+                 width: int) -> str:
+    """The Targets section title. `matches` counts the filter's rows (the whole list when none), `total` the
+    targets loaded when the pages are all in, `loaded` the rows so far while pages arrive."""
+    first = str(matches)
+    of_part = ""
+    if query:
+        of_part = f"of {loaded}…" if loading else f"of {total}"
+    return title_parts("Targets", index, first, of_part, loading, query, width)
+
+
+def session_title(index: str, matches: int, total: int, query: str, width: int, loading: bool = False) -> str:
+    """The Sessions section title of rule 3: `Sessions · 2/5`, with a filter `1/2 of 5 · 'text'` and the
+    loading form `–/… loading` before the first poll lands."""
+    first = "…" if loading else str(matches)
+    of_part = f"of {total}" if query else ""
+    return title_parts("Sessions", index, first, of_part, loading, query, width)
 
 
 def entry_matches(entry: SidebarEntry, needle: str) -> bool:
@@ -861,8 +927,20 @@ class Sidebar(Widget):
         # The filtered target rows for the current targets and filter text, reused by every paint that changes
         # neither: `(key, rows)`.
         self._targets_cache: tuple[tuple[object, str, tuple], tuple[TargetRow, ...]] | None = None
+        # The Recent rows for the current model and filter text: `(key, rows)` (rule 9).
+        self._recent_cache: tuple[object, tuple[TargetRow, ...]] | None = None
+        self._painted_cache: tuple[object, tuple[TargetRow, ...]] | None = None
+        self._filter_cache: tuple[object, tuple[TargetRow, ...]] | None = None
+        # The row starts of the current row pairs, for the scroll's bisect (rule 11).
+        # The selected rows' places, for rule 6 (2026-11-21): when a row disappears across a refresh, a page
+        # arrival or a filter edit, the next surviving row below its place takes the highlight, else the last.
+        self._target_pos = 0
+        # The section the target selection was made in, "recent" or "main" (rule 4, 2026-11-23): a relayout keeps
+        # the mark on that appearance while the target is shown there, and moves it to the other only when it is gone.
+        self._target_section: str | None = None
+        self._session_pos = 0
         # Each target's painted start index, cached beside the rows it was walked for.
-        self._target_spans_cache: tuple[tuple[TargetRow, ...], tuple, tuple, tuple[int, ...],
+        self._target_spans_cache: tuple[tuple[TargetRow, ...], tuple, object, tuple, tuple[int, ...],
                                          tuple[tuple[str, str], ...]] | None = None
         # The open sessions whose wide row paints its alike word on a second line, cached beside the model
         # and width the frame's height read them at (`_wide_alike_lines`).
@@ -944,10 +1022,50 @@ class Sidebar(Widget):
             show_details=self.details_shown, prepared=self._prepared, framed=True, show_ended=self.show_ended)
 
     def _relayout(self) -> None:
+        prev_selected = self.selected  # rule 6 (2026-11-22): the view is built with the old selection; if rule 6
+        # moves it, the painted mark must be rebuilt against the surviving selection.
         view = self._build()
-        if self.selected not in view.rows:
-            self.selected = self._default_selection(list(view.rows))
+        rows = list(view.rows)
+        if self.selected is None:
+            self.selected = self._default_selection(rows)
+        elif self.selected not in rows:
+            # Rule 6 (2026-11-21): the row that carried the highlight disappeared (a refresh, a page arrival, a
+            # filter edit); the next surviving row below its place takes it, else the last row.
+            following = rows[self._session_pos:]
+            self.selected = following[0] if following else (rows[-1] if rows else None)
+        self._session_pos = rows.index(self.selected) if self.selected in rows else min(self._session_pos, len(rows))
+        # The rows clause was dead (rule 9, 2026-11-23): `rows` is copied from the view just built, so
+        # `view.rows != tuple(rows)` is never true, and a rows change alone never needs a rebuild — the first
+        # `_build()` already painted the new rows against the selection it had, which is unchanged. Only the
+        # selection moving (rule 6) needs the view rebuilt against the surviving selection.
+        if self.selected != prev_selected:
             view = self._build()
+        # The Targets list follows rule 6 (2026-11-21) over its painted rows (Recent included): the highlight
+        # keeps its place when the entity is still shown; when the row that carried it disappears, the next
+        # surviving row below takes it, else the last. A list that never had a selection stays without one
+        # (e0c1031's rule: `–` in the title), and the scroll clamps follow the visible list.
+        rows = self.painted_targets()
+        ids = [row.id for row in rows]
+        if self.target_selected is not None and self.target_selected in ids:
+            # Rule 4 (2026-11-23): the mark follows the section the selection was made in. Find the id in that
+            # section; if it is gone from there, the other appearance takes the mark; positions are within painted.
+            recent = self._recent_targets()
+            recent_ids = [row.id for row in recent]
+            main_ids = [row.id for row in self.visible_targets()]
+            tid = self.target_selected
+            if self._target_section == "recent" and tid in recent_ids:
+                self._target_pos = recent_ids.index(tid)
+            elif self._target_section == "main" and tid in main_ids:
+                self._target_pos = len(recent) + main_ids.index(tid)
+            elif tid in recent_ids:
+                self._target_pos = recent_ids.index(tid)
+            else:
+                self._target_pos = len(recent) + main_ids.index(tid)
+        elif self.target_selected is not None:
+            # Gone from both appearances (rule 6): the next surviving row below its place, else the last.
+            following = ids[self._target_pos:]
+            self.target_selected = following[0] if following else (ids[-1] if ids else None)
+            self._target_pos = ids.index(self.target_selected) if self.target_selected in ids else 0
         self._view = view
         # The Targets scroll top follows the visible list: a filter, a width change or fewer targets than it had
         # scrolled to must not leave it past the end. Clamp on every relayout.
@@ -1123,12 +1241,22 @@ class Sidebar(Widget):
                 return True
         return False
 
+    def _jump(self, last: bool) -> None:
+        """`Home`/`End` on the Sessions list: the first, the last row."""
+        rows = self._view.rows
+        if not rows:
+            return
+        self.selected = rows[-1] if last else rows[0]
+        self._session_pos = rows.index(self.selected)
+        self._relayout()
+
     def _move(self, step: int) -> None:
         rows = self._view.rows
         if not rows:
             return
         index = rows.index(self.selected) if self.selected in rows else -1
         self.selected = rows[(index + step) % len(rows)] if index >= 0 else rows[0 if step > 0 else -1]
+        self._session_pos = rows.index(self.selected) if self.selected in rows else 0
         self._relayout()
 
     @property
@@ -1145,6 +1273,8 @@ class Sidebar(Widget):
                     if group == GROUP_OPEN_HERE for item in items)
         if not lines and not (self.show_ended and self._model.ended):
             lines = len(self._empty_lines(max(self.sidebar_width - 4, 1)))  # the empty copy wraps at the narrow one
+        if self._model.targets_loading:
+            lines = max(lines, len(self._loading_lines(max(self.sidebar_width - 4, 1))))
         if self.show_ended:
             lines += sum(self._row_line_count(record) for record in self._model.ended)
         return min(max(3, lines + 2), max(height // 2, 3))
@@ -1204,14 +1334,24 @@ class Sidebar(Widget):
         return numbers
 
     def _filter_targets(self) -> tuple[TargetRow, ...]:
-        """The raw filter over all targets: the text is in a target's name or host (local, no lookups)."""
+        """The raw filter over all targets (rule 1, 2026-11-21): the trimmed text is matched, case-insensitive,
+        as one substring against the name, the host, the group, each tag and the label the row shows (the
+        fallback, so a typed id matches an unnamed target). Nothing is resolved: no DNS lookup, no socket call."""
         needle = self.filter_text.strip().lower()
+        cache = self._filter_cache
+        if cache is not None and cache[0] == (self._model, needle):
+            return cache[1]
         if not needle:
             rows = self._model.targets
         else:
             rows = tuple(row for row in self._model.targets
-                         if needle in row.name.lower() or needle in row.host.lower())
-        return self._ordered_targets(rows)
+                         if needle in row.name.lower() or needle in row.host.lower()
+                         or needle in row.group.lower()
+                         or any(needle in tag.lower() for tag in row.tags)
+                         or needle in _target_label(row).lower())
+        ordered = self._ordered_targets(rows)
+        self._filter_cache = ((self._model, needle), ordered)
+        return ordered
 
     def _ordered_targets(self, rows: tuple[TargetRow, ...]) -> tuple[TargetRow, ...]:
         """The ruled target order (2026-11-20): targets with a session open in this window first, by their
@@ -1238,18 +1378,91 @@ class Sidebar(Widget):
         self._targets_cache = (key, result)
         return result
 
+    def _target_pos_of(self, target_id: str | None) -> int:
+        """The painted place of a target id, by bisect on the cached spans (rule 11, 2026-11-21): a scan over
+        8,000 rows per key is what made a key pause. The spans cache holds the rows it was walked for, so the
+        ids are read from them without rebuilding the list."""
+        spans, rows = self._target_spans(), self.painted_targets()
+        at = bisect.bisect_right(spans, self._target_pos) - 1
+        if at >= 0 and at < len(rows) and rows[at].id == target_id:
+            return at
+        cache = self._target_spans_cache
+        span_rows = cache[0] if cache is not None else rows
+        for i, row in enumerate(span_rows):
+            if row.id == target_id:
+                return i
+        return min(self._target_pos, len(rows))
+
+    def _recent_targets(self) -> tuple[TargetRow, ...]:
+        """The `Recent` section (rule 9, 2026-11-21): the targets of this login's own sessions, newest
+        `created_at` first, each target once, at most three. Hidden while the filter has text. Cached beside
+        the model and the filter text, so a paint reads lookups."""
+        # The model object is in the key (rule 11): a rebuilt model that compares equal to the old rows keeps
+        # no rows built from the old one.
+        key = (self._model, self._model.targets, self._model.groups, self._model.ended, self.filter_text)
+        cache = self._recent_cache
+        if cache is not None and cache[0] == key:
+            return cache[1]
+        rows: tuple[TargetRow, ...] = ()
+        if not self.filter_text.strip():
+            by_id = {row.id: row for row in self._model.targets}
+            created: list[tuple[str, str]] = []
+            for group, items in self._model.groups:
+                for item in items:
+                    if isinstance(item, SidebarEntry):
+                        owner, at, target = item.owner, item.created_at, item.target
+                    elif self._model.record_entry is not None:
+                        entry = self._model.record_entry(item, group)
+                        owner, at, target = entry.owner, entry.created_at, entry.target
+                    else:
+                        owner, at, target = item.get("owner"), item.get("created_at", ""), item.get("target_id", "")
+                    if owner == "yours" and at:
+                        created.append((at, target))
+            for record in self._model.ended:
+                if isinstance(record, SidebarEntry):
+                    owner, at, target = record.owner, record.created_at, record.target
+                elif self._model.record_entry is not None:
+                    entry = self._model.record_entry(record, GROUP_ENDED)
+                    owner, at, target = entry.owner, entry.created_at, entry.target
+                else:
+                    owner, at, target = record.get("owner"), record.get("created_at", ""), record.get("target_id", "")
+                if owner == "yours" and at:
+                    created.append((at, target))
+            seen: set[str] = set()
+            rows = tuple(by_id[target] for at, target in sorted(created, reverse=True)
+                         if target in by_id and target not in seen and not seen.add(target))[:3]
+        self._recent_cache = (key, rows)
+        return rows
+
+    def painted_targets(self) -> tuple[TargetRow, ...]:
+        """Every target row the section paints: the Recent rows, then the filtered main list's. Cached beside
+        the recent rows and the visible rows (rule 11, 2026-11-21): the spans cache keys on this tuple's
+        identity, so a key press reads the cached rows, never rebuilds them."""
+        key = (self._model, self._recent_targets(), self.visible_targets())
+        if self._painted_cache is not None and self._painted_cache[0] == key:
+            return self._painted_cache[1]
+        rows = (*key[1], *key[2])
+        self._painted_cache = (key, rows)
+        return rows
+
     def _has_filter_line(self) -> bool:
         return self.editing or bool(self.filter_text)
 
     def _target_painted_count(self) -> int:
-        """How many lines the Targets section paints: the filter line when one is set or typed, then each
-        target's row (two lines at the narrow budget when it has facts, one otherwise), or the section's
-        empty, loading or error lines."""
-        if not self.visible_targets():
-            return (1 if self._has_filter_line() else 0) + len(self._targets_empty_lines(
-                max(self.sidebar_width - 4, 1)))
-        return (1 if self._has_filter_line() else 0) + sum(self._target_row_lines(row) for row in
-                                                           self.visible_targets())
+        """How many lines the Targets section paints: the filter line when one is set or typed, the `Recent`
+        title and its rows when it shows, then each target's row (two lines at the narrow budget when it has
+        facts, one otherwise), or the section's empty, loading or error lines."""
+        head = (1 if self._has_filter_line() else 0) + (1 if self._recent_targets() else 0)
+        rows = self.painted_targets()
+        if not rows:
+            return head + len(self._targets_empty_lines(max(self.sidebar_width - 4, 1)))
+        lines = head + sum(self._target_row_lines(row) for row in rows)
+        if self._model.targets_more_failed or self._model.targets_unavailable:
+            # One trailing copy line below the last row: `Could not load targets · r retry` when the inventory is
+            # down (rule 2, 2026-11-23), else `Could not load more · r retry` (rule 9, 2026-11-22). It is a pair in
+            # `_build_pairs`, so it counts here and scrolling to the end shows it as the section's last line.
+            lines += 1
+        return lines
 
     def _target_row_lines(self, row: TargetRow) -> int:
         """The lines one target's row takes: two at the narrow budget when its second line has words, else one."""
@@ -1257,79 +1470,203 @@ class Sidebar(Widget):
             return 1
         inner = max(self.sidebar_width - 4, 1)
         _, facts = _target_facts(row, self._open_numbers().get(row.id, ()), self._model.others.get(row.id, ""),
-                                 max(_target_facts_budget(False, inner), 0))
+                                 row.group, max(_target_facts_budget(False, inner), 0))
         return 2 if facts else 1
 
     def _target_line_index(self, target_id: str) -> int | None:
-        """The painted index of a target's first line, the filter line included; None when it is not shown."""
-        offset = 1 if self._has_filter_line() else 0
-        for position, row in enumerate(self.visible_targets()):
+        """The painted index of a target's first line, the filter and `Recent` title lines included; None when
+        it is not shown. The place comes from the cached spans by bisect (rule 11)."""
+        offset = (1 if self._has_filter_line() else 0) + (1 if self._recent_targets() else 0)
+        spans = self._target_spans()
+        rows = self.painted_targets()
+        at = bisect.bisect_right(spans, self._target_pos) - 1
+        if at >= 0 and at < len(rows) and rows[at].id == target_id:
+            return offset + spans[at]
+        cache = self._target_spans_cache
+        span_rows = cache[0] if cache is not None else rows
+        for i, row in enumerate(span_rows):
             if row.id == target_id:
-                return offset + self._target_spans()[position]
+                return offset + spans[i]
         return None
 
+    def _build_pairs(self, rows: tuple[TargetRow, ...], spans: tuple[int, ...],
+                     facts: tuple[tuple[str, str], ...], filter_line: bool,
+                     recent: tuple[TargetRow, ...], wide: bool) -> tuple[tuple[tuple[int, int], ...], list[int]]:
+        """(start, lines) of every painted row, built once with the spans cache: the filter line, the `Recent`
+        title and its rows, then the main list's. The list paints whole rows and scrolls by them (ruled
+        2026-11-20 20:1x), so its scroll positions are row starts. The line count follows the window's budget,
+        not the row's own width (rule 11): a thin sidebar inside a wide window paints one-line rows."""
+        pairs: list[tuple[int, int]] = []
+        offset = 0
+        if filter_line:
+            pairs.append((0, 1))
+            offset = 1
+        if recent:
+            # The `Recent` title line; its rows are the spans' first entries (painted_targets includes them).
+            pairs.append((offset, 1))
+            offset += 1
+        for position, span in enumerate(spans):
+            count = 1 if wide else (2 if facts[position][1] else 1)
+            pairs.append((offset + span, count))
+        if (self._model.targets_more_failed or self._model.targets_unavailable) and spans:
+            # The section's last line sits below the rows that stayed loaded, one pair at the end of the walk:
+            # the unavailable copy when the inventory is down (rule 2, 2026-11-23), else the failed-more copy
+            # (rule 9, 2026-11-22). It is a real pair, so `_target_painted_end()` counts it and scrolling to the
+            # end shows it inside the painted range.
+            last = spans[-1]
+            pairs.append((offset + last + (1 if wide else (2 if facts[len(spans) - 1][1] else 1)), 1))
+        result = tuple(pairs)
+        return result, [start for start, _count in pairs]
+
     def _target_spans(self) -> tuple[int, ...]:
-        """Each target's painted start index, the filter line excluded. Cached for the visible rows at this
-        width and wide mode, so painting N rows walks nothing. The cache also records each row's facts (the full
-        facts and the facts composed within the budgeted line), so the painted line, the row pairs and the painted
-        end read them once per refresh, never recomputing per painted line (ruled 2026-11-21)."""
+        """Each painted target row's start index, the filter and `Recent` title lines excluded. Cached for the
+        painted rows at this width and wide mode, so painting N rows walks nothing. The cache also records each
+        row's facts (the full facts and the facts composed within the budgeted line), so the painted line, the
+        row pairs and the painted end read them once per refresh, never recomputing per painted line (ruled
+        2026-11-21)."""
         cache = self._target_spans_cache
         numbers = self._open_numbers()
         others = self._model.others
         wide = self.wide
-        rows = self.visible_targets()
+        rows = self.painted_targets()
         inner = max(self.sidebar_width - 4, 1)
         key = (wide, inner)
-        if cache is not None and cache[0] is rows and cache[1] == key and cache[2] == (numbers, others):
-            return cache[3]
-        budget = max(_target_facts_budget(wide, inner), 0)
+        # The model object is in the key: a rebuild that compares equal to the old `others` mapping must not
+        # keep facts painted from the old model.
+        if cache is not None and cache[0] is rows and cache[1] == key \
+                and cache[2] is self._model and cache[3] == (numbers, others):
+            return cache[4]
+        # The cache stores the row pairs and their starts too (rule 11, 2026-11-21): a key on 8,000 rows reads
+        # them once, never rebuilds them per painted line.
+        # The budget follows the window, not the row's own width (P2b's ruled target-row geometry): a narrow
+        # window keeps its two-line rows even when the sidebar is thin inside a wide window.
+        budgeted_wide = self.window_width >= self._wide_from
+        budget = max(_target_facts_budget(budgeted_wide, inner), 0)
         spans: list[int] = []
         facts: list[tuple[str, str]] = []
         at = 0
+        if wide:
+            # One line per row at the wide budget: the spans are 0..N-1 and the facts are the full segments.
+            # The facts walk stops at the window's rows (rule 11, 2026-11-21): a key on 8,000 rows costs the
+            # rows on view, never the whole list. The spans past the window are the same 0..N-1 arithmetic.
+            limit = min(len(rows), max(self.targets_height, 1) + 1)
+            for row in rows[:limit]:
+                spans.append(at)
+                at += 1
+                segments = [row.host] if row.host else []
+                open_numbers = numbers.get(row.id, ())
+                if open_numbers:
+                    segments.append("open " + ",".join(str(number) for number in sorted(open_numbers)))
+                if row.group:
+                    segments.append(row.group)
+                others_word = others.get(row.id, "")
+                if others_word:
+                    segments.append(others_word)
+                # ruling 17 (2026-11-22): `host · open N,M`, then the group, then the others word; the type
+                # word rides last of the segments.
+                if row.type and row.type != "ssh":
+                    segments.append(row.type)
+                # A row's second line shows only while its facts fit whole inside the window's budget (rule 11):
+                # a thin sidebar inside a wide window paints one-line rows. The greedy fit is the same rule the
+                # painted line uses, so it composes them here once.
+                full = " · ".join(segments)
+                budgeted = ""
+                for segment in segments:
+                    candidate = segment if not budgeted else f"{budgeted} · {segment}"
+                    if len(candidate) <= budget:
+                        budgeted = candidate
+                facts.append((full, budgeted))
+            spans.extend(range(at, len(rows)))
+            result = tuple(spans)
+            pairs, starts = self._build_pairs(rows, result, tuple(facts), self._has_filter_line(),
+                                         self._recent_targets(), True)
+            self._target_spans_cache = (rows, key, self._model, (numbers, others), result, tuple(facts),
+                                        pairs, starts)
+            return result
         for row in rows:
             spans.append(at)
-            full, budgeted = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""), budget)
+            full, budgeted = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""), row.group,
+                                           budget)
             facts.append((full, budgeted))
-            at += 1 if (wide or not budgeted) else 2
+            at += 1 if (budgeted_wide or not budgeted) else 2
         result = tuple(spans)
-        self._target_spans_cache = (rows, key, (numbers, others), result, tuple(facts))
+        pairs, starts = self._build_pairs(rows, result, tuple(facts), self._has_filter_line(),
+                                     self._recent_targets(), False)
+        self._target_spans_cache = (rows, key, self._model, (numbers, others), result, tuple(facts),
+                                    pairs, starts)
         return result
 
     def _target_facts_cache(self) -> tuple[tuple[str, str], ...]:
         """Each visible target's (full facts, painted facts), built once per refresh by `_target_spans` and read
         by the painted line, the row pairs and the painted end."""
         self._target_spans()  # builds the cache when it is not current for this width and model
-        return self._target_spans_cache[4]
+        return self._target_spans_cache[5]
+
+    def _loading_lines(self, inner: int) -> list[Line]:
+        """The loading copy as `_empty_copy`'s rule gives it (rule 16): `… loading` is a segment of its own, so
+        the words show whole at the narrow budget too."""
+        return _empty_copy("Loading targets… loading", inner, "muted")
 
     def _target_painted(self, index: int) -> Line | None:
-        """The Targets section's painted line `index` (0-based, the filter line first), built when it is painted
-        or clicked."""
+        """The Targets section's painted line `index` (0-based, the filter line, then the `Recent` title, then
+        the rows), built when it is painted or clicked."""
         if not (self._target_scroll_top <= index < self._target_painted_end()):
             return None  # scrolled off, or a row that does not fit whole at the section's bottom (ruled 2026-11-20 20:1x)
         inner = max(self.sidebar_width - 4, 1)
+        recent = self._recent_targets()
         if self._has_filter_line():
             if index == 0:
                 shown = f"/ {self.filter_text}▏" if self.editing else f"/ {self.filter_text}"
                 return Line((Part(_fit(shown, inner), "filter", CMD_FILTER,
-                                  tip="/ filter the targets by name or host (an IP included)"),))
+                                  tip="/ filter the targets by name, host, group, tag or id"),))
             index -= 1
-        rows = self.visible_targets()
+        if recent:
+            if index == 0:
+                return Line((Part(_fit("Recent", inner), "group"),))
+            index -= 1
+        rows = self.painted_targets()
         if not rows:
             empty = self._targets_empty_lines(inner)
             return empty[index] if 0 <= index < len(empty) else None
         spans = self._target_spans()
-        position = max((i for i, start in enumerate(spans) if start <= index), default=None)
-        if position is None:
+        # the row whose span is the greatest at or below the line, by bisect (rule 11): a scan of 8,000 spans
+        # per painted line is what made a key pause.
+        position = bisect.bisect_right(spans, index) - 1
+        if position < 0:
             return None
         row = rows[position]
-        full, facts = self._target_facts_cache()[position]
+        cache = self._target_spans_cache
+        if cache is not None and position < len(cache[5]):
+            full, facts = cache[5][position]
+        else:
+            full, facts = _target_facts(row, self._open_numbers().get(row.id, ()),
+                                        self._model.others.get(row.id, ""), row.group,
+                                        max(_target_facts_budget(self.wide, inner), 0))
+        if self.wide and not facts:
+            # The fast path stored the full facts; the painted line composes them within its own budget. The
+            # numbers come from the open-session map the spans cache keyed on (rule 17's segment order).
+            _full, facts = _target_facts(row, self._open_numbers().get(row.id, ()),
+                                         self._model.others.get(row.id, ""), row.group,
+                                         max(_target_facts_budget(self.wide, inner), 0))
         label = _target_label(row)
         # The tooltip carries the row's full facts, the segment the painted line omits included (ruled 2026-11-21).
         tip = " · ".join(part for part in (label, full) if part) or None
-        selected = row.id == self.selected_target
+        # The mark shows only when a target is selected (rule 5, 2026-11-23): a fresh sidebar with targets and
+        # nothing selected paints no mark; rule 7's one-mark behaviour stays.
+        selected = self.target_selected is not None and position == self._target_pos
         mark = (SELECTED, "mark") if selected else (" ", "blank")
         within = index - spans[position]
-        if within >= (1 if (self.wide or not facts) else 2):
+        row_lines = 1 if (self.wide or not facts) else 2
+        if (self._model.targets_more_failed or self._model.targets_unavailable) and position == len(rows) - 1 \
+                and within >= row_lines:
+            # The section's last line sits below the last loaded row, in `_empty_copy`'s shape with CMD_RETRY.
+            # The unavailable copy shows whenever the inventory is down (rule 2, 2026-11-23), the failed-more copy
+            # when a later page failed (rule 9, 2026-11-22). It is a pair at the end of `_build_pairs`, so `index`
+            # reaches it inside the painted range, not one past it.
+            unavailable = self._model.targets_unavailable
+            copy = "Could not load targets · r retry" if unavailable else "Could not load more · r retry"
+            return _empty_copy(copy, inner, "muted", CMD_RETRY, "targets" if unavailable else "targets-more")[0]
+        if within >= row_lines:
             return None  # past this row's own lines: the next row's start, or the section's end
         if self.wide or not facts or within == 0:
             if self.wide:
@@ -1342,13 +1679,23 @@ class Sidebar(Widget):
                     row.id, PANE_TARGETS, tip)
 
     def _targets_empty_lines(self, inner: int) -> list[Line]:
-        """The Targets section's lines when no target is on show: loading, the 503 with `r retry`, or the ruled
-        empty copy with its key (`a add one` for a `target.edit` holder). The copy wraps at its ` · ` segments,
-        so its exact words show whole at the narrow budget too."""
+        """The Targets section's lines when no target is on show: loading, the 503 with `r retry`, the ruled
+        no-match copy once every page has arrived (rule 7), the ruled empty copy with its key (`a add one` for
+        a `target.edit` holder). The copy wraps at its ` · ` segments, so its exact words show whole at the
+        narrow budget too (rule 16)."""
         if self._model.targets_unavailable:
             return _empty_copy("Could not load targets · r retry", inner, "muted", CMD_RETRY, "targets")
         if self._model.targets_loading:
-            return [Line((Part(_fit("Loading targets…", inner), "muted"),))]
+            return self._loading_lines(inner)
+        needle = self.filter_text.strip()
+        # Rule 7 (2026-11-21): the no-match copy shows only once every page has arrived; while pages are
+        # outstanding the loading lines show, and `loading` is a segment of its own (rule 16).
+        # Rule 9 (2026-11-21): `Recent` sits at the top of the list, so its rows show with the filter text;
+        # the empty copy below says what the main list cannot answer.
+        if needle and not self._model.target_has_next and not self._model.targets_loading:
+            # Rule 16 (2026-11-21): the copy wraps by `_empty_copy`'s rule, so the quoted text and the key word
+            # are one segment each and show whole at the narrow budget.
+            return _empty_copy(f"No target matches '{needle}' · Esc clears", inner, "muted")
         if self._model.target_edit:
             return _empty_copy("No targets yet · a add one", inner, "muted", CMD_TARGET_NEW)
         return _empty_copy("No targets you can see · ask an admin for access", inner, "muted")
@@ -1357,20 +1704,37 @@ class Sidebar(Widget):
 
     @property
     def selected_target(self) -> str | None:
-        """The selected target's id: the one chosen if the filter still shows it, else the first shown."""
-        visible = self.visible_targets()
-        if any(row.id == self.target_selected for row in visible):
+        """The selected target's id, as rule 6 (2026-11-21) keeps it: the chosen row while the painted list
+        shows it; when its row disappears, the next surviving row below its place, else the last row. The
+        rule runs in `_relayout`, so a filter change that has not relaid yet answers for the current rows."""
+        if self.target_selected is not None and any(row.id == self.target_selected for row in self.painted_targets()):
             return self.target_selected
-        return visible[0].id if visible else None
+        ids = [row.id for row in self.painted_targets()]
+        following = ids[self._target_pos:]
+        if following:
+            return following[0]
+        return ids[-1] if ids else None
 
     def _move_target(self, step: int) -> None:
-        visible = self.visible_targets()
-        if not visible:
+        painted = self.painted_targets()
+        if not painted:
             return
-        ids = [row.id for row in visible]
         current = self.selected_target
-        index = ids.index(current) if current in ids else 0
-        self.target_selected = ids[max(0, min(index + step, len(ids) - 1))]
+        index = self._target_pos_of(current) if current is not None else 0
+        place = max(0, min(index + step, len(painted) - 1))
+        self.target_selected = painted[place].id
+        self._target_pos = place
+        self._scroll_target_to_selected()
+        self.refresh()
+
+    def _jump_target(self, last: bool) -> None:
+        """`Home`/`End` on the Targets list (rule 11): the first, the last painted row."""
+        painted = self.painted_targets()
+        if not painted:
+            return
+        ids = [row.id for row in painted]
+        self.target_selected = ids[-1] if last else ids[0]
+        self._target_pos = len(ids) - 1 if last else 0
         self._scroll_target_to_selected()
         self.refresh()
 
@@ -1385,10 +1749,12 @@ class Sidebar(Widget):
                 self._target_scroll_top = index
             elif not self._target_row_visible(index, height):
                 pairs = self._target_row_pairs()
-                selected = next(i for i, (start, _count) in enumerate(pairs) if start == index)
-                top = next((i for i, (start, _count) in enumerate(pairs)
-                            if start >= self._target_scroll_top), 0)
-                for j in range(top + 1, selected + 1):
+                starts = self._pair_starts(pairs)
+                selected = bisect.bisect_right(starts, index) - 1
+                top = bisect.bisect_left(starts, self._target_scroll_top)
+                # The least row start at or below the selected row whose rows fit the window: scan up from the
+                # selected row, bounded by the window's height in rows.
+                for j in range(selected, top - 1, -1):
                     if sum(count for _start, count in pairs[j:selected + 1]) <= height:
                         self._target_scroll_top = pairs[j][0]
                         break
@@ -1424,61 +1790,100 @@ class Sidebar(Widget):
         self.refresh()
 
     def _target_row_pairs(self) -> tuple[tuple[int, int], ...]:
-        """(start, lines) of every painted row of the Targets section, the filter line included. The list
-        paints whole rows and scrolls by them (ruled 2026-11-20 20:1x), so its scroll positions are row starts.
-        The facts and the line count come from the spans cache, the same budget as the painted line (ruled
-        2026-11-21): a full repaint never recomputes facts per painted line."""
-        pairs: list[tuple[int, int]] = []
-        if self._has_filter_line():
-            pairs.append((0, 1))
-        rows = self.visible_targets()
-        if rows:
-            offset = 1 if self._has_filter_line() else 0
-            wide = self.wide
-            facts_cache = self._target_facts_cache()
-            for position, span in enumerate(self._target_spans()):
-                _full, budgeted = facts_cache[position]
-                pairs.append((offset + span, 1 if (wide or not budgeted) else 2))
-        return tuple(pairs)
+        """(start, lines) of every painted row of the Targets section, from the spans cache (rule 11): the filter
+        line, the `Recent` title and its rows, then the main list's. Built once per refresh with the facts, never
+        rebuilt per painted line."""
+        self._target_spans()  # builds the cache when it is not current for this width and model
+        return self._target_spans_cache[6]
+
+    def _pair_starts(self, pairs: tuple[tuple[int, int], ...]) -> list[int]:
+        """The row starts of the pairs, from the spans cache they were built with (rule 11, 2026-11-21): bisect
+        needs them, and rebuilding a list of 8,000 starts per key is what made a key pause."""
+        return self._target_spans_cache[7]
+
+    def _target_first_pair(self) -> tuple[int, int]:
+        """The first row pair at or below the scroll top, found by bisect on the cached starts (rule 11,
+        2026-11-21): a walk over 8,000 rows per painted line is what made a key pause."""
+        pairs = self._target_row_pairs()
+        if not pairs:
+            return (self._target_scroll_top, 0)
+        at = bisect.bisect_right(self._pair_starts(pairs), self._target_scroll_top) - 1
+        return pairs[max(at, 0)]
 
     def _target_painted_end(self) -> int:
         """One past the last line the Targets section paints: a multi-line row paints whole or not at all, so
         the walk stops at the first row that does not fit under the section's inner height (ruled 2026-11-20
-        20:1x)."""
+        20:1x). The walk starts at the first row at or below the scroll top, never at the list's head; it stops
+        once the window is full, so a paint over 8,000 rows costs the window's rows, not the list (rule 11)."""
         height = max(self.targets_height - 2, 0)
-        if not self.visible_targets():
+        if not self.painted_targets():
             return self._target_scroll_top + height
         top = self._target_scroll_top
-        end = top
-        for start, count in self._target_row_pairs():
-            if start < top:
-                continue
-            if end + count > top + height:
+        start, count = self._target_first_pair()
+        if start < top:
+            return top + height
+        end = start + count
+        pairs = self._target_row_pairs()
+        # The pair at the walk's start is counted already; bisect finds its index, not the next one.
+        index = bisect.bisect_left(self._pair_starts(pairs), start) + 1
+        for _s, c in itertools.islice(pairs, index, None):
+            if end + c > top + height:
                 break
-            end += count
+            end += c
+            if end >= top + height:
+                break
         return end
 
     def _target_row_visible(self, start: int, height: int) -> bool:
         """Whether the target row whose first line is `start` paints whole from the current scroll position."""
-        total = 0
-        for at, count in self._target_row_pairs():
-            if at < self._target_scroll_top:
-                continue
-            total += count
-            if at == start:
-                return total <= height
-        return False
+        pairs = self._target_row_pairs()
+        starts = self._pair_starts(pairs)
+        at = bisect.bisect_right(starts, self._target_scroll_top) - 1
+        index = bisect.bisect_right(starts, start) - 1
+        if index < 0:
+            return False
+        return sum(c for _s, c in pairs[max(at, 0):index + 1]) <= height
 
     def _target_scrollable(self) -> bool:
-        """Whether the Targets list needs scrolling at all: more lines than the section shows."""
-        return self._target_painted_count() > max(self.targets_height - 2, 0)
+        """Whether the Targets list needs scrolling at all: more lines than the section shows. The count stops
+        at the window's full height, so a key on a long list costs the rows on view (rule 11)."""
+        height = max(self.targets_height - 2, 0)
+        pairs = self._target_row_pairs()
+        total = 0
+        for _start, count in pairs:
+            total += count
+            if total > height:
+                return True
+        return False
 
     def _target_scroll_limit(self) -> int:
         """The lowest whole-row scroll position of the Targets list: a row start whose row fits the inner height
-        (ruled 2026-11-20 20:1x)."""
+        (ruled 2026-11-20 20:1x). When every row fits, the limit is 0: the whole list shows (rule 11, 2026-11-21),
+        so a scroll from a long list that the filter shrank lands back at the head."""
         height = max(self.targets_height - 2, 0)
-        fits = [start for start, count in self._target_row_pairs() if count <= height]
-        return max(fits) if fits else 0
+        pairs = self._target_row_pairs()
+        if not pairs:
+            return 0
+        total = 0
+        for _start, count in pairs:
+            total += count
+            if total > height:
+                break
+        if total <= height:
+            return 0
+        last_start, last_count = pairs[-1]
+        if last_count <= height:
+            # the walk runs back from the tail, bounded by the window's rows (rule 11). The limit is a row start
+            # (rule 4, 2026-11-23): the first row that fits whole from the tail, never a start plus one.
+            acc = last_count
+            prev_start = last_start
+            for start, count in reversed(pairs[:-1]):
+                if acc + count > height:
+                    return prev_start
+                acc += count
+                prev_start = start
+            return 0
+        return max((start for start, count in pairs if count <= height), default=0)
 
     @property
     def targets_height(self) -> int:
@@ -1541,18 +1946,44 @@ class Sidebar(Widget):
                                                                              self._border_sessions)
         tl, horizontal, tr, vertical, bl, br = ("┏", "━", "┓", "┃", "┗", "┛") if focused else ("┌", "─", "┐", "│", "└", "┘")
         if y == top:
-            title = "▦ Targets" if targets else "▸ Sessions"
-            if not targets and self.folded == PANE_SESSIONS:
-                title += f" · {len(self._view.rows)}"
+            inner_title = max(width - 4, 1)
             if targets:
-                count = len(self.visible_targets())
-                if self._model.target_has_next:
-                    # A next page exists: the loaded count followed by `+`, never a false total.
-                    title += f" · {count}+"
+                rows = self.visible_targets()
+                total = len(self._model.targets)
+                loaded = len(self._model.targets)
+                loading = self._model.target_has_next
+                chosen = self.selected_target
+                place = next((i for i, row in enumerate(rows) if row.id == chosen), None)
+                index = str(place + 1) if place is not None else "–"
+                # The ruled mark (P2a: `▦ Targets`) leads the title; its two cells come out of the budget.
+                title = target_title(index, len(rows), total, loaded, self.filter_text.strip(), loading,
+                                     max(inner_title - 2, 1))
+                mark = "▦"
+            else:
+                mark = "▸"
+                if self.folded == PANE_SESSIONS:
+                    title = f"Sessions · {len(self._view.rows)}"
                 else:
-                    total = len(self._model.targets) if self._model.target_total is None else self._model.target_total
-                    title += f" · {total}" if count == total else f" · {count}/{total}"
+                    place = next((i for i, row in enumerate(self._view.rows) if row == self.selected), None)
+                    index = str(place + 1) if place is not None else "–"
+                    title = session_title(index, len(self._view.rows), len(self._view.rows), "",
+                                          max(inner_title - 2, 1),
+                                          loading=self._model.sessions_loading)
+            # Rule 16 (2026-11-21): the last part that does not fit whole drops, in order: the quoted text,
+            # then `of N`, then `loading`; the index pair always shows. The mark leads and never drops.
+            title = f"{mark} {title}"
             label = horizontal + " " + title + " "
+            parts = title.split(" ")
+            while len(label) > width - 2 and len(parts) > 3:
+                parts.pop()
+                title = " ".join(parts)
+                label = horizontal + " " + title + " "
+            if self._model.target_has_next and len(parts) == 2:
+                # the word drops last (rule 16): at the narrow budget the pair with its ellipsis stands alone.
+                head, sep, counts = title.partition("· ")
+                index, _slash, first = counts.partition("/")
+                title = f"{head}{sep}{index}/{first}…"
+                label = horizontal + " " + title + " "
             text = tl + label[:max(width - 2, 0)].ljust(max(width - 2, 0), horizontal) + tr
             text = glyphs.render(text, self._glyph_set)
             return Strip([Segment(text, border_style)]).adjust_cell_length(width)
@@ -1667,6 +2098,17 @@ class Sidebar(Widget):
                 if line.group == PANE_TARGETS and line.session_id is not None:
                     self.pane = PANE_TARGETS
                     self.target_selected = line.session_id
+                    # Highlight the row clicked (rule 10, 2026-11-22; rule 3, 2026-11-23): the clicked line is
+                    # resolved to a row through the cached pairs, so the filter line and the `Recent` heading are
+                    # taken off before bisecting — a target in Recent and the main list marks the appearance
+                    # clicked, not the row below it; actions keep using the id.
+                    index = event.y - 1 + self._target_scroll_top
+                    pairs = self._target_row_pairs()
+                    starts = self._pair_starts(pairs)
+                    headers = (1 if self._has_filter_line() else 0) + (1 if self._recent_targets() else 0)
+                    self._target_pos = max(0, bisect.bisect_right(starts, index) - 1 - headers)
+                    # The section the click landed in (rule 4, 2026-11-23): a relayout keeps the mark there.
+                    self._target_section = "recent" if self._target_pos < len(self._recent_targets()) else "main"
                     self.refresh()
             return
         line = self._line_at(event.y)
@@ -1745,43 +2187,69 @@ class Sidebar(Widget):
             self._editing_key(event)
             return
         if key == "escape":
-            self.post_message(self.Command(CMD_BACK))
+            if self.filter_text:
+                # Esc clears the filter first (rule 5, 2026-11-21); a second Esc follows P2b's list rule.
+                self.filter_text = ""
+                self._filter_changed()
+            else:
+                self.post_message(self.Command(CMD_BACK))
         elif key == "z":
             self.toggle_fold()
         elif self.pane == PANE_TARGETS:
-            self._targets_key(key)
+            if self._targets_key(key):
+                return  # the key was consumed by its own handler (rule 18)
         else:
-            self._sessions_key(key)
+            if self._sessions_key(key):
+                return  # the key was consumed by its own handler (rule 18)
 
     def _targets_key(self, key: str) -> None:
         if key in ("down", "j"):
             self._move_target(1)
         elif key in ("up", "k"):
             self._move_target(-1)
+        elif key == "home":
+            self._jump_target(False)
+        elif key == "end":
+            self._jump_target(True)
         elif key == "n":
             self.post_message(self.Command(CMD_NEW))
         elif key == "enter":
             if self.selected_target is not None:
                 self.post_message(self.Command(CMD_OPEN_TARGET, self.selected_target))
+        elif key == "i" and self.selected_target is not None:
+            self.post_message(self.Command(CMD_DETAILS, self.selected_target))
+        elif key in ("?", "question_mark"):
+            self.post_message(self.Command(CMD_KEYS))
         elif key == "slash":
+            # The press that opens the filter is consumed by opening it, never typed into it (rule 18, 2026-11-22).
             self.start_filter()
+            return True
         elif key == "F":
             self.post_message(self.Command(CMD_FULL_VIEW))
         elif key == "a" and self._model.target_edit:
             self.post_message(self.Command(CMD_TARGET_NEW))
         elif key == "r" and self._model.targets_unavailable:
             self.post_message(self.Command(CMD_RETRY, "targets"))
+        elif key == "r" and self._model.targets_more_failed:
+            # `r` retries the kept cursor when a later page failed (rule 9, 2026-11-22).
+            self.post_message(self.Command(CMD_RETRY, "targets-more"))
 
     def _sessions_key(self, key: str) -> None:
         if key in ("down", "j"):
             self._move(1)
         elif key in ("up", "k"):
             self._move(-1)
+        elif key == "home":
+            self._jump(False)
+        elif key == "end":
+            self._jump(True)
         elif key == "n":
             self.post_message(self.Command(CMD_NEW))
         elif key == "enter":
             if self.selected_session is not None:
                 self.post_message(self.Command(CMD_PICK, self.selected_session))
+        elif key in ("?", "question_mark"):
+            self.post_message(self.Command(CMD_KEYS))
         elif key == "t":
             self.post_message(self.Command(CMD_TAKE_BACK, self.selected_session))
         elif key == "w":
@@ -1789,7 +2257,9 @@ class Sidebar(Widget):
         elif key == "x":
             self.post_message(self.Command(CMD_END, self.selected_session))
         elif key == "slash":
+            # The press that opens the filter is consumed by opening it, never typed into it (rule 18, 2026-11-22).
             self.start_filter()
+            return True
         elif key == "m":
             self.post_message(self.Command(CMD_MODE))
         elif key == "F":
@@ -1806,8 +2276,11 @@ class Sidebar(Widget):
             self.editing = False
             self._filter_changed()
         elif key == "enter":
+            # Enter during the filter opens the selected row, as outside it does (rule 5, 2026-11-21).
             self.editing = False
             self._relayout()
+            if self.pane == PANE_TARGETS and self.selected_target is not None:
+                self.post_message(self.Command(CMD_OPEN_TARGET, self.selected_target))
         elif key in ("down", "up"):
             self._move_target(1 if key == "down" else -1)
         elif key == "backspace":

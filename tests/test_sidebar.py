@@ -272,12 +272,23 @@ def test_mine_all_is_the_full_views_and_the_filter_narrows_the_targets(serve, wa
             total = len(screen.sidebar.model.targets)
             await pilot.press(*"telnet")  # login lands in the Targets filter: typing narrows at once
             await wait_until(pilot, lambda: len(screen.sidebar.visible_targets()) == 1, "the filter to narrow")
-            assert screen.sidebar.render_line(0).text.startswith(f"┏━ ▦ Targets · 1/{total}")
+            # rule 3 (2026-11-21): the title carries the position within the matches, then `of` the total.
+            assert screen.sidebar.render_line(0).text.startswith(f"┏━ ▦ Targets · 1/1 of {total}")
             assert "/ telnet▏" in screen.sidebar.render_line(1).text
+            # rule 5 (2026-11-21): Enter on a target row opens New session on it. Close the dialog; the filter text
+            # stays. rule 5 + ruling 18 (2026-11-22): `/` re-enters the filter of the list that holds the keys, and
+            # Esc clears it first. Drive it through Pilot, assert what the screen shows.
             await pilot.press("enter")
             await wait_until(pilot, lambda: not screen.sidebar.editing, "Enter to leave the filter")
-            assert len(screen.sidebar.visible_targets()) == 1, "Enter keeps the text"
-            await pilot.press("slash", "escape")
+            await wait_until(pilot, lambda: type(app.screen).__name__ == "NewSessionScreen",
+                             "Enter opened New session on the selected target")
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: app.screen is screen, "back to the workspace")
+            assert len(screen.sidebar.visible_targets()) == 1, "the filter text stays"
+            await pilot.press("slash")
+            await pilot.pause()
+            assert screen.sidebar.editing, "`/` re-entered the filter"
+            await pilot.press("escape")
             await wait_until(pilot, lambda: len(screen.sidebar.visible_targets()) == total, "Esc to clear the filter")
 
             screen.open_fleet_view()
@@ -353,6 +364,29 @@ def test_the_sidebar_is_30_32_or_42_columns_by_the_window_and_has_no_detail_bloc
 
     asyncio.run(_check())
 
+
+
+def test_a_wide_target_row_with_no_facts_paints_without_the_nameerror(serve, wait_until) -> None:
+    """Rule 17's painted target line (2026-11-21): the wide sidebar recomposes a row's facts when the cached
+    painted facts are empty. A target with no host, group or tags and type `ssh` has no facts, so the cached facts
+    are empty; painting its row recomposes within the wide budget. Before the fix that recompose read an undefined
+    name (NameError); once fixed the row paints its label."""
+
+    async def _check() -> None:
+        serve_app, url = serve(InputRecordingApp())
+        # a target whose facts are empty: no host, ssh, no group, no tags
+        serve_app.targets["no-facts"] = {"id": "no-facts", "type": "ssh", "name": "no facts", "group": "",
+                                         "tags": [], "discovered_by": "manual", "last_seen": _serve.SEEN,
+                                         "host": "", "port": 22}
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            screen.open_sidebar(pane="targets")
+            await wait_until(pilot, lambda: any(row.id == "no-facts" for row in screen.sidebar.model.targets),
+                             "the empty-facts target loaded")
+            lines = [screen.sidebar.render_line(y).text for y in range(screen.sidebar.size.height)]
+            assert any("no facts" in line for line in lines), "the row paints its label"
+    asyncio.run(_check())
 
 
 @pytest.mark.parametrize("mode, window, closes", [
@@ -989,4 +1023,33 @@ def test_with_more_open_sessions_than_fit_down_scrolls_the_selected_row_onto_scr
                 await pilot.press("up")
             assert screen.sidebar.selected == rows[0] and visible("sw-1"), "up scrolls back to the first row"
 
+    asyncio.run(check())
+
+
+def test_a_refresh_that_removes_the_selected_session_moves_the_mark(serve, wait_until) -> None:
+    """Rule 6 on the sidebar's Sessions section: when the highlighted session leaves the list (a refresh), the mark
+    moves to the surviving row below its place, not the row that carried it. The view must be rebuilt against the
+    new selection, so the painted mark stands on the surviving session only."""
+
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        first, second = named_sessions(url, serve_app, "router", "switch")
+        app = TsbTuiApp(url)
+        app.cfg.set_runtime("fleet_view.refresh_s", 0)  # no ticks behind the test: the refresh is this test's
+        async with app.run_test(size=(120, 40)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await open_here(app, pilot, wait_until, first, second)
+            screen.open_sidebar(pane="sessions")
+            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 2 and screen.sidebar.has_focus, "rows")
+            screen.sidebar.selected = (GROUP_OPEN_HERE, first)
+            await pilot.pause()
+            marked = [line for line in screen.sidebar.view.lines if line.text.startswith("▸")]
+            assert any(line.session_id == first for line in marked), marked
+            # The highlighted session leaves the open-here list; rule 6 moves the highlight to the surviving row.
+            screen._close_slot(screen.slot_for(first))
+            screen._refresh_fleet()
+            await wait_until(pilot, lambda: len(screen.sidebar.view.rows) == 1, "the list to drop the session")
+            assert screen.sidebar.selected == (GROUP_OPEN_HERE, second), screen.sidebar.selected
+            marked = [line for line in screen.sidebar.view.lines if line.text.startswith("▸")]
+            assert any(line.session_id == second for line in marked), "the mark stands on the surviving row"
     asyncio.run(check())
