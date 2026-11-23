@@ -241,6 +241,9 @@ class NewSessionScreen(Screen):
         # press repeats the create for `target_connect_failed`, refetches and repaints for the other two. Set when
         # such a refusal shows, cleared when the refusal clears; nothing retries by itself.
         self._recovery_code: str | None = None
+        # True while the add-target watch's inventory-down message is the line on screen: it goes when the saved row
+        # lands, and any refusal that shows over it clears this flag so the landing never erases an unrelated refusal.
+        self._watch_copy_shown = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-session-panel"):
@@ -479,15 +482,37 @@ class NewSessionScreen(Screen):
         code = self._recovery_code
         self._recovery_code = None
         if code == "target_connect_failed":
-            # The person's `r` repeats the create on the target it was attempted against, through the same
-            # create path (the in-flight guard applies).
-            if self._pending_target_id:
-                self._create_from_row(self._pending_target_id)
+            # The person's `r` repeats the create on the target it was attempted against, with the mode, connection
+            # id and credential that were submitted — never the radio and input state read afresh. A create in
+            # flight is not pressed again.
+            if self._creating:
+                return
+            if self._last_create is not None:
+                target_id, connection, connection_id, credential = self._last_create
+                self._create(target_id, connection, connection_id, None, credential)
+            else:
+                # The failed create carried a typed login, which the refusal cleared; it is never repeated silently.
+                # Show the refusal again and focus the login fields so the person retypes what was lost.
+                self._show_refusal("target_connect_failed")
+                self.query_one("#login-user", Input).focus()
             return
         if workspace is not None:
             workspace._fetch_targets()
             if code in ("target_not_found", "inventory_unavailable"):
                 self._paint_rows()  # the person's press repaints; the rows land from the refetch (finding 12's notification)
+
+    def _refusal_label(self) -> str:
+        """The refusal line's `<label>`: the pending target's row label, or its id as text when the row is gone."""
+        workspace = self.app.workspace()
+        row = workspace.targets.row(self._pending_target_id) \
+            if workspace is not None and self._pending_target_id else None
+        return _target_label(row) if row is not None else as_text(self._pending_target_id or "")
+
+    def _show_refusal(self, code: str) -> None:
+        """Re-render a ruled refusal line on the pending target (used by the typed-login recovery): the watch's
+        inventory-down message, if it was showing, is replaced by this refusal."""
+        self.query_one("#new-session-error", Static).update(REFUSAL_COPY[code].format(label=self._refusal_label()))
+        self._watch_copy_shown = False
 
     def action_focus_filter(self) -> None:
         """`/` enters the filter. While it already holds the keys this is typing, so the binding
@@ -576,15 +601,20 @@ class NewSessionScreen(Screen):
                     break
             self._pending_select = ""
             self._stop_pending_watch()
+            self._clear_watch_copy()
             self._paint_rows()
             return
         # The saved row has not landed. Bound the watch to 5 seconds after the save (PENDING_WATCH_TICKS); when it
         # ends, show the Targets tab's own inventory-down state and keep the saved id, so a later successful list
-        # selects it. No endless timer, no new copy.
+        # selects it. No endless timer, no new copy. The message names `r` as the recovery key, so the keyboard moves
+        # off the filter to Create and `r` refetches the list, never types into the search.
         self._pending_ticks += 1
         if self._pending_ticks >= PENDING_WATCH_TICKS:
             self._stop_pending_watch()
             self.query_one("#new-session-error", Static).update(TARGETS_UNAVAILABLE_COPY)
+            self._watch_copy_shown = True
+            self._recovery_code = "inventory_unavailable"
+            self.query_one("#create-button", Button).focus()
 
     def _stop_pending_watch(self) -> None:
         timer = getattr(self, "_pending_timer", None)
@@ -605,7 +635,27 @@ class NewSessionScreen(Screen):
                     break
             self._pending_select = ""
             self._stop_pending_watch()
+        self._clear_watch_copy()
+        self._rederive_mark()  # the mark follows the entity through the changed rows, so Enter acts on the marked row
         self._paint_rows()
+        self._show_type()
+
+    def _rederive_mark(self) -> None:
+        """The painted index is re-derived from the selected id, so after a repaint the mark and Enter point at the
+        same target. When the id is not in the filtered rows the fallback (follow the first match, or clamp to the
+        row at the stale index) is a design decision this phase leaves open; the index is left as it is."""
+        for index, row in enumerate(self._matched_rows()):
+            if row.id == self._sel_id:
+                self._sel = index
+                return
+
+    def _clear_watch_copy(self) -> None:
+        """The add-target watch's inventory-down message goes when the saved row lands, before the repaint. A refusal
+        that showed over it clears this flag, so an unrelated refusal is never erased here."""
+        if self._watch_copy_shown:
+            self.query_one("#new-session-error", Static).update("")
+            self._watch_copy_shown = False
+            self._recovery_code = None
 
     # -- open-direct and the asks --
 
@@ -757,6 +807,7 @@ class NewSessionScreen(Screen):
             return
         error.update("")
         self._recovery_code = None  # a new create clears the prior refusal's recovery key
+        self._watch_copy_shown = False  # a new create clears the watch's message too
         self._hide_credential_choice()
         self._pending_target_id = target_id
         self._unlock_tried = False
@@ -882,13 +933,11 @@ class NewSessionScreen(Screen):
         self.query_one("#create-button", Button).disabled = False
         self.query_one("#new-session-core", Static).update("")
         if isinstance(exc, ApiError) and exc.code in REFUSAL_COPY:
-            label = _target_label(self.app.workspace().targets.row(self._pending_target_id)) \
-                if self._pending_target_id and self.app.workspace() and \
-                self.app.workspace().targets.row(self._pending_target_id) is not None else \
-                as_text(self._pending_target_id or "")
+            label = self._refusal_label()
             # The ruled line, with the core's own message under it (the row never replaces what the broker said).
             self.query_one("#new-session-error", Static).update(REFUSAL_COPY[exc.code].format(label=label))
             self.query_one("#new-session-core", Static).update(as_text(exc.message))
+            self._watch_copy_shown = False  # a refusal replaces any watch message it shows over
             if exc.code in R_RECOVERY:
                 # The refusal names `r` as the person's recovery key. Move the keyboard off the filter to the Create
                 # button so a press of `r` reaches the refusal, not typing into the search.

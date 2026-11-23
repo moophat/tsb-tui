@@ -383,3 +383,55 @@ The hook closes finding 12's stop and completes the two gated subparts:
 
 - Changes this turn: `tsb_tui/screens/terminal.py` (the `_notify_new_session_rows` hook + its two calls in `_targets_reply`) and `tsb_tui/screens/new_session.py` (`notify_target_rows_changed`), plus the three new tests in `tests/test_redesign_new_session.py` and this report. `git diff --name-only` lists only the prior-round accepted files plus `tsb_tui/screens/terminal.py`. No out-of-scope path touched; no commit, no push.
 - The two credential baselines are from round 2 (finding 9), unchanged this turn. `.lane-logs/` and `.t/` deleted at the end.
+
+## Qodo round 4 — Qodo's second review of tsb-tui PR #117 (head `a87357e`, this turn, 2026-11-23)
+
+Qodo named three findings on the last rounds' code, all in `tsb_tui/screens/new_session.py`. All three are **real**. Each is fixed red-first on `a87357e` (first failing line recorded), then green. The plan's rule governs finding 1: after a repaint, Enter acts on the row the mark shows.
+
+### Finding 1 — after a list refresh the mark and Enter point at different targets — REAL, fixed (present case); STOP on the absent-entity fallback
+
+`notify_target_rows_changed` repainted with the stale `_sel` index: when a refresh inserted a row above the highlighted target, the painted mark (`rows[_sel]`) landed on a different row than the entity `Enter`, `Create` and `selected_target_id` act on (`_sel_id`). Fix: before repainting, `_rederive_mark()` finds `_sel_id` in `_matched_rows()` and sets `_sel` to its index, then repaints and calls `_show_type()`. The mark now follows the entity, so Enter acts on the marked row.
+
+**STOP (design gap the recommended fix leaves open).** When `_sel_id` is *not* in the filtered rows after a change — the selected target left the view, or a filter excludes it — the plan rule "selection follows the entity" has no entity to follow, and Qodo's recommended fix offers two fallbacks without choosing. I implemented only the settled present case and left the index as-is for the absent case; I did not pick a fallback:
+- **Option A** — call `_follow_selection()`: with no filter, clamp `_sel` and set `_sel_id` to the row now at that index; with a filter, reset to the first match (`_sel=0`, `_sel_id=rows[0].id`). Reuses the existing filter-change convention.
+- **Option B** — clamp `_sel` to the last row and set `_sel_id` from that row (no filter reset).
+Recommendation: **Option A**, because it reuses the one convention the screen already has for a selection whose row is gone (`_follow_selection`), keeping one rule for "the entity vanished" across filter and refresh. This needs the orchestrator's ruling before it ships; the present-case fix ships now.
+
+Red first on `a87357e`:
+- `tests/test_redesign_new_session.py:826` — `assert rows[app.screen._sel].id == app.screen._sel_id` → `('fixture-target', 'normal')`: a refresh inserts `aaa-before` above the prefilled `normal`; with the stale index the mark sits on `fixture-target` while the entity is `normal`.
+
+### Finding 2 — `r` after a connect refusal does not repeat the same create — REAL, fixed
+
+For `target_connect_failed`, `action_refresh_list` called `_create_from_row(self._pending_target_id)`, which re-reads the reuse radio and connection-id input, so the retry sent what the screen showed now, not what was submitted; a typed login (already cleared by `_on_create_error`) fell back to a stored credential. Fix: guard with `_creating`; repeat the submitted target, connection mode, connection id and credential from `self._last_create` through `_create`. When the failed create carried a typed login (`_last_create is None`), do not retry silently: re-show the refusal (`_show_refusal`) and focus the login fields so the person retypes. This follows round 1's ruling (finding 11: the person's `r` repeats the create; nothing retries by itself).
+
+Red first on `a87357e`:
+- `tests/test_redesign_new_session.py:855` — `assert len(_creates(served)) == before` → `(2, 1, 'r sent a create without the login')`: after a typed-login connect refusal, `r` sent a second create with the login cleared.
+
+### Finding 3 — the watch's "r retry" message is not wired to the `r` key — REAL, fixed
+
+When the add-target watch ends, `_check_pending` showed `TARGETS_UNAVAILABLE_COPY` ("Could not load targets · r retry") without setting `_recovery_code` or moving focus off the filter, so `r` typed into search; and neither it nor `notify_target_rows_changed` cleared the message when the saved row landed. Fix: at the watch end set `_recovery_code = "inventory_unavailable"` (which `action_refresh_list` handles as a refetch) and focus `#create-button`; track `_watch_copy_shown`, and in `notify_target_rows_changed` and `_check_pending`'s landing branch clear `#new-session-error` only while that flag is set, so an unrelated refusal is never erased. Follows round 1's rulings (finding 10: bounded watch keeps the saved id; finding 11: `r` refetches for `inventory_unavailable`).
+
+Red first on `a87357e`:
+- `tests/test_redesign_new_session.py:885` — `assert app.screen.focused.id == "create-button"` → `Input(id='new-session-filter')`: after the watch ends, focus stayed on the filter, so `r` typed into search.
+- `tests/test_redesign_new_session.py:992` — `assert "Could not load targets" not in _joined(app)`: the message stayed after a later refresh landed and selected the saved target.
+
+### Green on the fixed tree
+
+`tests/test_redesign_new_session.py` → **42 passed** (the 40 from round 3 + 2 new tests; the two watch tests gained assertions). The four red-first tests pass: the mark follows the entity through a row inserted above it; `r` after a typed-login connect refusal sends nothing and refocuses the login; the watch's message moves focus to Create so `r` refetches; the saved row landing clears the watch message.
+
+### Gate round 4 (foreground, `env -u NO_COLOR`, interpreter `$(PYTHON)`, each to a file in `.lane-logs/`, exit code checked, never through a pipe)
+
+| run | command | result | exit |
+|---|---|---|---|
+| new P4 suite | `$(PYTHON) -m pytest tests/test_redesign_new_session.py` | **42 passed** | 0 |
+| keys suite | `$(PYTHON) -m pytest tests/test_redesign_keys.py` | **20 passed** | 0 |
+| login suite | `$(PYTHON) -m pytest tests/test_new_session_login.py` | **13 passed** | 0 |
+| connection-choice suite | `$(PYTHON) -m pytest tests/test_connection_choice.py` | **7 passed** | 0 |
+| credential-choice suite | `$(PYTHON) -m pytest tests/test_credential_choice.py` | **14 passed** | 0 |
+| ruff check (no cache) | `PATH=$(VENV_BIN):$PATH ruff check --no-cache tsb_tui tests` | **All checks passed** | 0 |
+
+### Left after this turn
+
+- Changes this turn: `tsb_tui/screens/new_session.py` (`_rederive_mark`, `_clear_watch_copy`, `_watch_copy_shown`, the typed-login branch in `action_refresh_list`, `_refusal_label`/`_show_refusal`, the watch-end focus + recovery code, and the reuse of `_refusal_label` in `_on_create_error`) and two new tests plus two added assertions in `tests/test_redesign_new_session.py`, plus this report. `git diff --name-only` lists only `tsb_tui/screens/new_session.py` and `tests/test_redesign_new_session.py`. `tsb_tui/screens/terminal.py` was allowed but not changed — the round-3 hook already delivers the row-change notification; finding 1's fix is entirely in `new_session.py`. No out-of-scope path touched; no commit, no push.
+- **Open design decision (finding 1, absent-entity fallback):** the two options above; Option A recommended. Needs the orchestrator's ruling before it ships. The present-case fix ships now.
+- `.lane-logs/` deleted at the end.

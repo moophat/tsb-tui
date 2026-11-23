@@ -803,6 +803,60 @@ def test_r_after_a_not_found_refusal_refetches_the_list(serve, wait_until):
     asyncio.run(check())
 
 
+def test_a_refresh_before_the_marked_target_moves_the_mark_to_the_entity(serve, wait_until):
+    """The mark follows the entity through a refresh that inserts a row above it: after the repaint the marked row
+    is the one Create acts on, not the row left at the stale index."""
+
+    async def check():
+        served, url = serve(SnapshotApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 36)) as pilot:
+            await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: len(app.workspace().targets.rows) >= 8, "the inventory")
+            await _prefill(app, pilot, wait_until, "normal", "ssh")
+            n = len(app.workspace().targets.rows)
+            served.targets["aaa-before"] = {"id": "aaa-before", "type": "ssh", "name": "aaa before",
+                                             "group": "lab", "tags": [], "discovered_by": "manual",
+                                             "last_seen": "2026-10-17T08:30:00Z", "host": "198.51.100.20", "port": 22}
+            app.workspace()._fetch_targets()  # a workspace refresh, not a key press in New session
+            await wait_until(pilot, lambda: len(app.workspace().targets.rows) == n + 1, "the new row to land")
+            # The mark (painted at `_sel`) must be the entity Enter acts on: after a repaint through the row-change
+            # notification, the row at the painted index is the selected target.
+            rows = app.screen._matched_rows()
+            assert rows[app.screen._sel].id == app.screen._sel_id, (rows[app.screen._sel].id, app.screen._sel_id)
+            marked = [ln for ln in str(app.screen.query_one("#target-rows").render()).splitlines()
+                      if ln.startswith("▸")]
+            assert len(marked) == 1, (marked, "no single marked row")
+            assert "normal" in marked[0], (marked[0], "the mark is not on the selected target")
+            assert app.screen.selected_target_id == "normal", app.screen.selected_target_id
+    asyncio.run(check())
+
+
+def test_r_after_a_connect_refusal_with_a_typed_login_refocuses_the_login(serve, wait_until):
+    """A connect refusal after a create that carried a typed login is not repeated silently with the login cleared:
+    `r` re-shows the refusal and focuses the login fields, sending nothing."""
+
+    async def check():
+        served, url = serve(SnapshotApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(120, 36)) as pilot:
+            await _login_and_open(app, pilot, wait_until)
+            await wait_until(pilot, lambda: len(app.workspace().targets.rows) >= 8, "the inventory")
+            served.create_refusal = (502, "target_connect_failed", "the target did not accept the connection")
+            await _prefill(app, pilot, wait_until, "normal", "ssh")
+            app.screen.query_one("#login-user").value = "svc"
+            app.screen.query_one("#login-password").value = "FIXTURE"
+            app.screen.query_one("#create-button").press()
+            await wait_until(pilot, lambda: "Could not connect to normal" in "\n".join(_screen_lines(app)),
+                             "the refusal line")
+            before = len(_creates(served))
+            await pilot.press("r")
+            await pilot.pause(0.3)
+            assert len(_creates(served)) == before, (len(_creates(served)), before, "r sent a create without the login")
+            assert app.screen.focused.id == "login-user", app.screen.focused
+    asyncio.run(check())
+
+
 def test_the_add_target_watch_bounds_and_shows_the_inventory_state(serve, wait_until):
     """The add-target continuation watches for the saved row; when the list does not refresh within 5 seconds it
     stops watching and shows the Targets tab's own inventory-down state, keeping the saved id so a later list selects
@@ -826,6 +880,9 @@ def test_the_add_target_watch_bounds_and_shows_the_inventory_state(serve, wait_u
                              "the bounded watch to end", timeout_s=8.0)
             assert app.screen._pending_select == "new-gear", "the saved id was dropped"
             assert app.screen._pending_timer is None, "the watch never stopped"
+            # The message names `r` as the recovery key, so the keyboard moves off the filter to Create.
+            await pilot.pause()
+            assert app.screen.focused.id == "create-button", app.screen.focused
     asyncio.run(check())
 
 
@@ -931,4 +988,6 @@ def test_a_saved_target_that_lands_after_the_watch_ended_is_selected(serve, wait
             await wait_until(pilot, lambda: app.workspace().targets.row("new-gear") is not None,
                              "the saved row to land")
             assert app.screen._sel_id == "new-gear", (app.screen._sel_id, "the saved target was not selected")
+            # The watch's inventory-down message goes when the saved row lands, before the repaint.
+            assert "Could not load targets" not in _joined(app), (_joined(app), "the watch message stayed")
     asyncio.run(check())
