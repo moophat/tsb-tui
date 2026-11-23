@@ -83,10 +83,21 @@ REFUSAL_COPY = {
     "inventory_unavailable": "The broker's inventory is unavailable · r retries when it answers",
 }
 
+# The ruled recovery codes whose key is `r`: the person's own press repeats the create (the target did not accept
+# it) or refetches the list (the target left the view, the inventory is down). Nothing retries by itself. When one
+# of these refusals shows, the keyboard leaves the filter to the Create button so `r` reaches the refusal, not typing.
+R_RECOVERY = ("target_connect_failed", "target_not_found", "inventory_unavailable")
+
 # A telnet connection carries one session (DEFAULT 22): the worker refuses a reuse, so the dialog never asks one.
 TELNET = "telnet"
 TELNET_NO_REUSE = "a telnet connection carries one session"
 TARGET_REQUIRED = "pick a target from the list, or type text to search — the full view is Ctrl+\\ F"
+
+# The add-target continuation: after a save the screen watches for the saved row, bounded to 5 seconds. If the
+# list did not refresh by then, it shows the Targets tab's own inventory-down state (the plan's existing copy) and
+# keeps the saved id, so a later successful list selects it. No endless timer, no new copy.
+PENDING_WATCH_TICKS = 50  # 50 ticks of the 0.1 s watch is 5 seconds after the save
+TARGETS_UNAVAILABLE_COPY = "Could not load targets · r retry"
 
 # The no-match guidance, ruled in P4 (the same words for a login without target.edit).
 NO_MATCH_ADD = "+ Add '{query}' as a target"
@@ -171,8 +182,9 @@ class NewSessionScreen(Screen):
         Binding("down", "row_down", "Down"),
         Binding("k", "row_up"),
         Binding("j", "row_down"),
-        # Priority: the filter Input holds the keys, and `⏎` there is the open press, not a submit event.
-        Binding("enter", "act_row", "Open", priority=True),
+        # Non-priority: Enter on a focused control (Cancel, a device-login button, Remember, the picker, a credential
+        # choice) belongs to that control; `⏎` in the filter is handled by its submit event (`on_input_submitted`).
+        Binding("enter", "act_row", "Open"),
         Binding("r", "refresh_list", "Refresh list"),
         # `/` enters the filter, `a` adds a target (shown only with `target.edit`). Non-priority:
         # while the filter holds the keys these are typing, and they act when the focus is on the dialog's controls.
@@ -207,14 +219,28 @@ class NewSessionScreen(Screen):
         self._refusal = refusal
         # The search state: the filter text, the rows it matches, the highlighted row (an index into the painted
         # window, plus the Add row at len(rows)), and the ask the open press raised (rows of words, none pressed).
+        # The highlight is a target identity, not a position: `selection follows the entity` (P3 rule), so the create
+        # uses the id the operator sees marked, never whatever row now sits at that index. A prefilled target that is
+        # not in the loaded list keeps its own id until the operator moves onto a row.
         self._filter_text = ""
         self._sel = 0
+        self._sel_id = self._initial_target or None
         self._ask: list[tuple[str, str]] = []
         self._ask_sel = 0
+        self._ask_target = ""
+        # A create is in flight: the guard that stops a second Enter, a second Create press, or the vault-unlock
+        # repeat opening a duplicate session on the broker. Set when the create is sent, cleared when it resolves.
+        self._creating = False
         # The saved record the continuation is waiting for, once the Add row's form has saved, with
-        # the one timer that watches for it.
+        # the one timer that watches for it. The watch is bounded to PENDING_WATCH_TICKS; when it ends without the
+        # row landing, the screen shows the inventory-down state and keeps the saved id.
         self._pending_select = ""
         self._pending_timer = None
+        self._pending_ticks = 0
+        # The code of the refusal currently on screen whose recovery key is `r` (R_RECOVERY): the person's own `r`
+        # press repeats the create for `target_connect_failed`, refetches and repaints for the other two. Set when
+        # such a refusal shows, cleared when the refusal clears; nothing retries by itself.
+        self._recovery_code: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="new-session-panel"):
@@ -302,25 +328,45 @@ class NewSessionScreen(Screen):
         elif event.input.id in ("login-user", "login-password"):
             self._show_type()
 
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """`⏎` in the filter is the open press on the highlighted row. Enter on any other focused control belongs to
+        that control, so this handler runs only for the filter."""
+        if event.input.id == "new-session-filter":
+            self.action_act_row()
+
     def _follow_selection(self) -> None:
-        """The highlight follows the entity: a filter that leaves rows puts the mark on the first match."""
-        rows = self._all_rows()
+        """The highlight follows the entity: a filter that leaves rows puts the mark on the first match. The
+        supplied identity is kept only when the filter clears to a list that does not hold it (the prefilled target
+        the screen was handed); a typed query follows its first match."""
+        rows = self._matched_rows()
         if rows:
             self._sel = min(self._sel, len(rows) - 1)
             if self._filter_text.strip():
                 self._sel = 0
+                self._sel_id = rows[self._sel].id
+            elif self._initial_target and not any(r.id == self._initial_target for r in rows):
+                self._sel_id = self._initial_target
+            else:
+                self._sel_id = rows[self._sel].id
         else:
             self._sel = 0
+            self._sel_id = self._initial_target or None
 
     # -- the inventory and the painted rows --
 
     @property
     def selected_target_id(self) -> str | None:
         """The id of the highlighted row, for a test that needs the entity, not the painted line."""
+        return self._selected_id()
+
+    def _selected_id(self) -> str | None:
+        """The target the create acts on: the highlighted row's id, the Add row as None, and the supplied identity
+        when the screen was handed a target that is not in the loaded list. Never the row that happens to sit at
+        the stale index."""
         rows = self._matched_rows()
-        if not rows or self._sel >= len(rows):
+        if self._add_row_shown() and self._sel >= len(rows):
             return None
-        return rows[min(self._sel, len(rows) - 1)].id
+        return self._sel_id
 
     def _all_rows(self):
         workspace = self.app.workspace()
@@ -396,27 +442,52 @@ class NewSessionScreen(Screen):
             self._ask_sel = max(0, self._ask_sel - 1)
             self._paint_rows()
             return
-        limit = len(self._matched_rows()) + (1 if self._add_row_shown() else 0)
+        rows = self._matched_rows()
+        limit = len(rows) + (1 if self._add_row_shown() else 0)
         if limit:
             self._sel = max(0, self._sel - 1)
+            self._set_selection(rows)
             self._paint_rows()
+            self._show_type()
 
     def action_row_down(self) -> None:
         if self._ask:
             self._ask_sel = min(len(self._ask) - 1, self._ask_sel + 1)
             self._paint_rows()
             return
-        limit = len(self._matched_rows()) + (1 if self._add_row_shown() else 0)
+        rows = self._matched_rows()
+        limit = len(rows) + (1 if self._add_row_shown() else 0)
         if limit:
             self._sel = min(limit - 1, self._sel + 1)
+            self._set_selection(rows)
             self._paint_rows()
+            self._show_type()
+
+    def _set_selection(self, rows) -> None:
+        """The highlight moves onto a row: its id becomes the selection; the Add row (at len(rows)) selects no target."""
+        if self._add_row_shown() and self._sel >= len(rows):
+            self._sel_id = None
+        elif rows:
+            self._sel_id = rows[min(self._sel, len(rows) - 1)].id
 
     def action_refresh_list(self) -> None:
-        """The ruled recovery for `target_not_found` and `inventory_unavailable`: the person's `r` asks the
-        workspace for a foreground read of the list. Nothing is sent to the broker by a refusal itself."""
+        """The ruled recovery for a refusal whose key is `r`: the person's press repeats the create for
+        `target_connect_failed`, refetches and repaints the list for `target_not_found` and `inventory_unavailable`.
+        With no such refusal on screen, `r` is the ordinary foreground read of the list. Nothing is sent by a refusal
+        itself; this is the person's own press."""
         workspace = self.app.workspace()
+        code = self._recovery_code
+        self._recovery_code = None
+        if code == "target_connect_failed":
+            # The person's `r` repeats the create on the target it was attempted against, through the same
+            # create path (the in-flight guard applies).
+            if self._pending_target_id:
+                self._create_from_row(self._pending_target_id)
+            return
         if workspace is not None:
             workspace._fetch_targets()
+            if code in ("target_not_found", "inventory_unavailable"):
+                self._paint_rows()  # the person's press repaints; the rows land from the refetch (finding 12's notification)
 
     def action_focus_filter(self) -> None:
         """`/` enters the filter. While it already holds the keys this is typing, so the binding
@@ -431,7 +502,10 @@ class NewSessionScreen(Screen):
             self._open_form()
 
     def action_act_row(self) -> None:
-        """`⏎` acts on the highlighted row: an ask option, the Add row, or open-direct on a target row."""
+        """`⏎` acts on the highlighted row: an ask option, the Add row, or open-direct on a target row. A create in
+        flight is not pressed again."""
+        if self._creating:
+            return
         if self._ask:
             self._act_ask()
             return
@@ -439,10 +513,10 @@ class NewSessionScreen(Screen):
         if self._add_row_shown() and self._sel == len(rows):
             self._open_form()
             return
-        if not rows:
+        target_id = self._selected_id()
+        if not target_id:
             return
-        row = rows[min(self._sel, len(rows) - 1)]
-        self._open_target(row)
+        self._open_target(target_id)
 
     def action_cancel(self) -> None:
         """Back one level: an ask goes back to the list, a filter clears first, and the query stays when a form
@@ -479,10 +553,11 @@ class NewSessionScreen(Screen):
         # own callback, so the continuation asks for the read here.
         self.app.workspace().target_saved(record)
         self._pending_select = target_id
+        self._pending_ticks = 0
         if self.app.workspace().targets.row(target_id) is not None:
             self._check_pending()
         else:
-            # One timer until the record lands; it stops with the watch, never a chain of timers.
+            # One bounded timer until the record lands; it stops with the watch, never a chain of timers.
             self._pending_timer = self.app.set_interval(0.1, self._check_pending)
         self._paint_rows()
 
@@ -492,16 +567,24 @@ class NewSessionScreen(Screen):
             self._stop_pending_watch()
             return
         row = workspace.targets.row(self._pending_select)
-        if row is None:
+        if row is not None:
+            rows = self._all_rows()
+            for index, entry in enumerate(rows):
+                if entry.id == self._pending_select:
+                    self._sel = index
+                    self._sel_id = self._pending_select
+                    break
+            self._pending_select = ""
+            self._stop_pending_watch()
+            self._paint_rows()
             return
-        rows = self._all_rows()
-        for index, entry in enumerate(rows):
-            if entry.id == self._pending_select:
-                self._sel = index
-                break
-        self._pending_select = ""
-        self._stop_pending_watch()
-        self._paint_rows()
+        # The saved row has not landed. Bound the watch to 5 seconds after the save (PENDING_WATCH_TICKS); when it
+        # ends, show the Targets tab's own inventory-down state and keep the saved id, so a later successful list
+        # selects it. No endless timer, no new copy.
+        self._pending_ticks += 1
+        if self._pending_ticks >= PENDING_WATCH_TICKS:
+            self._stop_pending_watch()
+            self.query_one("#new-session-error", Static).update(TARGETS_UNAVAILABLE_COPY)
 
     def _stop_pending_watch(self) -> None:
         timer = getattr(self, "_pending_timer", None)
@@ -509,14 +592,32 @@ class NewSessionScreen(Screen):
             timer.stop()
             self._pending_timer = None
 
+    def notify_target_rows_changed(self) -> None:
+        """The workspace's target rows changed (a page landed, a refresh, a saved target arrived): repaint the
+        painted window, and if a saved target from the add-target watch has now landed, select it. The workspace's
+        own row-change notification, not a poll — no timer runs here."""
+        workspace = self.app.workspace()
+        if self._pending_select and workspace is not None and workspace.targets.row(self._pending_select) is not None:
+            for index, entry in enumerate(self._all_rows()):
+                if entry.id == self._pending_select:
+                    self._sel = index
+                    self._sel_id = self._pending_select
+                    break
+            self._pending_select = ""
+            self._stop_pending_watch()
+        self._paint_rows()
+
     # -- open-direct and the asks --
 
     def _sessions_for(self, target_id: str) -> list[dict]:
-        """This login's session records on this target, from the fleet's merged view."""
+        """This login's session records on this target, from the fleet's merged view. The workspace's live
+        attachment records are passed in (the same read its other session views make), so a session opened in
+        this window counts as a live connection before the next fleet poll lists it."""
         workspace = self.app.workspace()
         if workspace is None or workspace.fleet is None:
             return []
-        scan = workspace.fleet.scan(open_here=[slot.session_id for slot in workspace.slots if not slot.closed])
+        scan = workspace.fleet.scan(open_here=[slot.session_id for slot in workspace.slots if not slot.closed],
+                                    live=workspace._live())
         return [record for record in scan.merged.values()
                 if record.get("target_id") == target_id and record.get("owner") == self.app.username]
 
@@ -528,30 +629,35 @@ class NewSessionScreen(Screen):
             record["connection_id"] for record in sessions
             if record.get("connection_id") and record.get("state") not in ("ended", "killed", "terminated")))
 
-    def _open_target(self, row) -> None:
-        """`⏎` on a target row: the ask for a target with a session when this login has a session on it, the §15.3 choice when a live
-        connection exists, and one create at once when there is one way."""
+    def _open_target(self, target_id: str) -> None:
+        """`⏎` on a target row: the ask for a target with a session when this login has a session on it, the §15.3
+        choice when a live connection exists, and one create at once when there is one way. A telnet target never
+        gets the reuse ask (DEFAULT 22: a telnet connection carries one session)."""
         workspace = self.app.workspace()
-        slots = [slot for slot in workspace.slots if not slot.closed]
-        numbers = [index + 1 for index, slot in enumerate(slots) if slot.target == row.id]
-        live = self._live_connections(row.id)
+        # The number each open session on this target has on the rail is counted over all of `workspace.slots`,
+        # closed ones included (the same count `_open_numbers` and the rail use), so the ask's number matches them.
+        numbers = [index + 1 for index, slot in enumerate(workspace.slots)
+                   if not slot.closed and slot.target == target_id]
+        live = [] if self._is_telnet(target_id) else self._live_connections(target_id)
         if numbers:
             first = min(numbers)
-            sid = slots[first - 1].session_id
+            sid = workspace.slots[first - 1].session_id
             options = [(GO_TO_SESSION.format(number=first), ("go", sid))]
             if live:
                 options.append((ANOTHER_SESSION, ("reuse", live[0])))
             options.append((NEW_CONNECTION, ("new", None)))
             self._ask = options
             self._ask_sel = 0
+            self._ask_target = target_id
             self._paint_rows()
             return
         if live and not self._typed_login():
             self._ask = [(ANOTHER_SESSION, ("reuse", live[0])), (NEW_CONNECTION, ("new", None))]
             self._ask_sel = 0
+            self._ask_target = target_id
             self._paint_rows()
             return
-        self._create_from_row(row.id)
+        self._create_from_row(target_id)
 
     def _act_ask(self) -> None:
         _label, (kind, arg) = self._ask[self._ask_sel]
@@ -560,8 +666,10 @@ class NewSessionScreen(Screen):
             self.app.pop_screen()
             self.app.workspace().bring_forward(arg)
             return
-        row = self._matched_rows()[min(self._sel, len(self._matched_rows()) - 1)]
-        self._create_from_row(row.id, reuse_connection=arg if kind == "reuse" else None)
+        # The create acts on the target the ask was raised for, with the mode that option named — never a row
+        # re-read by index (the list can change under the ask), and never the reuse radio left from before.
+        self._create_from_row(self._ask_target, reuse_connection=arg if kind == "reuse" else None,
+                              connection_mode=kind)
 
     # -- the create (unchanged machinery, now keyed on the selected row) --
 
@@ -591,8 +699,7 @@ class NewSessionScreen(Screen):
     def _show_type(self) -> None:
         """The selected row's target line and the telnet rule: with a telnet target the reuse choice is greyed
         and says why, and `new` is the choice."""
-        rows = self._matched_rows()
-        target_id = rows[min(self._sel, len(rows) - 1)].id if rows else ""
+        target_id = self._selected_id() or ""
         target_type = self._type_of(target_id)
         self.query_one("#new-session-target", Static).update(
             f"{as_text(target_id)} · {as_text(target_type)}" if target_type is not None and target_id else "")
@@ -621,18 +728,17 @@ class NewSessionScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "create-button":
-            rows = self._matched_rows()
-            if not rows:
+            target_id = self._selected_id()
+            if not target_id:
                 self.query_one("#new-session-error", Static).update(TARGET_REQUIRED)
                 return
-            self._create_from_row(rows[min(self._sel, len(rows) - 1)].id)
+            self._create_from_row(target_id)
         elif event.button.id == "cancel-button":
             self.action_cancel()
         elif event.button.id == "device-login-start":
             if not self.me_ready or self.app.screen_lock.locked:
                 return
-            rows = self._matched_rows()
-            target = rows[min(self._sel, len(rows) - 1)].id if rows else ""
+            target = self._selected_id() or ""
             size = self._create_size()
             if self._type_of(target) != "ssh":
                 self.query_one("#new-session-error", Static).update("Choose an SSH target to answer login prompts.")
@@ -641,17 +747,21 @@ class NewSessionScreen(Screen):
             self.app.pop_screen()
             self.app.workspace().open_device_login(target, TERM, size, recording_login=self._recording_login)
 
-    def _create_from_row(self, target_id: str, reuse_connection: str | None = None) -> None:
+    def _create_from_row(self, target_id: str, reuse_connection: str | None = None,
+                         connection_mode: str | None = None) -> None:
+        if self._creating:
+            return  # a create is already in flight; a second press never sends another
         error = self.query_one("#new-session-error", Static)
         if self._half_login(target_id):
             error.update(HALF_LOGIN)
             return
         error.update("")
+        self._recovery_code = None  # a new create clears the prior refusal's recovery key
         self._hide_credential_choice()
         self._pending_target_id = target_id
         self._unlock_tried = False
         self.query_one("#create-button", Button).disabled = True
-        self._start_create(target_id, reuse_connection)
+        self._start_create(target_id, reuse_connection, connection_mode)
 
     def _half_login(self, target_id: str) -> bool:
         """One of the two login fields filled and the other empty, on a target that shows them: the core is never
@@ -673,16 +783,21 @@ class NewSessionScreen(Screen):
             login["recording_acknowledged"] = True
         return login
 
-    def _start_create(self, target_id: str, reuse_connection: str | None = None) -> None:
+    def _start_create(self, target_id: str, reuse_connection: str | None = None,
+                      connection_mode: str | None = None) -> None:
         if self._half_login(target_id):
             # The fields changed while the row's type was being checked.
             self.query_one("#new-session-error", Static).update(HALF_LOGIN)
             self.query_one("#create-button", Button).disabled = False
             return
-        connection = "reuse" if self.query_one("#conn-reuse", RadioButton).value else "new"
-        connection_id = self.query_one("#connection-id", Input).value.strip() or None
-        if reuse_connection is not None:
-            connection, connection_id = "reuse", reuse_connection
+        if connection_mode is not None:
+            # An ask option carries its own mode, so the create does what that option said, never the radio state
+            # left on screen from before the ask.
+            connection = connection_mode
+            connection_id = reuse_connection if connection_mode == "reuse" else None
+        else:
+            connection = "reuse" if self.query_one("#conn-reuse", RadioButton).value else "new"
+            connection_id = self.query_one("#connection-id", Input).value.strip() or None
         if self._is_telnet(target_id):
             connection, connection_id = "new", None  # a telnet connection carries one session (DEFAULT 22)
         if connection_id and connection != "reuse":
@@ -698,6 +813,7 @@ class NewSessionScreen(Screen):
     def _create(self, target_id: str, connection: str, connection_id: str | None, login: dict | None = None,
                 credential: tuple[str, str] | None = None) -> None:
         cols, rows = self._create_size()
+        self._creating = True  # a create is in flight; the guard refuses a second press until it resolves
         self._last_create = (target_id, connection, connection_id, credential) if login is None else None
         remember = self.query_one("#login-remember", Checkbox).value
         self.app.call_api(
@@ -745,6 +861,7 @@ class NewSessionScreen(Screen):
 
     def _finish_create_done(self, created: dict, *, then=None) -> None:
         self._clear_login()
+        self._creating = False  # the create resolved; the guard opens again for the next press
         # A completion that arrives after its dialog has gone — a 401 routed to Login while the request was in
         # flight (`notify_api_error` → `_to_login`, which pops to the base) — is discarded: nothing is popped, so
         # the login stack stays as it is, and nothing is opened through a workspace that no longer exists. The
@@ -761,6 +878,7 @@ class NewSessionScreen(Screen):
         # Local widget updates first: `notify_api_error` may switch this screen away (a 401
         # routes to Login), and this screen should not still be queried after that happens.
         self._clear_login()
+        self._creating = False  # the create resolved with an error; the guard opens again for a recovery press
         self.query_one("#create-button", Button).disabled = False
         self.query_one("#new-session-core", Static).update("")
         if isinstance(exc, ApiError) and exc.code in REFUSAL_COPY:
@@ -771,6 +889,11 @@ class NewSessionScreen(Screen):
             # The ruled line, with the core's own message under it (the row never replaces what the broker said).
             self.query_one("#new-session-error", Static).update(REFUSAL_COPY[exc.code].format(label=label))
             self.query_one("#new-session-core", Static).update(as_text(exc.message))
+            if exc.code in R_RECOVERY:
+                # The refusal names `r` as the person's recovery key. Move the keyboard off the filter to the Create
+                # button so a press of `r` reaches the refusal, not typing into the search.
+                self._recovery_code = exc.code
+                self.query_one("#create-button", Button).focus()
         if (isinstance(exc, ApiError) and exc.code == NO_RESOLVING_CREDENTIAL
                 and self.query_one("#login-fields").display):
             # Empty fields meant "what TSB holds", and it holds nothing (ruling A13): the dialog stays open and says
@@ -792,6 +915,11 @@ class NewSessionScreen(Screen):
         if isinstance(exc, ApiError) and exc.code not in REFUSAL_COPY:
             # A code the table does not name (a malformed credential list, any other answer): the core's own words.
             self.query_one("#new-session-error", Static).update(as_text(exc.message))
+            self.app.notify_api_error(exc)
+        if not isinstance(exc, ApiError):
+            # A transport failure (a broker connection failure, an HTTP response with no API body) is not a ruled
+            # refusal code; the app's own transport handling tells the operator, never a silent re-enable of Create.
+            self.query_one("#new-session-error", Static).update(as_text(str(exc)))
             self.app.notify_api_error(exc)
 
     async def _unlock_then_repeat(self) -> None:
@@ -834,6 +962,9 @@ class NewSessionScreen(Screen):
             for index, (ref, layer) in enumerate(candidates)))
         self.query_one("#credential-choice-title", Static).display = True
         choice.display = True
+        # Keys-only traversal: the offered choice takes focus, so Enter and the arrows act on the candidates, not
+        # the target row behind it.
+        choice.focus()
         return True
 
     def _pick_credential(self, index: int | None) -> None:
@@ -867,10 +998,14 @@ class NewSessionScreen(Screen):
         if not candidates:
             # Between the 409 and this GET /sessions landing, every one of this principal's own
             # connections to the target closed — nothing left to offer; the operator can only
-            # retry (a fresh "new" connection, or reuse if one reopens).
+            # retry (a fresh "new" connection, or reuse if one reopens). The box goes back to its resting state.
+            self.query_one("#reuse-box").display = False
             self.query_one("#new-session-error", Static).update(
                 "no connection of this principal's own to this target is listed anymore — retry")
             return
+        # The picker lives inside `#reuse-box`, hidden at rest; showing the picker alone leaves it invisible, so the
+        # box is shown with it and the operator can reach the choice by keyboard.
+        self.query_one("#reuse-box").display = True
         picker.set_options([(connection_id, connection_id) for connection_id in candidates])
         picker.disabled = False
         picker.display = True
@@ -883,6 +1018,7 @@ class NewSessionScreen(Screen):
         if target_id is None:
             return
         event.select.disabled = True
+        self.query_one("#reuse-box").display = False  # the choice is made; the box returns to its resting state
         self.query_one("#new-session-error", Static).update("")
         self.query_one("#create-button", Button).disabled = True
         self._create(target_id, "reuse", str(event.value))

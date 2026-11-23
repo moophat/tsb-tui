@@ -920,6 +920,16 @@ class TerminalScreen(Screen):
         if self._fleet_dirty:
             self._sync_fleet_widgets()
 
+    def _notify_new_session_rows(self) -> None:
+        """Tell an open New session screen that the target rows changed, so it repaints its painted window and selects
+        a saved target from its add-target watch once it lands. The workspace's own row-change notification, no timer."""
+        from .new_session import NewSessionScreen
+
+        for screen in self.app.screen_stack:
+            if isinstance(screen, NewSessionScreen):
+                screen.notify_target_rows_changed()
+                break
+
     def _sync_fleet_widgets(self) -> None:
         """Rebuild the rail and the sidebar from the models: the rebuild itself, run once per refresh by
         `_flush_fleet_widgets`, and directly by a caller that needs the models now. It consumes the dirty mark,
@@ -1346,6 +1356,7 @@ class TerminalScreen(Screen):
                     self.targets.publish(staging)  # the last page landed: take the staged rows in one step
                     self._targets_staging = None
                     self._mark_fleet_dirty()  # the view relayouts once; rule 6 keeps the selection by id
+                    self._notify_new_session_rows()  # an open New session repaints its rows, selects a saved target
             return
         if not more:
             self._targets_foreground = False  # the foreground first page's reply arrived (rule 1, 2026-11-23)
@@ -1358,6 +1369,7 @@ class TerminalScreen(Screen):
         current = self.targets.is_current(generation)
         if self.targets.apply(generation, query, page, append=more):
             self._mark_fleet_dirty()
+            self._notify_new_session_rows()  # an open New session repaints its rows, selects a saved target
             if self._target_select is not None and self.fleet_view is not None:
                 # Publish the new rows before selecting the saved target. A relayout
                 # between this callback and the deferred flush must see that row.
