@@ -380,6 +380,7 @@ def test_a_poll_asks_limit_and_cursor_only_and_a_503_shows_the_state(serve, wait
         async with app.run_test(size=(140, 36)) as pilot:
             screen, _view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
             screen._stop_targets_timer()
+            await wait_until(pilot, lambda: asked and asked[-1].get("cursor"), "the chained page's request", 40)
             before = len(asked)
             screen._fetch_targets(background=True)  # the tick while the chain's page is in flight
             await pilot.pause(0.05)
@@ -526,6 +527,8 @@ def test_a_click_on_the_last_loaded_target_selects_it_while_pages_arrive(serve, 
         app = TsbTuiApp(url)
         async with app.run_test(size=(140, 140)) as pilot:
             screen, view = await _open_targets(app, pilot, wait_until, rows=500, timeout_s=40)
+            screen._stop_targets_timer()
+            await wait_until(pilot, lambda: asked and asked[-1].get("cursor"), "the chained page's request", 40)
             y = max(index for index, line in enumerate(view.layout.lines) if line.group == GROUP_TARGETS)
             last = view.layout.lines[y].session_id
             before = len(asked)
