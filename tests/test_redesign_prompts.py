@@ -58,9 +58,10 @@ def _cfg(**overrides: str) -> config.Config:
                        overrides={"size.auto_request": "false", **overrides})
 
 
-def _canvas(lib, cols: int, rows: int, *, typist: bool = False) -> Canvas:
+def _canvas(lib, cols: int, rows: int, *, typist: bool = False, scrollback: int | None = None) -> Canvas:
     cfg = _cfg()
-    backend = VTBackend(lib, cols, rows, scrollback_bytes=cfg["term.scrollback_bytes"])
+    sb = scrollback if scrollback is not None else cfg["term.scrollback_bytes"]
+    backend = VTBackend(lib, cols, rows, scrollback_bytes=sb)
     return Canvas(backend, TermPalette(cfg, cfg.scheme), cfg, typist=typist)
 
 
@@ -83,11 +84,11 @@ def _emphasised(style) -> bool:
     return style.bold and style.underline
 
 
-def _run_canvas(lib, cols: int, rows: int, body, *, typist: bool = False) -> None:
+def _run_canvas(lib, cols: int, rows: int, body, *, typist: bool = False, scrollback: int | None = None) -> None:
     """Mount a canvas, take its first paint, then run `body(canvas)` with each feed followed by a repaint."""
 
     async def _check() -> None:
-        canvas = _canvas(lib, cols, rows, typist=typist)
+        canvas = _canvas(lib, cols, rows, typist=typist, scrollback=scrollback)
         async with _Host(canvas).run_test(size=(cols, rows)) as pilot:
             for _ in range(300):
                 if canvas.paint_count >= 1:
@@ -304,6 +305,113 @@ def test_a_target_with_no_prompt_pattern_shows_no_prompt_marks(serve, wait_until
             await pilot.pause()
             assert _mark_rows(slot.canvas) == set(), "a target with no pattern marked a row"
     asyncio.run(check())
+
+
+def test_a_pattern_loaded_after_the_prompt_is_painted_decorates_the_idle_prompt(lib):
+    """QODO-121-1 #1: installing a pattern rebuilds the affected cached row's strip even when the engine reports no
+    dirty row. Red on the current head: an idle prompt painted before the pattern arrives stays plain."""
+
+    def body(canvas):
+        canvas.feed(b"prompt$ ")  # the prompt is painted, cursor rests on it
+        _paint(canvas)
+        assert not _emphasised(_style_at(canvas.render_line(0), 0)), "the prompt was decorated before the pattern"
+        canvas.set_prompt_pattern(compile_pattern("prompt$"))  # the target read lands after the paint
+        _paint(canvas)
+        assert _emphasised(_style_at(canvas.render_line(0), 0)), \
+            "an idle prompt stayed undecorated after its pattern loaded"
+
+    _run_canvas(lib, 20, 4, body, typist=True)
+
+
+def test_shell_prompt_marks_win_over_a_tracked_pattern_extent(lib):
+    """QODO-121-1 #2 (Ruled O4): when a row carries shell prompt marks, its pattern extent is dropped and only the
+    shell's prompt cells are decorated — for a row tracked before the marks arrived as well as a new one. Red on the
+    current head: the tracked extent keeps decorating shell-marked input."""
+
+    def body(canvas):
+        canvas.set_prompt_pattern(compile_pattern("pr.*"))
+        canvas.feed(b"prlong")  # cursor row matches pr.* -> the tracked extent is the whole row (6 columns)
+        _paint(canvas)
+        assert _emphasised(_style_at(canvas.render_line(0), 0))
+        # The shell then marks a short prompt `pr` and the rest as input on that same row.
+        canvas.feed(b"\x1b[1;1H\x1b]133;A\apr\x1b]133;B\along\x1b]133;C\a")
+        _paint(canvas)
+        assert _emphasised(_style_at(canvas.render_line(0), 0)), "the shell prompt lost its mark"
+        assert not _emphasised(_style_at(canvas.render_line(0), 2)), \
+            "a shell-marked input cell kept the pattern extent's decoration"
+
+    _run_canvas(lib, 20, 4, body, typist=True)
+
+
+def test_a_resize_keeps_earlier_prompt_marks(lib):
+    """QODO-121-1 #3: a resize reflows the content and a tracked reference follows its cell, so earlier prompt marks
+    survive; only a fresh terminal or an attach dump drops them. Red on the current head: resize_grid cleared every
+    pattern handle."""
+
+    def body(canvas):
+        canvas.set_prompt_pattern(compile_pattern("prompt$"))
+        canvas.feed(b"prompt$ ")  # matched and tracked on the cursor row
+        _paint(canvas)
+        assert _emphasised(_style_at(canvas.render_line(0), 0))
+        canvas.resize_grid(30, 6)  # a wider grid: the engine reflows, the tracked reference follows its cell
+        canvas.feed(b"x\r\n")  # scroll the prompt row up
+        _paint(canvas)
+        from tsb_tui.term import ghostty as _G
+        canvas._backend.scroll_viewport(_G.SCROLL_VIEWPORT_TOP)
+        _paint(canvas)
+        top = canvas.render_line(0)
+        assert "prompt$ " in top.text, "the prompt row left the window"
+        assert any(s.bold and s.underline for _, text, s in _cells(top) if "prompt$" in text), \
+            "the resize erased the earlier prompt mark"
+
+    _run_canvas(lib, 20, 4, body, typist=True)
+
+
+def test_prompt_handles_are_freed_when_their_content_is_gone_and_kept_when_off_viewport(lib):
+    """QODO-121-1 #5: a reference that no longer resolves to retained content is freed and dropped with its extent; a
+    valid reference merely off the viewport is kept so its mark reappears on scroll-back. Red on the current head: a
+    reference pruned by a dump reset is kept and scanned every repaint. (Note in the report: Ghostty retains every fed
+    row in this harness, so the unbounded-growth red is not reproducible by feeding alone; the fix's observable effect
+    is freeing refs whose content is gone.)"""
+
+    def body(canvas):
+        canvas.set_prompt_pattern(compile_pattern("prompt$"))
+        canvas.feed(b"prompt$ ")  # the cursor sits on the prompt row, so the pattern matches and tracks it
+        _paint(canvas)
+        assert len(canvas._pattern_handles) == 1
+        # Scroll the prompt off the viewport: the reference stays valid, so it is kept.
+        canvas.feed(b"a\r\nb\r\nc\r\nd\r\ne\r\nf\r\n")
+        _paint(canvas)
+        assert len(canvas._pattern_handles) == 1, "a valid off-viewport reference was dropped"
+        # A dump reset invalidates every tracked reference: the handle is freed and its extent dropped.
+        canvas.feed_dump(20, 4, b"fresh grid")
+        _paint(canvas)
+        assert len(canvas._pattern_handles) == 0, "a reference whose content is gone was kept"
+
+    _run_canvas(lib, 20, 4, body, typist=True)
+
+
+def test_a_primary_prompt_mark_is_not_drawn_on_the_alternate_screen(lib):
+    """QODO-121-1 #6: a tracked reference resolves only on the screen it was made on. While the alternate screen is
+    active, primary-screen marks are not drawn; they show again when the primary screen returns. Red on the current
+    head: tracked_viewport_row subtracted the active screen's offset without checking the owning screen, so a primary
+    prompt reference decorated the app's text."""
+
+    def body(canvas):
+        canvas.set_prompt_pattern(compile_pattern("prompt$"))
+        canvas.feed(b"prompt$ ")  # a primary-screen prompt, matched and tracked
+        _paint(canvas)
+        assert _emphasised(_style_at(canvas.render_line(0), 0))
+        canvas.feed(b"\x1b[?1049h\r\napp text")  # enter the alternate screen; its top row is 'app text'
+        _paint(canvas)
+        assert not any(_emphasised(s) for _, _, s in _cells(canvas.render_line(0))), \
+            "a primary-screen mark decorated the alternate screen"
+        canvas.feed(b"\x1b[?1049l")  # return to the primary screen; the prompt mark shows again
+        _paint(canvas)
+        assert _emphasised(_style_at(canvas.render_line(0), 0)), \
+            "the prompt mark did not return with the primary screen"
+
+    _run_canvas(lib, 20, 6, body, typist=True)
 
 
 def test_a_pattern_decorates_only_the_prompt_cells_it_matched(lib):

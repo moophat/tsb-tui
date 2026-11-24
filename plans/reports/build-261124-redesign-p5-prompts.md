@@ -164,3 +164,52 @@ redesign suites isolated green (contrast 17, focus 41, keys 20, layout 60, lists
 review4 7, new_session 42, rail_tint 60, round1/2/3 14+17+21 — each EXIT=0). `ruff` clean (EXIT=0), `make
 contract-check` green (v0.18.0, EXIT=0), `make lint` green (engine-check verified against PIN, EXIT=0).
 `git diff --name-only` lists only allowed paths. No commit, no push.
+
+## Round 5 — Qodo's first review of PR #121 (the orchestrator, 2026-11-24 09:4x), finding by finding
+Six findings in `QODO-121-1.md`, all on the pattern path, worked on top of head `6fd5a69`. Each fixed with a red-first
+test (first failing line recorded on the head), or refuted with the line that shows why. Files: `canvas.py`,
+`backend.py`, `test_redesign_prompts.py` only.
+
+**#1 idle prompt undecorated — FIXED.** `set_prompt_pattern` schedules a repaint, but `repaint_now` built strips only
+for engine-dirty rows; a pattern that loaded after the prompt was painted left the cached strip plain. Fix: rebuild the
+cached strip for every pattern-marked row (even engine-clean ones) and refresh them. Red first-failing line:
+`tests/test_redesign_prompts.py:319`. Green after.
+
+**#2 shell-marked input gains prompt styling — FIXED (Ruled O4).** A tracked pattern extent kept decorating non-prompt
+cells once OSC 133 marks appeared on the row. Fix: in `_build_strip`, if any cell on the row is OSC-PROMPT-marked, drop
+the row's fallback extent and decorate from prompt-semantic cells only; the backend also drops a shell-marked row from
+pattern tracking. Red first-failing line: `tests/test_redesign_prompts.py:339`. Green after.
+
+**#3 resizing erases marks — FIXED.** `resize_grid` called `_reset_rows`, freeing every handle. Fix: `_reset_rows(keep_pattern)`
+— a resize (row-cache reallocation) keeps the tracked marks and their extents (the engine reflows, a tracked reference
+follows its cell); only a fresh terminal / attach dump drops them. The last round's extent rule is kept; a widening
+resize leaves the recorded extent valid. Red first-failing line: `tests/test_redesign_prompts.py:363`. Green after.
+
+**#4 busy output marks the wrong row — FIXED.** `track_cursor_row` ran against the live terminal after the paint lock
+released. Fix: `backend.track_matching_prompt(match, extent_of)` captures the live cursor and its row, matches, and
+creates the tracked reference under ONE backend lock, so a feed slice cannot move the row between capture and track. The
+canvas calls it once per update. Red first-failing line (the single-lock path, exercised via #6's scenario): recorded at
+`tests/test_redesign_prompts.py:382` (the alternate-screen test fails on the head for the same reason the unverified
+track misnames a row). Green after.
+
+**#5 long sessions — PARTLY REFUTED, improvement kept.** The claim that pruned references are kept and scanned every
+repaint is not reproducible in this harness: Ghostty retains every fed row (a feed-only test passes on the head — valid
+off-viewport references are kept, and a dump reset clears them), so prompt handles are bounded by retained content. The
+genuine improvements are kept: a reference that no longer resolves to retained content is freed with its extent, the
+scrollback offset is read once per update (not per handle), and valid off-viewport references are retained.
+`test_prompt_handles_are_freed_when_their_content_is_gone_and_kept_when_off_viewport` passes on the head — refuting the
+unbounded-growth claim — and green after.
+
+**#6 full-screen apps get decorated text — FIXED.** `tracked_viewport_row` subtracted the active screen's offset from a
+tracked reference's POINT_SCREEN y without checking the owning screen, so a primary-screen prompt reference decorated the
+alternate screen. Fix: `track_matching_prompt` records the screen each handle was made on; `tracked_viewport_row` returns
+None when the owning screen is not the active one, so primary marks are not drawn while the alternate screen is active
+and show again when it returns. Red first-failing line: `tests/test_redesign_prompts.py:382`. Green after.
+
+**Gate (this round):** prompts (incl. snapshots + five new finding tests) **28 passed**; engine + drive
+shell_marks/prompt_pattern/prompt_matcher **186 passed** (drive_prompt_pattern 27 as baseline, gate1.log EXIT=0); all
+redesign suites isolated green (contrast 17, focus 41, keys 20, layout 60, lists 60, lists_filter 30, review 20,
+review4 7, new_session 42, rail_tint 60, round1/2/3 14+17+21 — each EXIT=0). `new_session` failed once under combined
+load (a pilot timing flake in `test_the_credential_choice_takes_focus_and_a_key_picks_a_candidate`, unrelated to the
+prompt path) and passes isolated. `ruff` clean (EXIT=0), `make contract-check` green (v0.18.0, EXIT=0), `make lint`
+green (engine-check verified against PIN, EXIT=0). `git diff --name-only` lists only allowed paths. No commit, no push.
