@@ -626,3 +626,35 @@ def test_a_narrow_resize_decorates_every_wrapped_prompt_row(lib):
             "the wrapped prompt's continuation row is not decorated"
 
     _run_canvas(lib, 20, 4, body, typist=True)
+
+
+def test_a_partly_visible_wrapped_prompt_keeps_decoration_on_its_visible_cells(lib):
+    """QODO-121-3: `add()` made no spans when either tracked end of a wrapped prompt lay outside the viewport, so
+    scrolling left the remaining visible prompt cells plain even though the mark was retained. Fix (the ruling): resolve
+    both ends in whole-screen coordinates (on their own screen, as round 1 ruled) even when off the viewport, take the
+    reading-order span between them, and decorate only the part inside the viewport. Red on the current head: a wrapped
+    prompt whose first or last end is scrolled out loses all its decoration."""
+
+    def body(canvas):
+        canvas.set_prompt_pattern(compile_pattern("prompt$ abcdef"))
+        canvas.feed(b"prompt$ abcdef")  # tracked on the wide grid: first cell column 0, last cell column 13
+        _paint(canvas)
+        canvas.resize_grid(7, 1)  # one row per line: the prompt wraps onto two screen rows
+        _paint(canvas)
+        canvas.feed(b"x1\r\nx2\r\nx3\r\n")  # push the prompt into scrollback so it can be scrolled to
+        _paint(canvas)
+        from tsb_tui.term import ghostty as _G
+        # Only the first (prompt) row visible: its prompt cells are decorated, the last end is off the viewport.
+        canvas._backend.scroll_viewport(_G.SCROLL_VIEWPORT_ROW, 0)
+        _paint(canvas)
+        row = canvas.render_line(0)
+        assert "prompt$" in row.text, "the first wrapped row is not on view"
+        assert _emphasised(_style_at(row, 0)), "the visible first row lost its prompt decoration"
+        # Only the continuation row visible: its prompt cells are decorated, the first end is off the viewport.
+        canvas._backend.scroll_viewport(_G.SCROLL_VIEWPORT_ROW, 1)
+        _paint(canvas)
+        row = canvas.render_line(0)
+        assert "abcdef" in row.text, "the continuation row is not on view"
+        assert _emphasised(_style_at(row, 0)), "the visible continuation row lost its prompt decoration"
+
+    _run_canvas(lib, 20, 1, body, typist=True)

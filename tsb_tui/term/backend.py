@@ -1090,11 +1090,11 @@ class VTBackend:
             row = int(coord.y) - offset
             return row if 0 <= row < self.rows else None
 
-    def tracked_viewport_coord(self, handle: ctypes.c_void_p, offset: int, active_screen: int,
-                               owning_screen: int) -> tuple[int, int] | None:
-        """QODO-121-2 #2: the viewport (row, column) a tracked reference stands on now, given the scrollback `offset`
-        read once this update. The column is unaffected by the offset; the row on view is the screen-space row minus
-        it. A freed/reset reference (no value), one scrolled off, or one whose owning screen is not active gives None."""
+    def tracked_screen_coord(self, handle: ctypes.c_void_p, active_screen: int,
+                             owning_screen: int) -> tuple[int, int] | None:
+        """QODO-121-3: the whole-screen (row, column) a tracked reference stands on now, checked against its owning
+        screen, whether or not it is inside the viewport. A freed/reset reference (no value), one whose owning screen is
+        not the active one, gives None. Under the lock."""
         with self._lock:
             if self._terminal is None or not handle or not self._libc.ghostty_tracked_grid_ref_has_value(handle):
                 return None
@@ -1104,8 +1104,7 @@ class VTBackend:
             if self._libc.ghostty_tracked_grid_ref_point(handle, G.POINT_SCREEN, ctypes.byref(coord)) \
                     != G.GHOSTTY_SUCCESS:
                 return None
-            row = int(coord.y) - offset
-            return (row, int(coord.x)) if 0 <= row < self.rows else None
+            return (int(coord.y), int(coord.x))
 
     def tracked_viewport_rows(self, handles: Sequence[ctypes.c_void_p]) -> set[int]:
         """The viewport rows the tracked references in `handles` stand on now, under the lock. A reference that has

@@ -241,3 +241,25 @@ redesign suites isolated green (contrast 17, focus 41, keys 20, layout 60, lists
 review4 7, new_session 42, rail_tint 60, round1/2/3 14+17+21 — each EXIT=0). `ruff` clean (EXIT=0), `make
 contract-check` green (v0.18.0, EXIT=0), `make lint` green (engine-check verified against PIN, EXIT=0).
 `git diff --name-only` lists only allowed paths. No commit, no push.
+
+## Round 7 — Qodo's third review of PR #121 (the orchestrator, 2026-11-24 12:1x)
+One finding in `QODO-121-3.md`, worked on top of head `3100909` (the round-2 commit), uncommitted. Files: `backend.py`,
+`canvas.py`, `test_redesign_prompts.py` only.
+
+**#1 partly visible prompts lose decoration — FIXED.** `_update_pattern_rows.add()` built no spans when either tracked
+end of a wrapped prompt lay outside the viewport, so scrolling left the remaining visible prompt cells plain. Fix (the
+ruling): resolve both ends in whole-screen coordinates (checked against their owning screen, as round 1 ruled) even when
+off the viewport, take the reading-order span between them, and decorate only the part inside the viewport. The engine
+gives a screen coordinate for an off-viewport tracked reference — `ghostty_tracked_grid_ref_point(handle, POINT_SCREEN, …)`
+resolves it in whole-screen space (the same call round 5's `tracked_viewport_row` used), so no STOP. Added
+`backend.tracked_screen_coord(handle, active, owning)`; `add()` maps the span's screen rows to viewport rows
+(`y = screen_row - offset`) and sets a span only for rows inside `[0, rows)`. The round-6 `tracked_viewport_coord` is
+orphaned by this change and was removed. Red first-failing line: `tests/test_redesign_prompts.py:652`. Green after.
+
+**Gate (this round):** prompts (incl. snapshots + the new finding test) **31 passed**; engine + drive
+shell_marks/prompt_pattern/prompt_matcher **186 passed** (drive_prompt_pattern 27 as baseline, gate1.log EXIT=0); all
+redesign suites isolated green (contrast 17, focus 41, keys 20, layout 60, lists_filter 30, review 20, review4 7,
+new_session 42, rail_tint 60, round1/2/3 14+17+21 — each EXIT=0). `lists` failed once under combined load (a pilot
+timing flake in `test_two_size_galleries[targets-opens2-size1]`, unrelated to the prompt path) and passes isolated
+(60). `ruff` clean (EXIT=0), `make contract-check` green (v0.18.0, EXIT=0), `make lint` green (engine-check verified
+against PIN, EXIT=0). `git diff --name-only` lists only allowed paths. No commit, no push.

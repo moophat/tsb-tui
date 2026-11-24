@@ -504,15 +504,20 @@ class Canvas(Widget):
         spans: dict[int, tuple[int, int]] = {}
 
         def add(first, last, screen):
-            fc = self._backend.tracked_viewport_coord(first, offset, active, screen)
-            lc = self._backend.tracked_viewport_coord(last, offset, active, screen)
+            # QODO-121-3: resolve both ends in whole-screen coordinates (checked against their owning screen) even when
+            # one is scrolled out of the viewport, take the reading-order span between them, and decorate only the part
+            # inside the viewport. A mark whose ends are on a non-active screen (or have no value) is kept, not drawn.
+            fc = self._backend.tracked_screen_coord(first, active, screen)
+            lc = self._backend.tracked_screen_coord(last, active, screen)
             if fc is None or lc is None:
-                return  # an end off the viewport, on a non-active screen, or with no value: kept, not drawn
+                return
             (fr, fcol), (lr, lcol) = fc, lc
-            for y in range(fr, lr + 1):
-                start = fcol if y == fr else 0
-                end = lcol if y == lr else cols - 1
-                spans[y] = (start, end)
+            for r in range(fr, lr + 1):
+                y = r - offset
+                if 0 <= y < self._backend.rows:
+                    start = fcol if r == fr else 0
+                    end = lcol if r == lr else cols - 1
+                    spans[y] = (start, end)
 
         keep: list[tuple[ctypes.c_void_p, ctypes.c_void_p, int]] = []
         for first, last, screen in self._pattern_marks:
