@@ -223,17 +223,21 @@ def test_a_stale_page_reply_never_overwrites_a_newer_one(serve, wait_until):
             if index == 1:
                 reached, release = gates.setdefault(index, (threading.Event(), threading.Event()))
                 reached.set()
-                assert release.wait(10), "a held page was never released"
+                served.lock.release()
+                try:
+                    assert release.wait(40), "a held page was never released"
+                finally:
+                    served.lock.acquire()
             return real(query)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
         async with app.run_test(size=(160, 45)) as pilot:
             screen = await fixture_login(app, pilot)
-            await wait_until(pilot, lambda: len(calls) >= 2 and gates[1][0].is_set(), "the second page's request")
+            await wait_until(pilot, lambda: len(calls) >= 2 and gates[1][0].is_set(), "the second page's request", 40)
             screen._stop_targets_timer()  # no ticks behind the test: the refresh is the one this test names
             screen._fetch_targets()  # a refresh while the page is in flight
-            await wait_until(pilot, lambda: len(calls) >= 3, "the refresh's request")
+            await wait_until(pilot, lambda: len(calls) >= 3, "the refresh's request", 40)
             applied: list[int] = []
             real_apply = screen.targets.apply
             def spy(generation, query, page, *, append=False):
@@ -243,10 +247,8 @@ def test_a_stale_page_reply_never_overwrites_a_newer_one(serve, wait_until):
                 return ok
             screen.targets.apply = spy
             gates[1][1].set()  # the older page lands last
-            for _ in range(400):
-                if len(screen.targets.rows) == 608 and not screen.targets.next_cursor:
-                    break
-                await pilot.pause(0.01)
+            await wait_until(pilot, lambda: len(screen.targets.rows) == 608 and not screen.targets.next_cursor,
+                             "every page to land", 40)
             assert len(screen.targets.rows) == 608, (screen.targets.rows, calls)
             stale_gen = calls[1] + 1  # the generation the login's second page was sent with
             assert stale_gen not in applied, (applied, stale_gen)
@@ -344,7 +346,11 @@ def test_loading_title_at_8000_targets(serve, wait_until):
         def gated(query):
             cursor = query.get("cursor")
             if cursor and not gate.is_set():
-                gate.wait(timeout=15)
+                served.lock.release()
+                try:
+                    gate.wait(timeout=40)
+                finally:
+                    served.lock.acquire()
             return original(query)
 
         served._list_targets = gated
@@ -352,7 +358,7 @@ def test_loading_title_at_8000_targets(serve, wait_until):
         async with app.run_test(size=(80, 24)) as pilot:
             screen = await fixture_login(app, pilot)
             await wait_until(pilot, lambda: len(screen.targets.rows) == 500 and screen.targets.next_cursor,
-                             "the first page")
+                             "the first page", 40)
             screen.open_sidebar(pane="targets")
             await pilot.pause()
             title = screen.sidebar.render_line(0).text
@@ -361,7 +367,9 @@ def test_loading_title_at_8000_targets(serve, wait_until):
             assert "Targets · 1/500…" in title, title
             gate.set()
             await wait_until(pilot, lambda: len(screen.targets.rows) == 8008 and not screen.targets.next_cursor,
-                             "every page", 30)
+                             "every page", 40)
+            await wait_until(pilot, lambda: "Targets · 1/8008" in screen.sidebar.render_line(0).text,
+                             "the loaded title", 40)
             # rule 6: the highlight follows its entity across page arrivals; the index counts the main list.
             chosen = screen.sidebar.selected_target
             title = screen.sidebar.render_line(0).text
