@@ -37,6 +37,7 @@ the style's contents rather than by id.
 
 from __future__ import annotations
 
+import ctypes
 import time
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
@@ -62,6 +63,21 @@ from ..theme import TermPalette
 HOLD_LIMIT_S = 1.0
 
 _STYLE_ID = attrgetter("style_id")
+
+
+def _column_extent(cells) -> int:
+    """The columns the row's text occupies, trailing blanks trimmed. A wide glyph counts both its columns (the head
+    spans two; its spacer tail adds none)."""
+    col = 0
+    last = 0
+    for c in cells:
+        if c.wide_tail:
+            continue  # the head already spans this column
+        col += 2 if c.wide_head else 1
+        if c.text and c.text != " ":
+            last = col
+    return last
+
 # Textual numbers the buttons 1 left, 2 middle, 3 right; a motion with no button down carries 0.
 # The wheel is buttons four and five in xterm's numbering, which mouse/event.h keeps (FOUR, FIVE).
 _WHEEL_UP, _WHEEL_DOWN = 4, 5
@@ -218,6 +234,17 @@ class Canvas(Widget):
         # the design note's §4 asks the bench to report. The lock is taken per paint; this is the total.
         self.lock_wait_ms = 0.0
         self.rebuilt_rows: list[int] = []
+        # Ruled O4/O7 prompt decoration. `_prompt_pattern` is the target's compiled I-Regexp (None when the target has
+        # no pattern, or its pattern is unusable). A mark covers the prompt's cells, not a row (QODO-121-2 #2): each
+        # `_pattern_marks` entry is (first_handle, last_handle, screen) — two tracked references made under the same
+        # lock as the match, one at the prompt's first cell (column 0) and one at its last matched cell. A tracked
+        # reference follows its cell, so the mark survives scrolling and a reflow that wraps the prompt across rows.
+        # `_pattern_spans` maps each viewport row a mark covers now to the inclusive (start_col, end_col) of its prompt
+        # cells in reading order; only cells inside a span are decorated, so cells written later on the row (the echoed
+        # input) are not. Rows from before this attach are never marked: it starts empty.
+        self._prompt_pattern = None
+        self._pattern_marks: list[tuple[ctypes.c_void_p, ctypes.c_void_p, int]] = []
+        self._pattern_spans: dict[int, tuple[int, int]] = {}
 
     # -- what the canvas exposes --
 
@@ -278,6 +305,7 @@ class Canvas(Widget):
         self._released = True
         if self._timer is not None:
             self._timer.stop()
+        self._clear_pattern_state()
         self._backend.close()
 
     def feed(self, data: bytes) -> None:
@@ -334,7 +362,7 @@ class Canvas(Widget):
         if self._released or (cols, rows) == (self._backend.cols, self._backend.rows):
             return
         self._backend.resize(cols, rows)
-        self._reset_rows()
+        self._reset_rows(keep_pattern=True)  # QODO-121-1 #3: a resize reflows content; tracked marks survive.
         self._pending = True
 
     def bring_to_front(self) -> None:
@@ -444,6 +472,74 @@ class Canvas(Widget):
             self._selection = None
             self._pending = True
 
+    def _clear_pattern_state(self) -> None:
+        """Free every tracked pattern handle and drop the marks and spans (set a new pattern, a reset, a close)."""
+        for first, last, _screen in self._pattern_marks:
+            self._backend.free_tracked(first)
+            self._backend.free_tracked(last)
+        self._pattern_marks = []
+        self._pattern_spans = {}
+
+    def set_prompt_pattern(self, compiled: Any) -> None:
+        """The target's compiled prompt pattern (Ruled O4), or None. Marks from a prior pattern are dropped and their
+        tracked references freed, so rows from before this attach, and rows marked by the previous pattern, stay
+        unmarked; the next paint marks the cursor row when it matches."""
+        self._clear_pattern_state()
+        self._prompt_pattern = compiled
+        self._pending = True
+
+    def _update_pattern_rows(self, cursor: Cursor | None) -> None:
+        """The prompt cells on view as reading-order spans per viewport row. A mark is the prompt's first and last
+        cells (two tracked references); a tracked reference follows its cell, so the mark survives scrolling and a
+        reflow that wraps the prompt across rows (QODO-121-2 #2). A mark whose ends have no value is freed; an end
+        merely off the viewport, on a non-active screen, is kept so its mark reappears. OSC 133 wins where it marked
+        the cursor row, so a shell-marked row gets no pattern track."""
+        if self._prompt_pattern is None:
+            self._pattern_spans = {}
+            return
+        # QODO-121-1 #5: read the scrollback offset once, and the active screen once, this update.
+        offset = self._backend.scrollback_offset()
+        active = self._backend.active_screen()
+        cols = self._backend.cols
+        spans: dict[int, tuple[int, int]] = {}
+
+        def add(first, last, screen):
+            # QODO-121-3: resolve both ends in whole-screen coordinates (checked against their owning screen) even when
+            # one is scrolled out of the viewport, take the reading-order span between them, and decorate only the part
+            # inside the viewport. A mark whose ends are on a non-active screen (or have no value) is kept, not drawn.
+            fc = self._backend.tracked_screen_coord(first, active, screen)
+            lc = self._backend.tracked_screen_coord(last, active, screen)
+            if fc is None or lc is None:
+                return
+            (fr, fcol), (lr, lcol) = fc, lc
+            for r in range(fr, lr + 1):
+                y = r - offset
+                if 0 <= y < self._backend.rows:
+                    start = fcol if r == fr else 0
+                    end = lcol if r == lr else cols - 1
+                    spans[y] = (start, end)
+
+        keep: list[tuple[ctypes.c_void_p, ctypes.c_void_p, int]] = []
+        for first, last, screen in self._pattern_marks:
+            # QODO-121-1 #5: a reference that no longer resolves to retained content is freed and dropped.
+            if not self._backend.tracked_has_value(first) or not self._backend.tracked_has_value(last):
+                self._backend.free_tracked(first)
+                self._backend.free_tracked(last)
+                continue
+            keep.append((first, last, screen))
+            add(first, last, screen)
+        self._pattern_marks = keep
+        # QODO-121-1 #4/#6 and QODO-121-2 #1/#2: capture the render-state cursor and its row, match, and create the
+        # first + last tracked references under one backend lock. OSC 133 wins on the row (the backend drops a
+        # shell-marked row); no match is made while the view is scrolled away from the live cursor.
+        matched = self._backend.track_matching_prompt(
+            lambda text: self._prompt_pattern.matches(text), _column_extent)
+        if matched:
+            first, last, screen = matched
+            self._pattern_marks.append((first, last, screen))
+            add(first, last, screen)
+        self._pattern_spans = spans
+
     def _rebuild_overlay(self, origin: int) -> bool:
         """The marks on view as cells of this canvas's rows, given the engine row the viewport starts at. True when
         they differ from what was drawn."""
@@ -507,14 +603,26 @@ class Canvas(Widget):
         self._pending = False
         self.paint_count += 1
         if len(self._strips) != backend.rows:
-            self._reset_rows()
+            self._reset_rows(keep_pattern=True)  # row-cache reallocation at the new geometry; marks survive.
         before = self._cursor_rows()
+        for row in rows:
+            if row.y < len(self._rows):
+                self._rows[row.y] = row
+        # The pattern mark depends on the cursor row's text, so read every dirty row first, then mark, then build
+        # each strip (a newly-marked row must paint in the same pass it was matched on).
+        self._cursor = cursor if cursor.visible else None
+        self._update_pattern_rows(cursor)
+        dirty_set = {row.y for row in rows}
         for row in rows:
             if row.y < len(self._strips):
                 self._strips[row.y] = self._build_strip(row)
-                self._rows[row.y] = row
-        self.rebuilt_rows = [row.y for row in rows]
-        self._cursor = cursor if cursor.visible else None
+        # QODO-121-1 #1: a pattern-marked row the engine reports clean (the pattern arrived after the row was painted,
+        # and the shell emits nothing further) must still rebuild its cached strip, so the mark shows now.
+        extra = [y for y in self._pattern_spans if y not in dirty_set
+                 and y < len(self._rows) and self._rows[y] is not None]
+        for y in extra:
+            self._strips[y] = self._build_strip(self._rows[y])
+        self.rebuilt_rows = [row.y for row in rows] + extra
         marked = self._rebuild_overlay(origin)
         if self._follow_cursor() or marked:
             self.refresh()
@@ -525,13 +633,34 @@ class Canvas(Widget):
 
     def _build_strip(self, row: Row) -> Strip:
         """One row as runs of equal style. A wide character's spacer tail adds no text: the head
-        already spans both columns. Style ids are resolved against this row's own map."""
+        already spans both columns. Style ids are resolved against this row's own map. Ruled O4/O7: a cell the shell
+        marked as prompt (OSC 133, its semantic content), and the cells below the matched extent of a row the target
+        pattern matched, get the bold + underline decoration, never a colour. Cells written later on a pattern-matched
+        row (the echoed input) are below the recorded extent and stay undecorated; nothing else is touched."""
         segments: list[Segment] = []
         memo: dict[int, Style] = {}
-        for style_id, run in groupby(row.cells, _STYLE_ID):
-            text = "".join([c.text or " " for c in run if not c.wide_tail])
+        # QODO-121-1 #2 (Ruled O4): OSC 133 wins on a row. If the shell marked any prompt cell here, the pattern's
+        # span is dropped for this row — decoration comes from the shell's prompt cells only, so its input and output
+        # stay plain even when the row was pattern-tracked before the marks arrived.
+        span = None if any(c.semantic == G.CELL_SEMANTIC_PROMPT for c in row.cells) \
+            else self._pattern_spans.get(row.y)
+        keyed: list[tuple[int, bool, object]] = []
+        col = 0
+        for c in row.cells:
+            decorated = c.semantic == G.CELL_SEMANTIC_PROMPT or (span is not None and span[0] <= col <= span[1])
+            keyed.append((c.style_id, decorated, c))
+            if not c.wide_tail:
+                col += 2 if c.wide_head else 1
+        # Group by style id and by decorated, so a prompt cell splits from the input/output cells it shares a
+        # style id with. `run` is a lazy groupby sub-iterator, so materialize it before reading its cells twice.
+        for (style_id, decorated), run in groupby(keyed, lambda x: (x[0], x[1])):
+            cells = list(run)
+            text = "".join([t[2].text or " " for t in cells if not t[2].wide_tail])
             if text:
-                segments.append(Segment(text, self._style_of(row, style_id, memo)))
+                style = self._style_of(row, style_id, memo)
+                if decorated:
+                    style = style + self._palette.prompt_decoration
+                segments.append(Segment(text, style))
         strip = Strip(segments)
         cols = self._backend.cols
         if strip.cell_length != cols:
@@ -667,8 +796,14 @@ class Canvas(Widget):
 
     # -- bookkeeping --
 
-    def _reset_rows(self) -> None:
+    def _reset_rows(self, keep_pattern: bool = False) -> None:
         rows = self._backend.rows
+        # A dump rebuilt the grid at a new geometry: every tracked reference the engine held is gone, so free the
+        # pattern's handles (the pattern itself stays — the target did not change) and start unmarked again. QODO-121-1
+        # #3: a resize is not a reset — the engine preserves and reflows its content and a tracked reference follows
+        # its cell, so `keep_pattern` retains the marks (and their extents) across the new geometry.
+        if not keep_pattern:
+            self._clear_pattern_state()
         self._strips = [None] * rows
         self._rows = [None] * rows
         self._cursor = None

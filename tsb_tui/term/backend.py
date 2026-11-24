@@ -82,22 +82,29 @@ class Cell:
     identity for the cell's style, which the backend caches so painting resolves it once per
     distinct id, not once per cell (plan R4).
 
+    `semantic` is the cell's semantic content the engine records from OSC 133 shell marks
+    (`GHOSTTY_CELL_SEMANTIC_OUTPUT`/`_INPUT`/`_PROMPT`, screen.h:125): one of the three, read once per
+    distinct packed value. It is what locates a prompt cell (the plan's "ShellMarks' at-prompt boolean
+    alone does not locate prompt cells"), so painting can emphasise the prompt without recolouring it.
+
     `Cell` is a `__slots__` class rather than a dataclass: the go/no-go profile showed the full-grid
     read was almost entirely per-cell Python object construction, not FFI (see the phase report).
     Cells are interned by their packed raw value, so a grid of blanks builds one object, and each
     distinct glyph/style pair builds one — the fields and their values are unchanged.
     """
 
-    __slots__ = ("style_id", "text", "wide", "wide_head", "wide_tail")
+    __slots__ = ("semantic", "style_id", "text", "wide", "wide_head", "wide_tail")
 
     def __init__(
-        self, text: str, style_id: int, wide: int, wide_tail: bool = False, wide_head: bool = False
+        self, text: str, style_id: int, wide: int, wide_tail: bool = False, wide_head: bool = False,
+        semantic: int = G.CELL_SEMANTIC_OUTPUT,
     ) -> None:
         self.text = text
         self.style_id = style_id
         self.wide = wide  # one of GhosttyCellWide
         self.wide_tail = wide_tail
         self.wide_head = wide_head
+        self.semantic = semantic  # one of GhosttyCellSemanticContent
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Cell):
@@ -108,16 +115,17 @@ class Cell:
             and self.wide == other.wide
             and self.wide_tail == other.wide_tail
             and self.wide_head == other.wide_head
+            and self.semantic == other.semantic
         )
 
     def __repr__(self) -> str:
         return (
             f"Cell(text={self.text!r}, style_id={self.style_id}, wide={self.wide}, "
-            f"wide_tail={self.wide_tail}, wide_head={self.wide_head})"
+            f"wide_tail={self.wide_tail}, wide_head={self.wide_head}, semantic={self.semantic})"
         )
 
     def __hash__(self) -> int:
-        return hash((self.text, self.style_id, self.wide, self.wide_tail, self.wide_head))
+        return hash((self.text, self.style_id, self.wide, self.wide_tail, self.wide_head, self.semantic))
 
 
 @dataclass(frozen=True)
@@ -611,12 +619,17 @@ class VTBackend:
                 codepoint = (raw >> _CODEPOINT_LSB) & _CODEPOINT_MASK
                 wide = (raw >> _WIDE_LSB) & _WIDE_MASK
                 has_text = content_tag == _TAG_CODEPOINT or content_tag == _TAG_GRAPHEME
+                semantic = ctypes.c_int()
+                if self._libc.ghostty_cell_get(
+                        raw, G.CELL_DATA_SEMANTIC_CONTENT, ctypes.byref(semantic)) != G.GHOSTTY_SUCCESS:
+                    semantic.value = G.CELL_SEMANTIC_OUTPUT
                 cell = Cell(
                     text=chr(codepoint) if has_text and codepoint else "",
                     style_id=(raw >> _STYLE_ID_LSB) & _STYLE_ID_MASK,
                     wide=wide,
                     wide_tail=wide == _WIDE_TAIL,
                     wide_head=wide == _WIDE_HEAD,
+                    semantic=int(semantic.value),
                 )
                 if len(persistent) >= _DECODED_CELLS_MAX:
                     persistent.clear()
@@ -949,6 +962,168 @@ class VTBackend:
     def has_mark(self, name: str) -> bool:
         """Whether the tracked mark `name` is set and still has a place (a reset frees every mark)."""
         return self._mark_point(name) is not None
+
+    # -- prompt rows that survive scrolling (the pattern fallback's marks) --
+
+    def _cursor_locked(self) -> Cursor:
+        """The render-state cursor, read with the lock already held (the caller is inside `self.lock()`)."""
+        cur = G.GhosttyRenderStateCursor()
+        cur.size = ctypes.sizeof(G.GhosttyRenderStateCursor)
+        rc = self._libc.ghostty_render_state_get(self._render_state, G.RS_DATA_CURSOR, ctypes.byref(cur))
+        if rc != G.GHOSTTY_SUCCESS or not cur.viewport_has_value:
+            return Cursor(x=0, y=0, visible=False)
+        return Cursor(x=cur.viewport_x, y=cur.viewport_y, visible=cur.visible, wide_tail=cur.wide_tail)
+
+    def _row_cells_locked(self, y: int) -> list[Cell]:
+        """One viewport row's cells, read with the lock already held: seek the row iterator to `y` (each `next` lands
+        on the next row from the top), then decode. The caller is inside `self.lock()`."""
+        self._libc.ghostty_render_state_get(
+            self._render_state, G.RS_DATA_ROW_ITERATOR, ctypes.byref(self._row_iterator))
+        for _ in range(y + 1):
+            if not self._libc.ghostty_render_state_row_iterator_next(self._row_iterator):
+                return []
+        cells, _styles = self._read_row_cells({})
+        return cells
+
+    def _active_screen_locked(self) -> int:
+        """The terminal's active screen (PRIMARY / ALTERNATE), read with the lock already held. This is a terminal
+        data key, not a render-state one."""
+        v = ctypes.c_int()
+        if self._terminal is None or self._libc.ghostty_terminal_get(
+                self._terminal, G.DATA_ACTIVE_SCREEN, ctypes.byref(v)) != G.GHOSTTY_SUCCESS:
+            return G.SCREEN_PRIMARY
+        return int(v.value)
+
+    def _track_at_locked(self, x: int, y: int) -> ctypes.c_void_p:
+        """Track a grid reference at a viewport point, with the lock already held (the caller is inside `self.lock()`)."""
+        handle = ctypes.c_void_p()
+        if self._terminal is None:
+            return handle
+        point = G.GhosttyPoint()
+        point.tag = G.POINT_VIEWPORT
+        point.value.coordinate.x = x
+        point.value.coordinate.y = y
+        if self._libc.ghostty_terminal_grid_ref_track(self._terminal, point, ctypes.byref(handle)) \
+                != G.GHOSTTY_SUCCESS:
+            return ctypes.c_void_p()
+        return handle
+
+    def track_matching_prompt(self, match, extent_of) -> tuple[ctypes.c_void_p, ctypes.c_void_p, int] | None:
+        """QODO-121-1 #4/#6 and QODO-121-2 #1/#2: capture the cursor and its row, decide the pattern match, and create
+        the tracked references — all under ONE backend lock, so a feed slice cannot move the row between the capture and
+        the track. The cursor is the render-state cursor (finding 1): when the view is scrolled away from the live
+        cursor it has no viewport value, so no row is matched. The mark covers the prompt's cells, not a row: the first
+        cell (column 0) and the last matched cell are tracked together under this lock, so a reflow that wraps the
+        prompt keeps both ends (finding 2). `match(text)` is the canvas's pattern test; `extent_of(cells)` gives the
+        matched prompt's column extent. A row the shell already marked (any OSC-PROMPT cell) gets no pattern track
+        (Ruled O4). Returns (first_handle, last_handle, owning screen), or None."""
+        with self._lock:
+            self.sync_render_state()
+            if self._terminal is None:
+                return None
+            cur = self._cursor_locked()  # viewport coordinates; visible=False when the view is scrolled away
+            if not cur.visible or not (0 <= cur.y < self.rows):
+                return None
+            cells = self._row_cells_locked(cur.y)
+            text = "".join(c.text for c in cells if not c.wide_tail).rstrip(" ")
+            if any(c.semantic == G.CELL_SEMANTIC_PROMPT for c in cells):
+                return None  # OSC 133 wins on this row: no pattern track
+            if not match(text):
+                return None
+            extent = extent_of(cells)
+            if extent <= 0:
+                return None
+            first = self._track_at_locked(0, cur.y)
+            last = self._track_at_locked(extent - 1, cur.y)
+            if not first or not last:
+                if first:
+                    self._libc.ghostty_tracked_grid_ref_free(first)
+                if last:
+                    self._libc.ghostty_tracked_grid_ref_free(last)
+                return None
+            return (first, last, self._active_screen_locked())
+
+    def scrollback_offset(self) -> int:
+        """The viewport's offset in the scrollable area, read once, under the lock (finding 5)."""
+        with self._lock:
+            bar = G.GhosttyTerminalScrollbar()
+            if self._terminal is None or self._libc.ghostty_terminal_get(
+                    self._terminal, G.DATA_SCROLLBAR, ctypes.byref(bar)) != G.GHOSTTY_SUCCESS:
+                return 0
+            return int(bar.offset)
+
+    def track_cursor_row(self) -> ctypes.c_void_p:
+        """Track a grid reference at the render-state cursor, under the lock, and return its handle. A prompt row
+        matched on the cursor keeps its mark as it scrolls up: a tracked reference follows its cell (grid_ref_tracked.h),
+        so this is the one reference that still names that row once it has left the screen. The caller owns the handle
+        and frees it with `free_tracked`; a reset invalidates every tracked reference."""
+        with self._lock:
+            cur = self._cursor_locked()
+            return self._track_at_locked(cur.x, cur.y)
+
+    def free_tracked(self, handle: ctypes.c_void_p) -> None:
+        """Free a tracked reference the caller is discarding (a prompt row unmarked, a reset, a close)."""
+        with self._lock:
+            if handle:
+                self._libc.ghostty_tracked_grid_ref_free(handle)
+
+    def tracked_has_value(self, handle: ctypes.c_void_p) -> bool:
+        """Whether a tracked reference still resolves to retained content (QODO-121-1 #5), under the lock."""
+        with self._lock:
+            return bool(handle) and self._libc.ghostty_tracked_grid_ref_has_value(handle)
+
+    def tracked_viewport_row(self, handle: ctypes.c_void_p, offset: int, active_screen: int,
+                             owning_screen: int) -> int | None:
+        """QODO-121-1 #5/#6: the viewport row a tracked reference stands on now, given the scrollback `offset` read
+        once this update. A reference that has scrolled off reports its row in the whole screen space; the row on view
+        is that minus the offset. A freed/reset reference (no value) gives None, and so does a reference whose owning
+        screen is not the active one (a primary-screen mark must not decorate the alternate screen). Under the lock."""
+        with self._lock:
+            if self._terminal is None or not handle or not self._libc.ghostty_tracked_grid_ref_has_value(handle):
+                return None
+            if owning_screen != active_screen:
+                return None
+            coord = G.GhosttyPointCoordinate()
+            if self._libc.ghostty_tracked_grid_ref_point(handle, G.POINT_SCREEN, ctypes.byref(coord)) \
+                    != G.GHOSTTY_SUCCESS:
+                return None
+            row = int(coord.y) - offset
+            return row if 0 <= row < self.rows else None
+
+    def tracked_screen_coord(self, handle: ctypes.c_void_p, active_screen: int,
+                             owning_screen: int) -> tuple[int, int] | None:
+        """QODO-121-3: the whole-screen (row, column) a tracked reference stands on now, checked against its owning
+        screen, whether or not it is inside the viewport. A freed/reset reference (no value), one whose owning screen is
+        not the active one, gives None. Under the lock."""
+        with self._lock:
+            if self._terminal is None or not handle or not self._libc.ghostty_tracked_grid_ref_has_value(handle):
+                return None
+            if owning_screen != active_screen:
+                return None
+            coord = G.GhosttyPointCoordinate()
+            if self._libc.ghostty_tracked_grid_ref_point(handle, G.POINT_SCREEN, ctypes.byref(coord)) \
+                    != G.GHOSTTY_SUCCESS:
+                return None
+            return (int(coord.y), int(coord.x))
+
+    def tracked_viewport_rows(self, handles: Sequence[ctypes.c_void_p]) -> set[int]:
+        """The viewport rows the tracked references in `handles` stand on now, under the lock. A reference that has
+        scrolled off reports its row in the whole screen space; the row on view is that minus the viewport offset, read
+        once here. A freed or reset reference (no value) contributes nothing."""
+        offset = self.scrollback_offset()
+        rows: set[int] = set()
+        with self._lock:
+            for handle in handles:
+                if not handle or not self._libc.ghostty_tracked_grid_ref_has_value(handle):
+                    continue
+                coord = G.GhosttyPointCoordinate()
+                if self._libc.ghostty_tracked_grid_ref_point(handle, G.POINT_SCREEN, ctypes.byref(coord)) \
+                        != G.GHOSTTY_SUCCESS:
+                    continue
+                row = int(coord.y) - offset
+                if 0 <= row < self.rows:
+                    rows.add(row)
+        return rows
 
     def text_since(self, name: str, cap: int = DEFAULT_TEXT_CAP, join_wrapped: bool = False) -> list[str]:
         """The text produced since the tracked mark `name`, capped by the caller.

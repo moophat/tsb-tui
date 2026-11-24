@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from tsb_tui.term import VTBackend, load
+from tsb_tui.term import ghostty as G
 
 GOLDENS = Path(__file__).resolve().parents[1] / "program" / "contract" / "fixtures" / "C4"
 
@@ -504,7 +505,6 @@ def test_text_since_a_tracked_mark_survives_scrolling(lib) -> None:
 
 # -- the screen read, exactly (phase 9: drive's `read screen`, `read reply`, `prompt` and `screen` waits) --
 
-
 def test_visible_rows_is_exactly_the_screen_whatever_the_formatter_trims(lib) -> None:
     """D50: `read screen` is the screen at the session's size, row for row. The formatter prints scrollback then screen
     and trims blank rows from the end, so "the last `rows` lines" is the screen only when the screen is full: a short
@@ -717,3 +717,118 @@ def test_grid_lines_and_the_scrollbar_share_one_row_space(lib) -> None:
         assert shown.read()[0] == trimmed[57], "trimming the tail does not move a row's index"
     finally:
         backend.close()
+
+
+# -- OSC 133 shell marks: the engine records each cell's semantic content (redesign P5, Ruled O4) --
+
+# A prompt (`A`), then the typed command (`B`), then its output (`C`), then the end (`D`): terminated by BEL, and the
+# same split run terminated by ST. The engine tags the prompt glyphs PROMPT, the input INPUT, the output OUTPUT, so a
+# renderer can emphasise the prompt without guessing which row is one.
+PROMPT_SEQ = (b"\x1b]133;A\a" + b"prompt$ " + b"\x1b]133;B\a" + b"ls -l"
+              + b"\x1b]133;C\a" + b"\r\nsome output" + b"\x1b]133;D;0\a")
+
+
+def _row_semantics(backend, y: int) -> tuple[str, list[int]]:
+    """Row `y`'s painted text and each cell's semantic content, read from the engine's grid (not the formatter). The
+    row iterator walks every row in the render state; the counter is its index."""
+    backend.sync_render_state()
+    import array
+    import ctypes
+
+    lib = backend.lib.lib
+    lib.ghostty_render_state_get(backend._render_state, G.RS_DATA_ROW_ITERATOR, ctypes.byref(backend._row_iterator))
+    index = 0
+    while lib.ghostty_render_state_row_iterator_next(backend._row_iterator):
+        if index == y:
+            view = G.GhosttyCellsView()
+            if lib.ghostty_render_state_row_get(backend._row_iterator, G.RS_ROW_DATA_CELLS_RAW,
+                                                ctypes.byref(view)) != G.GHOSTTY_SUCCESS:
+                return "", []
+            raws = array.array("Q")
+            raws.frombytes(ctypes.string_at(view.ptr, view.len * 8))
+            text, sems = [], []
+            for raw in raws:
+                out = ctypes.c_int()
+                if lib.ghostty_cell_get(raw, G.CELL_DATA_SEMANTIC_CONTENT, ctypes.byref(out)) == G.GHOSTTY_SUCCESS:
+                    sems.append(int(out.value))
+                codepoint = (raw >> 2) & ((1 << 21) - 1)
+                text.append(chr(codepoint) if (raw & 3) in (0, 1) and codepoint else " ")
+            return "".join(text), sems
+        index += 1
+    return "", []
+
+
+def test_osc_133_marks_prompt_cells_by_semantic_content(lib) -> None:
+    """Feed split OSC 133 A/B/C/D terminated by BEL: the prompt glyphs carry PROMPT, the typed command INPUT, the
+    output OUTPUT, and a blank cell is OUTPUT. Red on `91b4ec6`: the Python `Cell` did not carry semantic content."""
+    backend = VTBackend(lib, 20, 5, scrollback_bytes=SCROLLBACK)
+    try:
+        # Split the stream at every sequence boundary so a mark that spans a feed slice is read whole.
+        for cut in range(1, len(PROMPT_SEQ)):
+            backend.reset(20, 5)
+            backend.feed(PROMPT_SEQ[:cut])
+            backend.feed(PROMPT_SEQ[cut:])
+            text, sems = _row_semantics(backend, 0)
+            prompt = "".join(ch for ch, s in zip(text, sems) if s == G.CELL_SEMANTIC_PROMPT)
+            typed = "".join(ch for ch, s in zip(text, sems) if s == G.CELL_SEMANTIC_INPUT)
+            assert prompt == "prompt$ ", (cut, prompt, text, sems)
+            assert typed == "ls -l", (cut, typed, text, sems)
+            out_text, out_sems = _row_semantics(backend, 1)
+            assert all(s == G.CELL_SEMANTIC_OUTPUT for s in out_sems), (cut, out_text, out_sems)
+    finally:
+        backend.close()
+
+
+def test_osc_133_split_terminated_by_st_marks_the_same_cells(lib) -> None:
+    """The same marks terminated by ST (`ESC \\`), split across slices, land the prompt glyphs on PROMPT: a shell that
+    ends its OSC 133 with ST, not BEL, is marked exactly as one that uses BEL."""
+    st_seq = PROMPT_SEQ.replace(b"\a", b"\x1b\\")
+    backend = VTBackend(lib, 20, 5, scrollback_bytes=SCROLLBACK)
+    try:
+        for cut in range(1, len(st_seq)):
+            backend.reset(20, 5)
+            backend.feed(st_seq[:cut])
+            backend.feed(st_seq[cut:])
+            text, sems = _row_semantics(backend, 0)
+            prompt = "".join(ch for ch, s in zip(text, sems) if s == G.CELL_SEMANTIC_PROMPT)
+            typed = "".join(ch for ch, s in zip(text, sems) if s == G.CELL_SEMANTIC_INPUT)
+            assert prompt == "prompt$ ", (cut, prompt, text, sems)
+            assert typed == "ls -l", (cut, typed, text, sems)
+    finally:
+        backend.close()
+
+
+def test_no_shell_marks_leave_every_cell_output(lib) -> None:
+    """A session that prints no OSC 133 marks every cell OUTPUT, so a renderer adds no prompt emphasis and the target's
+    pattern is the only source of marks."""
+    backend = VTBackend(lib, 20, 5, scrollback_bytes=SCROLLBACK)
+    try:
+        backend.feed(b"just output\r\nmore lines\r\n")
+        for y in range(3):
+            _, sems = _row_semantics(backend, y)
+            assert all(s == G.CELL_SEMANTIC_OUTPUT for s in sems), (y, sems)
+    finally:
+        backend.close()
+
+
+def test_a_prompt_mark_survives_scrolling_and_a_reset_clears_it(lib) -> None:
+    """A prompt cell marked by the shell stays PROMPT as its row scrolls into scrollback; a reset (a reattach's dump)
+    clears every semantic, so rows from before this attach are not marked."""
+    backend = VTBackend(lib, 10, 3, scrollback_bytes=SCROLLBACK)
+    try:
+        backend.feed(b"\x1b]133;A\aprompt$ \x1b]133;B\als\x1b]133;C\a\r\nout\r\n")
+        first_text, first_sems = _row_semantics(backend, 0)
+        assert any(s == G.CELL_SEMANTIC_PROMPT for s in first_sems), (first_text, first_sems)
+        for i in range(8):
+            backend.feed(f"L{i}\r\n".encode())
+        backend.scroll_viewport(G.SCROLL_VIEWPORT_TOP)
+        top_text, top_sems = _row_semantics(backend, 0)
+        assert top_text.startswith("prompt$ "), (top_text, top_sems)
+        assert any(s == G.CELL_SEMANTIC_PROMPT for s in top_sems), "the prompt mark survives scrolling"
+        backend.reset(10, 3)
+        backend.feed(b"\x1b]133;A\aprompt$ ")
+        _, sems = _row_semantics(backend, 0)
+        assert any(s == G.CELL_SEMANTIC_PROMPT for s in sems), "a fresh prompt after the reset is marked"
+    finally:
+        backend.close()
+

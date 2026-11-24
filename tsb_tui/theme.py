@@ -323,6 +323,9 @@ class TermPalette:
         if self._minimum_contrast > 1.0 and self.fg and self.term_bg:
             fg_colour = RichColor.parse(lift(self.fg, self.term_bg, self._minimum_contrast))
         self.default = Style(color=fg_colour, bgcolor=default_bg)
+        # Ruled O4/O7: the prompt decoration TSB adds is bold + underline only, never a colour, so it leaves every
+        # received byte and nonprompt ANSI colour as it came, and the contrast of the cell's own text is unchanged.
+        self.prompt_decoration = Style(bold=True, underline=True)
 
     # -- engine colours --
 
