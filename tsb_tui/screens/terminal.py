@@ -56,6 +56,7 @@ from tsb_contract_client import ApiError, AttachRefused
 
 from .. import glyphs
 from .._transport import ConnectionClosed, HandshakeError, HttpError, ProtocolError
+from ..drive.prompt_pattern import ParseError, compile_pattern
 from ..model import actions as A
 from ..model.attachment import AttachmentPump, AttachmentState, PumpHooks, close_outcome
 from ..model.countdown import format_duration, parse_timestamp
@@ -2152,9 +2153,37 @@ class TerminalScreen(Screen):
             self._sync_prompts()
             self.refresh_status()
         self._mark_fleet_dirty()
+        # Ruled O4: the target's prompt pattern (the field the contract publishes) is read on the attach and given to
+        # this canvas; an invalid one is ignored and named once in this session's status line. Attachment-local.
+        self.run_worker(self._load_prompt_pattern(slot), exclusive=False)
         waiting, slot.after_attach = slot.after_attach, []
         for then in waiting:
             self._run_then(slot, then)
+
+    async def _load_prompt_pattern(self, slot: SessionSlot) -> None:
+        target = slot.target
+        if self.app.under_drive:
+            return  # Option D: the attach-time pattern read is the interactive pane's alone. Under drive (headless),
+            # decoration is invisible on screen text, so nothing is read; drive's send-gate lifecycle is untouched.
+        if slot.closed:
+            return
+        try:
+            record = await asyncio.to_thread(self.app.client.get_target, target)
+        except (ApiError, HttpError, OSError, ValueError):
+            return  # the inventory unreadable is not a prompt mark, and not this session's to name
+        if slot.closed:
+            return
+        if not isinstance(record, dict) or record.get("id") != target:
+            return  # a stale target response marks nothing
+        source = record.get("prompt_pattern")
+        if source is None:
+            return  # a target with no pattern shows no prompt marks (the corpus: no generic pattern is supplied)
+        try:
+            compiled = compile_pattern(source)
+        except ParseError as exc:
+            self.set_login_status(slot, f"prompt pattern ignored: {exc}")
+            return
+        slot.canvas.set_prompt_pattern(compiled)
 
     # -- the pump's callbacks, each for the session it belongs to --
 

@@ -37,6 +37,7 @@ the style's contents rather than by id.
 
 from __future__ import annotations
 
+import ctypes
 import time
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
@@ -62,6 +63,21 @@ from ..theme import TermPalette
 HOLD_LIMIT_S = 1.0
 
 _STYLE_ID = attrgetter("style_id")
+
+
+def _column_extent(cells) -> int:
+    """The columns the row's text occupies, trailing blanks trimmed. A wide glyph counts both its columns (the head
+    spans two; its spacer tail adds none)."""
+    col = 0
+    last = 0
+    for c in cells:
+        if c.wide_tail:
+            continue  # the head already spans this column
+        col += 2 if c.wide_head else 1
+        if c.text and c.text != " ":
+            last = col
+    return last
+
 # Textual numbers the buttons 1 left, 2 middle, 3 right; a motion with no button down carries 0.
 # The wheel is buttons four and five in xterm's numbering, which mouse/event.h keeps (FOUR, FIVE).
 _WHEEL_UP, _WHEEL_DOWN = 4, 5
@@ -218,6 +234,17 @@ class Canvas(Widget):
         # the design note's §4 asks the bench to report. The lock is taken per paint; this is the total.
         self.lock_wait_ms = 0.0
         self.rebuilt_rows: list[int] = []
+        # Ruled O4/O7 prompt decoration. `_prompt_pattern` is the target's compiled I-Regexp (None when the target has
+        # no pattern, or its pattern is unusable). `_pattern_handles` are tracked grid references, one per cursor row
+        # that matched while the cursor sat on it; a tracked reference follows its cell, so the row keeps its mark as
+        # it scrolls up. `_pattern_extents` records, per handle, the column count of the trimmed text that matched at
+        # that moment — the prompt cells. Ruled O4 (round 4): only columns below that extent are decorated; cells
+        # written later on the row (the echoed input) are not. `_pattern_rows` maps the viewport rows the handles name
+        # at the last paint to their extent. Rows from before this attach are never marked: it starts empty.
+        self._prompt_pattern = None
+        self._pattern_handles: list[ctypes.c_void_p] = []
+        self._pattern_extents: dict[int, int] = {}
+        self._pattern_rows: dict[int, int] = {}
 
     # -- what the canvas exposes --
 
@@ -278,6 +305,7 @@ class Canvas(Widget):
         self._released = True
         if self._timer is not None:
             self._timer.stop()
+        self._clear_pattern_state()
         self._backend.close()
 
     def feed(self, data: bytes) -> None:
@@ -444,6 +472,52 @@ class Canvas(Widget):
             self._selection = None
             self._pending = True
 
+    def _clear_pattern_state(self) -> None:
+        """Free every tracked pattern handle and drop the marks and extents (set a new pattern, a reset, a close)."""
+        for handle in self._pattern_handles:
+            self._backend.free_tracked(handle)
+        self._pattern_handles = []
+        self._pattern_extents = {}
+        self._pattern_rows = {}
+
+    def set_prompt_pattern(self, compiled: Any) -> None:
+        """The target's compiled prompt pattern (Ruled O4), or None. Marks from a prior pattern are dropped and their
+        tracked references freed, so rows from before this attach, and rows marked by the previous pattern, stay
+        unmarked; the next paint marks the cursor row when it matches."""
+        self._clear_pattern_state()
+        self._prompt_pattern = compiled
+        self._pending = True
+
+    def _update_pattern_rows(self, cursor: Cursor | None) -> None:
+        """The viewport rows the pattern marks now. A row matched while the cursor sat on it is tracked, so it keeps
+        its mark as it scrolls up (Amendment 2). OSC 133 wins where it marked the cursor row, so a row the shell already
+        marks gets no pattern track."""
+        if self._prompt_pattern is None:
+            self._pattern_rows = {}
+            return
+        rows_extents: dict[int, int] = {}
+        for handle in self._pattern_handles:
+            r = self._backend.tracked_viewport_row(handle)
+            if r is not None:
+                rows_extents[r] = self._pattern_extents[handle.value]
+        if cursor is not None and cursor.visible and 0 <= cursor.y < len(self._rows):
+            row = self._rows[cursor.y]
+            if row is not None:
+                text = "".join(c.text for c in row.cells if not c.wide_tail).rstrip(" ")
+                osc_prompt = any(c.semantic == G.CELL_SEMANTIC_PROMPT for c in row.cells)
+                if not osc_prompt and self._prompt_pattern.matches(text) and cursor.y not in rows_extents:
+                    handle = self._backend.track_cursor_row()
+                    if handle:
+                        self._pattern_handles.append(handle)
+                        # Ruled O4 (round 4): the prompt cells are the columns the row held at this moment. Record the
+                        # column extent of the trimmed text that matched; later-typed cells on the row stay undecorated.
+                        extent = _column_extent(row.cells)
+                        self._pattern_extents[handle.value] = extent
+                        r = self._backend.tracked_viewport_row(handle)
+                        if r is not None:
+                            rows_extents[r] = extent
+        self._pattern_rows = rows_extents
+
     def _rebuild_overlay(self, origin: int) -> bool:
         """The marks on view as cells of this canvas's rows, given the engine row the viewport starts at. True when
         they differ from what was drawn."""
@@ -510,11 +584,16 @@ class Canvas(Widget):
             self._reset_rows()
         before = self._cursor_rows()
         for row in rows:
+            if row.y < len(self._rows):
+                self._rows[row.y] = row
+        # The pattern mark depends on the cursor row's text, so read every dirty row first, then mark, then build
+        # each strip (a newly-marked row must paint in the same pass it was matched on).
+        self._cursor = cursor if cursor.visible else None
+        self._update_pattern_rows(cursor)
+        for row in rows:
             if row.y < len(self._strips):
                 self._strips[row.y] = self._build_strip(row)
-                self._rows[row.y] = row
         self.rebuilt_rows = [row.y for row in rows]
-        self._cursor = cursor if cursor.visible else None
         marked = self._rebuild_overlay(origin)
         if self._follow_cursor() or marked:
             self.refresh()
@@ -525,13 +604,30 @@ class Canvas(Widget):
 
     def _build_strip(self, row: Row) -> Strip:
         """One row as runs of equal style. A wide character's spacer tail adds no text: the head
-        already spans both columns. Style ids are resolved against this row's own map."""
+        already spans both columns. Style ids are resolved against this row's own map. Ruled O4/O7: a cell the shell
+        marked as prompt (OSC 133, its semantic content), and the cells below the matched extent of a row the target
+        pattern matched, get the bold + underline decoration, never a colour. Cells written later on a pattern-matched
+        row (the echoed input) are below the recorded extent and stay undecorated; nothing else is touched."""
         segments: list[Segment] = []
         memo: dict[int, Style] = {}
-        for style_id, run in groupby(row.cells, _STYLE_ID):
-            text = "".join([c.text or " " for c in run if not c.wide_tail])
+        extent = self._pattern_rows.get(row.y)  # columns the matched prompt occupied; None if not a pattern row
+        keyed: list[tuple[int, bool, object]] = []
+        col = 0
+        for c in row.cells:
+            decorated = c.semantic == G.CELL_SEMANTIC_PROMPT or (extent is not None and col < extent)
+            keyed.append((c.style_id, decorated, c))
+            if not c.wide_tail:
+                col += 2 if c.wide_head else 1
+        # Group by style id and by decorated, so a prompt cell splits from the input/output cells it shares a
+        # style id with. `run` is a lazy groupby sub-iterator, so materialize it before reading its cells twice.
+        for (style_id, decorated), run in groupby(keyed, lambda x: (x[0], x[1])):
+            cells = list(run)
+            text = "".join([t[2].text or " " for t in cells if not t[2].wide_tail])
             if text:
-                segments.append(Segment(text, self._style_of(row, style_id, memo)))
+                style = self._style_of(row, style_id, memo)
+                if decorated:
+                    style = style + self._palette.prompt_decoration
+                segments.append(Segment(text, style))
         strip = Strip(segments)
         cols = self._backend.cols
         if strip.cell_length != cols:
@@ -669,6 +765,9 @@ class Canvas(Widget):
 
     def _reset_rows(self) -> None:
         rows = self._backend.rows
+        # A dump rebuilt the grid at a new geometry: every tracked reference the engine held is gone, so free the
+        # pattern's handles (the pattern itself stays — the target did not change) and start unmarked again.
+        self._clear_pattern_state()
         self._strips = [None] * rows
         self._rows = [None] * rows
         self._cursor = None

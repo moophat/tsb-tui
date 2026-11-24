@@ -82,22 +82,29 @@ class Cell:
     identity for the cell's style, which the backend caches so painting resolves it once per
     distinct id, not once per cell (plan R4).
 
+    `semantic` is the cell's semantic content the engine records from OSC 133 shell marks
+    (`GHOSTTY_CELL_SEMANTIC_OUTPUT`/`_INPUT`/`_PROMPT`, screen.h:125): one of the three, read once per
+    distinct packed value. It is what locates a prompt cell (the plan's "ShellMarks' at-prompt boolean
+    alone does not locate prompt cells"), so painting can emphasise the prompt without recolouring it.
+
     `Cell` is a `__slots__` class rather than a dataclass: the go/no-go profile showed the full-grid
     read was almost entirely per-cell Python object construction, not FFI (see the phase report).
     Cells are interned by their packed raw value, so a grid of blanks builds one object, and each
     distinct glyph/style pair builds one — the fields and their values are unchanged.
     """
 
-    __slots__ = ("style_id", "text", "wide", "wide_head", "wide_tail")
+    __slots__ = ("semantic", "style_id", "text", "wide", "wide_head", "wide_tail")
 
     def __init__(
-        self, text: str, style_id: int, wide: int, wide_tail: bool = False, wide_head: bool = False
+        self, text: str, style_id: int, wide: int, wide_tail: bool = False, wide_head: bool = False,
+        semantic: int = G.CELL_SEMANTIC_OUTPUT,
     ) -> None:
         self.text = text
         self.style_id = style_id
         self.wide = wide  # one of GhosttyCellWide
         self.wide_tail = wide_tail
         self.wide_head = wide_head
+        self.semantic = semantic  # one of GhosttyCellSemanticContent
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Cell):
@@ -108,16 +115,17 @@ class Cell:
             and self.wide == other.wide
             and self.wide_tail == other.wide_tail
             and self.wide_head == other.wide_head
+            and self.semantic == other.semantic
         )
 
     def __repr__(self) -> str:
         return (
             f"Cell(text={self.text!r}, style_id={self.style_id}, wide={self.wide}, "
-            f"wide_tail={self.wide_tail}, wide_head={self.wide_head})"
+            f"wide_tail={self.wide_tail}, wide_head={self.wide_head}, semantic={self.semantic})"
         )
 
     def __hash__(self) -> int:
-        return hash((self.text, self.style_id, self.wide, self.wide_tail, self.wide_head))
+        return hash((self.text, self.style_id, self.wide, self.wide_tail, self.wide_head, self.semantic))
 
 
 @dataclass(frozen=True)
@@ -611,12 +619,17 @@ class VTBackend:
                 codepoint = (raw >> _CODEPOINT_LSB) & _CODEPOINT_MASK
                 wide = (raw >> _WIDE_LSB) & _WIDE_MASK
                 has_text = content_tag == _TAG_CODEPOINT or content_tag == _TAG_GRAPHEME
+                semantic = ctypes.c_int()
+                if self._libc.ghostty_cell_get(
+                        raw, G.CELL_DATA_SEMANTIC_CONTENT, ctypes.byref(semantic)) != G.GHOSTTY_SUCCESS:
+                    semantic.value = G.CELL_SEMANTIC_OUTPUT
                 cell = Cell(
                     text=chr(codepoint) if has_text and codepoint else "",
                     style_id=(raw >> _STYLE_ID_LSB) & _STYLE_ID_MASK,
                     wide=wide,
                     wide_tail=wide == _WIDE_TAIL,
                     wide_head=wide == _WIDE_HEAD,
+                    semantic=int(semantic.value),
                 )
                 if len(persistent) >= _DECODED_CELLS_MAX:
                     persistent.clear()
@@ -949,6 +962,53 @@ class VTBackend:
     def has_mark(self, name: str) -> bool:
         """Whether the tracked mark `name` is set and still has a place (a reset frees every mark)."""
         return self._mark_point(name) is not None
+
+    # -- prompt rows that survive scrolling (the pattern fallback's marks) --
+
+    def track_cursor_row(self) -> ctypes.c_void_p:
+        """Track a grid reference at the render-state cursor, under the lock, and return its handle. A prompt row
+        matched on the cursor keeps its mark as it scrolls up: a tracked reference follows its cell (grid_ref_tracked.h),
+        so this is the one reference that still names that row once it has left the screen. The caller owns the handle
+        and frees it with `free_tracked`; a reset invalidates every tracked reference."""
+        with self._lock:
+            cur = self.cursor()
+            point = G.GhosttyPoint()
+            point.tag = G.POINT_VIEWPORT
+            point.value.coordinate.x = cur.x
+            point.value.coordinate.y = cur.y
+            handle = ctypes.c_void_p()
+            if self._terminal is None:
+                return handle
+            if self._libc.ghostty_terminal_grid_ref_track(self._terminal, point, ctypes.byref(handle)) \
+                    != G.GHOSTTY_SUCCESS:
+                return ctypes.c_void_p()
+            return handle
+
+    def free_tracked(self, handle: ctypes.c_void_p) -> None:
+        """Free a tracked reference the caller is discarding (a prompt row unmarked, a reset, a close)."""
+        with self._lock:
+            if handle:
+                self._libc.ghostty_tracked_grid_ref_free(handle)
+
+    def tracked_viewport_row(self, handle: ctypes.c_void_p) -> int | None:
+        """The viewport row one tracked reference stands on now (a reference that has scrolled off reports its row in
+        the whole screen space; the row on view is that minus the viewport offset). A freed or reset reference (no
+        value) gives None. Under the lock."""
+        with self._lock:
+            if self._terminal is None or not handle or not self._libc.ghostty_tracked_grid_ref_has_value(handle):
+                return None
+            coord = G.GhosttyPointCoordinate()
+            if self._libc.ghostty_tracked_grid_ref_point(handle, G.POINT_SCREEN, ctypes.byref(coord)) \
+                    != G.GHOSTTY_SUCCESS:
+                return None
+            row = int(coord.y) - self.scrollback_position().offset
+            return row if 0 <= row < self.rows else None
+
+    def tracked_viewport_rows(self, handles: Sequence[ctypes.c_void_p]) -> set[int]:
+        """The viewport rows the tracked references in `handles` stand on now (a reference that has scrolled off
+        reports its row in the whole screen space; the row on view is that minus the viewport offset). A freed or
+        reset reference (no value) contributes nothing. Under the lock."""
+        return {row for row in (self.tracked_viewport_row(handle) for handle in handles) if row is not None}
 
     def text_since(self, name: str, cap: int = DEFAULT_TEXT_CAP, join_wrapped: bool = False) -> list[str]:
         """The text produced since the tracked mark `name`, capped by the caller.

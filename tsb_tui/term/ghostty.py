@@ -95,6 +95,13 @@ CELL_CONTENT_CODEPOINT_GRAPHEME = 1
 CELL_CONTENT_BG_COLOR_PALETTE = 2
 CELL_CONTENT_BG_COLOR_RGB = 3
 
+# ---- Cell data key + semantic content (screen.h:145 GhosttyCellData, :125 GhosttyCellSemanticContent) ----------
+CELL_DATA_SEMANTIC_CONTENT = 9
+
+CELL_SEMANTIC_OUTPUT = 0
+CELL_SEMANTIC_INPUT = 1
+CELL_SEMANTIC_PROMPT = 2
+
 CELL_WIDE_NARROW = 0
 CELL_WIDE_WIDE = 1
 CELL_WIDE_SPACER_TAIL = 2
@@ -553,6 +560,7 @@ _DECLARED_ENUMS: dict[str, dict[str, int]] = {
         "PALETTE": STYLE_COLOR_PALETTE,
         "RGB": STYLE_COLOR_RGB,
     },
+    "GhosttyCellData": {"SEMANTIC_CONTENT": CELL_DATA_SEMANTIC_CONTENT},
     "GhosttyPointTag": {
         "ACTIVE": POINT_ACTIVE,
         "VIEWPORT": POINT_VIEWPORT,
@@ -796,6 +804,9 @@ class GhosttyLib:
             ctypes.POINTER(ctypes.c_size_t),
         ]
         L.ghostty_grid_ref_graphemes.restype = ctypes.c_int
+        # screen.h:336. A packed cell's typed data, e.g. its semantic content (from OSC 133).
+        L.ghostty_cell_get.argtypes = [ctypes.c_uint64, ctypes.c_int, ctypes.c_void_p]
+        L.ghostty_cell_get.restype = ctypes.c_int
         # screen.h:383. `row` is the packed GhosttyRow value.
         L.ghostty_row_get.argtypes = [ctypes.c_uint64, ctypes.c_int, ctypes.c_void_p]
         L.ghostty_row_get.restype = ctypes.c_int
@@ -1094,6 +1105,7 @@ _FUNCTION_NAMES: tuple[str, ...] = (
     "ghostty_grid_ref_cell",
     "ghostty_grid_ref_row",
     "ghostty_grid_ref_graphemes",
+    "ghostty_cell_get",
     "ghostty_row_get",
     "ghostty_render_state_new",
     "ghostty_render_state_free",
