@@ -35,6 +35,7 @@ from ..model.attachment import AttachmentState
 from ..model.countdown import parse_timestamp
 from ..model.fleet import display_id
 from ..widgets.status_row import Hint, KeysTarget
+from .fleet_view import TAB_ALERTS
 
 # The clock the input guard reads; a test replaces it to move past the guard without waiting.
 monotonic = time.monotonic
@@ -421,52 +422,7 @@ class AlertStack(Vertical):
         if message.choice.key == "alert:dismiss":
             self.app.dismiss_alert(popup.alert)
         else:
-            self.app.push_screen(AlertsScreen(self._terminal))
-
-
-class AlertsScreen(ModalScreen[None]):
-    """All alerts: one line per active alert, until the Alerts tab exists (phase 8)."""
-
-    DEFAULT_CSS = """
-    AlertsScreen { align: center middle; }
-    #alerts-panel { width: 100%; max-width: 100; height: auto; border: round $warning;
-                    background: $surface; padding: 0 1; }
-    """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close")]
-
-    def __init__(self, terminal: Any) -> None:
-        super().__init__()
-        self._terminal = terminal
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="alerts-panel"):
-            yield Static("", id="alerts-list", markup=False)
-
-    def on_mount(self) -> None:
-        self._stop = self.app.watch_alerts(self.sync)
-        self._terminal.dialogs.append(self)
-        self.sync()
-        self._terminal.refresh_status()
-
-    def on_unmount(self) -> None:
-        self._stop()
-        if self in self._terminal.dialogs:
-            self._terminal.dialogs.remove(self)
-        self._terminal.refresh_status()
-
-    def sync(self) -> None:
-        active = list(self.app.alerts.active.values())
-        text = "\n".join(
-            f"▲ {alert_label(a)} · {alert_text(a)} {alert_raised(a)}" for a in reversed(active)
-        ) or "No active alerts."
-        self.query_one("#alerts-list", Static).update(f"All alerts\n{text}")
-        self.border_title = "▲ TSB alerts"
-
-    def status_target(self) -> KeysTarget:
-        return KeysTarget("alerts", (Hint("Esc", "close"),))
-
-    def action_close(self) -> None:
-        self.dismiss(None)
+            self._terminal.open_fleet_view(TAB_ALERTS)
 
 
 # -- an end state (F10) --

@@ -1,0 +1,840 @@
+{
+  "screens": [
+    {
+      "id": "login",
+      "screen_class": "LoginScreen",
+      "module": "tsb_tui.screens.login",
+      "state": "initial",
+      "keys_route": [
+        "launch"
+      ],
+      "expect": {
+        "texts": [
+          "tsb-tui \u2014 log in",
+          "Log in"
+        ]
+      },
+      "baseline_80x24": "login-80x24.svg",
+      "baseline_160x45": "login-160x45.svg"
+    },
+    {
+      "id": "terminal-empty",
+      "screen_class": "TerminalScreen",
+      "module": "tsb_tui.screens.terminal",
+      "state": "empty",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Targets"
+        ]
+      },
+      "baseline_80x24": "terminal-empty-80x24.svg",
+      "baseline_160x45": "terminal-empty-160x45.svg"
+    },
+    {
+      "id": "terminal-session",
+      "screen_class": "TerminalScreen",
+      "module": "tsb_tui.screens.terminal",
+      "state": "populated",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Sessions"
+        ]
+      },
+      "baseline_80x24": "terminal-session-80x24.svg",
+      "baseline_160x45": "terminal-session-160x45.svg"
+    },
+    {
+      "id": "terminal-sidebar-closed",
+      "screen_class": "TerminalScreen",
+      "module": "tsb_tui.screens.terminal",
+      "state": "sidebar-closed",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "f"
+      ],
+      "expect": {
+        "texts": [
+          "you type"
+        ]
+      },
+      "baseline_80x24": "terminal-sidebar-closed-80x24.svg",
+      "baseline_160x45": "terminal-sidebar-closed-160x45.svg"
+    },
+    {
+      "id": "terminal-full-view",
+      "screen_class": "TerminalScreen",
+      "module": "tsb_tui.screens.terminal",
+      "state": "full-view",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "ctrl+backslash",
+        "F"
+      ],
+      "expect": {
+        "texts": [
+          "Targets"
+        ]
+      },
+      "baseline_80x24": "terminal-full-view-80x24.svg",
+      "baseline_160x45": "terminal-full-view-160x45.svg"
+    },
+    {
+      "id": "new-session",
+      "screen_class": "NewSessionScreen",
+      "module": "tsb_tui.screens.new_session",
+      "state": "inventory-search",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "escape",
+        "n"
+      ],
+      "expect": {
+        "texts": [
+          "New session",
+          "filter targets"
+        ]
+      },
+      "baseline_80x24": "new-session-80x24.svg",
+      "baseline_160x45": "new-session-160x45.svg"
+    },
+    {
+      "id": "attach-confirm",
+      "screen_class": "AttachConfirmScreen",
+      "module": "tsb_tui.screens.attach_confirm",
+      "state": "first-use-hostkey",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Before you attach"
+        ]
+      },
+      "baseline_80x24": "attach-confirm-80x24.svg",
+      "baseline_160x45": "attach-confirm-160x45.svg"
+    },
+    {
+      "id": "menu-palette",
+      "screen_class": "MenuPalette",
+      "module": "tsb_tui.app",
+      "state": "open",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "f1"
+      ],
+      "expect": {
+        "texts": [
+          "type to find"
+        ]
+      },
+      "baseline_80x24": "menu-palette-80x24.svg",
+      "baseline_160x45": "menu-palette-160x45.svg"
+    },
+    {
+      "id": "credentials",
+      "screen_class": "CredentialsScreen",
+      "module": "tsb_tui.screens.credentials",
+      "state": "vault-list",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "shift+tab",
+        "down",
+        "down",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Your credentials"
+        ]
+      },
+      "baseline_80x24": "credentials-80x24.svg",
+      "baseline_160x45": "credentials-160x45.svg"
+    },
+    {
+      "id": "save-login",
+      "screen_class": "SaveLoginScreen",
+      "module": "tsb_tui.screens.credentials",
+      "state": "form",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "shift+tab",
+        "down",
+        "down",
+        "enter",
+        "n"
+      ],
+      "expect": {
+        "texts": [
+          "Save a login for a target"
+        ]
+      },
+      "baseline_80x24": "save-login-80x24.svg",
+      "baseline_160x45": "save-login-160x45.svg"
+    },
+    {
+      "id": "map-credential",
+      "screen_class": "MapScreen",
+      "module": "tsb_tui.screens.credentials",
+      "state": "target-mapping",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "shift+tab",
+        "down",
+        "down",
+        "enter",
+        "m"
+      ],
+      "expect": {
+        "texts": [
+          "Map a credential to targets"
+        ]
+      },
+      "baseline_80x24": "map-credential-80x24.svg",
+      "baseline_160x45": "map-credential-160x45.svg"
+    },
+    {
+      "id": "confirm-delete-credential",
+      "screen_class": "ConfirmDeleteScreen",
+      "module": "tsb_tui.screens.credentials",
+      "state": "prompt",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "shift+tab",
+        "down",
+        "down",
+        "enter",
+        "d"
+      ],
+      "expect": {
+        "texts": [
+          "Delete it"
+        ]
+      },
+      "baseline_80x24": "confirm-delete-credential-80x24.svg",
+      "baseline_160x45": "confirm-delete-credential-160x45.svg"
+    },
+    {
+      "id": "accounts",
+      "screen_class": "AccountsScreen",
+      "module": "tsb_tui.screens.accounts",
+      "state": "user-list",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "f1",
+        "a",
+        "c",
+        "c",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Accounts"
+        ]
+      },
+      "baseline_80x24": "accounts-80x24.svg",
+      "baseline_160x45": "accounts-160x45.svg"
+    },
+    {
+      "id": "account-form",
+      "screen_class": "AccountFormScreen",
+      "module": "tsb_tui.screens.accounts",
+      "state": "form",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "f1",
+        "a",
+        "c",
+        "c",
+        "enter",
+        "tab",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Create account"
+        ]
+      },
+      "baseline_80x24": "account-form-80x24.svg",
+      "baseline_160x45": "account-form-160x45.svg"
+    },
+    {
+      "id": "devices",
+      "screen_class": "DevicesScreen",
+      "module": "tsb_tui.screens.devices",
+      "state": "device-list",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "ctrl+backslash",
+        "V"
+      ],
+      "expect": {
+        "texts": [
+          "Your devices"
+        ]
+      },
+      "baseline_80x24": "devices-80x24.svg",
+      "baseline_160x45": "devices-160x45.svg"
+    },
+    {
+      "id": "confirm-revoke-device",
+      "screen_class": "ConfirmRevokeScreen",
+      "module": "tsb_tui.screens.devices",
+      "state": "prompt",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "ctrl+backslash",
+        "V",
+        "x"
+      ],
+      "expect": {
+        "texts": [
+          "Revoke it"
+        ]
+      },
+      "baseline_80x24": "confirm-revoke-device-80x24.svg",
+      "baseline_160x45": "confirm-revoke-device-160x45.svg"
+    },
+    {
+      "id": "target-form",
+      "screen_class": "TargetFormScreen",
+      "module": "tsb_tui.screens.target_form",
+      "state": "new-target",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "escape",
+        "a"
+      ],
+      "expect": {
+        "texts": [
+          "New target"
+        ]
+      },
+      "baseline_80x24": "target-form-80x24.svg",
+      "baseline_160x45": "target-form-160x45.svg"
+    },
+    {
+      "id": "confirm-delete-target",
+      "screen_class": "ConfirmTargetDeleteScreen",
+      "module": "tsb_tui.screens.target_form",
+      "state": "prompt",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "ctrl+backslash",
+        "F",
+        "tab",
+        "D"
+      ],
+      "expect": {
+        "texts": [
+          "Delete it"
+        ]
+      },
+      "baseline_80x24": "confirm-delete-target-80x24.svg",
+      "baseline_160x45": "confirm-delete-target-160x45.svg"
+    },
+    {
+      "id": "target-details",
+      "screen_class": "TargetDetailsScreen",
+      "module": "tsb_tui.screens.target_details",
+      "state": "details",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "escape",
+        "i"
+      ],
+      "expect": {
+        "texts": [
+          "id",
+          "host"
+        ]
+      },
+      "baseline_80x24": "target-details-80x24.svg",
+      "baseline_160x45": "target-details-160x45.svg"
+    },
+    {
+      "id": "whos-here",
+      "screen_class": "WhosHereScreen",
+      "module": "tsb_tui.screens.whos_here",
+      "state": "client-list",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "w"
+      ],
+      "expect": {
+        "texts": [
+          "Who's here"
+        ]
+      },
+      "baseline_80x24": "whos-here-80x24.svg",
+      "baseline_160x45": "whos-here-160x45.svg"
+    },
+    {
+      "id": "confirm-remove-peer",
+      "screen_class": "ConfirmRemoveScreen",
+      "module": "tsb_tui.screens.whos_here",
+      "state": "prompt",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "w",
+        "x"
+      ],
+      "expect": {
+        "texts": [
+          "Remove"
+        ]
+      },
+      "baseline_80x24": "confirm-remove-peer-80x24.svg",
+      "baseline_160x45": "confirm-remove-peer-160x45.svg"
+    },
+    {
+      "id": "size-dialog",
+      "screen_class": "SizeDialog",
+      "module": "tsb_tui.screens.size_dialog",
+      "state": "size-adjustment",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "r"
+      ],
+      "expect": {
+        "texts": [
+          "Ask"
+        ]
+      },
+      "baseline_80x24": "size-dialog-80x24.svg",
+      "baseline_160x45": "size-dialog-160x45.svg"
+    },
+    {
+      "id": "theme-picker",
+      "screen_class": "ThemePicker",
+      "module": "tsb_tui.screens.theme_picker",
+      "state": "picker",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "ctrl+backslash",
+        "T"
+      ],
+      "expect": {
+        "texts": [
+          "Theme"
+        ]
+      },
+      "baseline_80x24": "theme-picker-80x24.svg",
+      "baseline_160x45": "theme-picker-160x45.svg"
+    },
+    {
+      "id": "lock-screen",
+      "screen_class": "LockScreen",
+      "module": "tsb_tui.screens.lock",
+      "state": "locked",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "ctrl+backslash",
+        "L"
+      ],
+      "expect": {
+        "texts": [
+          "Screen locked"
+        ]
+      },
+      "baseline_80x24": "lock-screen-80x24.svg",
+      "baseline_160x45": "lock-screen-160x45.svg"
+    },
+    {
+      "id": "vault-passphrase",
+      "screen_class": "PassphraseScreen",
+      "module": "tsb_tui.screens.vault_prompts",
+      "state": "unlock-prompt",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "shift+tab",
+        "down",
+        "down",
+        "enter",
+        "d",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Unlock your vault"
+        ]
+      },
+      "baseline_80x24": "vault-passphrase-80x24.svg",
+      "baseline_160x45": "vault-passphrase-160x45.svg"
+    },
+    {
+      "id": "vault-init",
+      "screen_class": "InitScreen",
+      "module": "tsb_tui.screens.vault_prompts",
+      "state": "init-prompt",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "shift+tab",
+        "down",
+        "down",
+        "enter",
+        "d",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Set up your vault"
+        ]
+      },
+      "baseline_80x24": "vault-init-80x24.svg",
+      "baseline_160x45": "vault-init-160x45.svg"
+    },
+    {
+      "id": "confirm-end-session",
+      "screen_class": "ConfirmEndScreen",
+      "module": "tsb_tui.screens.chrome_dialogs",
+      "state": "prompt",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "x"
+      ],
+      "expect": {
+        "texts": [
+          "End it"
+        ]
+      },
+      "baseline_80x24": "confirm-end-session-80x24.svg",
+      "baseline_160x45": "confirm-end-session-160x45.svg"
+    },
+    {
+      "id": "confirm-kill-session",
+      "screen_class": "ConfirmKillScreen",
+      "module": "tsb_tui.screens.prompts",
+      "state": "quiet-prompt",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "y",
+        "x"
+      ],
+      "expect": {
+        "texts": [
+          "Kill"
+        ]
+      },
+      "baseline_80x24": "confirm-kill-session-80x24.svg",
+      "baseline_160x45": "confirm-kill-session-160x45.svg"
+    },
+    {
+      "id": "stale-answer",
+      "screen_class": "AnswerScreen",
+      "module": "tsb_tui.screens.prompts",
+      "state": "stale-choice",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "y"
+      ],
+      "expect": {
+        "texts": [
+          "asks you"
+        ]
+      },
+      "baseline_80x24": "stale-answer-80x24.svg",
+      "baseline_160x45": "stale-answer-160x45.svg"
+    },
+    {
+      "id": "alerts-tab",
+      "screen_class": "TerminalScreen",
+      "module": "tsb_tui.screens.terminal",
+      "state": "fleet-alerts",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "shift+tab",
+        "down",
+        "down",
+        "down",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Alerts"
+        ]
+      },
+      "baseline_80x24": "alerts-tab-80x24.svg",
+      "baseline_160x45": "alerts-tab-160x45.svg"
+    },
+    {
+      "id": "session-ended",
+      "screen_class": "EndedScreen",
+      "module": "tsb_tui.screens.prompts",
+      "state": "terminated-dialog",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Session ended"
+        ]
+      },
+      "baseline_80x24": "session-ended-80x24.svg",
+      "baseline_160x45": "session-ended-160x45.svg"
+    },
+    {
+      "id": "event-log",
+      "screen_class": "EventLogScreen",
+      "module": "tsb_tui.screens.chrome_dialogs",
+      "state": "viewer",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "h"
+      ],
+      "expect": {
+        "texts": [
+          "Event log"
+        ]
+      },
+      "baseline_80x24": "event-log-80x24.svg",
+      "baseline_160x45": "event-log-160x45.svg"
+    },
+    {
+      "id": "scroll-search",
+      "screen_class": "SearchPrompt",
+      "module": "tsb_tui.screens.chrome_dialogs",
+      "state": "prompt-bar",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "enter",
+        "enter",
+        "space",
+        "enter",
+        "ctrl+backslash",
+        "[",
+        "/"
+      ],
+      "expect": {
+        "texts": [
+          "/"
+        ]
+      },
+      "baseline_80x24": "scroll-search-80x24.svg",
+      "baseline_160x45": "scroll-search-160x45.svg"
+    },
+    {
+      "id": "text-screen-about",
+      "screen_class": "TextScreen",
+      "module": "tsb_tui.screens.chrome_dialogs",
+      "state": "about",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "f1",
+        "a",
+        "b",
+        "o",
+        "u",
+        "t",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "About"
+        ]
+      },
+      "baseline_80x24": "text-screen-about-80x24.svg",
+      "baseline_160x45": "text-screen-about-160x45.svg"
+    },
+    {
+      "id": "text-screen-settings",
+      "screen_class": "TextScreen",
+      "module": "tsb_tui.screens.chrome_dialogs",
+      "state": "settings",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "f1",
+        "s",
+        "e",
+        "t",
+        "t",
+        "enter"
+      ],
+      "expect": {
+        "texts": [
+          "Settings"
+        ]
+      },
+      "baseline_80x24": "text-screen-settings-80x24.svg",
+      "baseline_160x45": "text-screen-settings-160x45.svg"
+    },
+    {
+      "id": "text-screen-all-keys",
+      "screen_class": "TextScreen",
+      "module": "tsb_tui.screens.chrome_dialogs",
+      "state": "all-keys",
+      "keys_route": [
+        "admin",
+        "tab",
+        "password",
+        "enter",
+        "ctrl+backslash",
+        "?"
+      ],
+      "expect": {
+        "texts": [
+          "All keys"
+        ]
+      },
+      "baseline_80x24": "text-screen-all-keys-80x24.svg",
+      "baseline_160x45": "text-screen-all-keys-160x45.svg"
+    }
+  ]
+}

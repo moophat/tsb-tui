@@ -18,7 +18,7 @@ from prompt_support import NOW, click_laid_out, iso, open_stub_terminal
 from stub_server import SlowChunkedApp, StubServer
 
 from tsb_tui.app import TsbTuiApp
-from tsb_tui.screens.prompts import AlertPopup, AlertsScreen, AlertStack
+from tsb_tui.screens.prompts import AlertPopup, AlertStack
 
 
 def _alert(alert_id: str, kind: str, state: str = "raised", **subjects) -> dict:
@@ -186,8 +186,9 @@ def test_the_popup_never_takes_the_keyboard(wait_until) -> None:
     asyncio.run(_check())
 
 
-def test_all_alerts_lists_the_active_set_one_line_each(wait_until) -> None:
-    """Until the Alerts tab exists a dialog lists what is active, so a dismissed alert can still be read."""
+def test_all_alerts_opens_the_fleet_view_alerts_tab(wait_until) -> None:
+    """The popup's [ All alerts ] opens the fleet view's Alerts tab (TAB_ALERTS)."""
+    from tsb_tui.screens.fleet_view import TAB_ALERTS
 
     async def _check() -> None:
         stub = _stub()
@@ -201,14 +202,15 @@ def test_all_alerts_lists_the_active_set_one_line_each(wait_until) -> None:
                 await click_laid_out(pilot, wait_until, "AlertPopup Choice")  # dismiss the top one
                 await wait_until(pilot, lambda: len(_popups(screen)) == 1, "one left")
                 await pilot.click(AlertPopup.__name__ + " Choice:last-of-type")
-                await wait_until(pilot, lambda: isinstance(app.screen, AlertsScreen), "All alerts")
-                text = str(app.screen.query_one("#alerts-list").render())
-                lines = text.splitlines()
-                assert lines[0] == "All alerts" and len(lines) == 3
-                assert any("supervisor not answering" in line and "sv.1111" in line for line in lines)
-                assert any("VT worker unavailable" in line for line in lines)
+                await wait_until(
+                    pilot,
+                    lambda: screen.view_open and screen.fleet_view is not None and screen.fleet_view.tab == TAB_ALERTS,
+                    "fleet view Alerts tab",
+                )
+                assert screen.view_open
+                assert screen.fleet_view.tab == TAB_ALERTS
                 await pilot.press("escape")
-                await wait_until(pilot, lambda: app.screen is screen, "the dialog to close")
+                await wait_until(pilot, lambda: not screen.view_open, "the fleet view to close")
                 stub.alerts_stop.set()
 
     asyncio.run(_check())

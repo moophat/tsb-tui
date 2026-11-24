@@ -77,11 +77,13 @@ async def settle(pilot, wait_until, screen, *, alerts_quiet=False):
     if alerts_quiet:
         def quiet():
             row = next((r for r in screen.rail.rows if r.action == ACT_ALERTS), None)
-            return row is None or row.text.strip() in ("! Alerts 0", "!0")
+            alerts_zero = row is None or row.text.strip() in ("! Alerts 0", "!0")
+            alerts_empty = getattr(screen.app, "alerts", None) is None or getattr(screen.app.alerts, "count", 0) == 0
+            return alerts_zero and alerts_empty
         await wait_until(pilot, quiet, "a moment with no alert raised")
     if hasattr(screen, "_fleet_dirty") and screen._fleet_dirty:
         await wait_until(pilot, lambda: not screen._fleet_dirty, "fleet widgets to flush")
-    await pilot.pause()
+    await pilot.pause(0.05)
 
 
 async def workspace_with_sessions(app, pilot, wait_until, serve_app, url, *names, size_cols=80):
@@ -796,4 +798,200 @@ def test_a_click_on_a_list_title_folds_it_and_the_same_click_unfolds(serve, wait
             await pilot.click(Sidebar, offset=(4, height - 1))
             await pilot.pause()
             assert (sidebar.targets_height, sidebar.sessions_height) == before
+    asyncio.run(check())
+
+
+# -- Phase 06 acceptance tests: L1-focus, L1-hints, L1-escape --
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_full_flow_focus_chain_forward_and_back(serve, wait_until, screen_text, size):
+    """L1-focus: Full login -> targets -> open -> attach consent -> session -> leader -> sidebar/full view
+    -> new -> cancel flow, plus Vault/All alerts and every other screen. Assert exact focus chain and reverse traversal."""
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            # 1. LoginScreen: check focus on inputs, Tab and Shift+Tab traversal
+            assert app.screen.query_one("#username").has_focus, "Username input starts focused"
+            await pilot.press("tab")
+            await pilot.pause()
+            assert app.screen.query_one("#password").has_focus, "Password input receives focus on Tab"
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app.screen.query_one("#username").has_focus, "Username input recovers focus on Shift+Tab"
+
+            # Log in
+            screen = await key_login(pilot, app, wait_until)
+            app.permissions = frozenset({"target.edit", "broker.health"})
+            await pilot.pause()
+
+            # 2. Cockpit first-focus: targets filter
+            assert heavy_panes(app, screen, screen_text) == {"targets"}, "Targets list has first focus"
+
+            # 3. Focus chain forward: targets -> sessions -> rail -> targets
+            await pilot.press("tab")
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"sessions"}, "Tab moves targets -> sessions"
+
+            await pilot.press("tab")
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"rail"}, "Tab moves sessions -> rail"
+
+            await pilot.press("tab")
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"targets"}, "Tab moves rail -> targets"
+
+            # 4. Reverse traversal: targets -> rail -> sessions -> targets
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"rail"}, "Shift+Tab moves targets -> rail"
+
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"sessions"}, "Shift+Tab moves rail -> sessions"
+
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"targets"}, "Shift+Tab moves sessions -> targets"
+
+            # 5. Open session and check canvas focus
+            (sid,) = named_sessions(url, serve_app, "rtr-core-01")
+            await open_here(app, pilot, wait_until, sid)
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"canvas"}, "Open session gives canvas focus"
+
+            # 6. Full view forward and reverse
+            await pilot.press(LEADER, "F")
+            await wait_until(pilot, lambda: screen.view_open, "full view to open")
+            await pilot.press("tab")
+            await pilot.pause()
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: not screen.view_open, "full view to close")
+            assert heavy_panes(app, screen, screen_text) == {"canvas"}
+
+            # 7. New session dialog forward and reverse traversal
+            await pilot.press(LEADER, "n")
+            await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "NewSessionScreen to open")
+            await pilot.press("tab")
+            await pilot.pause()
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: app.screen is screen, "NewSessionScreen to close")
+            assert heavy_panes(app, screen, screen_text) == {"canvas"}
+
+            # 8. Vault (CredentialsScreen) forward and reverse traversal
+            await pilot.press(LEADER, "C")
+            await wait_until(pilot, lambda: isinstance(app.screen, CredentialsScreen), "CredentialsScreen to open")
+            await pilot.press("tab")
+            await pilot.pause()
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: app.screen is screen, "CredentialsScreen to close")
+
+            # 9. All alerts via rail
+            await to_rail(pilot, screen)
+            alerts_index = next(i for i, r in enumerate(screen.rail.rows) if r.action == ACT_ALERTS)
+            screen.rail.selected = alerts_index
+            await pilot.press("enter")
+            await wait_until(pilot, lambda: screen.view_open and screen.fleet_view.tab == "alerts", "Alerts view")
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: not screen.view_open, "Alerts view to close")
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_hint_row_inside_viewport(serve, wait_until, size):
+    """L1-hints / V5: Status row and key hints are inside viewport at both sizes, styled apart, spelled Ctrl+\\ never ^\\."""
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            screen, (_sid,) = await workspace_with_sessions(app, pilot, wait_until, serve_app, url, "rtr-core-01")
+            await pilot.pause()
+
+            # Viewport containment check
+            region = screen.status.region
+            assert region.right <= size[0], f"Status row exceeded viewport width: {region.right} > {size[0]}"
+            assert region.bottom <= size[1], f"Status row exceeded viewport height: {region.bottom} > {size[1]}"
+
+            # Hint syntax and styling rules: Ctrl+\ never ^\
+            status_text = screen.status.text
+            assert "^\\" not in status_text, f"Legacy leader ^\\ found in status text: {status_text}"
+            assert "Ctrl+\\" in status_text, f"Expected Ctrl+\\ in status text: {status_text}"
+
+            # Spacing rule: at least one space between key and label
+            pieces = screen.status._pieces
+            hint_key_pieces = [p for p in pieces if p.role == "hint_key"]
+            assert hint_key_pieces, "Status row must contain hint keys"
+            for i, p in enumerate(pieces[:-1]):
+                if p.role == "hint_key" and pieces[i + 1].role == "hint":
+                    assert pieces[i + 1].text.startswith(" "), f"Hint {p.text}{pieces[i + 1].text} missing space"
+
+            # Protected hints: F1 Menu key first
+            assert "F1 Menu" in status_text, f"Protected hint 'F1 Menu' missing: {status_text}"
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_escape_behaviour_per_screen(serve, wait_until, screen_text, size):
+    """L1-escape / V10: Esc clears query in filter; returns to canvas with open session; does nothing without session;
+    backs out one level in dialogs; reaches target on attached canvas."""
+    async def check():
+        serve_app, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            screen = await key_login(pilot, app, wait_until)
+            await pilot.pause()
+
+            # 1. In list without session open: empty Esc does nothing (never exits)
+            assert heavy_panes(app, screen, screen_text) == {"targets"}
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app.is_running and app.screen is screen
+            assert heavy_panes(app, screen, screen_text) == {"targets"}, "Esc does nothing without session"
+
+            # 2. In filter with query text: Esc clears query text and stays in list
+            await pilot.press("slash", "q", "u", "e", "r", "y")
+            await pilot.pause()
+            assert screen.sidebar.filter_text == "query"
+            await pilot.press("escape")
+            await pilot.pause()
+            assert screen.sidebar.filter_text == "", "Esc clears query"
+            assert heavy_panes(app, screen, screen_text) == {"targets"}, "Focus remains in targets after clearing query"
+
+            # 3. In dialogs: Esc backs out one level, never exits
+            await pilot.press("n")
+            await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "NewSessionScreen to open")
+            await pilot.press("escape")
+            await wait_until(pilot, lambda: app.screen is screen, "Esc backs out of NewSessionScreen")
+            assert app.is_running
+
+            # 4. Open a session
+            (sid,) = named_sessions(url, serve_app, "rtr-core-01")
+            await open_here(app, pilot, wait_until, sid)
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"canvas"}
+
+            # 5. List with open session: Esc returns focus to canvas, leaving sidebar open
+            await to_sessions_list(pilot, screen)
+            assert heavy_panes(app, screen, screen_text) == {"sessions"}
+            await pilot.press("escape")
+            await pilot.pause()
+            assert heavy_panes(app, screen, screen_text) == {"canvas"}, "Esc in list returns to canvas"
+            assert screen.sidebar_open, "Sidebar remains open after Esc"
+
+            # 6. Attached canvas: Esc reaches session as \x1b byte and does not leave canvas
+            client = screen.pump.state.client_id
+            await pilot.press("escape")
+            await flushed(pilot, screen, serve_app, wait_until)
+            assert b"\x1b" in serve_app.received(client), "Esc reaches the session"
+            assert heavy_panes(app, screen, screen_text) == {"canvas"}, "Canvas retains focus"
+
     asyncio.run(check())
