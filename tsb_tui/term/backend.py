@@ -1008,33 +1008,40 @@ class VTBackend:
             return ctypes.c_void_p()
         return handle
 
-    def track_matching_prompt(self, match, extent_of) -> tuple[ctypes.c_void_p, int, int] | None:
-        """QODO-121-1 #4/#6: capture the cursor and its row, decide the pattern match, and create the tracked
-        reference — all under ONE backend lock, so a feed slice cannot move the row between the capture and the track.
-        `match(text)` is the canvas's pattern test; `extent_of(cells)` gives the matched prompt's column extent. A row
-        the shell already marked (any OSC-PROMPT cell) gets no pattern track (Ruled O4). Returns (handle, extent,
-        owning screen), or None."""
+    def track_matching_prompt(self, match, extent_of) -> tuple[ctypes.c_void_p, ctypes.c_void_p, int] | None:
+        """QODO-121-1 #4/#6 and QODO-121-2 #1/#2: capture the cursor and its row, decide the pattern match, and create
+        the tracked references — all under ONE backend lock, so a feed slice cannot move the row between the capture and
+        the track. The cursor is the render-state cursor (finding 1): when the view is scrolled away from the live
+        cursor it has no viewport value, so no row is matched. The mark covers the prompt's cells, not a row: the first
+        cell (column 0) and the last matched cell are tracked together under this lock, so a reflow that wraps the
+        prompt keeps both ends (finding 2). `match(text)` is the canvas's pattern test; `extent_of(cells)` gives the
+        matched prompt's column extent. A row the shell already marked (any OSC-PROMPT cell) gets no pattern track
+        (Ruled O4). Returns (first_handle, last_handle, owning screen), or None."""
         with self._lock:
             self.sync_render_state()
-            x, y, visible = ctypes.c_uint16(), ctypes.c_uint16(), ctypes.c_bool()
             if self._terminal is None:
                 return None
-            get = self._libc.ghostty_terminal_get
-            get(self._terminal, G.DATA_CURSOR_X, ctypes.byref(x))
-            get(self._terminal, G.DATA_CURSOR_Y, ctypes.byref(y))
-            get(self._terminal, G.DATA_CURSOR_VISIBLE, ctypes.byref(visible))
-            if not visible.value or not (0 <= y.value < self.rows):
+            cur = self._cursor_locked()  # viewport coordinates; visible=False when the view is scrolled away
+            if not cur.visible or not (0 <= cur.y < self.rows):
                 return None
-            cells = self._row_cells_locked(y.value)
+            cells = self._row_cells_locked(cur.y)
             text = "".join(c.text for c in cells if not c.wide_tail).rstrip(" ")
             if any(c.semantic == G.CELL_SEMANTIC_PROMPT for c in cells):
                 return None  # OSC 133 wins on this row: no pattern track
             if not match(text):
                 return None
-            handle = self._track_at_locked(x.value, y.value)
-            if not handle:
+            extent = extent_of(cells)
+            if extent <= 0:
                 return None
-            return (handle, extent_of(cells), self._active_screen_locked())
+            first = self._track_at_locked(0, cur.y)
+            last = self._track_at_locked(extent - 1, cur.y)
+            if not first or not last:
+                if first:
+                    self._libc.ghostty_tracked_grid_ref_free(first)
+                if last:
+                    self._libc.ghostty_tracked_grid_ref_free(last)
+                return None
+            return (first, last, self._active_screen_locked())
 
     def scrollback_offset(self) -> int:
         """The viewport's offset in the scrollable area, read once, under the lock (finding 5)."""
@@ -1082,6 +1089,23 @@ class VTBackend:
                 return None
             row = int(coord.y) - offset
             return row if 0 <= row < self.rows else None
+
+    def tracked_viewport_coord(self, handle: ctypes.c_void_p, offset: int, active_screen: int,
+                               owning_screen: int) -> tuple[int, int] | None:
+        """QODO-121-2 #2: the viewport (row, column) a tracked reference stands on now, given the scrollback `offset`
+        read once this update. The column is unaffected by the offset; the row on view is the screen-space row minus
+        it. A freed/reset reference (no value), one scrolled off, or one whose owning screen is not active gives None."""
+        with self._lock:
+            if self._terminal is None or not handle or not self._libc.ghostty_tracked_grid_ref_has_value(handle):
+                return None
+            if owning_screen != active_screen:
+                return None
+            coord = G.GhosttyPointCoordinate()
+            if self._libc.ghostty_tracked_grid_ref_point(handle, G.POINT_SCREEN, ctypes.byref(coord)) \
+                    != G.GHOSTTY_SUCCESS:
+                return None
+            row = int(coord.y) - offset
+            return (row, int(coord.x)) if 0 <= row < self.rows else None
 
     def tracked_viewport_rows(self, handles: Sequence[ctypes.c_void_p]) -> set[int]:
         """The viewport rows the tracked references in `handles` stand on now, under the lock. A reference that has

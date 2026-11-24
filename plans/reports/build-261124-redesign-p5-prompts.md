@@ -213,3 +213,31 @@ review4 7, new_session 42, rail_tint 60, round1/2/3 14+17+21 — each EXIT=0). `
 load (a pilot timing flake in `test_the_credential_choice_takes_focus_and_a_key_picks_a_candidate`, unrelated to the
 prompt path) and passes isolated. `ruff` clean (EXIT=0), `make contract-check` green (v0.18.0, EXIT=0), `make lint`
 green (engine-check verified against PIN, EXIT=0). `git diff --name-only` lists only allowed paths. No commit, no push.
+
+## Round 6 — Qodo's second review of PR #121 (the orchestrator, 2026-11-24 11:0x), finding by finding
+Two findings in `QODO-121-2.md`, worked on top of head `a1c4c3e` (the round-5 commit), uncommitted. Files: `backend.py`,
+`canvas.py`, `test_redesign_prompts.py` only.
+
+**#1 scrolling back marks an unrelated row — FIXED.** `track_matching_prompt` read the active-area terminal cursor
+(`DATA_CURSOR_Y`) and used it as a viewport row, so scrolling into history could mark a row that coincidentally matched.
+Fix (the ruling): read the render-state cursor under the same backend lock; when the view is scrolled away from the live
+cursor it has no `viewport_has_value`, so `_cursor_locked` reports `visible=False` and no row is matched; use its
+viewport X/Y for both the row read and the tracked references. Red first-failing line:
+`tests/test_redesign_prompts.py:600`. Green after.
+
+**#2 narrow resizes leave wrapped prompts plain — FIXED.** A mark was one tracked row plus a column extent, so a reflow
+that wrapped the prompt decorated only its first row. The ruling asks for the prompt's first and last cells tracked
+(two references, both made under the same lock as the match) and the cells between them decorated in reading order on
+every row they span. The engine can track a reference at an arbitrary viewport cell — `_track_at_locked(x, y)` tracks a
+`POINT_VIEWPORT` at any (col, row) — so no STOP. `track_matching_prompt` now tracks the first cell (column 0) and the
+last matched cell (column `extent-1`) under one lock and returns both handles; the canvas stores marks as
+(first, last, screen), resolves each end to its viewport (row, column) via the new `tracked_viewport_coord`, and builds
+per-row reading-order spans (first row `fcol..cols-1`, middle rows full, last row `0..lcol`); `_build_strip` decorates
+cells inside a row's span. Red first-failing line: `tests/test_redesign_prompts.py:625`. Green after.
+
+**Gate (this round):** prompts (incl. snapshots + the two new finding tests) **30 passed**; engine + drive
+shell_marks/prompt_pattern/prompt_matcher **186 passed** (drive_prompt_pattern 27 as baseline, gate1.log EXIT=0); all
+redesign suites isolated green (contrast 17, focus 41, keys 20, layout 60, lists 60, lists_filter 30, review 20,
+review4 7, new_session 42, rail_tint 60, round1/2/3 14+17+21 — each EXIT=0). `ruff` clean (EXIT=0), `make
+contract-check` green (v0.18.0, EXIT=0), `make lint` green (engine-check verified against PIN, EXIT=0).
+`git diff --name-only` lists only allowed paths. No commit, no push.

@@ -378,15 +378,15 @@ def test_prompt_handles_are_freed_when_their_content_is_gone_and_kept_when_off_v
         canvas.set_prompt_pattern(compile_pattern("prompt$"))
         canvas.feed(b"prompt$ ")  # the cursor sits on the prompt row, so the pattern matches and tracks it
         _paint(canvas)
-        assert len(canvas._pattern_handles) == 1
+        assert len(canvas._pattern_marks) == 1
         # Scroll the prompt off the viewport: the reference stays valid, so it is kept.
         canvas.feed(b"a\r\nb\r\nc\r\nd\r\ne\r\nf\r\n")
         _paint(canvas)
-        assert len(canvas._pattern_handles) == 1, "a valid off-viewport reference was dropped"
+        assert len(canvas._pattern_marks) == 1, "a valid off-viewport mark was dropped"
         # A dump reset invalidates every tracked reference: the handle is freed and its extent dropped.
         canvas.feed_dump(20, 4, b"fresh grid")
         _paint(canvas)
-        assert len(canvas._pattern_handles) == 0, "a reference whose content is gone was kept"
+        assert len(canvas._pattern_marks) == 0, "a mark whose content is gone was kept"
 
     _run_canvas(lib, 20, 4, body, typist=True)
 
@@ -577,3 +577,52 @@ def test_prompt_decoration_meets_contrast_and_the_snapshots_hold(serve, wait_unt
             assert _decorated(unmarked_svg, "prompt$") == (False, False), \
                 "the unmarked baseline's prompt run carries a decoration"
     asyncio.run(check())
+
+
+def test_scrolling_into_history_marks_no_unrelated_row(lib):
+    """QODO-121-2 #1: `track_matching_prompt` read the active-area cursor Y as a viewport row, so scrolling into
+    history could mark an unrelated row. Fix: read the render-state cursor under the same lock, require it is in the
+    viewport (no match while the view is scrolled away from the live cursor), and use its viewport coordinates for both
+    the row read and the tracked reference. Red on the current head: rows fed before the pattern loaded acquire a mark
+    once the view scrolls away from the live cursor."""
+
+    def body(canvas):
+        # Feed prompt rows BEFORE any pattern is set: this history must stay unmarked.
+        canvas.feed(b"prompt$ a\r\nprompt$ b\r\nprompt$ c\r\nprompt$ d\r\n")
+        canvas.set_prompt_pattern(compile_pattern("prompt$ .*"))
+        canvas.feed(b"prompt$ live")  # the live cursor sits on this prompt row in the active area
+        _paint(canvas)
+        from tsb_tui.term import ghostty as _G
+        canvas._backend.scroll_viewport(_G.SCROLL_VIEWPORT_TOP)  # view scrolls into history, away from the live cursor
+        _paint(canvas)
+        # The rows on view are history fed before the pattern; none may acquire a mark.
+        for y in range(canvas._backend.rows):
+            assert not any(_emphasised(s) for _, _, s in _cells(canvas.render_line(y))), \
+                "scrolling into history marked an unrelated row"
+
+    _run_canvas(lib, 20, 4, body, typist=True)
+
+
+def test_a_narrow_resize_decorates_every_wrapped_prompt_row(lib):
+    """QODO-121-2 #2: a prompt mark was one tracked row plus a column extent, so a reflow that wrapped the prompt
+    decorated only its first row. Fix: the mark covers the prompt's cells — track the prompt's first and last cells
+    (two references, both made under the same lock as the match) and decorate the cells between them in reading order,
+    on every row they span. Red on the current head: after narrowing until the prompt wraps, its continuation row stays
+    plain."""
+
+    def body(canvas):
+        canvas.set_prompt_pattern(compile_pattern("prompt$ abcdef"))
+        canvas.feed(b"prompt$ abcdef")  # cursor on the prompt row; matched and tracked
+        _paint(canvas)
+        assert _emphasised(_style_at(canvas.render_line(0), 0))
+        canvas.resize_grid(10, 4)  # narrow enough that the 14-column prompt wraps onto two rows
+        _paint(canvas)
+        texts = [canvas.render_line(y).text for y in range(canvas._backend.rows)]
+        first = next(y for y, text in enumerate(texts) if text.startswith("prompt$"))
+        cont = first + 1  # the wrapped remainder ("cdef") lands on the next row
+        assert texts[cont].startswith("cdef"), "the prompt did not wrap onto a continuation row"
+        assert _emphasised(_style_at(canvas.render_line(first), 0)), "the first wrapped row lost its prompt mark"
+        assert _emphasised(_style_at(canvas.render_line(cont), 0)), \
+            "the wrapped prompt's continuation row is not decorated"
+
+    _run_canvas(lib, 20, 4, body, typist=True)
