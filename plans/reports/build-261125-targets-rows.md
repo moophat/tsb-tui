@@ -391,6 +391,76 @@ In `tsb_tui/widgets/sidebar.py`:
 - `tests/test_model_targets.py`: 13 passed (Exit code: 0)
 - Repository lint gate (`make lint`): 110 passed, engine-check OK, import-lint clean, leak-check clean, ruff clean (Exit code: 0)
 
+---
+
+## 10. Round 7: Other Screenshot Baselines
+
+### 1. Step 1: Initial Suite Run and Failure Identification
+Executed all 15 `tests/test_redesign_*.py` test suites in the foreground. Exactly 10 snapshot comparison tests failed at 160x45 (`size1`) across 4 test files:
+- `tests/test_redesign_focus.py:45` (6 tests):
+  - `test_new_is_the_last_selectable_rail_row_and_n_or_enter_opens_it[size1]` (`rail-new-160x45`)
+  - `test_vault_and_alerts_are_reachable_by_keys_alone[size1]` (`rail-vault-160x45`)
+  - `test_a_background_session_that_printed_gets_a_mark_until_it_is_shown[size1]` (`rail-activity-160x45`)
+  - `test_the_frame_says_so_when_the_keyboard_moves_to_you[size1]` (`token-notice-160x45`)
+  - `test_ctrl_right_bracket_detaches_from_the_canvas_and_the_lists_and_the_hint_never_drops[size1]` (`detach-hint-160x45`)
+  - `test_z_folds_the_other_list_and_z_again_restores[size1]` (`fold-sessions-160x45`)
+- `tests/test_redesign_keys.py:38` (1 test):
+  - `test_f1_menu_search_focus_and_hints[size1]` (`menu-workspace-160x45`)
+- `tests/test_redesign_layout.py:363` (2 tests):
+  - `test_two_size_baselines[panel-focused-size1]` (`panel-focused-160x45`)
+  - `test_two_size_baselines[session-size1]` (`session-160x45`)
+- `tests/test_redesign_prompts.py:508` (1 test):
+  - `test_prompt_decoration_meets_contrast_and_the_snapshots_hold[size1]` (`prompt-marked-160x45`, `prompt-unmarked-160x45`)
+- `tests/test_redesign_gallery.py`: all 76 tests passed (exit code 0; `confirm-delete-target-size0` and `confirm-delete-target-size1` passed cleanly under Round 5's fixed wall clock).
+
+### 2. Step 2: Target Row Diff Confirmation
+For every failing snapshot, old and new screen SVGs were compared after each test's own normalization. All diffs were verified to be **strictly in Targets rows**:
+- Target names kept whole (e.g. `[bold…` -> `[bold red]rich[/bold red]`, `telne…` -> `telnet scenario`).
+- Facts segments dropped from the right end (e.g. dropping trailing ` · lab` or ` · telnet`).
+- Open session numbers preserved (e.g. `open 1`).
+- Host deduplicated when label is host.
+No differences occurred outside of the sidebar Targets list rows.
+
+### 3. Step 3: Date / Clock Evaluation
+Evaluated whether any difference depended on the wall clock date (e.g. "N ago" relative time). None of the 10 failing tests displayed elapsed relative timestamps; hence no test clock monkeypatching was required.
+
+### 4. Step 4: Baseline Regeneration via Test Update Routes
+Regenerated exactly the 11 affected baselines using each test file's standard update route:
+- `UPDATE_P1_SNAPSHOTS=1`:
+  - `tests/snapshots/redesign-p1/menu-workspace-160x45.svg`
+- `UPDATE_P2A_SNAPSHOTS=1`:
+  - `tests/snapshots/redesign-p2a/panel-focused-160x45.svg`
+  - `tests/snapshots/redesign-p2a/session-160x45.svg`
+- `UPDATE_P2B_SNAPSHOTS=1`:
+  - `tests/snapshots/redesign-p2b/detach-hint-160x45.svg`
+  - `tests/snapshots/redesign-p2b/fold-sessions-160x45.svg`
+  - `tests/snapshots/redesign-p2b/rail-activity-160x45.svg`
+  - `tests/snapshots/redesign-p2b/rail-new-160x45.svg`
+  - `tests/snapshots/redesign-p2b/rail-vault-160x45.svg`
+  - `tests/snapshots/redesign-p2b/token-notice-160x45.svg`
+- `UPDATE_P5_SNAPSHOTS=1`:
+  - `tests/snapshots/redesign-p5/prompt-marked-160x45.svg`
+  - `tests/snapshots/redesign-p5/prompt-unmarked-160x45.svg`
+
+### 5. Step 5: Verification of All Suites & Lint
+Reran all 15 redesign test files and the repository lint gate:
+- `tests/test_redesign_contrast.py`: passed (Exit code: 0)
+- `tests/test_redesign_focus.py`: 47 passed (Exit code: 0)
+- `tests/test_redesign_gallery.py`: 76 passed (Exit code: 0)
+- `tests/test_redesign_keys.py`: 20 passed (Exit code: 0)
+- `tests/test_redesign_layout.py`: 60 passed (Exit code: 0)
+- `tests/test_redesign_lists.py`: 68 passed (Exit code: 0)
+- `tests/test_redesign_lists_filter.py`: 30 passed (Exit code: 0)
+- `tests/test_redesign_lists_review.py`: 20 passed (Exit code: 0)
+- `tests/test_redesign_lists_review4.py`: 12 passed (Exit code: 0)
+- `tests/test_redesign_new_session.py`: 4 passed (Exit code: 0)
+- `tests/test_redesign_prompts.py`: 31 passed (Exit code: 0)
+- `tests/test_redesign_rail_tint_keys.py`: 6 passed (Exit code: 0)
+- `tests/test_redesign_round1.py`: 6 passed (Exit code: 0)
+- `tests/test_redesign_round2.py`: 3 passed (Exit code: 0)
+- `tests/test_redesign_round3.py`: 3 passed (Exit code: 0)
+- Repository lint gate (`make lint`): 110 passed, engine-check OK, import-lint clean, leak-check clean (Exit code: 0)
+
 
 
 
