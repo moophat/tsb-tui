@@ -17,6 +17,7 @@ from workspace_support import named_sessions, open_here
 
 from tsb_tui.app import MenuPalette, TsbTuiApp
 from tsb_tui.model import actions as A
+from tsb_tui.screens.attach_confirm import AttachConfirmScreen
 from tsb_tui.screens.credentials import CredentialsScreen
 from tsb_tui.screens.new_session import NewSessionScreen
 from tsb_tui.theme import contrast_ratio, role_colours
@@ -809,10 +810,9 @@ def test_full_flow_focus_chain_forward_and_back(serve, wait_until, screen_text, 
     """L1-focus: Full login -> targets -> open -> attach consent -> session -> leader -> sidebar/full view
     -> new -> cancel flow, plus Vault/All alerts and every other screen. Assert exact focus chain and reverse traversal."""
     async def check():
-        serve_app, url = serve(InputRecordingApp())
+        _serve_app, url = serve(InputRecordingApp())
         app = TsbTuiApp(url)
         async with app.run_test(size=size) as pilot:
-            # 1. LoginScreen: check focus on inputs, Tab and Shift+Tab traversal
             assert app.screen.query_one("#username").has_focus, "Username input starts focused"
             await pilot.press("tab")
             await pilot.pause()
@@ -855,19 +855,56 @@ def test_full_flow_focus_chain_forward_and_back(serve, wait_until, screen_text, 
             await pilot.pause()
             assert heavy_panes(app, screen, screen_text) == {"targets"}, "Shift+Tab moves sessions -> targets"
 
-            # 5. Open session and check canvas focus
-            (sid,) = named_sessions(url, serve_app, "rtr-core-01")
-            await open_here(app, pilot, wait_until, sid)
+            # 5. Open session via keyboard selection and consent flow, and check canvas focus
+            await wait_until(pilot, lambda: len(screen.targets.rows) > 0, "targets to load")
+            await pilot.press("enter")
+            await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "NewSessionScreen to open")
+            await pilot.press("enter")
+            await wait_until(pilot, lambda: isinstance(app.screen, AttachConfirmScreen), "AttachConfirmScreen to open")
+
+            consent_dialog = app.screen
+            initial_consent_focus = consent_dialog.focused
+            assert initial_consent_focus is not None, "AttachConfirmScreen starts with focused control"
+            await pilot.press("tab")
             await pilot.pause()
+            after_tab_focus = consent_dialog.focused
+            assert after_tab_focus is not None and after_tab_focus != initial_consent_focus, (
+                f"Tab in AttachConfirmScreen must advance focus from {initial_consent_focus}, got {after_tab_focus}"
+            )
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert consent_dialog.focused == initial_consent_focus, (
+                f"Shift+Tab in AttachConfirmScreen must restore initial focus {initial_consent_focus}, got {consent_dialog.focused}"
+            )
+
+            if consent_dialog.query("#hostkey-ack"):
+                await pilot.press("space")
+                await pilot.pause()
+            await pilot.press("enter")
+            await wait_until(
+                pilot,
+                lambda: app.screen is screen and screen.front is not None,
+                "attached session on canvas",
+            )
             assert heavy_panes(app, screen, screen_text) == {"canvas"}, "Open session gives canvas focus"
 
             # 6. Full view forward and reverse
             await pilot.press(LEADER, "F")
-            await wait_until(pilot, lambda: screen.view_open, "full view to open")
+            await wait_until(pilot, lambda: screen.view_open and screen.fleet_view is not None, "full view to open")
+            assert screen.fleet_view.has_focus, "FleetView starts with focus"
+            initial_tab = screen.fleet_view.tab
             await pilot.press("tab")
             await pilot.pause()
+            assert screen.fleet_view.has_focus, "FleetView retains focus after Tab"
+            assert screen.fleet_view.tab != initial_tab, (
+                f"Tab in FleetView must change tab from {initial_tab}, got {screen.fleet_view.tab}"
+            )
             await pilot.press("shift+tab")
             await pilot.pause()
+            assert screen.fleet_view.has_focus, "FleetView retains focus after Shift+Tab"
+            assert screen.fleet_view.tab == initial_tab, (
+                f"Shift+Tab in FleetView must restore tab to {initial_tab}, got {screen.fleet_view.tab}"
+            )
             await pilot.press("escape")
             await wait_until(pilot, lambda: not screen.view_open, "full view to close")
             assert heavy_panes(app, screen, screen_text) == {"canvas"}
@@ -875,10 +912,22 @@ def test_full_flow_focus_chain_forward_and_back(serve, wait_until, screen_text, 
             # 7. New session dialog forward and reverse traversal
             await pilot.press(LEADER, "n")
             await wait_until(pilot, lambda: isinstance(app.screen, NewSessionScreen), "NewSessionScreen to open")
+            ns_dialog = app.screen
+            ns_initial_focus = ns_dialog.focused
+            assert ns_initial_focus is not None and getattr(ns_initial_focus, "id", "") == "new-session-filter", (
+                f"NewSessionScreen must start with new-session-filter focused, got {ns_initial_focus}"
+            )
             await pilot.press("tab")
             await pilot.pause()
+            ns_after_tab = ns_dialog.focused
+            assert ns_after_tab is not None and ns_after_tab != ns_initial_focus, (
+                f"Tab in NewSessionScreen must advance focus from {ns_initial_focus}, got {ns_after_tab}"
+            )
             await pilot.press("shift+tab")
             await pilot.pause()
+            assert ns_dialog.focused == ns_initial_focus, (
+                f"Shift+Tab in NewSessionScreen must restore focus to {ns_initial_focus}, got {ns_dialog.focused}"
+            )
             await pilot.press("escape")
             await wait_until(pilot, lambda: app.screen is screen, "NewSessionScreen to close")
             assert heavy_panes(app, screen, screen_text) == {"canvas"}
@@ -886,10 +935,23 @@ def test_full_flow_focus_chain_forward_and_back(serve, wait_until, screen_text, 
             # 8. Vault (CredentialsScreen) forward and reverse traversal
             await pilot.press(LEADER, "C")
             await wait_until(pilot, lambda: isinstance(app.screen, CredentialsScreen), "CredentialsScreen to open")
+            cred_dialog = app.screen
+            await wait_until(pilot, lambda: getattr(cred_dialog, "loaded", False), "credentials to load")
+            cred_initial_focus = cred_dialog.focused
+            assert cred_initial_focus is not None and getattr(cred_initial_focus, "id", "") == "credentials-table", (
+                f"CredentialsScreen must start with credentials-table focused, got {cred_initial_focus}"
+            )
             await pilot.press("tab")
             await pilot.pause()
+            cred_after_tab = cred_dialog.focused
+            assert cred_after_tab is not None and cred_after_tab != cred_initial_focus, (
+                f"Tab in CredentialsScreen must advance focus from {cred_initial_focus}, got {cred_after_tab}"
+            )
             await pilot.press("shift+tab")
             await pilot.pause()
+            assert cred_dialog.focused == cred_initial_focus, (
+                f"Shift+Tab in CredentialsScreen must restore focus to {cred_initial_focus}, got {cred_dialog.focused}"
+            )
             await pilot.press("escape")
             await wait_until(pilot, lambda: app.screen is screen, "CredentialsScreen to close")
 
@@ -933,8 +995,15 @@ def test_hint_row_inside_viewport(serve, wait_until, size):
                 if p.role == "hint_key" and pieces[i + 1].role == "hint":
                     assert pieces[i + 1].text.startswith(" "), f"Hint {p.text}{pieces[i + 1].text} missing space"
 
-            # Protected hints: F1 Menu key first
+            # Protected hints: F1 Menu priority first and inside viewport
+            assert app.cfg["status.hint_priority"][0] == "menu", (
+                f"F1 Menu must be first in hint priority: {app.cfg['status.hint_priority']}"
+            )
             assert "F1 Menu" in status_text, f"Protected hint 'F1 Menu' missing: {status_text}"
+            first_hint_idx = next(i for i, p in enumerate(pieces) if p.role == "hint_key" and p.text == "F1")
+            f1_offset = sum(len(p.text) for p in pieces[:first_hint_idx])
+            f1_end = f1_offset + len(pieces[first_hint_idx].text) + len(pieces[first_hint_idx + 1].text)
+            assert f1_end <= size[0], f"F1 Menu extends past viewport: {f1_end} > {size[0]}"
 
     asyncio.run(check())
 

@@ -190,3 +190,131 @@ In response to the orchestrator's review ("Before the PR: the gallery writes tra
 | **Snapshots stability check:** `git status --short tests/snapshots` | Filesystem timestamps confirm ordinary runs do not modify baseline files; only the About pair was regenerated | **0** |
 | **Lint gate:** `PATH="$(TEST_VENV_BIN):$PATH" make lint` | ruff check clean; 110 auxiliary tests passed in 58.47s; import-lint clean (214 files); docs guard clean; leak check clean; check-engine PIN match clean | **0** |
 
+---
+
+## 7. Qodo Round: Eight Findings & Verification
+
+In response to Qodo's review of PR #122 (`QODO-122.md`), all eight findings were resolved and proven against their respective product mutants:
+
+### Finding 1: All alerts when configured fleet tabs omit Alerts
+- **Change:**
+  - In `tsb_tui/screens/prompts.py` (`AlertPopup`, `AlertStack.mount_alert`), `[ All alerts ]` is mounted only when `TAB_ALERTS` is present in `fleet_view.tabs`.
+  - In `tsb_tui/widgets/rail.py` (`rail_rows`, `Rail`), the rail's `! Alerts` row is included only when `TAB_ALERTS` is present in `fleet_view.tabs`.
+  - In `tests/test_alerts_popup.py`, added `test_all_alerts_when_fleet_tabs_omit_alerts` verifying that with `fleet_view.tabs=sessions,targets`, neither `[ All alerts ]` nor rail `! Alerts` is offered.
+- **Mutant:** `fleet_view.tabs` lacks Alerts, but popup still offers `[ All alerts ]` and rail still displays `! Alerts`.
+- **Red Line:**
+  ```
+  tests/test_alerts_popup.py:247: AssertionError: [ All alerts ] choice must not be offered: ['alert:dismiss', 'alert:all']
+  ```
+- **Green:** `tests/test_alerts_popup.py::test_all_alerts_when_fleet_tabs_omit_alerts` PASSED.
+
+### Finding 2: Visual regressions pass the gallery gate
+- **Change:**
+  - In `tests/test_redesign_gallery.py` (`test_every_manifest_entry_is_reachable_by_keys`), each captured SVG is compared against its committed baseline under `tests/snapshots/redesign-p6/` after normalising terminal IDs (`terminal-\d+` -> `terminal-p6`) and timestamps (`\d{2}:\d{2}:\d{2}` -> `00:00:00`). Any difference fails the test naming the entry and size with a diff.
+- **Mutant:** Changed screen layout or styling (e.g. modified `LoginScreen` borders).
+- **Red Line:**
+  ```
+  tests/test_redesign_gallery.py:410: AssertionError: Gallery baseline mismatch for entry login at 80x24 (login-80x24.svg)
+  ```
+- **Green:** All 72 entry captures across 36 manifest entries at both 80x24 and 160x45 match their committed baselines. PASSED.
+
+### Finding 3: Wrong screen states pass the gallery
+- **Change:**
+  - In `tests/test_redesign_gallery.py`, added `_assert_declared_state(app, entry)` to assert each manifest entry's concrete internal screen state: `TerminalScreen` (`empty`: 0 slots, `view_open=False`, `sidebar_open=True`; `populated`: >0 slots, attached front session; `sidebar-closed`: `sidebar_open=False`; `full-view`: `view_open=True`, `tab="sessions"`; `fleet-alerts`: `view_open=True`, `tab="alerts"`); `TextScreen` (`about`, `settings`, `all-keys`); and dialog states (`inventory-search`, `vault-list`, `device-list`, `user-list`, `viewer`, `prompt-bar`).
+- **Mutant:** Screen rendered in a different state (e.g. `full-view` tested with `tab="targets"` or with view closed).
+- **Red Line:**
+  ```
+  tests/test_redesign_gallery.py:147: AssertionError: Entry full-view: state 'full-view' expected sessions tab, got 'targets'
+  ```
+- **Green:** All declared states verified across all 36 manifest entries. PASSED.
+
+### Finding 4: Focus flow skips attach consent
+- **Change:**
+  - In `tests/test_redesign_focus.py` (`test_full_flow_focus_chain_forward_and_back`), removed `open_here` direct session opening shortcut. The flow now drives target selection and consent via keyboard: target row selected (`Enter`), `NewSessionScreen` opened (`Enter`), `AttachConfirmScreen` navigated, `#hostkey-ack` confirmed (`Space`), and session opened (`Enter`) with canvas focus verified.
+- **Mutant:** Attach consent bypassed, broken, or not confirmed.
+- **Red Line:**
+  ```
+  tests/test_redesign_focus.py:888: AssertionError: Open session gives canvas focus
+  ```
+- **Green:** `test_full_flow_focus_chain_forward_and_back` PASSED at both 80x24 and 160x45.
+
+### Finding 5: Broken dialog focus traversal passes
+- **Change:**
+  - In `tests/test_redesign_focus.py` (`test_full_flow_focus_chain_forward_and_back`), added explicit assertions verifying that `Tab` advances the focused control and `Shift+Tab` restores the initial control across dialogs: `AttachConfirmScreen`, `FleetView` tabs, `NewSessionScreen`, and `CredentialsScreen`.
+- **Mutant:** `Tab` or `Shift+Tab` is a no-op in any of the dialogs.
+- **Red Line:**
+  ```
+  tests/test_redesign_focus.py:870: AssertionError: Tab in AttachConfirmScreen must advance focus from Button('#btn-cancel'), got Button('#btn-cancel')
+  ```
+- **Green:** Forward and reverse focus traversal verified in all dialogs. PASSED.
+
+### Finding 6: Rail contrast regressions go unchecked
+- **Change:**
+  - In `tests/test_redesign_contrast.py` (`test_every_theme_both_sizes_meets_contrast`), added compositor strip inspection covering `screen.rail.region` across all themes and both sizes, asserting `ratio >= 4.5` and `checked_rail_cells > 0`.
+- **Mutant:** Rail background or foreground styled below 4.5:1 text contrast.
+- **Red Line:**
+  ```
+  tests/test_redesign_contrast.py:217: AssertionError: Theme contrast rail cell '!' contrast 2.14 < 4.5 at (0, 4)
+  ```
+- **Green:** All 5 shipped themes at both sizes verify rendered rail cells meet >=4.5:1 contrast. PASSED.
+
+### Finding 7: All-alerts test no longer checks the list
+- **Change:**
+  - In `tests/test_alerts_popup.py` (`test_all_alerts_opens_the_fleet_view_alerts_tab`), added assertions that `screen.fleet_view._model.alert_lines` contains >= 2 alert rows, that both test alerts ("vt_unavailable" and "supervisor_unresponsive") appear in `alert_lines`, and that their texts appear in the rendered lines of `screen.fleet_view`.
+- **Mutant:** Alerts tab is empty (0 rows displayed).
+- **Red Line:**
+  ```
+  tests/test_alerts_popup.py:213: AssertionError: Alerts tab must have at least 2 alert rows, got 0
+  ```
+- **Green:** `test_all_alerts_opens_the_fleet_view_alerts_tab` PASSED.
+
+### Finding 8: F1 Menu's priority
+- **Change:**
+  - In `tests/test_redesign_focus.py` (`test_hint_row_inside_viewport`), added assertions that `app.cfg["status.hint_priority"][0] == "menu"`, `F1 Menu` is present, and its rendered offset + width stays strictly within viewport bounds (`f1_end <= size[0]`).
+- **Mutant:** `menu` demoted or moved to the end of `status.hint_priority`.
+- **Red Line:**
+  ```
+  tests/test_redesign_focus.py:1000: AssertionError: F1 Menu must be first in hint priority: ['answer', 'take_back', 'fleet', 'who', 'detach', 'end', 'size', 'scroll', 'inspector', 'keys', 'menu']
+  ```
+- **Green:** `test_hint_row_inside_viewport` PASSED at both 80x24 and 160x45.
+
+---
+
+### Qodo Round Gate Commands and Real Exit Codes:
+
+| Gate / Command | Result / Duration | Exit Code |
+|---|---|:---:|
+| **All redesign + alerts tests:** `env -u NO_COLOR TSB_TUI_TERM_LIBRARY=vendor/libghostty-vt/libghostty-vt.so $(PYTHON) -m pytest -q -p no:cacheprovider tests/test_redesign_*.py tests/test_alerts_popup.py` | 541 passed, 1 failed in 1443.04s (0:24:03); isolated rerun of `test_z_folds_the_other_list_and_z_again_restores` passed in 9.79s | **1** (0 isolated) |
+| **Lint gate:** `PATH="$(TEST_VENV_BIN):$PATH" make lint` | ruff check clean; 110 auxiliary tests passed in 59.06s; import-lint clean (214 files); docs guard clean; leak check clean; check-engine PIN match clean | **0** |
+
+## Qodo round, the orchestrator's check
+
+### 1. Engine Library Path Normalisation in Gallery Comparison
+- **Problem:** The About dialog prints the runtime engine library path (`library_path`), which is determined by `TSB_TUI_TERM_LIBRARY`. The committed SVG baselines hold the relative path `vendor/libghostty-vt/libghostty-vt.so`, while runs setting an absolute path (such as `$PWD/vendor/libghostty-vt/libghostty-vt.so`) render the absolute path on screen. Rich SVG exports split background color `<rect fill="#39404f">` elements across styled spans, causing differences in both the `<text>` element (`textLength` and text content) and the background fill rects on line 13 (`y="318.7"` in 80x24) and line 23 (`y="562.7"` in 160x45).
+- **Resolution:** In `tests/test_redesign_gallery.py`, `_normalize_svg` normalises:
+  1. The text node: `textLength="[0-9.]+"([^>]*>engine(?:&#160;| )library(?:&#160;| ))[^<]+` -> `textLength="[ENGINE_LIB_LEN]"\1[ENGINE_LIB_PATH]`
+  2. The background fill rects on the engine library row: `(<rect fill="#39404f" [^>]*?y="(318.7|562.7)"[^>]*?/>)+` -> `<rect fill="#39404f" y="\2" [ENGINE_LIB_BG]/>`
+- **Proof:**
+  - `text-screen-about` passes with `TSB_TUI_TERM_LIBRARY` set to an absolute path: 2 passed in 9.26s.
+  - `text-screen-about` passes with `TSB_TUI_TERM_LIBRARY` set to relative path (`vendor/libghostty-vt/libghostty-vt.so`): 2 passed in 9.37s.
+  - Mutant check: modifying other text on the About screen (e.g. changing configuration profile or version string) fails baseline comparison immediately with an explicit unified diff.
+
+### 2. Audit of Gallery Masks
+The line-dropping masks were audited and documented with the exact rationale for inter-run variance:
+- **Kept Masks:**
+  - `account-form` (size 160x45): `_strip_bg_buttons` drops lines 35–40 (`y="874"`, `y="898.4"`, etc.) and background colors `#2c323e`, `#393f4c`, etc. When `UserFormScreen` is open as a modal dialog at 160x45, the underlying `AccountsScreen` action buttons are unfocused and disabled; Textual's CSS compositor renders varying background fill shading across disabled button spans between passes.
+  - `target-form` and `confirm-delete-target` (size 160x45): `_strip_bg_status` drops `y="1075.1"` and `y="1093.6"`. The modal forms (`TargetFormScreen` and `ConfirmTargetDeleteScreen`) do not draw their own status bar. The underlying `TerminalScreen` status row selection hints vary between runs based on targets list selection and focus state.
+- **Removed Masks:**
+  - The status row mask on `target-form` and `confirm-delete-target` for size 80x24 was removed. At 80x24, the status row is identical across runs (0 diff lines against committed baselines without the mask). Removing the mask prevents masking visual regressions on 80x24.
+
+---
+
+### Gate Commands and Real Exit Codes:
+
+| Gate / Command | Result / Duration | Exit Code |
+|---|---|:---:|
+| **Gallery gate:** `env -u NO_COLOR $(PYTHON) -m pytest tests/test_redesign_gallery.py -p no:cacheprovider` | 76 passed in 304.45s (0:05:04) | **0** |
+| **Lint gate:** `make lint` | ruff check clean; 110 auxiliary tests passed in 58.74s; import-lint clean (214 files); docs guard clean; leak check clean; check-engine PIN match clean | **0** |
+
+
+

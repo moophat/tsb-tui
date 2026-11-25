@@ -191,7 +191,37 @@ def test_every_theme_both_sizes_meets_contrast(serve, wait_until, name, size):
                         assert contrast_ratio(hex_of(fg), hex_of(bg)) >= 4.5, (name, seg.text, seg.style)
                         checked_cells += 1
 
+            # Check rail strips
+            rail_region = screen.rail.region
+            checked_rail_cells = 0
+            for y in range(rail_region.y, min(rail_region.bottom, len(strips))):
+                col = 0
+                for seg in strips[y]:
+                    seg_len = len(seg.text)
+                    seg_right = col + seg_len
+                    if (
+                        seg_right > rail_region.x
+                        and col < rail_region.right
+                        and seg.text.strip()
+                        and seg.style is not None
+                        and seg.style.color
+                        and seg.style.bgcolor
+                    ):
+                        fg = seg.style.color.get_truecolor()
+                        bg = seg.style.bgcolor.get_truecolor()
+                        if seg.style.reverse:
+                            fg, bg = bg, fg
+                        if seg.style.dim:
+                            fg = tuple(round((a + b) / 2) for a, b in zip(fg, bg, strict=True))
+                        ratio = contrast_ratio(hex_of(fg), hex_of(bg))
+                        assert ratio >= 4.5, (
+                            f"Theme {name} rail cell {seg.text!r} contrast {ratio:.2f} < 4.5 at ({col}, {y})"
+                        )
+                        checked_rail_cells += 1
+                    col = seg_right
+
             assert checked_cells > 0, "Must verify rendered chrome cells meet contrast"
+            assert checked_rail_cells > 0, f"Theme {name} at {size}: must verify rendered rail cells meet contrast"
 
     asyncio.run(check())
 

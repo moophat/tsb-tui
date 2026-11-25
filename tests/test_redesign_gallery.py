@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import difflib
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -115,9 +117,101 @@ def _entry_by_id(eid: str) -> dict:
     return next(e for e in _load_entries() if e["id"] == eid)
 
 
+def _assert_declared_state(app, entry: dict) -> None:
+    entry_id = entry["id"]
+    screen_class = entry["screen_class"]
+    state = entry.get("state")
+    screen = app.screen
+
+    assert type(screen).__name__ == screen_class or (entry_id == "alerts-tab" and type(screen).__name__ == "TerminalScreen"), (
+        f"Entry {entry_id}: expected screen class {screen_class}, got {type(screen).__name__}"
+    )
+
+    if screen_class == "TerminalScreen":
+        if state == "empty":
+            assert len(screen.slots) == 0, f"Entry {entry_id}: state 'empty' expected 0 slots, got {len(screen.slots)}"
+            assert not screen.view_open, f"Entry {entry_id}: state 'empty' expected view_open=False"
+            assert screen.sidebar_open, f"Entry {entry_id}: state 'empty' expected sidebar_open=True"
+        elif state == "populated":
+            assert len(screen.slots) > 0, f"Entry {entry_id}: state 'populated' expected slots > 0"
+            assert screen.front is not None, f"Entry {entry_id}: state 'populated' expected attached front session"
+            assert not screen.view_open, f"Entry {entry_id}: state 'populated' expected view_open=False"
+            assert screen.sidebar_open, f"Entry {entry_id}: state 'populated' expected sidebar_open=True"
+        elif state == "sidebar-closed":
+            assert len(screen.slots) > 0, f"Entry {entry_id}: state 'sidebar-closed' expected slots > 0"
+            assert not screen.sidebar_open, f"Entry {entry_id}: state 'sidebar-closed' expected sidebar_open=False"
+            assert not screen.view_open, f"Entry {entry_id}: state 'sidebar-closed' expected view_open=False"
+        elif state == "full-view":
+            assert screen.view_open, f"Entry {entry_id}: state 'full-view' expected view_open=True"
+            assert screen.fleet_view is not None, f"Entry {entry_id}: fleet_view is None"
+            assert screen.fleet_view.tab == "sessions", (
+                f"Entry {entry_id}: state 'full-view' expected sessions tab, got {screen.fleet_view.tab!r}"
+            )
+        elif state == "fleet-alerts":
+            assert screen.view_open, f"Entry {entry_id}: state 'fleet-alerts' expected view_open=True"
+            assert screen.fleet_view is not None, f"Entry {entry_id}: fleet_view is None"
+            assert screen.fleet_view.tab == "alerts", (
+                f"Entry {entry_id}: state 'fleet-alerts' expected alerts tab, got {screen.fleet_view.tab!r}"
+            )
+        else:
+            raise AssertionError(f"Entry {entry_id}: unexpected state {state!r} for TerminalScreen")
+    elif screen_class == "TextScreen":
+        title = getattr(screen, "_title", "")
+        if state == "about":
+            assert title.startswith("About"), f"Entry {entry_id}: expected About title, got {title!r}"
+        elif state == "settings":
+            assert getattr(screen, "is_settings", False) or title.startswith("Settings"), (
+                f"Entry {entry_id}: expected settings state, got is_settings={getattr(screen, 'is_settings', False)!r}, title={title!r}"
+            )
+        elif state == "all-keys":
+            assert "keys" in title.lower(), f"Entry {entry_id}: expected keys in title, got {title!r}"
+        else:
+            raise AssertionError(f"Entry {entry_id}: unexpected state {state!r} for TextScreen")
+    elif screen_class == "NewSessionScreen":
+        assert state == "inventory-search"
+        assert screen.query_one("#new-session-filter"), f"Entry {entry_id}: filter missing"
+    elif screen_class == "CredentialsScreen":
+        assert state == "vault-list"
+        assert getattr(screen, "loaded", False), f"Entry {entry_id}: credentials not loaded"
+    elif screen_class == "DevicesScreen":
+        assert state == "device-list"
+        assert getattr(screen, "loaded", False), f"Entry {entry_id}: devices not loaded"
+    elif screen_class == "AccountsScreen":
+        assert state == "user-list"
+        assert getattr(screen, "loaded", False), f"Entry {entry_id}: accounts not loaded"
+    elif screen_class == "EventLogScreen":
+        assert state == "viewer"
+    elif screen_class == "SearchPrompt":
+        assert state == "prompt-bar"
+
+
+def _normalize_svg(text: str) -> str:
+    """Normalize dynamic/environment-dependent values across SVG baselines and captures.
+
+    1. Timestamps (HH:MM:SS) -> 00:00:00 (clocks vary across runs).
+    2. Rich terminal export clip/class IDs (terminal-<n>) -> terminal-p6 (random id per export).
+    3. Engine library path on About screen (its textLength, path value, and row background rects)
+       -> fixed placeholders so that captures match regardless of whether TSB_TUI_TERM_LIBRARY
+       was absolute or relative.
+    """
+    s = re.sub(r"terminal-\d+", "terminal-p6", text)
+    s = re.sub(r"\d{2}:\d{2}:\d{2}", "00:00:00", s)
+    s = re.sub(
+        r'textLength="[0-9.]+"([^>]*>engine(?:&#160;| )library(?:&#160;| ))[^<]+',
+        r'textLength="[ENGINE_LIB_LEN]"\1[ENGINE_LIB_PATH]',
+        s,
+    )
+    s = re.sub(
+        r'(<rect fill="#39404f" [^>]*?y="(318.7|562.7)"[^>]*?/>)+',
+        r'<rect fill="#39404f" y="\2" [ENGINE_LIB_BG]/>',
+        s,
+    )
+    return s
+
+
 @pytest.mark.parametrize("size", SIZES)
 @pytest.mark.parametrize("entry_id", _entry_ids())
-def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_text, tmp_path, entry_id, size):
+def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_text, tmp_path, monkeypatch, entry_id, size):
     """L1-gallery: Every manifest entry reached by its own keys_route at both 80x24 and 160x45.
 
     Captures are verified in tmp_path; committed baselines are written only when TSB_TUI_SNAPSHOT_DIR names a directory.
@@ -141,6 +235,15 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
 
     async def check():
         _serve_app, url = serve(InputRecordingApp())
+        if entry_id == "target-details" and size == (80, 24):
+            monkeypatch.setenv("TSB_TUI_ALERTS_POPUP", "false")
+            _serve_app.alerts_body = (
+                b": keepalive\n\n"
+                b"event: alert\n"
+                b'data: {"alert_id": "fixture-alert-1", "kind": "supervisor_unresponsive", "state": "raised", "at": "2026-10-01T02:00:30Z", "supervisor_id": "fixture-sup-1"}\n\n'
+            )
+        else:
+            _serve_app.alerts_body = b": keepalive\n\n"
         if entry_id == "vault-init":
             _serve_app.vault_users.discard(_serve.USER)
         if entry_id == "confirm-remove-peer":
@@ -208,6 +311,14 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                     await pilot.pause()
 
                 for step in route:
+                    if step == "escape" and entry_id == "target-details" and size == (80, 24):
+                        await wait_until(
+                            pilot,
+                            lambda: getattr(app, "alerts", None) and app.alerts.count >= 1,
+                            "alert received before opening target details",
+                            timeout_s=10.0,
+                        )
+                        await pilot.pause(0.05)
                     if type(app.screen).__name__ in ("CredentialsScreen", "DevicesScreen", "AccountsScreen") and getattr(app.screen, "loaded", None) is False:
                         await wait_until(
                             pilot,
@@ -220,7 +331,14 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                     if step == "D" and getattr(app.screen, "targets", None) is not None:
                         await wait_until(
                             pilot,
-                            lambda: len(app.screen.targets.rows) > 0,
+                            lambda: (
+                                len(app.screen.targets.rows) > 0
+                                and (
+                                    getattr(app.screen, "fleet_view", None) is None
+                                    or not getattr(app.screen, "view_open", False)
+                                    or getattr(app.screen.fleet_view, "tab", None) == "targets"
+                                )
+                            ),
                             "targets rows to load",
                             timeout_s=10.0,
                         )
@@ -250,6 +368,11 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                     timeout_s=10.0,
                 )
 
+            await pilot.pause(0.05)
+
+            # Assert state on screen object
+            _assert_declared_state(app, entry)
+
             # Assert content: every text the entry declares must appear on screen
             rendered = screen_text(app)
             for text in expect_texts:
@@ -272,6 +395,51 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                 dest_dir = Path(regen_dir)
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 (dest_dir / baseline_name).write_text(svg, encoding="utf-8")
+            else:
+                committed_file = COMMITTED_SNAP_DIR / baseline_name
+                assert committed_file.is_file(), (
+                    f"Committed baseline missing for {entry_id} at {size_str}: {committed_file}"
+                )
+                norm_captured = _normalize_svg(content)
+                norm_committed = _normalize_svg(committed_file.read_text(encoding="utf-8"))
+                if entry_id == "account-form" and size == (160, 45):
+                    # Mask background AccountsScreen action buttons (lines 35-40, y=874..996): when the UserFormScreen
+                    # modal dialog is open at 160x45, the underlying unfocused action buttons vary in Textual CSS fill
+                    # colors across render passes while disabled.
+                    def _strip_bg_buttons(s: str) -> str:
+                        lines = []
+                        for l in s.splitlines():
+                            if any(c in l for c in ["#2c323e", "#393f4c", "#333946", "#353c48", "#2b323e", "#353c49", "#4e545f"]):
+                                continue
+                            if any(f'y="{y}"' in l for y in ["874", "898.4", "922.8", "947.2", "971.6", "996"]):
+                                continue
+                            lines.append(l)
+                        return "\n".join(lines)
+                    norm_captured = _strip_bg_buttons(norm_captured)
+                    norm_committed = _strip_bg_buttons(norm_committed)
+                elif entry_id in ("target-form", "confirm-delete-target") and size == (160, 45):
+                    # Mask underlying TerminalScreen status line (y=1075.1, 1093.6) at 160x45: the modal
+                    # TargetFormScreen / ConfirmTargetDeleteScreen does not draw its own status row; the
+                    # background status row hints vary between runs based on targets list selection/focus state.
+                    # At 80x24, no mask is needed as the status row is either occluded or identical across runs.
+                    status_ys = ["1075.1", "1093.6"]
+                    def _strip_bg_status(s: str) -> str:
+                        return "\n".join(l for l in s.splitlines() if not any(f'y="{y}"' in l for y in status_ys))
+                    norm_captured = _strip_bg_status(norm_captured)
+                    norm_committed = _strip_bg_status(norm_committed)
+                if norm_captured != norm_committed:
+                    diff_lines = list(difflib.unified_diff(
+                        norm_committed.splitlines(keepends=True),
+                        norm_captured.splitlines(keepends=True),
+                        fromfile=f"committed:{baseline_name}",
+                        tofile=f"captured:{baseline_name}",
+                        n=3,
+                    ))
+                    print(f"\n--- DIFF FOR {entry_id} {size_str} ---")
+                    print("".join(diff_lines[:100]))
+                assert norm_captured == norm_committed, (
+                    f"Gallery baseline mismatch for entry {entry_id} at {size_str} ({baseline_name})"
+                )
 
     asyncio.run(check())
 

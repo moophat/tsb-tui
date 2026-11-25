@@ -67,6 +67,7 @@ class RailModel:
     edge: bool = False
     # The target each chip's session is on, for its tooltip.
     names: tuple[tuple[str, str], ...] = ()
+    alerts_tab: bool = True
 
 
 @dataclass(frozen=True)
@@ -109,7 +110,7 @@ def _worded(mark: str, word: str, count: str, width: int, *, count_first: bool =
     return f"{mark} {word}{tail}"
 
 
-def rail_rows(model: RailModel, content_width: int = 3) -> list[RailRow]:
+def rail_rows(model: RailModel, content_width: int = 3, *, alerts_tab: bool | None = None) -> list[RailRow]:
     """The rail's rows, top to bottom, each `content_width` cells wide (the hairline is the widget's)."""
     if model.edge:
         return [RailRow(_cells([(EDGE_MARK, "entry")], content_width), ACT_FLEET)]
@@ -122,7 +123,8 @@ def rail_rows(model: RailModel, content_width: int = 3) -> list[RailRow]:
         ("▦", "Targets", "", ACT_FLEET),
         ("◆", "Vault", "", ACT_VAULT),
     ]
-    if model.alerts is not None:
+    show_alerts = (model.alerts is not None) and (model.alerts_tab if alerts_tab is None else (alerts_tab and model.alerts_tab))
+    if show_alerts:
         entries.append(("!", "Alerts", _count(model.alerts), ACT_ALERTS))
     entries.append(("≡", "Menu", "", ACT_MENU))
     rows = []
@@ -194,8 +196,9 @@ class Rail(Widget):
         self._glyph_set = glyphs.check(config["glyphs.set"])
         self._side = config["rail.side"]
         self.rail_width = 4
-        self._model = RailModel((), False, 0, None)
-        self._rows: list[RailRow] = rail_rows(self._model, self.rail_width - 1)
+        self._alerts_tab = "alerts" in config.get("fleet_view.tabs", ("alerts",))
+        self._model = RailModel((), False, 0, None, alerts_tab=self._alerts_tab)
+        self._rows: list[RailRow] = rail_rows(self._model, self.rail_width - 1, alerts_tab=self._alerts_tab)
         self._leader = A.leader_label(config["keys.leader"])
         self._leader_key = config["keys.leader"]
         self._letters = A.leader_keys(config.leader_overrides())
@@ -238,6 +241,8 @@ class Rail(Widget):
     def apply_theme(self, config: Mapping) -> None:
         """A run-time look switch (B4): rebuild the table from the resolved roles and repaint."""
         self._build_styles(role_colours(config))
+        if "fleet_view.tabs" in config:
+            self._alerts_tab = "alerts" in config["fleet_view.tabs"]
         self.refresh()
 
     # -- content --
@@ -251,7 +256,7 @@ class Rail(Widget):
             return
         self._model = model
         self.styles.width = 1 if model.edge else self.rail_width
-        self._set_rows(rail_rows(model, self.rail_width - 1))
+        self._set_rows(rail_rows(model, self.rail_width - 1, alerts_tab=self._alerts_tab))
 
     def set_window_width(self, width: int) -> None:
         """Use words above 80 columns and compact marks at the minimum window width."""
@@ -259,7 +264,7 @@ class Rail(Widget):
         if rail_width != self.rail_width:
             self.rail_width = rail_width
             self.styles.width = 1 if self.edge else rail_width
-            self._set_rows(rail_rows(self._model, rail_width - 1))
+            self._set_rows(rail_rows(self._model, rail_width - 1, alerts_tab=self._alerts_tab))
 
     def set_width(self, width: int) -> None:
         """The `rail.width` knob (hairline included): rebuild the rows for the width actually used,
@@ -267,7 +272,7 @@ class Rail(Widget):
         if width != self.rail_width:
             self.rail_width = width
             self.styles.width = 1 if self.edge else width
-            self._set_rows(rail_rows(self._model, width - 1))
+            self._set_rows(rail_rows(self._model, width - 1, alerts_tab=self._alerts_tab))
 
     def _set_rows(self, rows: list[RailRow]) -> None:
         """New rows: the selection stays on the same row (its action and session) when that row is still listed, else

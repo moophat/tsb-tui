@@ -209,8 +209,45 @@ def test_all_alerts_opens_the_fleet_view_alerts_tab(wait_until) -> None:
                 )
                 assert screen.view_open
                 assert screen.fleet_view.tab == TAB_ALERTS
+                alert_lines = getattr(screen.fleet_view._model, "alert_lines", ()) or ()
+                assert len(alert_lines) >= 2, f"Alerts tab must have at least 2 alert rows, got {len(alert_lines)}"
+                assert any("vt_unavailable" in line or "VT worker unavailable" in line or "unavailable" in line for line in alert_lines), (
+                    f"vt_unavailable alert text missing in alert lines: {alert_lines}"
+                )
+                assert any("supervisor_unresponsive" in line or "sv.1111" in line or "supervisor" in line.lower() for line in alert_lines), (
+                    f"supervisor_unresponsive alert text missing in alert lines: {alert_lines}"
+                )
+                alerts_view_text = "\n".join(screen.fleet_view.render_line(y).text for y in range(screen.fleet_view.size.height))
+                assert "Active alerts" in alerts_view_text, f"Active alerts header missing: {alerts_view_text}"
+                assert "unavailable" in alerts_view_text.lower(), f"First alert missing from rendered view: {alerts_view_text}"
+                assert "supervisor" in alerts_view_text.lower(), f"Second alert missing from rendered view: {alerts_view_text}"
                 await pilot.press("escape")
                 await wait_until(pilot, lambda: not screen.view_open, "the fleet view to close")
+                stub.alerts_stop.set()
+
+    asyncio.run(_check())
+
+
+def test_all_alerts_when_fleet_tabs_omit_alerts(wait_until) -> None:
+    """When fleet_view.tabs omits Alerts, neither the rail Alerts entry nor the popup [ All alerts ] is offered."""
+    from tsb_tui.config import load
+    from tsb_tui.screens.prompts import Choice
+    from tsb_tui.widgets.rail import ACT_ALERTS
+
+    async def _check() -> None:
+        stub = _stub()
+        cfg = load(overrides=["fleet_view.tabs=sessions,targets"])
+        with StubServer(stub) as url:
+            app = TsbTuiApp(url, cfg=cfg)
+            async with app.run_test(size=(160, 40)) as pilot:
+                screen = await _terminal(app, pilot, wait_until)
+                stub.push_alert(_alert("a1", "vt_unavailable"))
+                await wait_until(pilot, lambda: len(_popups(screen)) == 1, "one popup")
+                popup = _popups(screen)[0]
+                choice_keys = [c.key for c in popup.query(Choice)]
+                assert "alert:all" not in choice_keys, f"[ All alerts ] choice must not be offered: {choice_keys}"
+                assert "alert:dismiss" in choice_keys, "Dismiss choice must still be offered"
+                assert not any(r.action == ACT_ALERTS for r in screen.rail.rows), "Rail must not offer Alerts entry"
                 stub.alerts_stop.set()
 
     asyncio.run(_check())
