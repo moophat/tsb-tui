@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from rich.cells import cell_len
 from rich.segment import Segment
 from rich.style import Style
 from textual import events
@@ -219,14 +220,25 @@ def _fit(text: str, width: int) -> str:
 def _cut_name(text: str, width: int) -> str:
     """A row's label cut to `width` cells with an ellipsis at a word boundary, never inside another word; a
     label that is one word cuts at the edge."""
-    if len(text) <= width:
+    if cell_len(text) <= width:
         return text
     if width <= 0:
         return ""
-    head = text[: width - 1]
+    target = width - cell_len("…")
+    if target <= 0:
+        return "…"
+    head_chars: list[str] = []
+    cells = 0
+    for ch in text:
+        ch_len = cell_len(ch)
+        if cells + ch_len > target:
+            break
+        head_chars.append(ch)
+        cells += ch_len
+    head = "".join(head_chars)
     space = head.rfind(" ")
     if space > 0:
-        return text[:space] + "…"
+        return head[:space] + "…"
     return head + "…"
 
 
@@ -294,7 +306,7 @@ def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, group: st
         curr = list(segments)
         while curr:
             candidate = " · ".join(curr)
-            if 2 + len(label) + len(candidate) <= inner:
+            if 2 + cell_len(label) + cell_len(candidate) <= inner:
                 return full, candidate
             curr.pop()
         return full, ""
@@ -302,7 +314,7 @@ def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, group: st
     facts = ""
     for segment in segments:
         candidate = segment if not facts else f"{facts} · {segment}"
-        if budget is None or len(candidate) <= budget:
+        if budget is None or cell_len(candidate) <= budget:
             facts = candidate
     return full, facts
 
@@ -1654,7 +1666,7 @@ class Sidebar(Widget):
             return None  # past this row's own lines: the next row's start, or the section's end
         if self.wide or not facts or within == 0:
             if self.wide:
-                room = max(inner - 2 - len(facts), 0) if facts else inner - 1
+                room = max(inner - 2 - cell_len(facts), 0) if facts else inner - 1
                 return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(room, 1)), "text"),
                              Part(f" {facts}" if facts else "", "text")), row.id, PANE_TARGETS, tip)
             return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(inner - 1, 1)), "text")),

@@ -176,3 +176,44 @@ Regenerated only the affected 160x45 snapshot baselines under `tests/snapshots/r
 - `tests/test_sidebar.py`, `tests/test_targets_tab.py`, `tests/test_model_targets.py`: 77 passed (Exit code: 0) [logged to `.lane-logs/sidebar-targets-models.log`]
 - Repository lint gate (`make lint`): 110 passed, engine-check OK, import-lint clean, leak-check clean (Exit code: 0) [logged to `.lane-logs/make-lint.log`]
 
+---
+
+## 6. Round 3: Display Cell Width Measurement and Cell-Aware Ellipsis
+
+### Finding
+Measuring target names and fact segments with `len()` counted Unicode characters rather than terminal display cells. For names containing wide characters (e.g. CJK ideographs, emoji), character-based budgeting permitted fact segments that the row could not physically accommodate, or rendered wide names beyond available inner cells without terminal ellipsis.
+
+### Implementation
+In `tsb_tui/widgets/sidebar.py`:
+- Imported `cell_len` from `rich.cells`.
+- In `_target_facts()`:
+  - For wide-row fitting: measured name and candidate facts using `cell_len(label)` and `cell_len(candidate)`, checking `2 + cell_len(label) + cell_len(candidate) <= inner`.
+  - For narrow-row fitting: measured segments with `cell_len(candidate) <= budget`.
+- In `Sidebar._target_painted()`:
+  - Calculated wide name room using display cells: `room = max(inner - 2 - cell_len(facts), 0) if facts else inner - 1`.
+- In `_cut_name()`:
+  - Guarded by `cell_len(text) <= width`.
+  - Determined target cell budget for the head prefix as `target = width - cell_len("…")`.
+  - Accumulated full characters one by one without exceeding `target`, ensuring wide characters are never split across cells.
+  - Cut at last space boundary when available (`space > 0`) or at character boundary, appending `"…"`. The result plus ellipsis fits within the available cell budget.
+
+### Test Evidence (Red / Green)
+- **Red run (`.lane-logs/round3-red.log`):**
+  Added tests in `tests/test_redesign_lists.py`:
+  - `test_wide_target_row_wide_characters_unit`: verified that a CJK name whose character count fits but cell count overflows drops trailing fact segments (`production`) until it fits within inner cell width, and verified `_cut_name` cell budgeting. Failed on unpatched code with `AssertionError: 192.0.2.88 · production == 192.0.2.88`.
+  - `test_wide_target_row_wide_characters_screen`: screen-level test at 160x45 asserting that facts drop whole segments until the name fits by cells, a wide-character name longer than the row alone gets an ellipsis, and the row stays within its cell width. Failed on unpatched code with `AssertionError: assert '…' in ' 这是一段非常非常长的中文名称用于测试 '`.
+- **Green run (`.lane-logs/round3-green.log`):**
+  With the fix applied:
+  - `test_wide_target_row_wide_characters_unit` and `test_wide_target_row_wide_characters_screen`: passed (Exit code: 0).
+  - Round-2 tests (`test_wide_target_row_name_protected_facts_drop_from_right_unit`, `test_wide_target_row_yield_order_and_fitting`) remain unchanged and passing.
+
+### Snapshot Baseline Updates
+None affected. All existing snapshot baselines in `tests/snapshots/redesign-p3/` passed with zero diffs.
+
+### Full Verification Evidence
+- `tests/test_redesign_lists.py`: 67 passed (Exit code: 0) [logged to `.lane-logs/test-redesign-lists.log`]
+- `tests/test_redesign_lists_filter.py`: 30 passed (Exit code: 0) [logged to `.lane-logs/test-redesign-lists-filter.log`]
+- `tests/test_sidebar.py`, `tests/test_targets_tab.py`, `tests/test_model_targets.py`: 77 passed (Exit code: 0) [logged to `.lane-logs/sidebar-targets-models.log`]
+- Repository lint gate (`make lint`): 110 passed, engine-check OK, import-lint clean, leak-check clean, ruff clean (Exit code: 0) [logged to `.lane-logs/make-lint.log`]
+
+

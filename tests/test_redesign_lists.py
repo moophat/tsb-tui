@@ -271,6 +271,93 @@ def test_wide_target_row_yield_order_and_fitting(serve, wait_until):
     asyncio.run(check())
 
 
+def test_wide_target_row_wide_characters_unit():
+    """Unit: wide character measurements in display cells, not character count."""
+    from rich.cells import cell_len
+
+    from tsb_tui.model.targets import make_row
+
+    # Name has 10 CJK chars = 20 cells. Facts has 192.0.2.88 (10) + production (10) + delimiter (3) = 23 chars / 23 cells.
+    # 2 + 10 chars + 23 chars = 35 <= 38, but 2 + 20 cells + 23 cells = 45 > 38.
+    # Facts must drop 'production' to fit: 2 + 20 + 10 = 32 <= 38.
+    name = "数据库服务集群节点甲"
+    row = make_row({"id": "t1", "name": name, "host": "192.0.2.88", "group": "production", "type": "ssh"})
+    _full, facts = sidebar_module._target_facts(row, (), "", row.group, wide=True, inner=38)
+    assert facts == "192.0.2.88", facts
+
+    # Name longer than row alone (27 CJK chars = 54 cells > 37 cells available) gets an ellipsis.
+    long_name = "这是一段非常非常长的中文名称用于测试终端单行超长截断省略号"
+    row_long = make_row({"id": "t2", "name": long_name, "host": "192.0.2.99", "group": "lab", "type": "ssh"})
+    _full_long, facts_long = sidebar_module._target_facts(row_long, (), "", row_long.group, wide=True, inner=38)
+    assert facts_long == "", facts_long
+
+    cut = sidebar_module._cut_name(long_name, 37)
+    assert "…" in cut
+    assert cell_len(cut) <= 37
+    # Must never split a wide character: 37 - 1 = 36 cells = 18 CJK characters
+    assert cut == long_name[:18] + "…"
+
+
+def test_wide_target_row_wide_characters_screen(serve, wait_until):
+    """Wide character fitting by display cells.
+    - a name of wide characters whose character count fits but whose cell count does not, at 160 columns:
+      the facts drop by whole segments until the name fits by cells;
+    - a wide-character name longer than the row alone gets the ellipsis, the row within its cells;
+    - the round-2 tests unchanged."""
+    from rich.cells import cell_len
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        for tid in list(served.targets):
+            served.invisible.add(tid)
+        seen = "2026-10-17T08:30:00Z"
+        # 1. CJK name: 10 chars, 20 cells. In chars: 2 + 10 + 23 = 35 <= 38. In cells: 2 + 20 + 23 = 45 > 38.
+        # Drops 'production', keeps '192.0.2.88'.
+        served.targets["t-wide-chars"] = {
+            "id": "t-wide-chars", "type": "ssh", "name": "数据库服务集群节点甲",
+            "group": "production", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.88", "port": 22
+        }
+        # 2. CJK name longer than row alone (27 CJK chars = 54 cells > 37 cells). Chars 27 <= 37.
+        # Drops all facts, gets terminal ellipsis, stays within cells.
+        served.targets["t-wide-too-long"] = {
+            "id": "t-wide-too-long", "type": "ssh",
+            "name": "这是一段非常非常长的中文名称用于测试终端单行超长截断省略号",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.99", "port": 22
+        }
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+
+            def row_text(target_id: str) -> str:
+                idx = screen.sidebar._target_line_index(target_id)
+                assert idx is not None, target_id
+                row = next(r for r in screen.sidebar.painted_targets() if r.id == target_id)
+                n = screen.sidebar._target_row_lines(row)
+                return " ".join(lines[1 + idx : 1 + idx + n])
+
+            # Case 1: facts drop by whole segments until name fits by cells
+            text_1 = row_text("t-wide-chars")
+            assert "数据库服务集群节点甲" in text_1, text_1
+            assert "192.0.2.88" in text_1, text_1
+            assert "production" not in text_1, text_1
+            assert "…" not in text_1, text_1
+
+            # Case 2: wide-character name longer than row alone gets ellipsis, row within its cells
+            text_2 = row_text("t-wide-too-long")
+            assert "…" in text_2, text_2
+            assert "192.0.2.99" not in text_2, text_2
+            assert "lab" not in text_2, text_2
+            assert cell_len(text_2) <= 38, (cell_len(text_2), text_2)
+
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize("size", [(80, 24), (160, 45)])
 def test_target_rows_show_no_login_words(serve, wait_until, size):
     """P3 never stops at O1: no target row says anything about logins, saved or not."""
