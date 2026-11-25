@@ -35,6 +35,7 @@ from ..model.attachment import AttachmentState
 from ..model.countdown import parse_timestamp
 from ..model.fleet import display_id
 from ..widgets.status_row import Hint, KeysTarget
+from .fleet_view import TAB_ALERTS
 
 # The clock the input guard reads; a test replaces it to move past the guard without waiting.
 monotonic = time.monotonic
@@ -376,9 +377,10 @@ class AlertPopup(Vertical):
     AlertPopup Choice:hover { background: $surface-3; }
     """
 
-    def __init__(self, alert: Alert) -> None:
+    def __init__(self, alert: Alert, *, has_alerts_tab: bool | None = None) -> None:
         super().__init__()
         self.alert = alert
+        self._has_alerts_tab = has_alerts_tab
         self.border_title = f"▲ TSB alert · {alert_label(alert)}"
 
     def compose(self) -> ComposeResult:
@@ -386,7 +388,15 @@ class AlertPopup(Vertical):
             yield Static(line, markup=False)
         with Horizontal():
             yield Choice("[ Dismiss here ]", "alert:dismiss")
-            yield Choice("[ All alerts ]", "alert:all")
+            show_all = self._has_alerts_tab
+            if show_all is None:
+                cfg = getattr(getattr(self, "app", None), "cfg", None)
+                if cfg is not None and "fleet_view.tabs" in cfg:
+                    show_all = TAB_ALERTS in cfg["fleet_view.tabs"]
+                else:
+                    show_all = True
+            if show_all:
+                yield Choice("[ All alerts ]", "alert:all")
 
 
 class AlertStack(Vertical):
@@ -409,9 +419,11 @@ class AlertStack(Vertical):
             if popup.alert.alert_id not in wanted:
                 popup.remove()
         have = {p.alert.alert_id for p in self.query(AlertPopup) if p.is_attached}
+        cfg = getattr(self.app, "cfg", None) if hasattr(self, "app") and self.app else getattr(self._terminal.app, "cfg", None)
+        has_alerts_tab = TAB_ALERTS in cfg["fleet_view.tabs"] if cfg and "fleet_view.tabs" in cfg else True
         for alert in reversed(alerts):  # oldest first, each put on top: the newest ends up first
             if alert.alert_id not in have:
-                self.mount(AlertPopup(alert), before=0 if self.children else None)
+                self.mount(AlertPopup(alert, has_alerts_tab=has_alerts_tab), before=0 if self.children else None)
         self.shown = [a.alert_id for a in alerts]
         self.display = bool(alerts)
 
@@ -420,53 +432,8 @@ class AlertStack(Vertical):
         popup = next(a for a in message.choice.ancestors if isinstance(a, AlertPopup))
         if message.choice.key == "alert:dismiss":
             self.app.dismiss_alert(popup.alert)
-        else:
-            self.app.push_screen(AlertsScreen(self._terminal))
-
-
-class AlertsScreen(ModalScreen[None]):
-    """All alerts: one line per active alert, until the Alerts tab exists (phase 8)."""
-
-    DEFAULT_CSS = """
-    AlertsScreen { align: center middle; }
-    #alerts-panel { width: 100%; max-width: 100; height: auto; border: round $warning;
-                    background: $surface; padding: 0 1; }
-    """
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "close", "Close")]
-
-    def __init__(self, terminal: Any) -> None:
-        super().__init__()
-        self._terminal = terminal
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="alerts-panel"):
-            yield Static("", id="alerts-list", markup=False)
-
-    def on_mount(self) -> None:
-        self._stop = self.app.watch_alerts(self.sync)
-        self._terminal.dialogs.append(self)
-        self.sync()
-        self._terminal.refresh_status()
-
-    def on_unmount(self) -> None:
-        self._stop()
-        if self in self._terminal.dialogs:
-            self._terminal.dialogs.remove(self)
-        self._terminal.refresh_status()
-
-    def sync(self) -> None:
-        active = list(self.app.alerts.active.values())
-        text = "\n".join(
-            f"▲ {alert_label(a)} · {alert_text(a)} {alert_raised(a)}" for a in reversed(active)
-        ) or "No active alerts."
-        self.query_one("#alerts-list", Static).update(f"All alerts\n{text}")
-        self.border_title = "▲ TSB alerts"
-
-    def status_target(self) -> KeysTarget:
-        return KeysTarget("alerts", (Hint("Esc", "close"),))
-
-    def action_close(self) -> None:
-        self.dismiss(None)
+        elif message.choice.key == "alert:all":
+            self._terminal.open_fleet_view(TAB_ALERTS)
 
 
 # -- an end state (F10) --

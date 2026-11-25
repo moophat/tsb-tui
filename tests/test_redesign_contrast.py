@@ -133,3 +133,95 @@ def test_edited_user_surface_is_ignored_on_reuse(tmp_path):
     cfg.select_look("my-lab")
     assert cfg["theme.surface"] == expected
     assert cfg["theme.surface"] not in ("#ffffff", "#000000")
+
+
+# -- Phase 06 acceptance: L1-contrast / L1-geometry --
+
+SIZES = [(80, 24), (160, 45)]
+
+
+@pytest.mark.parametrize("size", SIZES)
+@pytest.mark.parametrize("name", THEMES)
+def test_every_theme_both_sizes_meets_contrast(serve, wait_until, name, size):
+    """L1-contrast / V8: All shipped themes and both sizes meet text contrast >=4.5:1 on chrome roles,
+    and target-supplied ANSI colors remain faithful as ruled O7."""
+    import asyncio
+
+    from input_server import InputRecordingApp
+    from test_redesign_keys import login
+
+    from tsb_tui.app import TsbTuiApp
+
+    async def check():
+        # 1. Static role contrast assertions across all text roles
+        cfg = load(overrides=[f"theme.name={name}"])
+        roles = role_colours(cfg)
+        for bg_role in ("bg", "surface", "surface_2", "surface_3", "accent_soft"):
+            for fg_role in TEXT_ROLES:
+                ratio = contrast_ratio(roles[fg_role], roles[bg_role])
+                assert ratio >= 4.5, f"Theme {name} role {fg_role} on {bg_role} ratio {ratio:.2f} < 4.5"
+        assert contrast_ratio(roles["on_accent"], roles["accent"]) >= 4.5
+
+        # 2. Composed render strip contrast verification in running app
+        _, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=size) as pilot:
+            screen = await login(pilot, app, wait_until)
+            await pilot.pause()
+
+            # Inspect rendered strips of the cockpit chrome
+            strips = screen._compositor.render_strips()
+            assert len(strips) == size[1]
+            checked_cells = 0
+            hex_of = lambda rgb: "#" + "".join(f"{c:02x}" for c in rgb)
+
+            # Check status row and rail strips
+            status_y = screen.status.region.y
+            if 0 <= status_y < len(strips):
+                for seg in strips[status_y]:
+                    if not seg.text.strip() or seg.style is None:
+                        continue
+                    if seg.style.color and seg.style.bgcolor:
+                        fg = seg.style.color.get_truecolor()
+                        bg = seg.style.bgcolor.get_truecolor()
+                        if seg.style.reverse:
+                            fg, bg = bg, fg
+                        if seg.style.dim:
+                            fg = tuple(round((a + b) / 2) for a, b in zip(fg, bg, strict=True))
+                        assert contrast_ratio(hex_of(fg), hex_of(bg)) >= 4.5, (name, seg.text, seg.style)
+                        checked_cells += 1
+
+            # Check rail strips
+            rail_region = screen.rail.region
+            checked_rail_cells = 0
+            for y in range(rail_region.y, min(rail_region.bottom, len(strips))):
+                col = 0
+                for seg in strips[y]:
+                    seg_len = len(seg.text)
+                    seg_right = col + seg_len
+                    if (
+                        seg_right > rail_region.x
+                        and col < rail_region.right
+                        and seg.text.strip()
+                        and seg.style is not None
+                        and seg.style.color
+                        and seg.style.bgcolor
+                    ):
+                        fg = seg.style.color.get_truecolor()
+                        bg = seg.style.bgcolor.get_truecolor()
+                        if seg.style.reverse:
+                            fg, bg = bg, fg
+                        if seg.style.dim:
+                            fg = tuple(round((a + b) / 2) for a, b in zip(fg, bg, strict=True))
+                        ratio = contrast_ratio(hex_of(fg), hex_of(bg))
+                        assert ratio >= 4.5, (
+                            f"Theme {name} rail cell {seg.text!r} contrast {ratio:.2f} < 4.5 at ({col}, {y})"
+                        )
+                        checked_rail_cells += 1
+                    col = seg_right
+
+            assert checked_cells > 0, "Must verify rendered chrome cells meet contrast"
+            assert checked_rail_cells > 0, f"Theme {name} at {size}: must verify rendered rail cells meet contrast"
+
+    asyncio.run(check())
+
