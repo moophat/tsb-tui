@@ -190,23 +190,30 @@ def _normalize_svg(text: str) -> str:
 
     1. Timestamps (HH:MM:SS) -> 00:00:00 (clocks vary across runs).
     2. Rich terminal export clip/class IDs (terminal-<n>) -> terminal-p6 (random id per export).
-    3. Engine library path on About screen (its textLength, path value, and row background rects)
-       -> fixed placeholders so that captures match regardless of whether TSB_TUI_TERM_LIBRARY
-       was absolute or relative.
     """
     s = re.sub(r"terminal-\d+", "terminal-p6", text)
     s = re.sub(r"\d{2}:\d{2}:\d{2}", "00:00:00", s)
-    s = re.sub(
-        r'textLength="[0-9.]+"([^>]*>engine(?:&#160;| )library(?:&#160;| ))[^<]+',
-        r'textLength="[ENGINE_LIB_LEN]"\1[ENGINE_LIB_PATH]',
-        s,
-    )
-    s = re.sub(
-        r'(<rect fill="#39404f" [^>]*?y="(318.7|562.7)"[^>]*?/>)+',
-        r'<rect fill="#39404f" y="\2" [ENGINE_LIB_BG]/>',
-        s,
-    )
     return s
+
+
+def _inline_svg_styles(svg: str) -> str:
+    """Inline dynamic style class declarations (.terminal-p6-r<N>) into style attributes.
+
+    Rich assigns .terminal-<id>-r<N> classes sequentially based on the order and set of unique
+    styles encountered. If an entry normalizes dynamic background elements, inlining avoids spurious
+    style index shifts in the <style> block while preserving all style content.
+    """
+    styles = {}
+    for m in re.finditer(r"\.(terminal-p6-r\d+)\s*\{\s*([^}]+)\s*\}", svg):
+        styles[m.group(1)] = m.group(2).strip()
+
+    def repl_class(m):
+        cls = m.group(1)
+        return f'style="{styles[cls]}"' if cls in styles else m.group(0)
+
+    res = re.sub(r'class=[\"\x27](terminal-p6-r\d+)[\"\x27]', repl_class, svg)
+    res = re.sub(r"\.terminal-p6-r\d+\s*\{[^}]+\}\s*", "", res)
+    return res
 
 
 @pytest.mark.parametrize("size", SIZES)
@@ -281,7 +288,12 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
         }
         for tid in _serve_app.targets:
             _serve_app.targets[tid]["discovered_by"] = "tsb"
+        monkeypatch.setenv("TSB_TUI_MOTION_LEVEL", "none")
         app = TsbTuiApp(url)
+        app.animation_level = "none"
+        if entry_id == "text-screen-about":
+            app.cfg.set_runtime("term.library", "vendor/libghostty-vt/libghostty-vt.so")
+        monkeypatch.setattr("tsb_tui.app.library_path", lambda cfg: Path("vendor/libghostty-vt/libghostty-vt.so"))
         async with app.run_test(size=size) as pilot:
             # Drive the route steps
             route = list(entry["keys_route"])
@@ -381,6 +393,14 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                     f"First 400 chars of screen:\n{rendered[:400]}"
                 )
 
+            # Wait for app to settle before capture (animations off, pending refresh settled)
+            await pilot.pause()
+            try:
+                await asyncio.wait_for(app.wait_for_refresh(), timeout=1.0)
+            except TimeoutError:
+                pass
+            await pilot.pause(0.05)
+
             # Capture SVG baseline
             svg = app.export_screenshot(title=f"p6-{entry_id}")
             tmp_file = tmp_path / baseline_name
@@ -403,30 +423,33 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                 norm_captured = _normalize_svg(content)
                 norm_committed = _normalize_svg(committed_file.read_text(encoding="utf-8"))
                 if entry_id == "account-form" and size == (160, 45):
-                    # Mask background AccountsScreen action buttons (lines 35-40, y=874..996): when the UserFormScreen
-                    # modal dialog is open at 160x45, the underlying unfocused action buttons vary in Textual CSS fill
-                    # colors across render passes while disabled.
-                    def _strip_bg_buttons(s: str) -> str:
-                        lines = []
-                        for l in s.splitlines():
-                            if any(c in l for c in ["#2c323e", "#393f4c", "#333946", "#353c48", "#2b323e", "#353c49", "#4e545f"]):
-                                continue
-                            if any(f'y="{y}"' in l for y in ["874", "898.4", "922.8", "947.2", "971.6", "996"]):
-                                continue
-                            lines.append(l)
-                        return "\n".join(lines)
-                    norm_captured = _strip_bg_buttons(norm_captured)
-                    norm_committed = _strip_bg_buttons(norm_committed)
+                    # Mask specific action button elements (rows y=855.5..996): when UserFormScreen
+                    # modal is open at 160x45, the underlying unfocused AccountsScreen action buttons
+                    # vary in Textual CSS disabled fill shading and bevel characters. Rich writes all
+                    # rects on one line and all text glyphs on another; we match only the specific rect
+                    # and text elements on those button rows within the line without dropping SVG lines.
+                    def _mask_account_buttons(s: str) -> str:
+                        s = _inline_svg_styles(s)
+                        for y in ("855.5", "879.9", "904.3"):
+                            s = re.sub(rf"(?:<rect [^>]*?y=[\"\x27]{re.escape(y)}[\"\x27][^>]*?/>)+", f'<rect y="{y}" [MASKED_BG]/>', s)
+                        for y in ("874", "898.4", "922.8", "947.2", "971.6", "996"):
+                            s = re.sub(rf"(?:<text [^>]*?y=[\"\x27]{re.escape(y)}[\"\x27][^>]*?>.*?</text>)+", f'<text y="{y}">[MASKED_TEXT]</text>', s)
+                        return s
+                    norm_captured = _mask_account_buttons(norm_captured)
+                    norm_committed = _mask_account_buttons(norm_committed)
                 elif entry_id in ("target-form", "confirm-delete-target") and size == (160, 45):
-                    # Mask underlying TerminalScreen status line (y=1075.1, 1093.6) at 160x45: the modal
-                    # TargetFormScreen / ConfirmTargetDeleteScreen does not draw its own status row; the
-                    # background status row hints vary between runs based on targets list selection/focus state.
-                    # At 80x24, no mask is needed as the status row is either occluded or identical across runs.
-                    status_ys = ["1075.1", "1093.6"]
-                    def _strip_bg_status(s: str) -> str:
-                        return "\n".join(l for l in s.splitlines() if not any(f'y="{y}"' in l for y in status_ys))
-                    norm_captured = _strip_bg_status(norm_captured)
-                    norm_committed = _strip_bg_status(norm_committed)
+                    # Mask specific underlying TerminalScreen status row elements on row 44 (rects at
+                    # y=1075.1, text at y=1093.6): TargetFormScreen and ConfirmTargetDeleteScreen do not
+                    # draw their own status bar; the background status row selection hints vary between
+                    # runs based on targets list selection and focus state. We match only the specific
+                    # rect and text elements on the status row within the line without dropping SVG lines.
+                    def _mask_status_row(s: str) -> str:
+                        s = _inline_svg_styles(s)
+                        s = re.sub(r"(?:<rect [^>]*?y=[\"\x27]1075\.1[\"\x27][^>]*?/>)+", '<rect y="1075.1" [MASKED_BG]/>', s)
+                        s = re.sub(r"(?:<text [^>]*?y=[\"\x27]1093\.6[\"\x27][^>]*?>.*?</text>)+", '<text y="1093.6">[MASKED_TEXT]</text>', s)
+                        return s
+                    norm_captured = _mask_status_row(norm_captured)
+                    norm_committed = _mask_status_row(norm_committed)
                 if norm_captured != norm_committed:
                     diff_lines = list(difflib.unified_diff(
                         norm_committed.splitlines(keepends=True),

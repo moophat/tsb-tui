@@ -316,5 +316,53 @@ The line-dropping masks were audited and documented with the exact rationale for
 | **Gallery gate:** `env -u NO_COLOR $(PYTHON) -m pytest tests/test_redesign_gallery.py -p no:cacheprovider` | 76 passed in 304.45s (0:05:04) | **0** |
 | **Lint gate:** `make lint` | ruff check clean; 110 auxiliary tests passed in 58.74s; import-lint clean (214 files); docs guard clean; leak check clean; check-engine PIN match clean | **0** |
 
+---
+
+## 8. Qodo Round 2: The Gallery's Masks
+
+In response to Qodo's second look at #122 (`QODO-122b.md`), the three findings were resolved and proven against their respective mutants:
+
+### Finding 1: Long checkout paths fail the gallery
+- **Problem:** When the test environment sets an absolute engine library path longer than the About dialog's row width, the path wraps past the single node normalized by regex, causing visual comparison to fail despite the placeholder.
+- **Change:**
+  - Removed all About engine-library path regex normalization from `_normalize_svg`.
+  - In `tests/test_redesign_gallery.py`, gave the About screen a stable, machine-independent library path before rendering: `app.cfg.set_runtime("term.library", "vendor/libghostty-vt/libghostty-vt.so")` (isolated to `text-screen-about`) and monkeypatched `tsb_tui.app.library_path` to return `Path("vendor/libghostty-vt/libghostty-vt.so")`.
+- **Proof:**
+  - In a scratch copy with a checkout path depth of 77 characters (exceeding 60 characters), `text-screen-about` passed at both 80x24 and 160x45 (2 passed in 10.45s).
+  - Mutating text on the About screen (`configuration profile` to `mutant profile` in `text-screen-about-80x24.svg`) failed baseline comparison immediately with an explicit unified diff.
+
+### Finding 2: Three gallery baselines compare almost nothing
+- **Problem:** Rich SVG exports put all background rectangles on one line and all text glyphs on another. Line-level filters `_strip_bg_status` and `_strip_bg_buttons` dropped entire lines, causing `account-form`, `target-form`, and `confirm-delete-target` at 160x45 to drop all screen rects and texts and pass regardless of dialog rendering.
+- **Change:**
+  - Completely removed line-dropping filters `_strip_bg_status` and `_strip_bg_buttons`.
+  - Gallery runs with animations disabled (`TSB_TUI_MOTION_LEVEL=none`, `app.animation_level="none"`) and waits for app to settle before each capture (`pilot.pause()`, `app.wait_for_refresh()`).
+  - Added `_inline_svg_styles(svg)` to inline sequential `.terminal-p6-r<N>` style declarations into `style="..."` attributes on elements, preventing spurious class index cascades when dynamic background elements are normalized.
+  - Implemented element-level masks that operate strictly within lines:
+    - `account-form` (size 160x45): matches only the specific `<rect>` elements on rows y=855.5, 879.9, 904.3 and `<text>` elements on rows y=874, 898.4, 922.8, 947.2, 971.6, 996 (the unfocused AccountsScreen action buttons drop shadows/bevels while disabled).
+    - `target-form` and `confirm-delete-target` (size 160x45): matches only the specific `<rect>` elements at y=1075.1 and `<text>` elements at y=1093.6 on row 44 (the underlying TerminalScreen status row selection hints).
+- **Proof:**
+  - For each entry that keeps a mask, mutating non-masked text in its baseline failed visual comparison:
+    - `account-form-160x45`: mutating `Accounts` to `MutantAccounts` failed comparison (11 diff lines).
+    - `target-form-160x45`: mutating `New target` to `Mutant target` failed comparison (11 diff lines).
+    - `confirm-delete-target-160x45`: mutating `Esc back` to `Mutant back` failed comparison (11 diff lines).
+  - Confirmed that unlike the old line-dropping masks (which dropped all text and passed despite modified content), the new element-level masks strictly compare the rest of each screen.
+
+### Finding 3: About-row mask hides one row in every capture
+- **Problem:** The previous `_normalize_svg` replaced runs of `#39404f` rects at y="318.7" (80x24) and y="562.7" (160x45) across every manifest entry, masking geometry changes on unrelated screens that shared that background color (e.g. `terminal-empty`).
+- **Change:**
+  - Removed the `#39404f` rectangle regex from `_normalize_svg`. `_normalize_svg` now only normalizes terminal export class/clip IDs (`terminal-\d+` -> `terminal-p6`) and timestamps (`\d{2}:\d{2}:\d{2}` -> `00:00:00`).
+- **Proof:**
+  - In `terminal-empty-80x24.svg`, mutating `#39404f` to `#394050` failed comparison immediately with 11 diff lines (under previous logic, this was normalized to `[ENGINE_LIB_BG]` on both sides and passed).
+
+---
+
+### Qodo Round 2 Gate Commands and Real Exit Codes:
+
+| Gate / Command | Result / Duration | Exit Code |
+|---|---|:---:|
+| **Gallery gate:** `PATH="$(TEST_VENV_BIN):$PATH" env -u NO_COLOR TSB_TUI_TERM_LIBRARY=$PWD/vendor/libghostty-vt/libghostty-vt.so $(PYTHON) -m pytest -q -p no:cacheprovider tests/test_redesign_gallery.py` | 76 passed in 311.46s (0:05:11) | **0** |
+| **Lint gate:** `PATH="$(TEST_VENV_BIN):$PATH" make lint` | ruff check clean; 110 auxiliary tests passed in 55.81s; import-lint clean (214 files); docs guard clean; leak check clean; check-engine PIN match clean | **0** |
+
+
 
 
