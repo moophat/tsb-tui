@@ -266,17 +266,17 @@ def _target_facts_budget(wide: bool, inner: int) -> int:
 
 
 def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, group: str = "",
-                  budget: int | None = None) -> tuple[str, str]:
-    """A target row's facts (ruled 2026-11-20, group added 2026-11-21): the host, the type word when the
-    target is not ssh, the numbers of its sessions open in this window, the group, and the other logins'
-    word, joined by ` · `. Returns the full facts (for the tooltip) and the facts composed within `budget`
-    (the painted line). With a budget it is built one whole segment at a time, in that order: a segment
-    that would overflow is left out whole, never cut (rule 1: no word is cut). The order puts the group
-    after the open numbers and before the others word, so the greedy fit leaves `others on it` out first,
-    then the group. The row pairs, the painted end and the painted line read this once per refresh from
-    the spans cache."""
+                  budget: int | None = None, *, wide: bool = False, inner: int | None = None) -> tuple[str, str]:
+    """A target row's facts (ruled 2026-11-20, group added 2026-11-21, wide drop order ruled 2026-11-25):
+    the host, the type word when the target is not ssh, the numbers of its sessions open in this window,
+    the group, and the other logins' word, joined by ` · `. Returns the full facts (for the tooltip) and
+    the facts composed within `budget` (narrow second line) or `inner` (wide one-line row).
+    At wide budget (one line), the name is the row's identity, so facts yield first: whole fact segments
+    drop from the right end one at a time until the name fits in full; only when no fact segment is left
+    does the name itself take an ellipsis."""
+    label = _target_label(row)
     segments: list[str] = []
-    if row.host:
+    if row.host and label != row.host:
         segments.append(row.host)
     if numbers:
         segments.append("open " + ",".join(str(number) for number in sorted(numbers)))
@@ -289,6 +289,16 @@ def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, group: st
     if row.type and row.type != "ssh":
         segments.append(row.type)
     full = " · ".join(segments)
+
+    if wide and inner is not None:
+        curr = list(segments)
+        while curr:
+            candidate = " · ".join(curr)
+            if 2 + len(label) + len(candidate) <= inner:
+                return full, candidate
+            curr.pop()
+        return full, ""
+
     facts = ""
     for segment in segments:
         candidate = segment if not facts else f"{facts} · {segment}"
@@ -1553,28 +1563,8 @@ class Sidebar(Widget):
             for row in rows[:limit]:
                 spans.append(at)
                 at += 1
-                segments = [row.host] if row.host else []
-                open_numbers = numbers.get(row.id, ())
-                if open_numbers:
-                    segments.append("open " + ",".join(str(number) for number in sorted(open_numbers)))
-                if row.group:
-                    segments.append(row.group)
-                others_word = others.get(row.id, "")
-                if others_word:
-                    segments.append(others_word)
-                # ruling 17 (2026-11-22): `host · open N,M`, then the group, then the others word; the type
-                # word rides last of the segments.
-                if row.type and row.type != "ssh":
-                    segments.append(row.type)
-                # A row's second line shows only while its facts fit whole inside the window's budget (rule 11):
-                # a thin sidebar inside a wide window paints one-line rows. The greedy fit is the same rule the
-                # painted line uses, so it composes them here once.
-                full = " · ".join(segments)
-                budgeted = ""
-                for segment in segments:
-                    candidate = segment if not budgeted else f"{budgeted} · {segment}"
-                    if len(candidate) <= budget:
-                        budgeted = candidate
+                full, budgeted = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""),
+                                               row.group, wide=True, inner=inner)
                 facts.append((full, budgeted))
             spans.extend(range(at, len(rows)))
             result = tuple(spans)
@@ -1641,13 +1631,7 @@ class Sidebar(Widget):
         else:
             full, facts = _target_facts(row, self._open_numbers().get(row.id, ()),
                                         self._model.others.get(row.id, ""), row.group,
-                                        max(_target_facts_budget(self.wide, inner), 0))
-        if self.wide and not facts:
-            # The fast path stored the full facts; the painted line composes them within its own budget. The
-            # numbers come from the open-session map the spans cache keyed on (rule 17's segment order).
-            _full, facts = _target_facts(row, self._open_numbers().get(row.id, ()),
-                                         self._model.others.get(row.id, ""), row.group,
-                                         max(_target_facts_budget(self.wide, inner), 0))
+                                        wide=self.wide, inner=inner)
         label = _target_label(row)
         # The tooltip carries the row's full facts, the segment the painted line omits included (ruled 2026-11-21).
         tip = " · ".join(part for part in (label, full) if part) or None
