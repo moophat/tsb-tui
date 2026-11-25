@@ -1,0 +1,213 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-saved",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: One request context, one profile read and grant scan per eligible full page; no material/unlock reads or extension; structural sealed health and zero/one/many evaluation."
+    }
+  ],
+  "description": "One distinct stored metadata candidate; list includes all four fixed values and each has a single-read sample. Saved does not prove material or unlock availability. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets"
+        },
+        "expect": {
+          "status": 200,
+          "headers": {
+            "Cache-Control": "no-store"
+          },
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-saved",
+                "/login_hint": "saved"
+              }
+            },
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-choice-required",
+                "/login_hint": "choice_required"
+              }
+            },
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-none",
+                "/login_hint": "none"
+              }
+            },
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-unavailable",
+                "/login_hint": "unavailable"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-saved",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-saved"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "saved"
+              },
+              {
+                "id": "hint-choice-required",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-choice-required"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "choice_required"
+              },
+              {
+                "id": "hint-none",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-none"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "none"
+              },
+              {
+                "id": "hint-unavailable",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-unavailable"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "unavailable"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-saved"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-saved",
+                "/login_hint": "saved"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-saved",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-saved"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "saved"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-saved"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-saved"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "saved"
+            }
+          ],
+          "example": {
+            "id": "hint-saved",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-saved"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "saved"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "seam": "C1",
+  "name": "target-prompt-follow-detach",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks template changes, edits and re-import preservation of prompt presence."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Provider checks template changes, edits and re-import preservation of prompt presence."
+    }
+  ],
+  "description": "Provider checks template changes, edits and re-import preservation of prompt presence.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/inventory-target.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "options": {
+            "host": "fixture.invalid"
+          },
+          "import_ref": {
+            "format": "yaml",
+            "source_ref": "fixture-native"
+          },
+          "vendor": "cisco-ios"
+        },
+        "note": "follows template"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "options": {
+            "host": "fixture.invalid"
+          },
+          "import_ref": {
+            "format": "yaml",
+            "source_ref": "fixture-native"
+          },
+          "vendor": "cisco-ios",
+          "prompt_pattern": ""
+        },
+        "note": "explicit empty detaches"
+      }
+    ]
+  }
+}

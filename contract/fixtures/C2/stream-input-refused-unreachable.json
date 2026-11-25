@@ -1,0 +1,46 @@
+{
+  "seam": "C2",
+  "name": "stream-input-refused-unreachable",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/unreachable_test.go — input to an unreachable session is not forwarded and is answered input_refused unreachable"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/unreachable.sh — a client attached to a session on a frozen v0.1 worker types, and receives input_refused unreachable"
+    }
+  ],
+  "description": "Input to an unreachable session is rejected with an explicit error (decision 5.38; immortality §3): the core forwards nothing and answers input_refused with reason unreachable, so no keystroke vanishes without a signal.",
+  "corpus": [
+    "decision 5.38",
+    "immortality §3"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "input_refused",
+          "v": 1,
+          "reason": "unreachable"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "input_refused",
+          "v": 1,
+          "reason": "too_large"
+        },
+        "note": "C3's reason, never the client's"
+      }
+    ]
+  }
+}

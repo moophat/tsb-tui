@@ -1,0 +1,71 @@
+{
+  "seam": "C7",
+  "name": "salt-read-shape",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "The salt answer's shape (the read and the mint): initialized true with user_salt; initialized false with the salt of a minted vault, or with none.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection §5.1",
+    "credential-protection §5.4",
+    "vault-unlock"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/VaultSalt",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "initialized": true,
+          "user_salt": "RklYVFVSRS1TQUxULTAwMA=="
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "initialized": false
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "initialized": false,
+          "user_salt": "RklYVFVSRS1TQUxULTAwMA=="
+        },
+        "note": "a vault minted, not sealed"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "initialized": "no"
+        },
+        "note": "a boolean"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "initialized": true
+        },
+        "note": "an initialised vault's answer carries its salt"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "initialized": true,
+          "user_salt": "AAAA"
+        },
+        "note": "16 bytes, padded base64"
+      }
+    ]
+  }
+}

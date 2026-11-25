@@ -1,0 +1,38 @@
+{
+  "seam": "C5",
+  "name": "supervisor-manifest-valid",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:supervisor-manifests",
+  "description": "A supervisor's manifest: its id, its pid (informational: the supervisor is PID 1 of the worker container), its control socket, when it started. The supervisors whose control socket accepts a connection are the set the core addresses — even when it has one member. Every supervisor manifest collected from a run must validate.",
+  "corpus": [
+    "decision 5.13",
+    "immortality §2.1"
+  ],
+  "case": {
+    "schema": "schemas/supervisor-manifest.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "supervisor_id": "fixture-sup-1",
+          "pid": 4101,
+          "control_sock": "/tmp/tsb/supervisors/fixture-sup-1/control.sock",
+          "started_at": "2026-09-23T11:59:00Z"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "supervisor_id": "fixture-sup-1",
+          "pid": 4101,
+          "control_sock": "relative/control.sock",
+          "started_at": "2026-09-23T11:59:00Z"
+        },
+        "note": "an absolute path"
+      }
+    ]
+  }
+}

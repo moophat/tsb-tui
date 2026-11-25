@@ -1,0 +1,336 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-locked-vault",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: No material retrieval, unlock-state inspection, unlock or extension; locked/unlocked metadata evaluation is identical."
+    }
+  ],
+  "description": "Provider runs each read with locked and unlocked personal and storing-administrator org vaults: hint-personal-locked and hint-admin-locked remain saved; kind none and broker-unlocked org candidates remain saved. Establishment material refusal remains separate from metadata classification. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-personal-locked"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-personal-locked",
+                "/login_hint": "saved"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-personal-locked",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-personal-locked"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "saved"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-personal-locked"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-personal-locked"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "saved"
+            }
+          ],
+          "example": {
+            "id": "hint-personal-locked",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-personal-locked"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "saved"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-admin-locked"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-admin-locked",
+                "/login_hint": "saved"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-admin-locked",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-admin-locked"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "saved"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-admin-locked"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-admin-locked"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "saved"
+            }
+          ],
+          "example": {
+            "id": "hint-admin-locked",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-admin-locked"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "saved"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-kind-none"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-kind-none",
+                "/login_hint": "saved"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-kind-none",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-kind-none"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "saved"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-kind-none"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-kind-none"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "saved"
+            }
+          ],
+          "example": {
+            "id": "hint-kind-none",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-kind-none"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "saved"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-broker-unlocked"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-broker-unlocked",
+                "/login_hint": "saved"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-broker-unlocked",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-broker-unlocked"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "saved"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-broker-unlocked"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-broker-unlocked"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "saved"
+            }
+          ],
+          "example": {
+            "id": "hint-broker-unlocked",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-broker-unlocked"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "saved"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      }
+    ]
+  }
+}

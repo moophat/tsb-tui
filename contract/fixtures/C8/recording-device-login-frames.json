@@ -1,0 +1,133 @@
+{
+  "seam": "C8",
+  "name": "recording-device-login-frames",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "bytes",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/record/login_write_test.go — TestADeviceLoginsFramesAreInterleavedWithTheirStampsNeverDecreasing (with an empty prompt, L9): the frames above in this order, code 8 `login as:` first, in exactly the x-login-line bytes"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestWithTheKnobOffNothingOfTheDeviceLoginIsHeldOrRecorded: no byte of the user name, the prompts or the answers is in either file, the knob off"
+    }
+  ],
+  "description": "A device login's frames on disk, sidecar codes 6, 7 and 8 (a keyboard-interactive login; a password round's code-8 `Password:` is in recording-device-login-own-prompt). With policy.yaml recording.login_input on at start, `recording.enabled` on, and `recording_acknowledged` true on the create, the session's recording opens with these frames, in this order, each stamped on the core's input clock when the core received it, the clock never decreasing: (1) code 8, TSB's own `login as:`, then code 7, the user name typed at it, both stamped when the create arrived; (2) code 6, the banner, if one came; (3) for each keyboard-interactive round, code 6 for `name` then code 6 for `instruction`, each when not empty, then code 6 for a prompt's text and code 7 for its answer, interleaved; a prompt with empty text is written as the tag alone, so every answer follows its own prompt's frame, and a prompt written after an earlier answer of its round carries that answer's stamp, since the clock never decreases; (4) for a password round, code 8, TSB's own `Password:`, then code 7, the answer (the frames of one are in recording-device-login-own-prompt); (5) the host-key decision is not recorded: it is audited. A code-6 frame is text the device sent, and TSB's own prompt text is code 8, so no code-6 line can carry TSB's words; the keyboard-interactive round has no code-8 frame. The bytes here are the knob-on case, and the knob-off case (nothing of the device login is held or recorded) is the core's own test. Refused: a login frame after any other frame, and a prompt stamped before the answer it follows. The answers are the synthetic constant.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "5.46",
+    "device-login, what the recording holds",
+    "ttyrec.schema.json x-login-line",
+    "ttyrec.schema.json x-own-prompt-line"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "recording-device-login-frames.ttyrec.bin",
+    "sidecar": "recording-device-login-frames.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 100000,
+        "length": 31,
+        "marker": "own_prompt",
+        "data_hex": "0d0a5b5453423a206f776e2070726f6d70745d206c6f67696e2061733a0d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 100000,
+        "length": 39,
+        "marker": "login_answer",
+        "data_hex": "0d0a5b5453423a206c6f67696e20616e737765725d20666978747572652d6163636f756e740d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 200000,
+        "length": 44,
+        "marker": "login_prompt",
+        "data_hex": "0d0a5b5453423a206c6f67696e2070726f6d70745d20417574686f72697a656420757365206f6e6c792e0d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 300000,
+        "length": 38,
+        "marker": "login_prompt",
+        "data_hex": "0d0a5b5453423a206c6f67696e2070726f6d70745d2054776f2d73746570206c6f67696e0d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 300001,
+        "length": 57,
+        "marker": "login_prompt",
+        "data_hex": "0d0a5b5453423a206c6f67696e2070726f6d70745d20456e74657220796f75722070617373776f726420616e6420796f757220636f64650d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 300002,
+        "length": 34,
+        "marker": "login_prompt",
+        "data_hex": "0d0a5b5453423a206c6f67696e2070726f6d70745d2050617373776f72643a200d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 400000,
+        "length": 46,
+        "marker": "login_answer",
+        "data_hex": "0d0a5b5453423a206c6f67696e20616e737765725d20464958545552452d4e4f542d412d50415353574f52440d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 400000,
+        "length": 24,
+        "marker": "login_prompt",
+        "data_hex": "0d0a5b5453423a206c6f67696e2070726f6d70745d200d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 500000,
+        "length": 46,
+        "marker": "login_answer",
+        "data_hex": "0d0a5b5453423a206c6f67696e20616e737765725d20464958545552452d4e4f542d412d50415353574f52440d0a"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 0,
+        "length": 40,
+        "direction": "out",
+        "data_hex": "4c617374206c6f67696e3a2053756e204e6f762020312031323a30303a303020323032360d0a2420"
+      },
+      {
+        "sec": 1789000003,
+        "usec": 0,
+        "length": 3,
+        "direction": "in",
+        "data_hex": "69640d"
+      }
+    ],
+    "invalid": [
+      {
+        "ttyrec_hex": "40f9a16aa0860100270000000d0a5b5453423a206c6f67696e20616e737765725d20666978747572652d6163636f756e740d0a40f9a16a20a1070002000000242040f9a16ac0270900220000000d0a5b5453423a206c6f67696e2070726f6d70745d2050617373776f72643a200d0a",
+        "sidecar_hex": "070006",
+        "problem": "stand after frame",
+        "note": "a code-6 frame after an output frame: login frames are the head of the recording"
+      },
+      {
+        "ttyrec_hex": "40f9a16a801a06002e0000000d0a5b5453423a206c6f67696e20616e737765725d20464958545552452d4e4f542d412d50415353574f52440d0a40f9a16ae09304001e0000000d0a5b5453423a206c6f67696e2070726f6d70745d20436f64653a200d0a",
+        "sidecar_hex": "0706",
+        "problem": "the stamps go back",
+        "note": "a prompt stamped before the answer of its own round: the input clock never decreases"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100250000000d0a5b5453423a206c6f67696e2070726f6d70745d2050617373776f72643a1b5b324a0d0a",
+        "sidecar_hex": "06",
+        "problem": "not the login line of its code",
+        "note": "a raw escape sequence in device text: the line is one printable row"
+      }
+    ]
+  }
+}

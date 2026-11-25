@@ -1,0 +1,50 @@
+{
+  "seam": "C3",
+  "name": "terminal-hello-busy",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U3 `hello_during_seal_or_core_end`: terminal_busy for both cases, only attempted peer closed, fresh peer after proper event barrier."
+    },
+    {
+      "unit": "U3",
+      "test": "owed: U2/U3 `hello_during_seal_or_core_end`: terminal_busy for both cases, only attempted peer closed, fresh peer after proper event barrier."
+    }
+  ],
+  "description": "U2/U3 `hello_during_seal_or_core_end`: terminal_busy for both cases, only attempted peer closed, fresh peer after proper event barrier.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "session_id": "fixture-session-a",
+          "code": "terminal_busy",
+          "message": "terminal operation in progress"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "error",
+          "code": "terminal_busy",
+          "message": "busy"
+        },
+        "note": "session required"
+      }
+    ]
+  }
+}

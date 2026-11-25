@@ -1,0 +1,357 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C5 inventory target file",
+  "description": "The parsed document of one target file: <data_dir>/inventory/current/<source>/<id>.yaml (Storage \u00a72.1; the layout and its rules are in x-layout below). The top level and `options` are OPEN, with the exceptions of the refused keys below: a target file forgives field changes (Storage \u00a72.1: \"YAML per-file forgives field changes \u2026 Add a field, existing files still load\"), and the reader ignores every field it does not use. This is the one contract shape that is not closed. Rule 10 (x-layout): a reader parses the file as YAML and checks the JSON form in which every scalar of a key the schema types as a string is that scalar's text, so an unquoted last_seen 2026-03-18T10:30:00Z is the string \"2026-03-18T10:30:00Z\" and an unquoted `on` in a name is the string \"on\". A login script (`options.scripts`, `login_scripts`) loads and is ignored at this release: no script runs.",
+  "type": "object",
+  "required": [
+    "id",
+    "type"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "common.schema.json#/$defs/id",
+      "description": "The target's id. A file's id equals its stem: one file per target, named <id>.yaml (Storage \u00a72.1; x-layout rule 2)."
+    },
+    "type": {
+      "enum": [
+        "ssh",
+        "telnet",
+        "serial",
+        "echo"
+      ],
+      "description": "The target's protocol (Storage \u00a73.1). ssh and telnet connect from this release; serial loads and is deferred, so a file that exists today stays valid; echo is the lab loopback test driver. The top-level oneOf branches on type: each branch states the options its type acts on."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\u0000-\u001f\u007f-\u009f]+$",
+      "description": "The display name (Storage \u00a73.1). A surface renders it as text, never as markup or terminal escapes, so control characters are refused (the bound 256 is a sanity bound). The pattern refuses every control character: U+0000-U+001F and U+007F-U+009F."
+    },
+    "prompt_pattern": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 256,
+      "pattern": "^[^\u0000-\u001f\u007f-\u009f]*$",
+      "description": "An own I-Regexp (RFC 9485); empty disables detection and detaches the vendor template. Absent follows a known vendor template. Presence survives reload and rebuild. A surface may check the cursor's row against before sending a line. XSD matching is whole-string: it matches the whole row with trailing spaces trimmed, or does not match. The core loads, stores and serves it as written, never compiles, checks or acts on it (Contract \u00a76). The schema checks length and characters only; a surface that cannot use a pattern fails closed on its own side. Not a credential."
+    },
+    "group": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\u0000-\u001f\u007f-\u009f]+$",
+      "description": "The target's group (Storage \u00a73.1). Text, rendered as text: the same rule and pattern as name."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[^,\u0000-\u001f\u007f-\u009f]+$"
+      },
+      "description": "Fleet filtering and RBAC scoping tags (Storage \u00a73.1, \u00a73.5). An empty tag is refused. The comma is excluded because it is the index's TAG separator; each bound (128) is a sanity bound. Control characters are refused: text a surface renders."
+    },
+    "vendor": {
+      "$ref": "common.schema.json#/$defs/id",
+      "description": "Open vendor identifier pointing to release-owned prompt data; no inferred fallback."
+    },
+    "share": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/share_entry"
+      },
+      "minItems": 1,
+      "maxItems": 256,
+      "description": "On a user's own target: the usernames who see it, the owner always among them. Absent means the shared inventory. Stored and answered in ascending order. In a stored file, share is required in a private source and forbidden elsewhere, validated with private_owner by the loader (x-layout identity-and-refusals)."
+    },
+    "private_owner": {
+      "$ref": "common.schema.json#/$defs/username",
+      "description": "Core-owned private source owner; validated against its source and not publicly exposed."
+    },
+    "import_ref": {
+      "type": "object",
+      "required": [
+        "format",
+        "source_ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "tabby",
+            "securecrt",
+            "mobaxterm",
+            "yaml"
+          ]
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^\u0000-\u001f\u007f-\u009f]+$"
+        }
+      },
+      "description": "Core-owned native reference, compared exactly within the qualified destination."
+    },
+    "discovered_by": {
+      "$ref": "common.schema.json#/$defs/id",
+      "description": "Which source wrote this file (Storage \u00a73.1, \u00a73.5). When a file has it, it equals the source directory that holds the file (x-layout rule 9)."
+    },
+    "last_seen": {
+      "$ref": "common.schema.json#/$defs/timestamp_any_zone",
+      "description": "Discovery freshness (Storage \u00a73.1). A string under rule 10: an unquoted YAML date-time is its text. The core writes it in UTC with Z when the file has one."
+    },
+    "options": {
+      "type": "object",
+      "description": "The target's options (Storage \u00a73.2-\u00a73.4). Required for ssh and telnet, whose branches below name the keys each type acts on; open, so a field the reader does not use loads and is ignored. The shared overrides are listed here once; each type branch adds its own keys. All the integer-seconds overrides run to 9007199254740: the largest whole second the wire's duration_ms holds.",
+      "properties": {
+        "keepaliveInterval": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740,
+          "description": "Integer seconds. 0 turns link_timeout off \u2014 the escape for gear that never answers a TIMING-MARK (session model \u00a711: \"0 = off, per target\")."
+        },
+        "connection_linger": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740,
+          "description": "Integer seconds. On a telnet target it bounds only a connection that never carried a session: a telnet connection closes with its one session."
+        },
+        "keepaliveProbeInterval": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740,
+          "description": "Integer seconds, how often the worker probes a silent link (session model \u00a711)."
+        },
+        "orphan_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740,
+          "description": "Integer seconds: what the worker runs while the core is gone (session model \u00a711)."
+        },
+        "idle": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740,
+          "description": "Integer seconds: no byte either way (session model \u00a711)."
+        },
+        "unattended": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740,
+          "description": "Integer seconds: no client byte (session model \u00a711)."
+        },
+        "expiry_notice": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740,
+          "description": "Integer seconds: the session countdown's notice (session model \u00a711)."
+        },
+        "quiet_prompt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740,
+          "description": "Integer seconds: the quiet prompt's window (session model \u00a711)."
+        },
+        "keepaliveCountMax": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Integer missed keepalives, 1 to 2^53-1."
+        },
+        "open_timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740,
+          "description": "Integer seconds: the bound on a shell's open, how long the worker waits for the target to open a shell (config.yaml's worker.open_timeout, which a target's own value overrides)."
+        },
+        "login_timeout": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 1800,
+          "description": "Integer seconds, 10 to 1800 (30 min): the bound on a device login, how long the worker waits from C3 connect to its terminal answer, the probe and the human's answers included (config.yaml's worker.login_timeout, which a target's own value overrides)."
+        },
+        "size_floor": {
+          "type": "object",
+          "required": [
+            "cols",
+            "rows"
+          ],
+          "properties": {
+            "cols": {
+              "$ref": "common.schema.json#/$defs/cols"
+            },
+            "rows": {
+              "$ref": "common.schema.json#/$defs/rows"
+            }
+          },
+          "description": "The target's size floor, {cols, rows} (terminal-size \u00a73): the same rules as config.yaml's size.floor."
+        },
+        "size_ceiling": {
+          "type": "object",
+          "required": [
+            "cols",
+            "rows"
+          ],
+          "oneOf": [
+            {
+              "properties": {
+                "cols": {
+                  "const": 0
+                },
+                "rows": {
+                  "const": 0
+                }
+              }
+            },
+            {
+              "properties": {
+                "cols": {
+                  "$ref": "common.schema.json#/$defs/cols"
+                },
+                "rows": {
+                  "$ref": "common.schema.json#/$defs/rows"
+                }
+              }
+            }
+          ],
+          "description": "The target's size ceiling, {cols, rows} (terminal-size \u00a73): the same rules as config.yaml's size.ceiling. {0, 0} turns it off; one side 0 alone is refused."
+        },
+        "password": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 0,
+          "description": "refused: secrets never live in inventory, and a credential is resolved per principal (Storage \u00a73.5, \u00a74, \u00a710.1a)"
+        },
+        "privateKeys": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 0,
+          "description": "refused: secrets never live in inventory, and a credential is resolved per principal (Storage \u00a73.5, \u00a74, \u00a710.1a)"
+        },
+        "credential_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 0,
+          "description": "refused: secrets never live in inventory, and a credential is resolved per principal (Storage \u00a73.5, \u00a74, \u00a710.1a)"
+        }
+      }
+    },
+    "password": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 0,
+      "description": "refused: secrets never live in inventory, and a credential is resolved per principal (Storage \u00a73.5, \u00a74, \u00a710.1a)"
+    },
+    "privateKeys": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 0,
+      "description": "refused: secrets never live in inventory, and a credential is resolved per principal (Storage \u00a73.5, \u00a74, \u00a710.1a)"
+    },
+    "credential_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 0,
+      "description": "refused: secrets never live in inventory, and a credential is resolved per principal (Storage \u00a73.5, \u00a74, \u00a710.1a)"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "type": {
+          "const": "ssh"
+        },
+        "options": {
+          "required": [
+            "host"
+          ],
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "description": "The SSH host (Storage \u00a73.2). Required."
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "When absent, 22."
+            },
+            "user": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "The SSH user; when the target names none, the resolver falls back to config's target_user."
+            }
+          }
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "description": "ssh: host (required), port (22 when absent), user are acted on; Storage \u00a73.2's other keys load and are ignored. reuseSession must never be acted on: reuse is the requester's choice (Contract \u00a715.3)."
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "telnet"
+        },
+        "options": {
+          "required": [
+            "host"
+          ],
+          "properties": {
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "description": "The telnet host (Storage \u00a73.3). Required. A telnet target names no account: the operator types the login, recorded verbatim."
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "When absent, 23 (RFC 854's port)."
+            }
+          }
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "description": "telnet: host (required) and port are acted on. Storage \u00a73.3's other keys (inputMode, inputNewlines, outputMode, outputNewlines, input.backspace) load and are ignored at this release; the output pair could never be applied."
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "serial"
+        }
+      },
+      "description": "serial: no options key is acted on at this release. The type loads, so files that exist today stay valid; Storage \u00a73.4's keys are documented as not acted on: serial is deferred. options.port here is a device path on the broker host, and it stays off every northbound shape (Contract \u00a74)."
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "echo"
+        }
+      },
+      "description": "echo: the loopback test driver (lab only). No options key is acted on."
+    }
+  ],
+  "x-layout": {
+    "current": "<data_dir>/inventory/current is a symbolic link to ./v<N>/. Each source is a directory current/<source>/, and <source> has common#/$defs/id's shape. manual is the source people edit by hand, and no discovery source may use that name. Where <data_dir>/inventory is stored is the deployment's: its own volume.",
+    "one-file-per-target": "A target is one regular file, <source>/<id>.yaml. A reader takes only names that end in .yaml and whose stem matches id's pattern, and it ignores every other name. A file's id equals its stem.",
+    "atomic-write": "A writer writes a target file atomically: a temporary file in the same directory whose name a reader ignores, such as .<id>.yaml.tmp, renamed over the target (Storage \u00a710.6's pattern and the worker manifest's rule).",
+    "own-source": "A writer writes only its own source directory (\"no write conflicts\", Storage \u00a72.1). Nothing but the core writes the index (Storage \u00a72.2; Contract \u00a78).",
+    "bulk-change": "A bulk change follows Storage \u00a72.5's five steps, with step 4 made atomic: the new version is linked in by renaming a new link over current (ln -s v18 current.new then mv -T current.new current, or os.replace) \u2014 never by ln -sfn, which some tools perform as an unlink and then a create. A staging directory has a unique name, staging.<random>/, and is never read. A change of current's link target is a full rebuild (Storage \u00a72.3, the startup trigger); index reads during that rebuild may mix the old and the new.",
+    "missing-current": "A missing current keeps the index as it is; the core logs it. It never empties the index.",
+    "lock": "inventory/.lock is an advisory exclusive lock (flock). A swapper holds it for the whole swap, a writer for each write cycle, and the core for its cleanup. A reader never takes it.",
+    "retention": "The core keeps the last inventory.keep_versions versions (Storage \u00a72.5, \"Configurable\"). At start, under the lock, it removes older versions and every staging directory older than inventory.staging_max_age. It never removes a younger one, because a deploy may be building it.",
+    "identity-and-refusals": "discovered_by, when a file has it, equals <source>. Duplicate IDs are resolved independent of scan order after provenance validation. One ordinary shared file wins over imported shared and private files; two or more ordinary shared files refuse all candidates. With no ordinary shared file, one imported shared file wins over private files, while two or more refuse all. With no shared file, one validated private file loads and two or more refuse all. Logs name IDs and sources, never paths. private_owner is required in a private source and must match its directory owner; missing or mismatched ownership, or private_owner elsewhere, skips and logs the file. import_ref outside tsb and a validated private source is ignored while the file loads. These previously ignored keys now enforce provenance. A g- ID in any source the core does not write is skipped and logged. share is required in a private source and forbidden elsewhere: a private-source file without a share list, with one that does not name its private_owner, with a duplicate entry or more than 256 entries, or a file in any other source carrying share, is skipped and logged. An entry of a kind this release does not know matches no principal. A file that does not validate is skipped and the rest loaded; on a change, its entry is dropped, and the core logs it, naming the stem and the source. A log line names ids and sources, never a path.",
+    "yaml-data-model": "A reader parses a target file as YAML. It checks the JSON form in which every scalar of a key the schema types as a string is that scalar's text: an unquoted last_seen 2026-03-18T10:30:00Z is the string \"2026-03-18T10:30:00Z\"; an unquoted on in a name is the string \"on\". A writer quotes timestamps and every string a YAML 1.1 reader would read as a boolean or a null, because the discovery writer is Python (YAML 1.1) and the core is Go (YAML 1.2).",
+    "tsb-source": "tsb is reserved for the core, which writes that source only on a principal\u2019s request through the API; nothing else writes it. A discovery worker configured as manual or tsb refuses to run: manual is for people, tsb for the core. The core writes discovered_by: tsb, under the existing lock and atomic-write rules. The private- prefix is reserved: a private source holds the owner's own targets, private or listed; it is private- followed by the first 32 lower-case hex digits of SHA-256 over the exact username, and each file carries private_owner validated against that derivation. Discovery and adapter sources must not use that prefix. New generated IDs are checked across all files under the lock, including earlier assigned batch IDs.",
+    "import-markers": ".imports/ is not a source; readers and indexers ignore it. Every bulk swap copies .imports/ including incomplete markers. Under the inventory lock, the core removes a marker with its receipt when the receipt is removed."
+  }
+}

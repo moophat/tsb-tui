@@ -1,0 +1,113 @@
+{
+  "seam": "C2",
+  "name": "device-login-relay",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/ws/device_login_test.go — TestPromptsReachOnlyTheCreatorsSocketAndTheSocketBecomesTheAttach: the frames above reach the creator's socket only, no other client sees one, and after the result the same socket receives attached"
+    }
+  ],
+  "description": "What crosses C2 for one device login, as the frames a creator's socket carries, in order: `device_login_attach` redeems the one-time ticket; the device's host key, prompts and banner arrive as `device_login_*` frames the core relays unread (Contract §6: it checks only kinds, counts and lengths); `device_login_answer` goes back; `device_login_result` ends it. The prompts reach only the creator's socket: no other client can see a device login, because it is not a session, is not listed, and its ticket was handed to its creator alone. On `device_login_result` with outcome `connected` the same socket continues in the attach order from `attached`, and the recording warning is shown before any input (session-attach CR6). The answers cross C2 and C3 only: never a data socket, the ring, the VT grid, a log, a manifest or the spool.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "Contract §6",
+    "device-login steps 8 to 21",
+    "session-attach CR6"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_attach",
+          "v": 1,
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "device_login_id": "fixture-device-login-1"
+        },
+        "note": "1: the creator redeems the ticket; the reader runs on the socket from the accept"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey",
+          "v": 1,
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "2: the first-use key, when the worker has none on record"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey_answer",
+          "v": 1,
+          "accept": true
+        },
+        "note": "3: the operator's decision, audited before it is relayed"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "banner",
+          "text": "Authorized use only. Activity is logged."
+        },
+        "note": "4: the banner, relayed in the order the device sent it"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Password: ",
+              "echo": false
+            },
+            {
+              "text": "Verification code: ",
+              "echo": true
+            }
+          ],
+          "prompt_id": 1
+        },
+        "note": "5: a round: the core relays it and holds it for the recording before it acts on anything later"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_answer",
+          "v": 1,
+          "prompt_id": 1,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "6: the answer, relayed only when it names the outstanding prompt_id with one string per prompt"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "connected"
+        },
+        "note": "7: the result, then `attached` on the same socket"
+      }
+    ]
+  }
+}

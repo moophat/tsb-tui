@@ -1,0 +1,57 @@
+{
+  "seam": "C6",
+  "name": "profiles-file",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5's tests in schema/; E4 phase 4 (U5: the vault schema, policy.yaml and config.yaml E4 keys); the test is named in phase 16"
+    }
+  ],
+  "description": "users/<name>/profiles.yaml, Layer 2a: the core reads target and credential_ref only (Storage §10.3, §10.5).",
+  "corpus": [
+    "Storage §10.3",
+    "Storage §10.5",
+    "E4 Q7 (a)"
+  ],
+  "case": {
+    "schema": "schemas/vault.schema.json#/$defs/profiles_file",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "profiles": [
+            {
+              "target": "core-rtr-01",
+              "alias": "H2",
+              "credential_ref": "lab-switch",
+              "frontend": {
+                "fontSize": 18
+              }
+            },
+            {
+              "target": "dev-web-01"
+            }
+          ]
+        },
+        "note": "other Storage §10.3 fields are kept, not read"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "profiles": [
+            {
+              "credential_ref": "lab-switch"
+            }
+          ]
+        },
+        "note": "each entry names its target"
+      }
+    ]
+  }
+}

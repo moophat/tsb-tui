@@ -1,0 +1,51 @@
+{
+  "seam": "C7",
+  "name": "chain-split",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain_test.go — TestReconstructionVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "Chain step 3: the split, disjoint halves: part1 = master_hash[0:16], part2 = master_hash[16:32]; the core reconstructs by concatenation (credential-protection §4.1, Appendix A). On the wire each half is padded base64.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_split",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "split",
+          "implementations": [
+            {
+              "unit": "U8c",
+              "what": "the browser splits (U7, the TUI, too)"
+            },
+            {
+              "unit": "U6",
+              "what": "the Go core concatenates part1 ‖ part2"
+            }
+          ],
+          "master_hash": "843a368a80a42d307dc14dc5ac76bfcfc30a3d5a772c3f5b5e9ae1cb31ec0237",
+          "part1": "843a368a80a42d307dc14dc5ac76bfcf",
+          "part2": "c30a3d5a772c3f5b5e9ae1cb31ec0237"
+        }
+      }
+    ]
+  }
+}

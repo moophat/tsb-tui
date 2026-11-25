@@ -1,0 +1,52 @@
+{
+  "seam": "C7",
+  "name": "kat-argon2id-rfc9106",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "Argon2id's known answer from its standard, RFC 9106 §5.3: password 32 × 0x01, salt 16 × 0x02, secret 8 × 0x03, associated data 12 × 0x04, t=3, m=32 KiB, p=4. It sets a secret and associated data, which TSB's chain never uses and some libraries cannot take, so each implementation checks this file or kat-argon2id-reference as it can (OPEN-1.7 (c), ruled 2026-10-29). Published e4: reference, graded by the implementations of the chain's argon2id steps (U6's Go test code, U7, U8c), tests owed (phase 16 names them).",
+  "corpus": [
+    "RFC 9106 §5.3",
+    "credential-protection §4.1",
+    "decision 5.26 (c)",
+    "E4 phase 1 OPEN-1.7 (c)"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/kat_argon2id",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "primitive": "argon2id",
+          "source": "RFC 9106 §5.3, Argon2id version 19 (memory 32 KiB, 3 passes, 4 lanes)",
+          "checked_by": "an implementation that takes Argon2's secret K and associated data X (the reference C code, golang.org/x/crypto/argon2 does not); one that cannot checks kat-argon2id-reference",
+          "cases": [
+            {
+              "name": "RFC 9106 §5.3",
+              "params": {
+                "version": 19,
+                "time_cost": 3,
+                "memory_kib": 32,
+                "parallelism": 4,
+                "tag_length": 32
+              },
+              "password": "0101010101010101010101010101010101010101010101010101010101010101",
+              "salt": "02020202020202020202020202020202",
+              "secret": "0303030303030303",
+              "ad": "040404040404040404040404",
+              "tag": "0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

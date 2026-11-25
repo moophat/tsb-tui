@@ -1,0 +1,64 @@
+{
+  "seam": "C3",
+  "name": "terminal-linger-not-reset",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed: U3/U11 `terminal_recovery_preserves_linger`: repeated hello/replay/seal never resets original last-live-session linger; sibling live connection unaffected."
+    },
+    {
+      "unit": "U11",
+      "test": "owed: U3/U11 `terminal_recovery_preserves_linger`: repeated hello/replay/seal never resets original last-live-session linger; sibling live connection unaffected."
+    }
+  ],
+  "description": "U3/U11 `terminal_recovery_preserves_linger`: repeated hello/replay/seal never resets original last-live-session linger; sibling live connection unaffected.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "seal_output",
+          "session_id": "fixture-session-a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "release_accounted",
+          "session_id": "fixture-session-a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "output_sealed",
+          "session_id": "fixture-session-a",
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "eof",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": false
+          }
+        },
+        "note": ""
+      }
+    ]
+  }
+}

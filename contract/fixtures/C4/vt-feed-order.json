@@ -1,0 +1,68 @@
+{
+  "seam": "C4",
+  "name": "vt-feed-order",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "Output frames are applied in arrival order per session (D18), and a jump without a gap frame is refused, never spliced. Feed order rides kind-2 output frames, which a control sequence does not carry; this fixture records the control messages around them. After hello and the grid's open, the core feeds output frames through seq N — a re-feed at or below the worker's through_seq is ignored, and a gap frame moves through_seq to its seq and nothing else. When a later frame jumps without a gap frame the VT refuses it with error seq_jump and leaves the grid unchanged; the core then raises the stale flow with cause grid_lost (5.52; C2 decision 10), which is vt-grid-lost's fixture. The frames themselves are graded by the U4 worker (owed) and the core's feed by the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 4",
+    "vt-ipc.schema.json open",
+    "vt-ipc.schema.json error"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-1",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "error",
+          "code": "seq_jump",
+          "session_id": "sess-1",
+          "message": "frame seq 5 jumped past through_seq 1 with no gap frame; grid unchanged"
+        }
+      }
+    ]
+  }
+}

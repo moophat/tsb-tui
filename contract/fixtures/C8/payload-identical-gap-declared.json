@@ -1,0 +1,106 @@
+{
+  "seam": "C8",
+  "name": "payload-identical-gap-declared",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U11",
+      "test": "harness/rigs/kill-core.sh with the ttyrec differ — a recording that declares a loss is never reported payload-identical to an uninterrupted run"
+    }
+  ],
+  "description": "The comparator never calls a declared loss identical (x-compare). Recording b holds the same output payload as the uninterrupted recording a, byte for byte, and a gap marker besides: it says 5 bytes were lost, which a has no record of. Leaving the gap markers out would call the two identical and hide the declaration — a spurious marker, or payload a core filled in over a loss it had declared. So output is identical only when the gap markers are the same, line for line, as well as the payload; the end markers are left out, and input is compared as before.",
+  "corpus": [
+    "phase-01 (payload-identical)",
+    "immortality §4.3"
+  ],
+  "case": {
+    "transform": "c8-compare",
+    "input": {
+      "a": {
+        "frames": [
+          {
+            "sec": 1789000000,
+            "usec": 123456,
+            "length": 2,
+            "direction": "out",
+            "data_hex": "2420"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 0,
+            "length": 3,
+            "direction": "in",
+            "data_hex": "6c730d"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 100,
+            "length": 17,
+            "direction": "out",
+            "data_hex": "6c730d0a6e6f7465732e7478740d0a2420"
+          },
+          {
+            "sec": 1789000009,
+            "usec": 0,
+            "length": 0,
+            "end": "killed",
+            "data_hex": ""
+          }
+        ]
+      },
+      "b": {
+        "frames": [
+          {
+            "sec": 1789000000,
+            "usec": 123456,
+            "length": 2,
+            "direction": "out",
+            "data_hex": "2420"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 0,
+            "length": 3,
+            "direction": "in",
+            "data_hex": "6c730d"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 50,
+            "length": 91,
+            "marker": "gap",
+            "data_hex": "0d0a5b545342206761703a2035206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a34302e3132333435365a20746f20323032362d30392d31305430303a32363a34312e3030303035305a5d0d0a"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 100,
+            "length": 17,
+            "direction": "out",
+            "data_hex": "6c730d0a6e6f7465732e7478740d0a2420"
+          },
+          {
+            "sec": 1789000011,
+            "usec": 0,
+            "length": 0,
+            "end": "killed",
+            "data_hex": ""
+          }
+        ]
+      }
+    },
+    "output": {
+      "payload_identical": {
+        "out": false,
+        "in": true
+      },
+      "monotonic": {
+        "a": true,
+        "b": true
+      }
+    }
+  }
+}

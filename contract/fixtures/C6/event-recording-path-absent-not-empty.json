@@ -1,0 +1,43 @@
+{
+  "seam": "C6",
+  "name": "event-recording-path-absent-not-empty",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:audit-valid",
+  "description": "recording_path names the session's recording and is absent, never an empty string, when there is none — so a reader can tell 'no artefact' from 'artefact path lost'. Every line of a collected audit log is held to it.",
+  "corpus": [
+    "Storage §6"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "duration": 5
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "duration": 5,
+          "recording_path": ""
+        }
+      }
+    ]
+  }
+}

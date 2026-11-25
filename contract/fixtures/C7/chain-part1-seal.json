@@ -1,0 +1,59 @@
+{
+  "seam": "C7",
+  "name": "chain-part1-seal",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain2_test.go — TestPart1SealVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "Chain step 6: the sealed Part 1 a trusted browser keeps: AES-256-GCM under storage_key, associated data naming the user and the device (vault.schema.json x-associated-data part1), stored IV ‖ ciphertext ‖ tag. The IV is fixed for the vector; a writer draws a fresh one for every encryption.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_seal",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "part1-seal",
+          "implementations": [
+            {
+              "unit": "U8c",
+              "what": "the browser vault client (web/src/vault/)"
+            },
+            {
+              "unit": "U6",
+              "what": "Go test code in vault/ (5.26: a second implementation of a browser-only step)"
+            }
+          ],
+          "key_name": "storage_key",
+          "key": "7b83e3db8d2613fd3b7fa8b888b4de2ef33cfe42c78ab1ded25b3b2742fb9f92",
+          "iv": "303132333435363738393a3b",
+          "aad_fields": [
+            "tsb.vault.part1.v1",
+            "fixture-user",
+            "36582605103cf07de683402644dce9ef79cadfc9fc47e97016e98ade52a168a0"
+          ],
+          "aad": "00127473622e7661756c742e70617274312e7631000c666978747572652d75736572002036582605103cf07de683402644dce9ef79cadfc9fc47e97016e98ade52a168a0",
+          "plaintext": "843a368a80a42d307dc14dc5ac76bfcf",
+          "sealed": "303132333435363738393a3bde7e4b4faeeddc51eb74a2e5e8aa300a8be2b4f59a60e29b61c08d6371ed3852"
+        }
+      }
+    ]
+  }
+}

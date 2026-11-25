@@ -1,0 +1,127 @@
+{
+  "seam": "C6",
+  "name": "grid-snapshot-record",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed by the E2 schema plan"
+    },
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    }
+  ],
+  "description": "The grid_snapshots bucket record, one per session, the latest (5.39; 5.47). It carries the engine's own binary snapshot as base64, the seq the snapshot is of, the grid's geometry and the engine name and version, so a core that restarts — or a VT worker that dies while the core lives — can restore the screen from it. There is no recording_offset: the session record's recording_committed_offset is the one copy, so a second field meaning the same offset cannot drift (F1). engine.name is a string, not a constant: libghostty-vt is the locked engine and vt10x is the fallback. One persisted value: this record is written in the same bbolt write as the session record's recording_last_seq_out, so at every write snapshot_seq equals recording_last_seq_out. Refused: a recording_offset field, a snapshot that is not base64, and an engine without a version.",
+  "corpus": [
+    "Storage §8.6",
+    "decision 5.39",
+    "decision 5.47",
+    "plan.md §3 C6",
+    "5.39 counters = one, aligned"
+  ],
+  "case": {
+    "schema": "schemas/continuity-state.schema.json#/$defs/grid_snapshot_record",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "snapshot": "AAECAwQ=",
+          "snapshot_seq": 57,
+          "cols": 120,
+          "rows": 40,
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.2.3"
+          },
+          "written_at": "2026-09-23T12:00:00Z"
+        },
+        "note": "the latest snapshot of one shell session"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "snapshot": "AAECAwQ=",
+          "snapshot_seq": 57,
+          "cols": 80,
+          "rows": 24,
+          "engine": {
+            "name": "vt10x",
+            "version": "0.4.0"
+          },
+          "written_at": "2026-09-23T12:00:00Z"
+        },
+        "note": "the fallback engine is named too"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "snapshot": "AAECAwQ=",
+          "snapshot_seq": 57,
+          "cols": 120,
+          "rows": 40,
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.2.3"
+          },
+          "written_at": "2026-09-23T12:00:00Z",
+          "recording_offset": 4096
+        },
+        "note": "no recording_offset: the session record's recording_committed_offset is the one copy (F1)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "snapshot": "not base64!!!",
+          "snapshot_seq": 57,
+          "cols": 120,
+          "rows": 40,
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.2.3"
+          },
+          "written_at": "2026-09-23T12:00:00Z"
+        },
+        "note": "the snapshot is base64"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "snapshot": "AAECAwQ=",
+          "snapshot_seq": 57,
+          "cols": 120,
+          "rows": 40,
+          "engine": {
+            "name": "libghostty-vt"
+          },
+          "written_at": "2026-09-23T12:00:00Z"
+        },
+        "note": "the engine carries its version"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "snapshot": "AAECAwQ=",
+          "cols": 120,
+          "rows": 40,
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.2.3"
+          },
+          "written_at": "2026-09-23T12:00:00Z"
+        },
+        "note": "snapshot_seq is required"
+      }
+    ]
+  }
+}

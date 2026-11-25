@@ -1,0 +1,49 @@
+{
+  "seam": "C3",
+  "name": "supervisor-kill",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_supervisor.py — kill_worker SIGKILLs and reaps the worker, and answers only after the reap"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/hung-worker.sh — a worker whose loop stops answering is killed through its supervisor, and every session in it ends terminated / worker_lost"
+    }
+  ],
+  "description": "A hung worker ends its sessions (phase-01; session model §11 worker_heartbeat, §13). A worker whose event loop stops answering the core's ping is dead to the core — locally a worker that cannot answer is a dead worker (decision 5.38) — so the core asks its supervisor to kill it: SIGKILL, then the reap, bounded by reap_timeout. worker_killed comes only after the reap, so the core knows the process and its target connections are gone.",
+  "corpus": [
+    "session model §11",
+    "session model §13",
+    "decision 5.38",
+    "Contract §4",
+    "phase-01 (a hung worker)"
+  ],
+  "case": {
+    "socket": "supervisor-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "kill_worker",
+          "worker_id": "fixture-worker-1",
+          "reap_timeout": 5000
+        },
+        "note": "after worker_heartbeat fired"
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "worker_killed",
+          "worker_id": "fixture-worker-1"
+        },
+        "note": "after the reap"
+      }
+    ]
+  }
+}

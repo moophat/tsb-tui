@@ -1,0 +1,49 @@
+{
+  "seam": "C1",
+  "name": "screen-unlock-limiter",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "The screen-lock re-check shares the login's failed-login limiter (DEFAULT 67): past it, 429 rate_limited, and the passphrase limiter is untouched.",
+  "corpus": [
+    "credential-protection §5.5",
+    "Frontend §10.4",
+    "E4 DEFAULT 67",
+    "login step 2"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/screen-unlock",
+          "body": {
+            "password": "FIXTURE-WRONG-PASSWORD"
+          }
+        },
+        "expect": {
+          "status": 429,
+          "example": {
+            "error": {
+              "code": "rate_limited",
+              "message": "too many failed logins; try later"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

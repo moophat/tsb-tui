@@ -1,0 +1,168 @@
+{
+  "seam": "C1",
+  "name": "session-list-paged",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: session history session-list-paged provider test"
+    }
+  ],
+  "description": "Seed four visible records in the illustrated creation order, including a timestamp tie with ids b then a, plus invisible records between them. Fill pages after visibility and ended filtering. Cursor example bytes are illustrative, not a prescribed encoding: save the provider cursor and use it unchanged. Assert no duplicates, strict descending (created_at, id) order, full first page, a full final page either without next_cursor or with a cursor whose next page is empty, no cursor on a short or empty page, and continuation after removal of the boundary record without checking its existence. Re-evaluate changed visibility and filter on each page; unsigned cursor grants nothing and survives a core restart. Published e4 so surfaces can build against the shape; required-green e5 so the addition does not retroactively fail the existing e4 provider. For ended=exclude, prove the answer cost does not grow with retained ended history; the live view is sorted in the same order.",
+  "corpus": [
+    "session-list rules 8\u201310",
+    "conventions V1, V4, V7, V8",
+    "Storage \u00a78.6"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions?limit=2"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/sessions/0/id",
+              "eq": "fixture-history-z"
+            },
+            {
+              "pointer": "/sessions/1/id",
+              "eq": "fixture-history-b"
+            },
+            {
+              "pointer": "/next_cursor",
+              "present": true
+            },
+            {
+              "pointer": "/sessions/2",
+              "absent": true
+            }
+          ],
+          "example": {
+            "sessions": [
+              {
+                "id": "fixture-history-z",
+                "target_id": "fixture-target",
+                "connection_id": "fixture-conn-1",
+                "session_type": "shell",
+                "state": "killed",
+                "tier": 1,
+                "owner": "fixture-user",
+                "control_holder": null,
+                "created_at": "2026-11-16T12:00:00Z",
+                "term": "xterm-256color",
+                "cols": 120,
+                "rows": 40,
+                "recording": {
+                  "active": true,
+                  "warning_code": "recording.active",
+                  "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+                }
+              },
+              {
+                "id": "fixture-history-b",
+                "target_id": "fixture-target",
+                "connection_id": "fixture-conn-1",
+                "session_type": "shell",
+                "state": "terminated",
+                "tier": 1,
+                "owner": "fixture-user",
+                "control_holder": null,
+                "created_at": "2026-11-15T12:00:00Z",
+                "term": "xterm-256color",
+                "cols": 120,
+                "rows": 40,
+                "recording": {
+                  "active": true,
+                  "warning_code": "recording.active",
+                  "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+                }
+              }
+            ],
+            "next_cursor": "fixture-opaque-history-position"
+          }
+        },
+        "save": {
+          "cursor": "/next_cursor"
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions?limit=2&cursor=${cursor}"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/sessions/0/id",
+              "eq": "fixture-history-a"
+            },
+            {
+              "pointer": "/sessions/1/id",
+              "eq": "fixture-history-0"
+            },
+            {
+              "pointer": "/sessions/2",
+              "absent": true
+            }
+          ],
+          "example": {
+            "sessions": [
+              {
+                "id": "fixture-history-a",
+                "target_id": "fixture-target",
+                "connection_id": "fixture-conn-1",
+                "session_type": "shell",
+                "state": "detached",
+                "tier": 1,
+                "owner": "fixture-user",
+                "control_holder": null,
+                "created_at": "2026-11-15T12:00:00Z",
+                "term": "xterm-256color",
+                "cols": 120,
+                "rows": 40,
+                "recording": {
+                  "active": true,
+                  "warning_code": "recording.active",
+                  "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+                }
+              },
+              {
+                "id": "fixture-history-0",
+                "target_id": "fixture-target",
+                "connection_id": "fixture-conn-1",
+                "session_type": "shell",
+                "state": "live",
+                "tier": 1,
+                "owner": "fixture-user",
+                "control_holder": null,
+                "created_at": "2026-11-14T12:00:00Z",
+                "term": "xterm-256color",
+                "cols": 120,
+                "rows": 40,
+                "recording": {
+                  "active": true,
+                  "warning_code": "recording.active",
+                  "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

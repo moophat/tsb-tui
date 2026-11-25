@@ -1,0 +1,68 @@
+{
+  "seam": "C3",
+  "name": "supervisor-heartbeat",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:supervisor-heartbeat",
+  "description": "The supervisor heartbeat (session model §9 E11, §11): the core pings each supervisor every heartbeat_interval, and a supervisor that stops answering, or leaves a request unanswered past its timeout, raises the operator alert supervisor_unresponsive — its workers and their sessions untouched, and TSB never restarting it. Every request line gets exactly one answer, so the rule never fires on a supervisor that is merely refusing. A v0.2 worker_created names the worker's proto_version.",
+  "corpus": [
+    "session model §9 E11",
+    "session model §11",
+    "decision 5.13",
+    "Contract §12"
+  ],
+  "case": {
+    "socket": "supervisor-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping",
+          "n": 1
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "pong",
+          "n": 1
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 4
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "worker_created",
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+          "proto_version": "0.2"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping",
+          "n": 2
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "pong",
+          "n": 2
+        }
+      }
+    ]
+  }
+}

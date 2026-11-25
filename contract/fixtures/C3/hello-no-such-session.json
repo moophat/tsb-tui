@@ -1,0 +1,60 @@
+{
+  "seam": "C3",
+  "name": "hello-no-such-session",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_reattach.py — a hello for a session the worker does not hold is answered error no_such_session"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/reattach_test.go — on no_such_session the core re-reads the spool, then ends the session E10 terminated / worker_lost only when no spooled end is there"
+    }
+  ],
+  "description": "Session model §9 E10's third case, which v0.1 cannot say: the worker answers that it holds no such session. The core then re-reads the spool for that session — the end may have landed between its first read and the dial — and writes a spooled end if there is one; only without one is it E10, terminated / worker_lost.",
+  "corpus": [
+    "session model §9 E10",
+    "session model §15",
+    "immortality §3"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "answering",
+          "last_ack_at": "2026-09-29T01:00:00Z"
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 3
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "no_such_session",
+          "session_id": "fixture-session-a",
+          "message": "no such session"
+        },
+        "run": "01789000100000000000"
+      }
+    ]
+  }
+}

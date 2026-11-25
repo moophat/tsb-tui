@@ -1,0 +1,46 @@
+{
+  "seam": "C2",
+  "name": "device-login-hostkey-audit-unwritable",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/ws/device_login_test.go — TestAnUnwritableHostKeyAuditLineEndsTheLoginConnectFailedAnd4016: the result is connect_failed, never hostkey_refused, and the close is 4016"
+    }
+  ],
+  "description": "The pane's half of the ruling on derived 23: when the core cannot write `target.hostkey_accepted` for a key the operator accepted, the device login ends with `device_login_result` `outcome: connect_failed` and the socket closes 4016 `device_login_ended`. Not `hostkey_refused`: nobody refused, and the failure is TSB's own. The worker is sent C3 `disconnect` (C3/hostkey-audit-unwritable-disconnects), and no `target.hostkey_refused` is written.",
+  "corpus": [
+    "decision 5.18",
+    "open_decisions §5",
+    "device-login step 13",
+    "conventions V3"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey_answer",
+          "v": 1,
+          "accept": true
+        },
+        "note": "the operator's Accept, which the core could not audit"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "connect_failed"
+        },
+        "note": "the pane is told connect_failed, then close 4016"
+      }
+    ]
+  }
+}

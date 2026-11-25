@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TSB contract graded_by side index",
+  "description": "What each reference fixture is graded by, checked. A fixture's own `graded_by` says, in prose, which unit's test grades it; this file names that test, so a run can check it rather than take it on trust: an entry {unit, file, test_id} must appear with outcome pass in the results the run is given (`tsbc verify --provider-results`), and an entry {unit, owed} says no such test exists yet, which is never graded. A fixture's prose and its index may name the same test and disagree in detail — the prose is description, the index is what is checked — but an entry whose `unit` is not among the fixture's own `graded_by` units, an entry naming no fixture, or an entry for a fixture that is not graded `reference` is refused by self-check.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "array",
+    "minItems": 1,
+    "items": {"$ref": "#/$defs/entry"}
+  },
+  "x-fixture-key": "Fixtures are named `<seam>/<name>`, as in the README and in every fixture's path.",
+  "$defs": {
+    "entry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["unit", "file", "test_id"],
+          "additionalProperties": false,
+          "properties": {
+            "unit": {"type": "string", "pattern": "^U[0-9]{1,2}[a-c]?$"},
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+              "description": "The test's file, repo-relative in the provider's repo. It is read as a path, never opened: it may not begin with `/` and may hold no `..` segment, which `tsbc`'s own path rules refuse in every input it takes. The unit-to-directory check is the provider's."
+            },
+            "test_id": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_/.:-]+$",
+              "description": "The test's id within its file: a Go `TestName` or `TestName/sub`, the pytest node id after the file (`Class::test` or `test`), or a harness rig `rig-<name>`. A pytest test that is parametrized is cited without its `[param]` suffix; every parametrized case that ran must have passed."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["unit", "owed"],
+          "additionalProperties": false,
+          "properties": {
+            "unit": {"type": "string", "pattern": "^U[0-9]{1,2}[a-c]?$"},
+            "owed": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The plan that owes the test. An owed entry is never graded: an owed entry alone makes the fixture it sits on UNGRADED, never green; a named test on the same fixture that ran and failed still fails it."
+            }
+          }
+        }
+      ]
+    }
+  }
+}

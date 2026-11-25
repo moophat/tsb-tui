@@ -1,0 +1,92 @@
+{
+  "seam": "C3",
+  "name": "connection-lost-lists-sessions",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-connection-lost",
+  "description": "When the connection is lost — here our end of the TCP connection is gone (cause transport; link_timeout would be keepalive_timeout) — connection_lost names the connection and every session still open on it, and each of them ends terminated / connection_lost (session model §13). The loss reaches every channel; an event naming one session would leave its siblings falsely live against a closed transport. Captures from a real run must show it on every connection_lost, and at least one must be captured.",
+  "corpus": [
+    "lang-arch §6.4 step 3",
+    "Contract §15"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-b",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-b",
+          "session_type": "shell",
+          "socket": "shell-2.sock"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [
+            "fixture-session-a",
+            "fixture-session-b"
+          ],
+          "cause": "transport",
+          "reason": "ECONNRESET on our end of the TCP connection"
+        }
+      }
+    ]
+  }
+}

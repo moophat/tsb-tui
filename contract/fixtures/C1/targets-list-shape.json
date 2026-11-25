@@ -1,0 +1,104 @@
+{
+  "seam": "C1",
+  "name": "targets-list-shape",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "instance",
+  "grade": "with:targets-list",
+  "description": "The target list is closed, with targets required (mirroring SessionList) and next_cursor present only when visible targets may follow. A page that is empty is a valid answer, so a surface reads an empty fleet as an empty list and not as a refusal; a cursor is an opaque string a surface never parses, and never a broker path.",
+  "corpus": [
+    "Storage §9",
+    "Storage §10.1a",
+    "Contract §4"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetList",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "targets": []
+        },
+        "note": "an empty page is the answer to a principal without target.discover"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "targets": [
+            {
+              "id": "core-router-01",
+              "type": "ssh",
+              "tags": [
+                "router"
+              ],
+              "discovered_by": "tabby",
+              "host": "192.0.2.10",
+              "port": 22
+            }
+          ],
+          "next_cursor": "core-router-01"
+        },
+        "note": "a page with more visible targets following: the cursor is the last id returned"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "targets": [
+            {
+              "id": "rich-name",
+              "type": "ssh",
+              "name": "[bold red]rich[/bold red]",
+              "tags": [],
+              "discovered_by": "manual",
+              "host": "192.0.2.40",
+              "port": 22
+            }
+          ]
+        },
+        "note": "the name is text a surface renders as text, never as markup"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "targets": [],
+          "next_cursor": ""
+        },
+        "note": "an empty cursor is not a cursor: a page with nothing after it carries none"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "targets": [
+            {
+              "id": "core-router-01",
+              "type": "ssh",
+              "tags": [],
+              "discovered_by": "manual",
+              "host": "192.0.2.10",
+              "port": 22,
+              "path": "/home/tsb/.tsb/inventory/current/manual/core-router-01.yaml"
+            }
+          ]
+        },
+        "note": "a path on the broker host never crosses C1 (V11; Contract §4)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "targets": [],
+          "total": 0
+        },
+        "note": "the list is closed: a count the consumer was not told is not an answer"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "targets": "none"
+        },
+        "note": "targets is a list of records, never a string"
+      }
+    ]
+  }
+}

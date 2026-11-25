@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "policy.yaml",
+  "description": "The parsed document of ~/.tsb/policy.yaml. `users` is Storage §9 verbatim — five permissions, four target-filter forms — plus, from contract-v0.2, broker.health (session model §11). `recording.enabled` is the recording policy decision 5.40a puts in this file from E0, so E4's admin-only per-session override is a field added, not a key moved. The file is YAML; a reader parses it and validates the resulting document against this schema. How roles are defined and assigned is OPEN (open_decisions §3) and is deliberately absent. From the vault release (E4): the permission vault.admin; recording.force, the targets whose sessions are recorded whatever recording.enabled says (5.40a, ruled as target filters: Q9 (a), O16 (a)); and devices, the device-revocation switch (5.40c) and the device inactivity bound (credential-protection §7.1). Every E4 key is optional, and absent reads as its default.",
+  "type": "object",
+  "required": ["users"],
+  "additionalProperties": false,
+  "properties": {
+    "users": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/user"},
+      "description": "Principal name → what it may do and on which targets."
+    },
+    "recording": {
+      "type": "object",
+      "required": ["enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean", "description": "Whether sessions are recorded. A single-user deployment may disable it (open_decisions §5); the core audits the value at start (config.recording_state)."},
+        "login_input": {"type": "boolean", "description": "Whether a login supplied on session create (OpenAPI SessionCreateRequest.login) is recorded in the session's recording, marked as login input (C8 sidecar codes 6 and 7). Absent means false: no byte of the login is recorded. True records the username and the password at the head of the session's recording, before its first output frame, and only when the session is recorded at all (`enabled`: with recording off there is nothing to record into). The knob is deployment-wide. The core reads it at each create, so a reload applies to the next create. GET /auth/me tells a surface the effective value (this knob and `enabled` both on) before it sends a login, and while it is true a create's login must set `recording_acknowledged` (409 `login_recording_not_acknowledged` otherwise); the audit event session.connect says per session whether the login was recorded (detail.login_recorded)."},
+        "force": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/target_filter"}, "description": "From the vault release: target filters, in the users filters' vocabulary (a class of targets by tag:, a single target by id:, or host: and *), whose new sessions are recorded whatever `enabled` says — an administrator forcing recording on (decision 5.40a; Q9 (a)). The gate's \"single session\" reads as a single target, id:, the narrowest form that exists before a session does (O16 (a)). It only ever turns recording on: no filter turns it off, and no API reads or writes this file, so a principal cannot change it. Read at each create, so a reload applies to the next create; a session already running keeps the recording it started with. Absent means an empty list."}
+      }
+    },
+    "devices": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "revocation": {"enum": ["end_logins", "next_connection"], "description": "From the vault release: what revoking a device does to the logins tied to it (decision 5.40c; credential-protection Amendment 2026-09-14, decided 2026-09-19). end_logins, the default and the value when absent: the revocation ends every login tied to the device at once — its cookie, its vault unlock, its unredeemed tickets and its alert streams — and closes their attached clients with close 4015 device_revoked; the terminal sessions live on. next_connection: those logins stay, and each one's next create on a new connection is refused 403 device_not_trusted at the allowlist check. Admin-only, as this whole file is."},
+        "inactive_after": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: a device whose last verified challenge (device_record.last_used_at) is older than this is revoked by the core, reason inactive (credential-protection §7.1: \"auto after 90 days inactive (policy)\"). A Go duration; 0 turns the sweep off; absent means 0. The sweep runs on the vault lock's ticker."}
+      },
+      "description": "From the vault release: device trust's two policy keys."
+    }
+  },
+  "$defs": {
+    "user": {
+      "type": "object",
+      "required": ["permissions", "targets"],
+      "additionalProperties": false,
+      "properties": {
+        "permissions": {"type": "array", "items": {"$ref": "#/$defs/permission"}},
+        "targets": {"type": "array", "items": {"$ref": "#/$defs/target_filter"}}
+      }
+    },
+    "permission": {
+      "enum": [
+        "session.create",
+        "session.join.ro",
+        "session.join.rw",
+        "session.terminate",
+        "target.discover",
+        "broker.health",
+        "vault.admin",
+        "target.edit",
+        "target.private",
+        "account.admin"
+      ],
+      "description": "Storage §9: create new sessions; join read-only; join read-write; terminate any session; view target inventory. broker.health (session model §11): see TSB's own health — the operator alerts, GET /alerts — because seeing TSB's internals is itself a permission (External_Study §1.3). It is granted per user like the others; \"superadmin-only\" means only an admin writes policy.yaml, and how roles are defined stays OPEN (open_decisions §3). A user without it sees only what an alert does to their own sessions. vault.admin (from the vault release, Q6 (a)): administer the vault — store, list and delete org credentials and set their unlock class, create, rescope and revoke grants, list and revoke any principal's devices, and wipe a user's vault. Holding the fleet's credentials is a different power from ending sessions, so session.terminate does not imply it. Granted per user like the others; a core older than this release refuses a file that carries it (V5). target.edit covers create, replace, delete and the definition read in the tsb source; granted by name, never implied by \"*\", which is a target filter. One targets: filter list applies as to every permission. An older core refuses a policy carrying it. target.private grants management of the enabled caller's own targets, private or shared by list, including naming people in their lists, independently of target.edit and target filters. It grants neither session creation nor a credential; the ordinary session filters and session.create still apply. Own-target inventory visibility does not require this permission. An older core refuses a policy carrying it. account.admin (E4b) lists, creates, disables, enables and sets passwords on login accounts, granted per user like vault.admin. No other permission implies it, and no target filter limits these account operations. Every login may change its own password without it. An older core refuses a policy carrying it."
+    },
+    "target_filter": {
+      "type": "string",
+      "pattern": "^(\\*|tag:.+|host:.+|id:.+)$",
+      "description": "Storage §9: \"*\" all targets; \"tag:X\"; \"host:pattern\"; \"id:exact-match\"."
+    }
+  }
+}

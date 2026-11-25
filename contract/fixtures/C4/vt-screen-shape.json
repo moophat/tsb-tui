@@ -1,0 +1,66 @@
+{
+  "seam": "C4",
+  "name": "vt-screen-shape",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U4", "test": "owed by the E2 vt plan"}
+  ],
+  "description": "The golden fixtures' expected-screen shape (vt-screen.schema.json): rows per screen, the cursor, the active screen, the set modes and the SGR runs a case needs. It is fixture-only — never on any wire, and no C4 message carries cell content to the core (R8) — so a provider's own test grades it. A valid screen names both screens' lines, the cursor, the active screen and every carried mode; an invalid one omits a required field or names an unknown mode.",
+  "corpus": [
+    "plan.md C4 6",
+    "plan.md C4 9",
+    "plan.md R8"
+  ],
+  "case": {
+    "schema": "schemas/vt-screen.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cols": 80,
+          "rows": 24,
+          "active_screen": "primary",
+          "screens": {
+            "primary": {"lines": ["login: "]},
+            "alt": {"lines": ["top"]}
+          },
+          "cursor": {"row": 0, "col": 7, "visible": true},
+          "modes": {"decckm": false, "keypad": "numeric", "bracketed_paste": false,
+                    "mouse": {"mode": "off"}, "focus": false, "origin": false,
+                    "autowrap": true, "insert": false},
+          "sgr_runs": [{"screen": "primary", "row": 0, "col": 0, "length": 6, "sgr": "1;32"}]
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cols": 80,
+          "rows": 24,
+          "active_screen": "primary",
+          "screens": {"primary": {"lines": ["login: "]}},
+          "cursor": {"row": 0, "col": 7, "visible": true},
+          "modes": {"decckm": false, "keypad": "numeric", "bracketed_paste": false,
+                    "mouse": {"mode": "off"}, "focus": false, "origin": false,
+                    "autowrap": true, "insert": false},
+          "scroll_region": true
+        },
+        "note": "an unknown field: the set is closed, a mode this tag does not carry is not a set mode"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cols": 80,
+          "rows": 24,
+          "active_screen": "primary",
+          "screens": {"primary": {"lines": ["login: "]}},
+          "cursor": {"row": 0, "col": 7, "visible": true}
+        },
+        "note": "modes is required: a screen without its set modes is not a screen"
+      }
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "seam": "C8",
+  "name": "timestamps-monotonic",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:recordings-monotonic",
+  "description": "Within one direction a recording's stamps never decrease, across a core restart included (phase-01; x-compare). Each stamp keeps its owner: the worker keeps each session's output stamps non-decreasing at the source — a clock that steps back stamps the previous value, so output 2 shares output 1's stamp — and the core never alters one; the core keeps its own input stamps non-decreasing. Across directions nothing is assumed: here input is stamped before output that precedes it, by another clock. Refused: an output stamp that goes back, an input stamp that goes back, and a gap marker stamped before the output it follows (it belongs to the output clock).",
+  "corpus": [
+    "immortality §4.2",
+    "decision 5.22",
+    "phase-01 (timestamps monotonic across the seam)"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "timestamps-monotonic.ttyrec.bin",
+    "sidecar": "timestamps-monotonic.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 100,
+        "length": 2,
+        "direction": "out",
+        "data_hex": "2420"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 50,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "78"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 100,
+        "length": 1,
+        "direction": "out",
+        "data_hex": "78"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 80,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "0d"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 200,
+        "length": 4,
+        "direction": "out",
+        "data_hex": "0d0a2420"
+      }
+    ],
+    "invalid": [
+      {
+        "ttyrec_hex": "40f9a16a6400000002000000242040f9a16a32000000010000007840f9a16a5a0000000100000078",
+        "sidecar_hex": "000100",
+        "problem": "the stamps go back",
+        "note": "output stepped back instead of repeating its stamp"
+      },
+      {
+        "ttyrec_hex": "40f9a16a6400000002000000242040f9a16a32000000010000007840f9a16a280000000100000079",
+        "sidecar_hex": "000101",
+        "problem": "in stamp",
+        "note": "input stepped back"
+      },
+      {
+        "ttyrec_hex": "40f9a16a6400000002000000242040f9a16a3c0000005b0000000d0a5b545342206761703a2034206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a34302e3030303031305a20746f20323032362d30392d31305430303a32363a34302e3030303036305a5d0d0a",
+        "sidecar_hex": "0002",
+        "problem": "the stamps go back",
+        "note": "a gap marker before the output it follows"
+      }
+    ]
+  }
+}

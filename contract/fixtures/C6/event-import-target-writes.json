@@ -1,0 +1,96 @@
+{
+  "seam": "C6",
+  "name": "event-import-target-writes",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: per-target audit follows publication with names only and missing audit is not re-emitted."
+    }
+  ],
+  "description": "Imported shared and private target writes audit the ruled target field names, never values; providers verify per-target order and crash handling.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a713"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-23T00:00:00Z",
+          "user": "fixture-user",
+          "action": "target.create",
+          "target": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "detail": {
+            "source": "tsb",
+            "fields": [
+              "type",
+              "host",
+              "algorithms.hmac",
+              "keepaliveInterval",
+              "import_ref"
+            ]
+          }
+        },
+        "note": "shared imported target"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-23T00:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "detail": {
+            "source": "private-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "fields": [
+              "vendor",
+              "prompt_pattern",
+              "input.backspace"
+            ]
+          }
+        },
+        "note": "private source"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-23T00:00:00Z",
+          "user": "fixture-user",
+          "action": "target.create",
+          "target": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "detail": {
+            "source": "tsb",
+            "fields": [
+              "options.host"
+            ]
+          }
+        },
+        "note": "the existing field convention omits options prefix"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-23T00:00:00Z",
+          "user": "fixture-user",
+          "action": "target.create",
+          "target": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "detail": {
+            "source": "tsb",
+            "fields": [
+              "fixture.invalid"
+            ]
+          }
+        },
+        "note": "values are never audit fields"
+      }
+    ]
+  }
+}

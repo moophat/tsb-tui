@@ -1,0 +1,48 @@
+{
+  "seam": "C4",
+  "name": "golden-wide-chars",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "bytes",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "A golden C4 screen case, graded by the U4 libghostty-vt round trip: the sibling .bin is raw output fed to a fresh parser; the dump the worker then produces is fed to a second parser and must show the same screen and modes. **No expected screen is stored** (F14: expected screens are never hand-written, they come from the round trip at a pinned engine); the fixture asserts a wide glyph occupies its cell once \u2014 its continuation not repeated as a second glyph \u2014 at the cursor the output leaves.",
+  "corpus": [
+    "plan.md C4 decision 6",
+    "plan.md C4 decision 9",
+    "vt-screen.schema.json"
+  ],
+  "case": {
+    "format": "c4-vt-frames",
+    "file": "golden-wide-chars.bin",
+    "max_message_bytes": 200,
+    "messages": [
+      {
+        "kind": 2,
+        "session_id": "sess-1",
+        "frame": {
+          "flags": 0,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "24206563686f20e4b896e7958c0d0a"
+        }
+      },
+      {
+        "kind": 2,
+        "session_id": "sess-1",
+        "frame": {
+          "flags": 0,
+          "seq": 2,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "e4b896e7958c0d0a"
+        }
+      }
+    ]
+  }
+}

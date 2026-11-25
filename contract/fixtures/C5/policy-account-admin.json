@@ -1,0 +1,77 @@
+{
+  "seam": "C5",
+  "name": "policy-account-admin",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: E4b account management provider tests; account.admin is granted per user, independent of vault.admin and target filters; a pre-E4b core refuses this closed-set addition. Permission reload applies to subsequent requests without restart. Deploy grants seeded superadmin outside contract scope."
+    }
+  ],
+  "description": "account.admin is granted per user, independent of vault.admin and target filters; a pre-E4b core refuses this closed-set addition. Permission reload applies to subsequent requests without restart. Deploy grants seeded superadmin outside contract scope.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "account.admin"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "account.administrator"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "account.admin "
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": ""
+      }
+    ]
+  }
+}

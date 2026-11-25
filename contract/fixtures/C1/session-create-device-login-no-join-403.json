@@ -1,0 +1,67 @@
+{
+  "seam": "C1",
+  "name": "session-create-device-login-no-join-403",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/device_login_test.go — TestAPromptLoginByAPrincipalWhoMayNot JoinIs403BeforeAnyWorker (one name, split for the hygiene scan): 403 forbidden for a principal with session.create and no join permission, nothing placed"
+    }
+  ],
+  "description": "A device login becomes an attach, so a prompt-mode create needs the join permission as well as `session.create` (session.join.ro or session.join.rw, the check attach runs): a principal who may create but not join a session on the target is 403 `forbidden` before any worker is asked, not after they have typed a password (OQ5 (a)). The same permissions are checked again at `device_login_attach` (close 4003) and at `connected` (outcome `forbidden`), since a policy reload can remove them across a long login. No refused create is audited.",
+  "corpus": [
+    "open_decisions §5",
+    "session-open step 2",
+    "device-login steps 4, 8, 20",
+    "Frontend §10.4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "prompt"
+              },
+              "recording_acknowledged": true
+            }
+          }
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "forbidden",
+              "message": "the principal may not join a session on this target"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

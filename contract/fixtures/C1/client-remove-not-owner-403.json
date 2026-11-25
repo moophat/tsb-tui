@@ -1,0 +1,18 @@
+{
+  "seam": "C1",
+  "name": "client-remove-not-owner-403",
+  "mark": {"required-green": "e2"},
+  "kind": "rest",
+  "grade": "live",
+  "description": "Only the owner, or a holder of session.terminate, may remove an attached client (C1 decision 2, Contract §10 `kill clients`): a second principal that can see the session but is neither is refused 403 forbidden, as DELETE /sessions/{id} is. Authorization is checked before the client_id, so a peer's attempt on any client_id is refused. Needs a second principal whose policy.yaml entry can see the target but lacks session.terminate (inputs peer_user, peer_password).",
+  "corpus": ["Contract §10", "C1 decision 2", "Storage §9"],
+  "case": {
+    "inputs": ["user", "password", "target_id", "peer_user", "peer_password"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "DELETE", "path": "/sessions/${sid}/clients/fixture-client-1", "as": "peer"}, "expect": {"status": 403, "match": [{"pointer": "/error/code", "eq": "forbidden"}]}},
+      {"http": {"method": "GET", "path": "/sessions/${sid}"}, "expect": {"status": 200, "match": [{"pointer": "/state", "eq": "detached"}]}}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "seam": "C6",
+  "name": "event-spooled-end",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "artifacts:audit-orphan-end",
+  "description": "An end spooled while the core was away, as the returning core writes it (session model §15: stamped by the worker, written by the core when it returns): session.disconnect with ts the worker's stamp of the end, to the nanosecond — never the time the core came back. The orphan end phase-01 grades: orphan_timeout fired, killed / orphan; the recording ends in the killed marker with the same stamp. In a collected run every orphan end is audited this way, before the start of the core that wrote it unless that core was told of it on channel_closed by: worker, and a gap marker standing before its end marker ends no later than the end. Whether a gap marker was due — the spool's last_seq past what the recording held — is graded only by the core's own test (C8 gap-before-end): the core deletes the spool entry once it has written the end, so no collection holds it.",
+  "corpus": [
+    "session model §11",
+    "session model §15",
+    "immortality §8",
+    "phase-01 (orphan policy fires on schedule)"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-01T01:00:00.123456789Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-01T01:00:00.123456789Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-01T01:00:00.123456789Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "terminated",
+          "end_reason": "target_closed",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-01T01:00:00.123456789Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "terminated",
+          "end_reason": "orphan",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec"
+        },
+        "note": "orphan is an end by TSB: killed"
+      }
+    ]
+  }
+}

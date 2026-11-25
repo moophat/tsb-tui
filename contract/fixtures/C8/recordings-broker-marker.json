@@ -1,0 +1,51 @@
+{
+  "seam": "C8",
+  "name": "recordings-broker-marker",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:recordings-broker-marker",
+  "description": "A collected forced gap and a ctrl_l answer: the recording shows the gap marker (sidecar code 2), the broker marker (code 5) for the ctrl_l choice, and the code-1 input frame carrying 0x0C after it, and the audit log holds the session.stale_choice event for it. The marker precedes the input frame because the core records an input frame before it sends it (Contract §13); who chose is on the audit event only. A collected run must show each of the three, or its broker-originated send is unproven. Every broker marker found in a recording must have a session.stale_choice audit event for its choice, and a ctrl_l marker must be followed by its 0x0C input frame.",
+  "corpus": [
+    "5.46",
+    "Contract §13",
+    "plan.md §3 C8",
+    "phase-01 (forced gap + ctrl_l collection)"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "recordings-broker-marker.ttyrec.bin",
+    "sidecar": "recordings-broker-marker.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 123456,
+        "length": 2,
+        "direction": "out",
+        "data_hex": "2420"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 500000,
+        "length": 91,
+        "marker": "gap",
+        "data_hex": "0d0a5b545342206761703a2038206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a34302e3132333435365a20746f20323032362d30392d31305430303a32363a34312e3530303030305a5d0d0a"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 500000,
+        "length": 57,
+        "marker": "broker",
+        "data_hex": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d206374726c5f6c2063686f73656e5d0d0a"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 501000,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "0c"
+      }
+    ]
+  }
+}

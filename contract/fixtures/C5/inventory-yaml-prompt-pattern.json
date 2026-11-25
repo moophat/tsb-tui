@@ -1,0 +1,91 @@
+{
+  "seam": "C5",
+  "name": "inventory-yaml-prompt-pattern",
+  "mark": {
+    "required-green": "e4"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: the loader keeps an unquoted prompt_pattern scalar as its text"
+    }
+  ],
+  "description": "Rule 10 keeps an unquoted prompt_pattern scalar as text: on loads as \"on\", and 123 loads as \"123\", so both target files validate and enter the index.",
+  "corpus": [
+    "Storage §2.1",
+    "Storage §3.1"
+  ],
+  "case": {
+    "transform": "inventory-yaml-mapping",
+    "input": {
+      "reads": [
+        {
+          "current": "v17",
+          "files": [
+            {
+              "source": "manual",
+              "name": "core-rtr-07.yaml",
+              "yaml": {
+                "id": {"text": "core-rtr-07", "yaml11": "string"},
+                "type": {"text": "ssh", "yaml11": "string"},
+                "prompt_pattern": {"text": "on", "yaml11": "bool"},
+                "options": {
+                  "host": {"text": "10.0.1.1", "yaml11": "string"},
+                  "user": {"text": "admin", "yaml11": "string"}
+                }
+              }
+            },
+            {
+              "source": "manual",
+              "name": "core-rtr-08.yaml",
+              "yaml": {
+                "id": {"text": "core-rtr-08", "yaml11": "string"},
+                "type": {"text": "ssh", "yaml11": "string"},
+                "prompt_pattern": {"text": "123", "yaml11": "int"},
+                "options": {
+                  "host": {"text": "10.0.1.1", "yaml11": "string"},
+                  "user": {"text": "admin", "yaml11": "string"}
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "results": [
+        {
+          "index": [
+            {"id": "core-rtr-07", "source": "manual", "tags": []},
+            {"id": "core-rtr-08", "source": "manual", "tags": []}
+          ],
+          "alerts": [],
+          "docs": [
+            {
+              "stem": "core-rtr-07",
+              "source": "manual",
+              "doc": {
+                "id": "core-rtr-07",
+                "type": "ssh",
+                "prompt_pattern": "on",
+                "options": {"host": "10.0.1.1", "user": "admin"}
+              }
+            },
+            {
+              "stem": "core-rtr-08",
+              "source": "manual",
+              "doc": {
+                "id": "core-rtr-08",
+                "type": "ssh",
+                "prompt_pattern": "123",
+                "options": {"host": "10.0.1.1", "user": "admin"}
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

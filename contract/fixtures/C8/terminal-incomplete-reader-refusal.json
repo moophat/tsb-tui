@@ -1,0 +1,108 @@
+{
+  "seam": "C8",
+  "name": "terminal-incomplete-reader-refusal",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5/U11 `marker_strict_codec`: exact tag/def/grammar, 100..167 and actual payload length, old reader refuses 9, overflow/unknown reason rejected."
+    },
+    {
+      "unit": "U11",
+      "test": "owed: U5/U11 `marker_strict_codec`: exact tag/def/grammar, 100..167 and actual payload length, old reader refuses 9, overflow/unknown reason rejected."
+    }
+  ],
+  "description": "U5/U11 `marker_strict_codec`: exact tag/def/grammar, 100..167 and actual payload length, old reader refuses 9, overflow/unknown reason rejected.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/ttyrec.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "sec": 1794708000,
+          "usec": 123456,
+          "length": 130,
+          "marker": "terminal_incomplete",
+          "data_hex": "0d0a5b5453423a206f757470757420696e636f6d706c6574652061667465722073657120343220627974657320383139323b20726561736f6e20636f72655f776169745f74696d656f75743b206f627365727665645f6e7320313739343730383030303132333435363738393b2072656d61696e696e6720756e6b6e6f776e5d0d0a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "sec": 1794708000,
+          "usec": 123456,
+          "length": 122,
+          "marker": "terminal_incomplete",
+          "data_hex": "0d0a5b5453423a206f757470757420696e636f6d706c6574652061667465722073657120343220627974657320383139323b20726561736f6e20636f72655f73746f703b206f627365727665645f6e7320313739343730383030303132333435363738393b2072656d61696e696e6720756e6b6e6f776e5d0d0a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "sec": 1794708000,
+          "usec": 123456,
+          "length": 133,
+          "marker": "terminal_incomplete",
+          "data_hex": "0d0a5b5453423a206f757470757420696e636f6d706c6574652061667465722073657120343220627974657320383139323b20726561736f6e20776f726b65725f647261696e5f74696d656f75743b206f627365727665645f6e7320313739343730383030303132333435363738393b2072656d61696e696e6720756e6b6e6f776e5d0d0a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "sec": 1794708000,
+          "usec": 123456,
+          "length": 130,
+          "marker": "terminal_incomplete",
+          "data_hex": "0d0a5b5453423a206f757470757420696e636f6d706c6574652061667465722073657120343220627974657320383139323b20726561736f6e20776f726b65725f726561645f6572726f723b206f627365727665645f6e7320313739343730383030303132333435363738393b2072656d61696e696e6720756e6b6e6f776e5d0d0a"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1794708000,
+          "usec": 123456,
+          "length": 130,
+          "marker": "terminal_incomplete_marker",
+          "data_hex": "0d0a5b5453423a206f757470757420696e636f6d706c6574652061667465722073657120343220627974657320383139323b20726561736f6e20636f72655f776169745f74696d656f75743b206f627365727665645f6e7320313739343730383030303132333435363738393b2072656d61696e696e6720756e6b6e6f776e5d0d0a"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1794708000,
+          "usec": 123456,
+          "length": 99,
+          "marker": "terminal_incomplete",
+          "data_hex": "0d0a5b5453423a206f757470757420696e636f6d706c6574652061667465722073657120343220627974657320383139323b20726561736f6e20636f72655f776169745f74696d656f75743b206f627365727665645f6e7320313739343730383030303132333435363738393b2072656d61696e696e6720756e6b6e6f776e5d0d0a"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1794708000,
+          "usec": 123456,
+          "length": 168,
+          "marker": "terminal_incomplete",
+          "data_hex": "0d0a5b5453423a206f757470757420696e636f6d706c6574652061667465722073657120343220627974657320383139323b20726561736f6e20636f72655f776169745f74696d656f75743b206f627365727665645f6e7320313739343730383030303132333435363738393b2072656d61696e696e6720756e6b6e6f776e5d0d0a"
+        },
+        "note": ""
+      }
+    ]
+  }
+}

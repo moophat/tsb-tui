@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tsb-contract"
+dynamic = ["version"]
+requires-python = ">=3.12"
+description = "TSB contract — own manifest so this directory can leave by subtree split"
+dependencies = []  # stdlib only, for the runner and the client alike
+
+# The runner (tsbc) and the thin client (tsb_contract_client). An installed tsbc carries no
+# schemas or fixtures: run it from the contract tree, or point it at one with --contract-dir.
+[tool.setuptools]
+packages = ["tsbc", "tsb_contract_client"]
+
+[tool.setuptools.dynamic]
+version = {file = "CONTRACT_VERSION"}
+
+[tool.setuptools.package-dir]
+tsbc = "tsbc"
+tsb_contract_client = "client/tsb_contract_client"

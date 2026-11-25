@@ -1,0 +1,101 @@
+{
+  "seam": "C1",
+  "name": "session-create-telnet-reuse",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "description": "A telnet connection carries one session, ever. Create on a telnet target opens its connection and its one session; a reuse of that connection while it is up is refused by its worker, and the create is answered as any open the worker refuses: 502 target_connect_failed, leaving the connection and its session as they were. The fixture needs a telnet target the principal can see, with a credential that resolves. The live shape is owed by the E3 core plan: the contract's stub provider answers every live fixture of the profile, and no live fixture names a telnet target, so this one is graded by the core's own test.",
+  "corpus": [
+    "Contract §15.2",
+    "Contract §15.3",
+    "session model §5",
+    "session-open step 4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-telnet",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-10-18T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_a": "/session/id",
+          "conn_a": "/session/connection_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "connection_id": "${conn_a}"
+          }
+        },
+        "expect": {
+          "status": 502,
+          "example": {
+            "error": {
+              "code": "target_connect_failed",
+              "message": "this telnet connection carries one session; its worker refused the reuse"
+            }
+          }
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_a}"
+      }
+    ]
+  },
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 core plan"
+    }
+  ]
+}

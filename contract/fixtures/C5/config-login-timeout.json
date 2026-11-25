@@ -1,0 +1,503 @@
+{
+  "seam": "C5",
+  "name": "config-login-timeout",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "schema/config/config_test.go — TestEveryConfigLoginTimeoutInstanceLoadsOrIsRefusedAsTheFixtureSays"
+    }
+  ],
+  "description": "config.yaml's worker.login_timeout (V7): the one clock for a device login, from `connect` to its terminal answer, the probe and the human's answers included, sent on C3 connect as `login_timeout` to a worker at proto_version 0.7 or later; a target's own options.login_timeout overrides it. A Go duration string, as its siblings open_timeout and reap_timeout, and optional in this schema (neither device-login knob joins worker.required: the core's loader refuses to start without them, as it does for worker.open_timeout). The range, 10 s to 30 min, and the whole-millisecond rule are prose, as the loader enforces them: 5s and 31m and a fractional-millisecond value match the schema's pattern, so they validate here and are the loader's refusal cases, which only U5's loader test grades. Valid: 120s; absent. Invalid: a non-duration string; a negative duration.",
+  "corpus": [
+    "Storage §2.5",
+    "session model §11",
+    "decision 5.36",
+    "device-login bounds"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "login_timeout": "120s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "worker.login_timeout 120s: the template's value"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "absent: a later knob is optional in this schema, so a file written before it still loads"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "login_timeout": "5s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "the loader's refusal case, not the schema's: below 10 s, a bound that is prose"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "login_timeout": "31m"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "the loader's refusal case: past 30 min"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "login_timeout": "10.0005s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "the loader's refusal case: not a whole number of milliseconds"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "login_timeout": "soon"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "a non-duration string"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "login_timeout": "-20s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "a negative duration: the pattern admits no sign"
+      }
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "seam": "C5",
+  "name": "policy-target-private",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: Load named target.private permission without implication from target filters."
+    }
+  ],
+  "description": "The target.private permission loads by exact name and unknown permissions remain rejected.",
+  "corpus": [
+    "Storage \u00a79"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "target.private"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "target.private"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "target.private "
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "target.private "
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "target.privates"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "target.privates"
+      }
+    ]
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "seam": "C7",
+  "name": "revoke-inflight-unlock-not-installed",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "An unlock or regeneration in flight on a device being revoked never installs after the purge: the (user, device) lock orders them, and an unlock installs only into a live login (DEFAULT 48). Either the unlock completes first and the revocation then purges it, or it is refused.",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection §5.2",
+    "credential-protection §5.3",
+    "credential-protection §7.2",
+    "device-trust",
+    "decision 5.40c",
+    "E4 Q8 (a)",
+    "E4 D5",
+    "E4 DEFAULT 48",
+    "E4 DEFAULT 49"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/devices/challenges",
+          "body": {
+            "operation": "vault.unlock",
+            "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "challenge_id": "ch-0001",
+            "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+            "login_handle": "lh-fixture-0001",
+            "expires_in": 30
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/devices/FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "trusted",
+            "challenge_id": "ch-0001",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "signature": "RklYVFVSRS1TSUdOQVRVUkUtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA=="
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "challenge_failed",
+              "message": "the challenge was refused"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

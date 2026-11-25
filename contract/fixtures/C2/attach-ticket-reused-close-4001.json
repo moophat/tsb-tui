@@ -1,0 +1,164 @@
+{
+  "seam": "C2",
+  "name": "attach-ticket-reused-close-4001",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "A ticket is one-time: once it has opened an attach, presenting it again is refused with 4001, so a ticket copied out of a client after use is worthless.",
+  "corpus": [
+    "decision 5.34",
+    "spine plan.md §3 C1"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "v": 1,
+            "ticket": "FIXTURE-TICKET-000000000000000000",
+            "expires_in": 30
+          }
+        },
+        "save": {
+          "minted": "/ticket"
+        }
+      },
+      {
+        "ws_open": "w1",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "w1",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${minted}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "w1",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            },
+            {
+              "pointer": "/session/id",
+              "eq": "${sid}"
+            }
+          ],
+          "example": {
+            "t": "attached",
+            "v": 1,
+            "client_id": "fixture-client-1",
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "live",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": {
+                "client_id": "fixture-client-1",
+                "user": "fixture-user"
+              },
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        }
+      },
+      {
+        "ws_close": "w1"
+      },
+      {
+        "ws_open": "w2",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "w2",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${minted}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "w2",
+        "close": 4001
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

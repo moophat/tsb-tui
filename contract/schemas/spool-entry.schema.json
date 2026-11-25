@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C5 spool entry",
+  "description": "/tmp/tsb/spool/{session_id}.json: an end the worker originates, or observes from outside TSB, written to disk (session model §11 orphan_timeout, §15; lang-arch §6.4 step 4). It is on disk because after orphan_timeout ends a connection's last session, connection_linger closes the connection, and a worker that then holds no other connection exits: a spool in memory would die with it, and the returning core would read E10 worker_lost. The worker writes it atomically (a temporary file renamed over it) and fsyncs it before it acts on the channel's end, for every such end, whether or not a core is attached — the worker cannot know a sent event was consumed. It carries exactly the pairs a worker can name: killed / orphan, idle or unattended (the timers it runs while the core is gone), and terminated / target_closed or connection_lost. The core knows every end it asked for and persists its reason when it acts, so owner, admin and worker_lost never appear here. The core reads the spool before any E10 decision, and again for a session on every no_such_session or refused session socket (the end may have landed between the read and the dial); an entry for a session it has already audited it deletes unread, because a session ends once. A core that is attached when the end happens, and told of it by channel_closed or connection_lost (ipc-control), audits it and deletes the entry once its audit event is written, so every entry is deleted by the core that audits its end, or, for a late open, by the core that releases it (below), and one lives only while no core has. The one entry a core deletes with nothing audited is a late open's (session-open step 14: a channel_opened that arrived after the core's wait for it expired, whose channel the worker then ended by itself or saw the target close): on the channel_closed that answers that open the core deletes the session's entry, if any, before it sends release, and audits nothing, because it never offered the session. An end the worker names on channel_closed by: worker (from proto_version 0.4) carries this entry's end_state, end_reason and ended_at; the core records it at once from the event and, though the worker still retains the session, does not replay it: when out_bytes exceeds the output bytes the core recorded, it writes the gap marker below before the end marker, as for a session that is not retained, then sends release (session-end-by-tsb step 23b). If the worker's manifest still lists the ended session (it is retained), the handshake replays it first; if not, and out_bytes exceeds the output bytes the core recorded (C6 out_bytes_committed plus what its recording keeps past the commit point, gap markers counted by their bytes; ttyrec.schema.json x-sidecar reopen), the core writes the gap marker (ttyrec.schema.json code 2) before the end marker — out_bytes minus those bytes lost, over the span from the stamp of the last output frame or gap marker it recorded to last_out_ts — so the recording never reads as complete when it is not (immortality §4.3). Then it writes the end marker, stamped ended_at — a recording that already holds its end marker (a core that died before deleting the entry) gets neither marker again — and session.disconnect with ts = ended_at (session model §15: stamped by the worker, written by the core when it returns), sends release if the session is retained, and deletes the entry. If the core never returns, the audit event never lands. It carries no credential and no terminal byte.",
+  "type": "object",
+  "required": [
+    "session_id",
+    "conn_id",
+    "end_state",
+    "end_reason",
+    "ended_at",
+    "last_seq",
+    "out_bytes",
+    "last_out_ts"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "session_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "conn_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "end_state": {
+      "enum": [
+        "killed",
+        "terminated"
+      ]
+    },
+    "end_reason": {
+      "enum": [
+        "orphan",
+        "idle",
+        "unattended",
+        "target_closed",
+        "connection_lost"
+      ]
+    },
+    "ended_at": {
+      "$ref": "common.schema.json#/$defs/timestamp",
+      "description": "When the worker observed or acted on the end, by its clock: the end marker's stamp and the audit event's ts. The worker rewrites the entry when its drain of the channel ends (ruling 2026-10-14), and the rewrite stamps it again, so it is when the worker finished the end. From proto_version 0.4 it is never earlier than last_out_ts, rounded up to the microsecond, so an end marker stamped with it never precedes the last output frame."
+    },
+    "last_seq": {
+      "$ref": "common.schema.json#/$defs/u64",
+      "description": "The session's last output seq, 0 when it had no output."
+    },
+    "out_bytes": {
+      "$ref": "common.schema.json#/$defs/u64",
+      "description": "The session's output payload bytes from its start, never reset (hello_ack first_buffered_offset counts the same bytes)."
+    },
+    "last_out_ts": {
+      "$ref": "common.schema.json#/$defs/u64",
+      "description": "The timestamp of output frame last_seq, in the data frame's clock (nanoseconds); 0 when the session had no output."
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "end_state": {
+          "const": "killed"
+        },
+        "end_reason": {
+          "enum": [
+            "orphan",
+            "idle",
+            "unattended"
+          ]
+        }
+      }
+    },
+    {
+      "properties": {
+        "end_state": {
+          "const": "terminated"
+        },
+        "end_reason": {
+          "enum": [
+            "target_closed",
+            "connection_lost"
+          ]
+        }
+      }
+    }
+  ],
+  "anyOf": [
+    {
+      "properties": {
+        "last_seq": {
+          "const": 0
+        },
+        "out_bytes": {
+          "const": 0
+        },
+        "last_out_ts": {
+          "const": 0
+        }
+      }
+    },
+    {
+      "properties": {
+        "last_seq": {
+          "minimum": 1
+        },
+        "out_bytes": {
+          "minimum": 1
+        },
+        "last_out_ts": {
+          "minimum": 1
+        }
+      }
+    }
+  ]
+}

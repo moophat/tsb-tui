@@ -1,0 +1,73 @@
+{
+  "seam": "C6",
+  "name": "terminal-close-after-result-before-sync",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U11 `volatile_seal_close_unknown`: receive valid result, hold accounting before sync, close connection, then resume core processing; unknown after C, no new exact extent from cached result/no release on closed peer."
+    },
+    {
+      "unit": "U11",
+      "test": "owed: U2/U11 `volatile_seal_close_unknown`: receive valid result, hold accounting before sync, close connection, then resume core processing; unknown after C, no new exact extent from cached result/no release on closed peer."
+    }
+  ],
+  "description": "U2/U11 `volatile_seal_close_unknown`: receive valid result, hold accounting before sync, close connection, then resume core processing; unknown after C, no new exact extent from cached result/no release on closed peer.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unconfirmed",
+            "key": "ri1:s1:u:42:8192",
+            "baseline_seq": 42,
+            "baseline_bytes": 8192,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": ""
+      }
+    ]
+  }
+}

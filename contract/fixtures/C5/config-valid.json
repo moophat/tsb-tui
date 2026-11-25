@@ -1,0 +1,387 @@
+{
+  "seam": "C5",
+  "name": "config-valid",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed by the E3 schema plan (the loader reads every instance)"
+    }
+  ],
+  "description": "config.yaml's knob sections (Storage §2.5, session model §11, terminal-size §3, grid-snapshot rule 12): the sections the contract fixes, key for key, with each range as the loader enforces it. Valid: the knob sections of the lab config template with synthetic values, every required knob present, the two inventory knobs included. Invalid: a missing required knob; an out-of-range timers.keepalive_count_max. The cross-key rule keepalive_probe_interval below keepalive_interval is prose (R4): the instance that breaks it is listed as the loader's refusal case, and only U5's loader test grades it. The top level is open: listen_addr, the paths, credentials and capture are deployment-local, not contract. A bare 0 is also a Go duration (the loader's time.ParseDuration accepts it): keepalive_interval 0 and 0s both validate, while a unit-less 5 is not a duration.",
+  "corpus": [
+    "Storage §2.1",
+    "Storage §2.5",
+    "Storage §7.3",
+    "session model §11",
+    "terminal-size §3",
+    "grid-snapshot rule 12"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {"cols": 40, "rows": 12},
+            "ceiling": {"cols": 200, "rows": 60},
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {"auto_release": "0s"},
+          "attach": {"redraw_wiggle": true, "prefix_hold": "15s"},
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {"keep_versions": 5, "staging_max_age": "2h"}
+        },
+        "note": "the knob sections of the lab config template with synthetic values: every required knob present, the two inventory knobs included"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "0",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {"cols": 40, "rows": 12},
+            "ceiling": {"cols": 200, "rows": 60},
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {"auto_release": "0s"},
+          "attach": {"redraw_wiggle": true, "prefix_hold": "15s"},
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {"keep_versions": 5, "staging_max_age": "2h"}
+        },
+        "note": "a bare 0 is a Go duration: keepalive_interval 0 turns link_timeout off"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "0s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {"cols": 40, "rows": 12},
+            "ceiling": {"cols": 200, "rows": 60},
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {"auto_release": "0s"},
+          "attach": {"redraw_wiggle": true, "prefix_hold": "15s"},
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {"keep_versions": 5, "staging_max_age": "2h"}
+        },
+        "note": "0s is the same duration in its unit form"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "5",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {"cols": 40, "rows": 12},
+            "ceiling": {"cols": 200, "rows": 60},
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {"auto_release": "0s"},
+          "attach": {"redraw_wiggle": true, "prefix_hold": "15s"},
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {"keep_versions": 5, "staging_max_age": "2h"}
+        },
+        "note": "a unit-less 5 is not a Go duration: a duration needs a unit unless it is a bare 0"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {"cols": 40, "rows": 12},
+            "ceiling": {"cols": 200, "rows": 60},
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {"auto_release": "0s"},
+          "attach": {"redraw_wiggle": true, "prefix_hold": "15s"},
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true
+          },
+          "inventory": {"keep_versions": 5, "staging_max_age": "2h"}
+        },
+        "note": "a missing required knob: snapshot.wait_sec — the core refuses to start without it"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 101,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {"cols": 40, "rows": 12},
+            "ceiling": {"cols": 200, "rows": 60},
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {"auto_release": "0s"},
+          "attach": {"redraw_wiggle": true, "prefix_hold": "15s"},
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {"keep_versions": 5, "staging_max_age": "2h"}
+        },
+        "note": "an out-of-range timers.keepalive_count_max: 101 is past the sanity ceiling 100"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "30s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {"cols": 40, "rows": 12},
+            "ceiling": {"cols": 200, "rows": 60},
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {"auto_release": "0s"},
+          "attach": {"redraw_wiggle": true, "prefix_hold": "15s"},
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {"keep_versions": 5, "staging_max_age": "2h"}
+        },
+        "note": "the prose cross-key case: keepalive_probe_interval is not below keepalive_interval, so the loader refuses this file. The schema states the rule in prose (R4), so it validates here; only U5's loader test grades this instance"
+      }
+    ]
+  }
+}

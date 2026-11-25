@@ -1,0 +1,107 @@
+{
+  "seam": "C3",
+  "name": "supervisor-create-worker-ready",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:supervisor-sequence",
+  "description": "The core asks a supervisor for a worker for each connection — routing, placement and capacity only — and is answered worker_created only once the worker has bound the connection's control socket, so the core can connect the moment it reads the reply; the core then sends connect, with the credential, on that socket. Placement (session model §4): a worker keeps the placement_key it was spawned with for its life, and takes another connection only of that key and only while it holds fewer than n_max. Here fixture-conn-2 carries fixture-conn-1's key and joins its worker; fixture-conn-3 carries another user's key and gets a worker of its own. Under per_user placement the key is the owning TSB user's login name, so one user's crash or compromised worker never reaches another user's sessions (Contract §4: users are tenants). list_workers reports each worker with its key, so a core restarted after kill -9 sees the boundary. In a collected capture, a worker given a connection of a second key, or listed with another key, fails.",
+  "corpus": [
+    "decision 5.13",
+    "immortality §2.1",
+    "immortality §2.2",
+    "session model §4",
+    "Contract §4"
+  ],
+  "case": {
+    "socket": "supervisor-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 2
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "worker_created",
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "conn_dir": "/tmp/tsb/conn-fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-2",
+          "placement_key": "fixture-user",
+          "n_max": 2
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "worker_created",
+          "conn_id": "fixture-conn-2",
+          "worker_id": "fixture-worker-1",
+          "conn_dir": "/tmp/tsb/conn-fixture-conn-2"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-3",
+          "placement_key": "fixture-peer",
+          "n_max": 2
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "worker_created",
+          "conn_id": "fixture-conn-3",
+          "worker_id": "fixture-worker-2",
+          "conn_dir": "/tmp/tsb/conn-fixture-conn-3"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "list_workers"
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "workers",
+          "workers": [
+            {
+              "worker_id": "fixture-worker-1",
+              "pid": 4201,
+              "placement_key": "fixture-user",
+              "connections": [
+                "fixture-conn-1",
+                "fixture-conn-2"
+              ]
+            },
+            {
+              "worker_id": "fixture-worker-2",
+              "pid": 4202,
+              "placement_key": "fixture-peer",
+              "connections": [
+                "fixture-conn-3"
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

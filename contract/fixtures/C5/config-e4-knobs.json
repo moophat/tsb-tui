@@ -1,0 +1,74 @@
+{
+  "seam": "C5",
+  "name": "config-e4-knobs",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5's tests in schema/; E4 phase 4 (U5: the vault schema, policy.yaml and config.yaml E4 keys); the test is named in phase 16"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/config/e4_test.go — TestEachLoginAndLockKnobIsRequired; core/internal/config/e4_test.go — TestTheCoreRefusesAnIdleTimerPastTheHardCapAndNonPositiveValues"
+    }
+  ],
+  "description": "config.yaml's lock knobs (credential-protection §5.5; DEFAULT 6): fields and ranges, never values (V7). The vault idle timer above the hard cap is refused by the loader, a cross-key rule this shape cannot state (the second instance), as is a zero duration.",
+  "corpus": [
+    "credential-protection §5.5",
+    "E4 DEFAULT 6",
+    "conventions V7"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json#/properties/locks",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "screen_after": "15m",
+          "vault_on_idle": true,
+          "vault_idle_after": "30m",
+          "vault_hard_cap": "8h",
+          "activity_interval": "60s"
+        },
+        "note": "the corpus defaults: screen 15 min; on, 30 min; 8 h (operator 2026-10-28 03:49)"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "screen_after": "15m",
+          "vault_on_idle": true,
+          "vault_idle_after": "9h",
+          "vault_hard_cap": "8h",
+          "activity_interval": "60s"
+        },
+        "note": "the schema admits it; config load refuses a vault idle timer above the hard cap"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "screen_after": "15m",
+          "vault_on_idle": "yes",
+          "vault_idle_after": "30m",
+          "vault_hard_cap": "8h",
+          "activity_interval": "60s"
+        },
+        "note": "a YAML boolean"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "screen_after": "15m",
+          "vault_on_idle": true,
+          "vault_idle_after": "30m",
+          "activity_interval": "60s"
+        },
+        "note": "the hard cap is always on"
+      }
+    ]
+  }
+}

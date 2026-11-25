@@ -1,0 +1,58 @@
+{
+  "seam": "C1",
+  "name": "session-create-vault-locked-409",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "A new connection whose personal credential needs a vault unlock this login does not hold: 409 vault_locked, decided in session-open step 3, before any worker is asked, so a refused create leaves nothing behind (DEFAULT 13). The surface unlocks and repeats the create. A personal credential with no secret needs no unlock. A user_unlocked org credential needs its storing administrator's unlock instead and is refused org_credential_locked (C1/session-create-org-credential-locked-409).",
+  "corpus": [
+    "credential-protection §5.5",
+    "credential-protection §10.2",
+    "E4 DEFAULT 13",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "vault_locked",
+              "message": "unlock the vault, then try again"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

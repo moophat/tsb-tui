@@ -1,0 +1,95 @@
+{
+  "seam": "C1",
+  "name": "profile-map",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "Layer 2a: map targets to the caller's own credentials, many in one call (Storage §10.3, §10.6; Q7 (a)), or null to remove a mapping. All or nothing: a reference not in the caller's index, or a target the caller cannot see, is 422 and nothing is written. Saving a login for a target is a personal store, then this (D15).",
+  "corpus": [
+    "Storage §10.1",
+    "Storage §10.3",
+    "Storage §10.6",
+    "E4 Q7 (a)",
+    "E4 D15"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/profiles/batch",
+          "body": {
+            "mappings": [
+              {
+                "target_id": "core-rtr-01",
+                "credential_ref": "lab-switch"
+              },
+              {
+                "target_id": "dev-web-01",
+                "credential_ref": null
+              }
+            ]
+          }
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/profiles/batch",
+          "body": {
+            "mappings": [
+              {
+                "target_id": "core-rtr-01",
+                "credential_ref": "not-mine"
+              }
+            ]
+          }
+        },
+        "expect": {
+          "status": 422,
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "a reference is not in your vault"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/profiles/batch",
+          "body": {
+            "mappings": []
+          },
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "no mappings"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

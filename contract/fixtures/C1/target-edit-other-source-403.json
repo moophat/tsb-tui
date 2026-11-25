@@ -1,0 +1,116 @@
+{
+  "seam": "C1",
+  "name": "target-edit-other-source-403",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "PUT and DELETE cannot change another source, and its record remains equal.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Storage §10.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/${target_id}"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "id": "fixture-target",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [],
+            "discovered_by": "manual",
+            "port": 22
+          }
+        },
+        "save": {
+          "original_record": ""
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/${target_id}",
+          "body": {
+            "id": "${target_id}",
+            "type": "ssh",
+            "host": "192.0.2.60"
+          }
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "forbidden",
+              "message": "target request refused"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/targets/${target_id}"
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "forbidden",
+              "message": "target request refused"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/${target_id}"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "",
+              "eq": "${original_record}"
+            }
+          ],
+          "example": {
+            "id": "fixture-target",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [],
+            "discovered_by": "manual",
+            "port": 22
+          }
+        }
+      }
+    ]
+  }
+}

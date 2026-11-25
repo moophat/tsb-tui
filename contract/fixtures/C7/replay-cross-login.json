@@ -1,0 +1,84 @@
+{
+  "seam": "C7",
+  "name": "replay-cross-login",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "The replay suite: a challenge issued to one login, answered by another login of the same user, fails 409 challenge_failed: the login handle is in the signed bytes, and the core checks the answer against the login it issued to.",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection §5.2",
+    "credential-protection §5.3",
+    "credential-protection §7.2",
+    "device-trust",
+    "E4 D3",
+    "E4 DEFAULT 47",
+    "spine §3 C7 (the replay suite)"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/devices/challenges",
+          "body": {
+            "operation": "vault.unlock",
+            "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "challenge_id": "ch-0001",
+            "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+            "login_handle": "lh-fixture-0001",
+            "expires_in": 30
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "as": "fresh",
+          "body": {
+            "mode": "trusted",
+            "challenge_id": "ch-0001",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "signature": "RklYVFVSRS1TSUdOQVRVUkUtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA=="
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "challenge_failed",
+              "message": "the challenge was refused"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

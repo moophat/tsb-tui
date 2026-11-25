@@ -1,0 +1,34 @@
+{
+  "seam": "C1",
+  "name": "auth-cross-origin-403",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/httpapi_test.go — TestCrossOriginStateChangesAreRefused: POST /auth/login and POST /auth/logout with a foreign Origin header are refused 403 forbidden, before a credential is read or a login ends"
+    }
+  ],
+  "description": "A browser write from a foreign origin to POST /auth/login or POST /auth/logout is refused 403 forbidden (the core already does; now declared): the request's Origin header is not the broker's own, so a page elsewhere cannot log a browser in or out. A fixture cannot send an Origin header, so the core's own test grades it.",
+  "corpus": [
+    "Contract §2",
+    "decision 5.34"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/Error",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "a cross-origin request is refused"
+          }
+        }
+      }
+    ]
+  }
+}

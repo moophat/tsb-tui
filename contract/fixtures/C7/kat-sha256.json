@@ -1,0 +1,42 @@
+{
+  "seam": "C7",
+  "name": "kat-sha256",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "SHA-256's known answers (FIPS 180-4's examples). device_id is SHA-256 over the device's facts (credential-protection §4.2). contract/tests recomputes them with hashlib. Published e4: reference, tests owed (phase 16).",
+  "corpus": [
+    "credential-protection §4.2",
+    "decision 5.26 (c)"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/kat_sha256",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "primitive": "sha-256",
+          "source": "FIPS 180-4, the published examples: \"abc\" and the 448-bit message",
+          "cases": [
+            {
+              "message": "616263",
+              "digest": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            },
+            {
+              "message": "6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071",
+              "digest": "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

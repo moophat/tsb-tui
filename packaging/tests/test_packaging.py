@@ -180,8 +180,8 @@ def assembly_inputs(tmp_path, monkeypatch):
     copytree = assemble.shutil.copytree
     repository_trees = {
         root / 'tsb_tui',
-        root / 'program/contract/client/tsb_contract_client',
-        root / 'program/contract/tsbc',
+        root / 'contract/client/tsb_contract_client',
+        root / 'contract/tsbc',
     }
 
     def copy_repository_tree(source, destination, **kwargs):

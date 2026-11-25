@@ -1,0 +1,46 @@
+{
+  "seam": "C1",
+  "name": "me-permissions",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Me carries permissions as an array of policy permission names; response schema grades the array, not particular members.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Storage §10.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/auth/me"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/permissions",
+              "present": true
+            }
+          ],
+          "example": {
+            "username": "fixture-user",
+            "permissions": [
+              "target.edit"
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

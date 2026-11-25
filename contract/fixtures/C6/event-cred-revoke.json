@@ -1,0 +1,43 @@
+{
+  "seam": "C6",
+  "name": "event-cred-revoke",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "cred.revoke: a grant removed, naming the grant, its grantee and its selectors (credential-protection §8.4).",
+  "corpus": [
+    "credential-protection §8.4",
+    "E4 DEFAULT 10",
+    "E4 DEFAULT 49",
+    "E4 DEFAULT 51"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.revoke",
+          "credential_ref": "fleet-backup",
+          "credential_layer": "org",
+          "grant_id": "g-0001",
+          "grantee": "fixture-peer",
+          "selectors": [
+            "tag:core"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "seam": "C6",
+  "name": "event-screen-unlock-failed",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "auth.screen_unlock_failed: a refused screen-lock re-check, naming the principal as auth.login_failed names its attempt (DEFAULT 67).",
+  "corpus": [
+    "credential-protection §5.5",
+    "E4 DEFAULT 67"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "auth.screen_unlock_failed"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "auth.screen_unlock_failed",
+          "password": "FIXTURE-WRONG-PASSWORD"
+        },
+        "note": "never the password"
+      }
+    ]
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "seam": "C3",
+  "name": "control-message-shape",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:control-sequence",
+  "description": "Messages are closed shapes. Credentials belong in connect.auth and nowhere else — not in open_shell, not beside it; a session-scoped command names its session; connection-scoped events name the connection. Every message in a collected capture must be one of these closed shapes.",
+  "corpus": [
+    "open_decisions §5",
+    "Contract §15",
+    "decision 5.21",
+    "lang-arch §6.4"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        },
+        "note": "a credential outside connect"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "resize",
+          "cols": 80,
+          "rows": 24
+        },
+        "note": "which of N sessions?"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "connection_lost",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "cause": "transport",
+          "reason": "x"
+        },
+        "note": "connection-scoped: it names the connection"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "target",
+          "reason": "exit"
+        },
+        "note": "the target closed the channel: terminated / target_closed"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "cause": "keepalive_timeout",
+          "reason": "12 keepalives unanswered"
+        },
+        "note": "link_timeout: terminated / connection_lost"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "reason": "exit"
+        },
+        "note": "who closed it decides the end: by is required"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "cause": "fin",
+          "reason": "x"
+        },
+        "note": "a cause this tag does not define: a bare FIN is our end gone, transport"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "../x.sock"
+        },
+        "note": "a socket is a bare name inside the connection's directory"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        },
+        "note": "a telnet connect carries no user or credential, and needs term, cols and rows"
+      }
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "seam": "C3",
+  "name": "data-frame-envelope",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:frames-envelope",
+  "description": "The 24-byte envelope, network byte order: version 1, flags (bit 0 the direction), stream 0, length, seq and a nanosecond timestamp, both u64; then the payload, unframed. One output frame stamped by the worker and one input frame stamped by the core. The .bin file is the ground truth: a decoder must reproduce these fields from it and an encoder these bytes from them.",
+  "corpus": [
+    "lang-arch §4.1 amendment 2026-09-14",
+    "decision 5.14",
+    "immortality §4.1",
+    "immortality §4.2"
+  ],
+  "case": {
+    "format": "c3-frames",
+    "file": "data-frame-envelope.bin",
+    "frames": [
+      {
+        "version": 1,
+        "flags": 0,
+        "direction": "out",
+        "stream": 0,
+        "length": 7,
+        "seq": 1,
+        "timestamp": 1789000000123456789,
+        "payload_hex": "6c6f67696e3a20"
+      },
+      {
+        "version": 1,
+        "flags": 1,
+        "direction": "in",
+        "stream": 0,
+        "length": 3,
+        "seq": 1,
+        "timestamp": 1789000000373456789,
+        "payload_hex": "6c730d"
+      }
+    ]
+  }
+}

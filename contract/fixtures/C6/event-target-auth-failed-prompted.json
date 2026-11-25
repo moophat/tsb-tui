@@ -1,0 +1,185 @@
+{
+  "seam": "C6",
+  "name": "event-target-auth-failed-prompted",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/audit/audit_test.go — TestAPromptedAuthFailedCarriesAttemptsAndNeverAnAnswer"
+    }
+  ],
+  "description": "`target.auth_failed` for a device login: written when the device login ends without `connected` and at least one attempt was answered. `detail.login` is `prompted`; `attempts` is the number of distinct attempt numbers for which the core relayed an answer, and with the worker's numbering every one of them failed (OPEN-R5 (a)). `user` is the TSB principal. No session exists, so no session_id. A login abandoned with no answer sent writes nothing. Never an answer, never the device's reason text (V4, V10). A supplied login's line is unchanged.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "Storage §6",
+    "device-login step 19",
+    "session-open step 19"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "prompted",
+            "attempts": 2,
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "two answered attempts, both refused"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "prompted",
+            "attempts": 1
+          }
+        },
+        "note": "one; no connection id"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "supplied",
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "a supplied login's line, unchanged"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "prompted",
+            "attempts": 0
+          }
+        },
+        "note": "attempts counts from 1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "stored"
+          }
+        },
+        "note": "a stored credential writes no such event"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "detail": {
+            "login": "prompted",
+            "attempts": 1
+          }
+        },
+        "note": "no session exists"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "prompted",
+            "attempts": 1,
+            "reason": "wrong password"
+          }
+        },
+        "note": "closed: never the device's reason text"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "prompted"
+          }
+        },
+        "note": "a prompted login carries its attempts"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "prompted",
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "a prompted login carries its attempts, a connection id beside them or not"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "supplied",
+            "attempts": 1
+          }
+        },
+        "note": "a supplied login carries no attempts"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.auth_failed",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "supplied",
+            "attempts": 1,
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "a supplied login carries no attempts, a connection id beside them or not"
+      }
+    ]
+  }
+}

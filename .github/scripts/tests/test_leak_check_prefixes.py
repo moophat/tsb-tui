@@ -14,6 +14,8 @@ stay inside disposable local test directories.
 
 from __future__ import annotations
 
+import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -57,9 +59,13 @@ class StagedPrefixDetection(unittest.TestCase):
         _git("init", "-q", str(work), cwd=self.root)
         (work / "notes.txt").write_text(line + "\n")
         _git("add", "-A", cwd=work)
+        env = {
+            **os.environ,
+            "TSB_LEAK_PATTERN": f"{re.escape(POSITIVE_CONTROL)}|{'|'.join(re.escape(p) for p in PREFIXES)}",
+        }
         proc = subprocess.run(
             ["bash", str(self.script), "--staged", "--warn"],
-            cwd=work, capture_output=True, text=True,
+            cwd=work, capture_output=True, text=True, env=env,
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return proc

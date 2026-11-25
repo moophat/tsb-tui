@@ -1,0 +1,78 @@
+{
+  "seam": "C4",
+  "name": "vt-prefix-at-ground",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "The attach prefix at a parser-ground point (D20; C4 decision 6): after hello, the grid's open and the output frames the core has fed, the core sends prefix and the VT answers prefix_ready — carrying the same request_id — followed by a kind-3 blob holding the dump. through_seq is the first parser-ground point after every frame received before the request, so it is a commit point (F3e) and the client's parser ends clean. This is the at-ground case; the not-at-ground wait case is vt-prefix-mid-sequence. The blob after the reply is a kind-3 message, not a control object, so it is not listed here; the dump's contents are graded by the U4 worker and the core's request by the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 6",
+    "vt-ipc.schema.json prefix",
+    "vt-ipc.schema.json prefix_ready"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-1",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "prefix",
+          "session_id": "sess-1",
+          "request_id": "req-prefix-1"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "prefix_ready",
+          "request_id": "req-prefix-1",
+          "session_id": "sess-1",
+          "through_seq": 3,
+          "cols": 80,
+          "rows": 24
+        }
+      }
+    ]
+  }
+}

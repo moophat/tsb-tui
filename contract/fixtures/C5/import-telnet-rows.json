@@ -1,0 +1,53 @@
+{
+  "seam": "C5",
+  "name": "import-telnet-rows",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider imports Tabby and SecureCRT Telnet rows and verifies telnet type, host, port and documented stream settings; omitted port has effective default 23, and unsupported options are reported without script execution or credential harvesting. Synthetic Tabby profile has id foreign, type telnet and options.host fixture.invalid; the SecureCRT session has Protocol Name Telnet and Hostname fixture.invalid."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Provider imports Tabby and SecureCRT Telnet rows and verifies telnet type, host, port and documented stream settings; omitted port has effective default 23, and unsupported options are reported without script execution or credential harvesting. Synthetic Tabby profile has id foreign, type telnet and options.host fixture.invalid; the SecureCRT session has Protocol Name Telnet and Hostname fixture.invalid."
+    }
+  ],
+  "description": "Provider imports Tabby and SecureCRT Telnet rows and verifies telnet type, host, port and documented stream settings; omitted port has effective default 23, and unsupported options are reported without script execution or credential harvesting. Synthetic Tabby profile has id foreign, type telnet and options.host fixture.invalid; the SecureCRT session has Protocol Name Telnet and Hostname fixture.invalid.",
+  "corpus": [
+    "Storage §7.4",
+    "Contract §12"
+  ],
+  "case": {
+    "schema": "schemas/inventory-target.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "telnet",
+          "name": "router",
+          "options": {
+            "host": "fixture.invalid"
+          }
+        },
+        "note": "Telnet target, effective port 23 when omitted"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "telnet",
+          "options": {
+            "host": 42
+          }
+        },
+        "note": "Telnet host must be text"
+      }
+    ]
+  }
+}

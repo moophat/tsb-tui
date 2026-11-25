@@ -1,0 +1,61 @@
+{
+  "seam": "C1",
+  "name": "target-write-index-timeout-503",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/targets_write_test.go — TestTheIndexWaitIsBoundedAndSays503WithTheFileWritten: hold the index writer so the bound expires; assert the target file and matching target.create audit line exist before the 503 is returned, with detail.source tsb and field names only"
+    }
+  ],
+  "description": "After the target file lands, its audit line is written before the index wait. Hold index apply beyond the bound: the caller receives 503 inventory_unavailable saying the change took effect and is audited but is not yet listed, and the target.create audit line is already present. The U2 provider test must inspect that line, not just the HTTP response. If audit fails instead, 500 internal_error takes precedence and no index wait changes it.",
+  "corpus": [
+    "Storage §10.1",
+    "Contract §13"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "fixture-w-${nonce}",
+            "type": "ssh",
+            "host": "192.0.2.60"
+          }
+        },
+        "expect": {
+          "status": 503,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "inventory_unavailable"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "inventory_unavailable",
+              "message": "The change took effect and is audited but is not yet listed."
+            }
+          }
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/targets/fixture-w-${nonce}"
+      }
+    ]
+  }
+}

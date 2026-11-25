@@ -1,0 +1,50 @@
+{
+  "seam": "C1",
+  "name": "target-private-grant-resolution",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: resolve broad and narrow selectors on private targets, including choice and storing-admin lock."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: resolve broad and narrow selectors on private targets, including choice and storing-admin lock."
+    }
+  ],
+  "description": "The candidate error shape remains unchanged; providers verify private-target selector resolution and ordinary org lock behavior.",
+  "corpus": [
+    "Storage \u00a710.3",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/error.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "credential_choice_required",
+            "message": "choose a credential",
+            "candidates": [
+              {
+                "credential_ref": "netops",
+                "credential_layer": "personal"
+              },
+              {
+                "credential_ref": "fleet-backup",
+                "credential_layer": "org"
+              }
+            ]
+          }
+        },
+        "note": "ordinary two-candidate error shape"
+      }
+    ]
+  }
+}

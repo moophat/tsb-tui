@@ -1,0 +1,47 @@
+{
+  "seam": "C1",
+  "name": "target-import-filter-match-403",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider arranges a matched target outside the caller target.edit filters, including a proposed row inside the filters, and checks preview and commit return the same fixed 403 as an out-of-filter create, without definitions, match disclosure or mutations. For commit, first preview under a permitting filter and then change the filter before commit."
+    }
+  ],
+  "description": "Provider arranges a matched target outside the caller target.edit filters, including a proposed row inside the filters, and checks preview and commit return the same fixed 403 as an out-of-filter create, without definitions, match disclosure or mutations. For commit, first preview under a permitting filter and then change the filter before commit.",
+  "corpus": [
+    "Storage §7.4",
+    "Contract §12"
+  ],
+  "case": {
+    "schema": "schemas/error.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused"
+          }
+        },
+        "note": "same fixed refusal as create"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused",
+            "target_id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        "note": "matched identity must not be disclosed"
+      }
+    ]
+  }
+}

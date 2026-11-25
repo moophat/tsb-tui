@@ -1,0 +1,89 @@
+{
+  "seam": "C8",
+  "name": "gap-twice-across-restart",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "transform",
+  "grade": "artifacts:recordings-gap",
+  "description": "A gap marker is a commit point, like an output frame. The core wrote the marker for frames 3 to 6 (C8 gap-after-overflow), its commit landed, and the core was killed before frame 7 reached its recording. last_committed_seq is 6 — the marker's gap frame — and the committed bytes, 47, include the declared loss, so the next hello asks for 7 on. Frames 7 to 9 were dropped meanwhile: the worker declares a gap again, for those alone (seq 9), and the new marker says 24 bytes lost from the first marker's stamp to frame 9's, so the two spans never overlap and no loss is declared twice. Counted from the last output frame instead, the core would see no new loss and write a marker that loses 0 bytes, which no recording can hold. The derivation is executable in tsbc (_binfmt.derive_recording); this case is its record.",
+  "corpus": [
+    "immortality §4.1",
+    "immortality §4.3",
+    "decision 5.39"
+  ],
+  "case": {
+    "transform": "c3-to-c8",
+    "input": {
+      "frames": [
+        {
+          "version": 1,
+          "flags": 2,
+          "direction": "out",
+          "stream": 0,
+          "length": 0,
+          "seq": 9,
+          "timestamp": 1789000012123456789,
+          "payload_hex": ""
+        },
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 9,
+          "seq": 10,
+          "timestamp": 1789000012223456789,
+          "payload_hex": "6c696e652031300d0a"
+        },
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 9,
+          "seq": 11,
+          "timestamp": 1789000012323456789,
+          "payload_hex": "6c696e652031310d0a"
+        }
+      ],
+      "handshakes": [
+        {
+          "first_buffered_seq": 10,
+          "first_buffered_offset": 71,
+          "last_dropped_ts": 1789000012123456789
+        }
+      ],
+      "committed": {
+        "out_bytes": 47,
+        "last_out_ts": 1789000009123456789,
+        "last_seq": 6
+      }
+    },
+    "output": {
+      "frames": [
+        {
+          "sec": 1789000012,
+          "usec": 123456,
+          "length": 92,
+          "marker": "gap",
+          "data_hex": "0d0a5b545342206761703a203234206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a34392e3132333435365a20746f20323032362d30392d31305430303a32363a35322e3132333435365a5d0d0a"
+        },
+        {
+          "sec": 1789000012,
+          "usec": 223456,
+          "length": 9,
+          "direction": "out",
+          "data_hex": "6c696e652031300d0a"
+        },
+        {
+          "sec": 1789000012,
+          "usec": 323456,
+          "length": 9,
+          "direction": "out",
+          "data_hex": "6c696e652031310d0a"
+        }
+      ]
+    }
+  }
+}

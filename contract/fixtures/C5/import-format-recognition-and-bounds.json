@@ -1,0 +1,46 @@
+{
+  "seam": "C5",
+  "name": "import-format-recognition-and-bounds",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks recognition, encodings, malformed inputs, duplicate keys and parser bounds."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Provider checks recognition, encodings, malformed inputs, duplicate keys and parser bounds."
+    }
+  ],
+  "description": "Provider checks recognition, encodings, malformed inputs, duplicate keys and parser bounds.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json#/properties/import",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "max_yaml_depth": 32,
+          "max_entries": 5000,
+          "max_bytes": 4194304
+        },
+        "note": "deployment values"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "max_yaml_depth": 257
+        },
+        "note": "depth exceeds bound"
+      }
+    ]
+  }
+}

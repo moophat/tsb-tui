@@ -1,0 +1,61 @@
+{
+  "seam": "C5",
+  "name": "config-e4-vault-knobs",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5's tests in schema/; E4 phase 4 (U5: the vault schema, policy.yaml and config.yaml E4 keys); the test is named in phase 16"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/config/vault_test.go — TestEachVaultKnobIsRequired"
+    }
+  ],
+  "description": "config.yaml's vault knobs (DEFAULT 6, 43): fields and ranges (V7). challenge_ttl's 1 s to 60 s, whole seconds, is the loader's rule, as is part2_ttl's whole seconds.",
+  "corpus": [
+    "credential-protection §11.1",
+    "E4 DEFAULT 6",
+    "E4 DEFAULT 43",
+    "conventions V7"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json#/properties/vault",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "challenge_ttl": "30s",
+          "unlock_attempts": 5,
+          "unlock_window": "1h",
+          "part2_ttl": "720h"
+        },
+        "note": "the lane's picks (5.36): a 30 s challenge, 5 attempts an hour (the corpus's), Part 2 for 30 days"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "challenge_ttl": "30s",
+          "unlock_attempts": 0,
+          "unlock_window": "1h",
+          "part2_ttl": "720h"
+        },
+        "note": "at least one attempt"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "challenge_ttl": "30s",
+          "unlock_attempts": 5,
+          "unlock_window": "1h"
+        },
+        "note": "every vault knob is required"
+      }
+    ]
+  }
+}

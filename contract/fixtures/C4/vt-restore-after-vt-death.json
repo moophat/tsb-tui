@@ -1,0 +1,117 @@
+{
+  "seam": "C4",
+  "name": "vt-restore-after-vt-death",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "A VT worker that dies while the core lives (F3d; C4 decision 4): the core restores the last snapshot into the restarted worker and feeds it the recording's own output frames past the commit point, then the frames recorded meanwhile; the data path never broke, so no C3 handshake runs. On this socket that is: the grid's close, the restarted worker's hello_ack reporting the grids it holds (empty — a fresh process, D19), and a restore of the snapshot at its snapshot_seq for each affected session, answered by restored with the same request_id. The re-feed of the recording's frames is graded by the U2 core (owed): this fixture invents no cross-socket machinery. That nothing is recorded twice is the recording side (C8), also U2 (owed). The U4 worker is owed.",
+  "corpus": [
+    "plan.md C4 decision 4",
+    "vt-ipc.schema.json close",
+    "vt-ipc.schema.json hello_ack",
+    "vt-ipc.schema.json restore",
+    "vt-ipc.schema.json restored"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-1",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "close",
+          "session_id": "sess-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-2",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "restore",
+          "session_id": "sess-2",
+          "request_id": "req-restore-after-death",
+          "snapshot_seq": 12,
+          "cols": 80,
+          "rows": 24
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "restored",
+          "request_id": "req-restore-after-death",
+          "session_id": "sess-2",
+          "through_seq": 12
+        }
+      }
+    ]
+  }
+}

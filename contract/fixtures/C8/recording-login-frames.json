@@ -1,0 +1,131 @@
+{
+  "seam": "C8",
+  "name": "recording-login-frames",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "bytes",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/recording/ (the file is the recording lane's to name) — TestWithTheKnobOnTheLoginIsAtTheRecordingsHeadAsCodes6And7: two code-7 frames, the username then the password, before the first output frame, stamped on the core's clock, in exactly the x-login-line bytes"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/recording/ (the file is the recording lane's to name) — TestWithTheKnobOffNoByteOfTheLoginIsInTheRecording: no byte of the user name or the password in either file, the knob off"
+    }
+  ],
+  "description": "The login frames on disk, sidecar codes 6 and 7: when policy.yaml recording.login_input is true and the session is recorded, a login supplied on session create is written at the head of the session's recording, before its first output frame, as two code-7 frames, the username then the password, stamped on the core's input clock when the core received each piece. Each frame's data is the fixed line x-login-line gives, CR LF [TSB: login answer] <text> CR LF, with the text's backslashes and C0, C1 and DEL characters escaped so the line is one printable row: here the user name corp\\op is written corp\\\\op. A classic player prints the lines; a TSB reader knows them by their code, and they count for neither seq. A supplied login asks nothing, so there is no code-6 frame. With the knob off no byte of the login is in the recording; the bytes here are the knob-on case, and the knob-off case is the core's own test. Refused: an empty frame, data that is not the line of its code, a raw control or C1 character, a lone backslash, an escape of a character that needs none, uppercase hex, bytes that are not UTF-8, and a login frame after any other frame. The password is the synthetic constant.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "5.46",
+    "plan.md §3 C8",
+    "ttyrec.schema.json x-login-line"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "recording-login-frames.ttyrec.bin",
+    "sidecar": "recording-login-frames.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 100000,
+        "length": 32,
+        "marker": "login_answer",
+        "data_hex": "0d0a5b5453423a206c6f67696e20616e737765725d20636f72705c5c6f700d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 100001,
+        "length": 46,
+        "marker": "login_answer",
+        "data_hex": "0d0a5b5453423a206c6f67696e20616e737765725d20464958545552452d4e4f542d412d50415353574f52440d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 500000,
+        "length": 40,
+        "direction": "out",
+        "data_hex": "4c617374206c6f67696e3a20546875204f63742032392031323a30303a303020323032360d0a2420"
+      },
+      {
+        "sec": 1789000003,
+        "usec": 0,
+        "length": 3,
+        "direction": "in",
+        "data_hex": "69640d"
+      }
+    ],
+    "invalid": [
+      {
+        "ttyrec_hex": "40f9a16aa086010000000000",
+        "sidecar_hex": "07",
+        "problem": "a login frame carries its readable line",
+        "note": "an empty code-7 frame"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100080000006f70657261746f72",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "free text, not the fixed format"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100200000000d0a5b5453423a206c6f67696e2070726f6d70745d206f70657261746f720d0a",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "a code-7 frame with the prompt tag"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100240000000d0a5b5453423a206c6f67696e20616e737765725d206f701b5b324a657261746f720d0a",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "a raw ESC in the text: controls are escaped, so a replay cannot act on them"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100220000000d0a5b5453423a206c6f67696e20616e737765725d206f700d0a657261746f720d0a",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "a raw CR LF in the text: the line is one row"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100220000000d0a5b5453423a206c6f67696e20616e737765725d206f70c285657261746f720d0a",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "a raw C1 character (U+0085)"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa08601001f0000000d0a5b5453423a206c6f67696e20616e737765725d20636f72705c6f700d0a",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "a lone backslash: it is written as two"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa08601001c0000000d0a5b5453423a206c6f67696e20616e737765725d205c7834310d0a",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "an escape of a character that needs none: the escape is the only encoding"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa08601001c0000000d0a5b5453423a206c6f67696e20616e737765725d205c7831420d0a",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "uppercase hex digits: lowercase only"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100190000000d0a5b5453423a206c6f67696e20616e737765725d20ff0d0a",
+        "sidecar_hex": "07",
+        "problem": "is not the login line of its code",
+        "note": "bytes that are not UTF-8"
+      },
+      {
+        "ttyrec_hex": "41f9a16a0000000002000000242040f9a16aa0860100200000000d0a5b5453423a206c6f67696e20616e737765725d206f70657261746f720d0a",
+        "sidecar_hex": "0007",
+        "problem": "stand after frame 0",
+        "note": "a login frame after the first output frame: the head of the recording, before every other frame"
+      }
+    ]
+  }
+}

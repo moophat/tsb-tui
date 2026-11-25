@@ -1,0 +1,185 @@
+{
+  "seam": "C1",
+  "name": "target-record-shape",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "instance",
+  "grade": "with:targets-list",
+  "description": "The northbound target record is closed, and carries only what a surface needs to name a target and ask for a session on it. A serial record has no port at all: its options.port is a device path on the broker host, and a broker path never crosses C1 (V11; Contract §4). options, user, a credential reference and a login script are never in a record. host and port are present exactly when type is ssh or telnet, with the port in force. Consumers decode it strictly against this tag and ignore fields a later tag adds; a receiver treats an unknown type as opaque and shows it, never as an error (V5).",
+  "corpus": [
+    "Storage §3.1",
+    "Storage §3.4",
+    "Contract §4",
+    "V11",
+    "V5"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetRecord",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "name": "core router 01",
+          "group": "lab",
+          "tags": [
+            "router"
+          ],
+          "discovered_by": "manual",
+          "last_seen": "2026-10-17T08:30:00Z",
+          "host": "192.0.2.10",
+          "port": 22
+        },
+        "note": "ssh: the address in force, with the port the file names"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "console-server-01",
+          "type": "telnet",
+          "tags": [
+            "console"
+          ],
+          "discovered_by": "tabby",
+          "host": "192.0.2.30",
+          "port": 23
+        },
+        "note": "telnet: no name, group or last_seen, because the file has none; the port in force is 23"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "console-serial-01",
+          "type": "serial",
+          "tags": [],
+          "discovered_by": "manual"
+        },
+        "note": "serial: no address at all, and empty tags are allowed"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "lab-echo",
+          "type": "echo",
+          "tags": [
+            "lab"
+          ],
+          "discovered_by": "manual"
+        },
+        "note": "echo: the lab loopback driver, no address"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "console-serial-01",
+          "type": "serial",
+          "tags": [],
+          "discovered_by": "manual",
+          "port": "/dev/ttyUSB0"
+        },
+        "note": "a device path on the broker host never crosses C1 (V11; Contract §4)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "tags": [],
+          "discovered_by": "manual",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "root"
+        },
+        "note": "the target's user is not in a record: it belongs to the credential, which is resolved per principal (Storage §10.1a)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "discovered_by": "manual",
+          "host": "192.0.2.10",
+          "port": 22
+        },
+        "note": "tags is required, and may be empty"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "tags": [],
+          "host": "192.0.2.10",
+          "port": 22
+        },
+        "note": "discovered_by is required: a surface needs the source the target came from"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "tags": [],
+          "discovered_by": "manual",
+          "host": "192.0.2.10"
+        },
+        "note": "an ssh record carries the port in force, so 22 when the file names none"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "console-server-01",
+          "type": "telnet",
+          "tags": [],
+          "discovered_by": "manual",
+          "port": 23
+        },
+        "note": "a telnet record carries the host, not only the port"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "tags": [],
+          "discovered_by": "manual",
+          "host": "192.0.2.10",
+          "port": 22,
+          "last_seen": "2026-10-17T08:30:00+07:00"
+        },
+        "note": "the core writes last_seen in UTC with Z (V6)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "name": "rich\u0007name",
+          "tags": [],
+          "discovered_by": "manual",
+          "host": "192.0.2.10",
+          "port": 22
+        },
+        "note": "a name is text a surface renders, so a control character is refused"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "tags": [],
+          "discovered_by": "manual",
+          "host": "192.0.2.10",
+          "port": 22,
+          "options": {
+            "keepaliveInterval": 0
+          }
+        },
+        "note": "options never cross C1: they are the target file's knobs, not a surface's"
+      }
+    ]
+  }
+}

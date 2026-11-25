@@ -1,0 +1,75 @@
+{
+  "seam": "C3",
+  "name": "control-connect-telnet",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-connect-telnet",
+  "description": "A telnet connection through the same connect message as ssh: the branch names term, cols and rows and carries no credential; the base protocol authenticates nothing (RFC 854), so there is no host key between connect and connected. A collected run from e3 must show at least one telnet connection in this order.",
+  "corpus": [
+    "lang-arch §3.1",
+    "lang-arch §4.1",
+    "decision 5.21",
+    "open_decisions §5"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-telnet",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        },
+        "note": "the TCP connection is up and the opening negotiation is done; nothing was authenticated"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock",
+          "resizable": true
+        }
+      }
+    ]
+  }
+}

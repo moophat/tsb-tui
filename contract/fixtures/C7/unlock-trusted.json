@@ -1,0 +1,76 @@
+{
+  "seam": "C7",
+  "name": "unlock-trusted",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "Trusted unlock (credential-protection §5.4): the surface finishes deriving storage_key and opening its sealed Part 1, then asks a vault.unlock challenge for this login's tied device, signs it and sends Part 1 with the signature. The core joins Part 1 to the device's Part 2 from Redis, renews Part 2's TTL, opens the set and holds the unlock on this login, recording the device. Only Part 1 crosses the wire.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection §5.1",
+    "credential-protection §5.4",
+    "vault-unlock",
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection §5.2",
+    "credential-protection §5.3",
+    "credential-protection §7.2",
+    "device-trust",
+    "E4 DEFAULT 39",
+    "E4 DEFAULT 43"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/devices/challenges",
+          "body": {
+            "operation": "vault.unlock",
+            "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "challenge_id": "ch-0001",
+            "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+            "login_handle": "lh-fixture-0001",
+            "expires_in": 30
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "trusted",
+            "challenge_id": "ch-0001",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "signature": "RklYVFVSRS1TSUdOQVRVUkUtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA=="
+          }
+        },
+        "expect": {
+          "status": 204
+        }
+      }
+    ]
+  }
+}

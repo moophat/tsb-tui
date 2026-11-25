@@ -1,0 +1,141 @@
+{
+  "seam": "C1",
+  "name": "session-create-hostkey-first-use",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/worker/manager_test.go — a hostkey event puts hostkey{} in the create response"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/hostkey-persist.sh — first use on a fresh target, none after"
+    }
+  ],
+  "description": "When opening the session's connection accepted a target host key on first use, the create response carries hostkey {fingerprint, first_use: true}, and every surface shows the fingerprint and asks for acknowledgement before it attaches: accept, warn, record. A reused or already-known connection carries no hostkey. First use happens once per target, so this cannot be reproduced on demand against a standing core: only a provider's test and the harness's host-key rig grade it; the C3 capture of the same event is graded from artefacts (hostkey-event).",
+  "corpus": [
+    "decision 5.18",
+    "spine plan.md §5 5.18"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/SessionCreateResponse",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          },
+          "hostkey": {
+            "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+            "first_use": true
+          }
+        },
+        "note": "first use: the fingerprint to show"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          }
+        },
+        "note": "no key accepted: no hostkey"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          },
+          "hostkey": {
+            "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+            "first_use": false
+          }
+        },
+        "note": "hostkey is absent, not first_use false, when no key was accepted"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          },
+          "hostkey": {
+            "fingerprint": "FIXTURE",
+            "first_use": true
+          }
+        },
+        "note": "the fingerprint is OpenSSH SHA256 form"
+      }
+    ]
+  }
+}

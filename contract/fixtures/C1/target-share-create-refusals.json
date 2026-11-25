@@ -1,0 +1,173 @@
+{
+  "seam": "C1",
+  "name": "target-share-create-refusals",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: TestAShareListNeedsTargetPrivateAndNeverFallsBack"
+    }
+  ],
+  "description": "POST /targets with share refusals: caller not named 422, kind entry 422, unknown account 422 with fixed text echoing no name, supplied id 422, empty list 422.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Storage \u00a710.1b",
+    "Contract \u00a74",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "peer"
+            ]
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "target request refused"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "fixture-user",
+              "role:ops"
+            ]
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "target request refused"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "fixture-user",
+              "nonexistent-user"
+            ]
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "target request refused"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "supplied-target-id",
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "fixture-user"
+            ]
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "target request refused"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": []
+          },
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "target request refused"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

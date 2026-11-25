@@ -1,0 +1,125 @@
+{
+  "seam": "C4",
+  "name": "vt-snapshot-restore",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "Snapshot and restore (D21; C4 decision 7): snapshot is answered by snapshot_ready — same request_id — with the engine's opaque snapshot in a following kind-3 blob, carrying through_seq (the commit point the snapshot is by construction, C6) and engine. restore carries a request_id, snapshot_seq, cols and rows plus a kind-3 blob of the snapshot bytes, and is answered by restored with the same request_id. A snapshot taken by another engine version is refused with error snapshot_incompatible and no restored; the core then opens an empty grid, feeds it the worker's replay, and raises the stale flow with cause grid_lost (5.52; C2 decision 10) — vt-grid-lost's fixture. Both refusals and both success paths are shown; the opaque bytes are graded by the U4 worker (owed) and the core's storage by the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 7",
+    "vt-ipc.schema.json snapshot",
+    "vt-ipc.schema.json snapshot_ready",
+    "vt-ipc.schema.json restore",
+    "vt-ipc.schema.json restored"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-1",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "snapshot",
+          "session_id": "sess-1",
+          "request_id": "req-snap-1"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "snapshot_ready",
+          "request_id": "req-snap-1",
+          "session_id": "sess-1",
+          "through_seq": 3,
+          "cols": 80,
+          "rows": 24,
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          }
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "restore",
+          "session_id": "sess-1",
+          "request_id": "req-restore-1",
+          "snapshot_seq": 3,
+          "cols": 80,
+          "rows": 24
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "restored",
+          "request_id": "req-restore-1",
+          "session_id": "sess-1",
+          "through_seq": 3
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "restore",
+          "session_id": "sess-1",
+          "request_id": "req-restore-2",
+          "snapshot_seq": 3,
+          "cols": 80,
+          "rows": 24
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "error",
+          "code": "snapshot_incompatible",
+          "session_id": "sess-1",
+          "request_id": "req-restore-2",
+          "message": "snapshot engine 1.0 does not match this worker's engine 1.1"
+        }
+      }
+    ]
+  }
+}

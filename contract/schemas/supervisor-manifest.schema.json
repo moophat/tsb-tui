@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C5 supervisor manifest",
+  "description": "/tmp/tsb/supervisors/{supervisor_id}/manifest.json. Every live one names one member of the set of supervisors the core addresses (decision 5.13). A supervisor is live when its control_sock accepts a connection; missing or refused means dead, and the core skips it. pid is informational only — meaningful inside the writer's PID namespace (the supervisor is PID 1 of the worker container). Closed, like the worker manifest. proto_version is the C3 version this supervisor and its workers speak; absent, it is a v0.1 supervisor, and a v0.2 core creates no worker through it (supervisor.schema.json).",
+  "type": "object",
+  "required": ["supervisor_id", "pid", "control_sock", "started_at"],
+  "additionalProperties": false,
+  "properties": {
+    "supervisor_id": {"$ref": "common.schema.json#/$defs/id"},
+    "pid": {"$ref": "supervisor.schema.json#/$defs/pid"},
+    "control_sock": {
+      "type": "string",
+      "pattern": "^(/[A-Za-z0-9_][A-Za-z0-9._-]*)*/supervisors/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/control\\.sock$",
+      "description": "Absolute path of the supervisor's control socket."
+    },
+    "started_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "proto_version": {"$ref": "common.schema.json#/$defs/proto_version",
+      "description": "C3 0.8 at this tag; absent means v0.1. Older manifests remain valid (C3/terminal-disposal-version-gate)."
+    }
+  }
+}

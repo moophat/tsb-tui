@@ -1,0 +1,115 @@
+{
+  "seam": "C1",
+  "name": "session-create-supplied-login",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/sessions_test.go — TestACreateWithALoginSendsItInConnectAuthAndNotTheStoredCredential: the fake worker's connect carries user and auth {password} from the login, never the stored credential, and the answer carries no trace of it"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/create_test.go — TestALoginOnATargetWithNoStoredCredentialIsNotRefused409: no stored credential resolves and the create is still 201"
+    }
+  ],
+  "description": "A login supplied on session create: connection new, with login {user, auth {kind password, password}}, opens a session whose connection authenticates with that account and password and nothing else. The core does not resolve a stored credential for such a request, so a target no credential resolves for (input target_no_cred_id) is not refused 409 no_resolving_credential, and credential_choice_required never answers it: the login is the operator's explicit choice (Contract §12). On the wire to the worker nothing changes: connect.user is login.user and connect.auth is {kind password, password}, the branch a stored password uses (C3/control-connect-supplied-login). The password is never stored (not in bbolt, a manifest, the spool, a log, an error message or an audit value), and the answer carries no field of the login. Every credential value in a fixture is the synthetic constant, which authenticates nowhere, so a run cannot grade this against a real target: only the core's own tests do.",
+  "corpus": [
+    "Contract §12",
+    "Contract §4",
+    "open_decisions §5",
+    "credential §8.2",
+    "credential §10.1",
+    "credential §10.2",
+    "Storage §10.1a",
+    "session-open steps 1, 3, 7"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_no_cred_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_no_cred_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "password",
+                "password": "FIXTURE-NOT-A-PASSWORD"
+              }
+            }
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/session/state",
+              "eq": "detached"
+            },
+            {
+              "pointer": "/session/owner",
+              "eq": "${user}"
+            },
+            {
+              "pointer": "/session/target_id",
+              "eq": "${target_no_cred_id}"
+            },
+            {
+              "pointer": "/login",
+              "absent": true
+            },
+            {
+              "pointer": "/session/login",
+              "absent": true
+            }
+          ],
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-10-29T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_a": "/session/id"
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_a}"
+      }
+    ]
+  }
+}

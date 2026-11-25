@@ -1,0 +1,67 @@
+{
+  "seam": "C1",
+  "name": "session-create-login-not-ssh-422",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/create_test.go — TestALoginOnATelnetOrEchoTargetIsRefusedBeforeAnyWorker: 422 invalid_request, and no worker is asked for anything"
+    }
+  ],
+  "description": "A login on a target whose type is not ssh is refused 422 invalid_request, before any worker is asked: a telnet login is typed inside the session and recorded verbatim, and a telnet connect refuses user and auth, so the core never turns a login into a connect for one. The same for echo and serial targets. Needs a target of one of those types that the principal can see and may create on (input target_id, a telnet target). No live fixture names a non-ssh target, and the contract's stub provider answers create at 201 for any target it knows, so this one is graded by the core's own test.",
+  "corpus": [
+    "open_decisions §5",
+    "Contract §12",
+    "session-open steps 2a and 8",
+    "lang-arch §3.1"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "password",
+                "password": "FIXTURE-NOT-A-PASSWORD"
+              }
+            }
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "a login is for ssh targets only"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

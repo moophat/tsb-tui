@@ -1,0 +1,59 @@
+{
+  "seam": "C7",
+  "name": "chain-org-seal-user",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/org_resolve_test.go — TestOrgSealVectors: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/pylib/tests/test_vaultclient.py — test_chain_seals_reproduce_and_open: independently reproduces the core-only vector using the Python reference client, never the authoring script"
+    }
+  ],
+  "description": "Chain step 9b: the same blob as a user-unlocked org credential, sealed under the storing administrator's encryption_key (this chain's), associated data naming the reference and user_unlocked (Q5 (a)).",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_seal",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "org-seal-user",
+          "implementations": [
+            {
+              "unit": "U6",
+              "what": "the Go core (vault/)"
+            },
+            {
+              "unit": "U11",
+              "what": "the harness's Python reference client (hashlib, cryptography)"
+            }
+          ],
+          "key_name": "encryption_key",
+          "key": "21d7fbf4e858c59e70b1ea1871aecc211e15ba8e0d0bd5a08248d43644f56b09",
+          "iv": "606162636465666768696a6b",
+          "aad_fields": [
+            "tsb.vault.org.v1",
+            "fleet-backup",
+            "user_unlocked"
+          ],
+          "aad": "00107473622e7661756c742e6f72672e7631000c666c6565742d6261636b7570000d757365725f756e6c6f636b6564",
+          "plaintext": "7b226c6f67696e5f6e616d65223a227376632d6261636b7570222c22736563726574223a22464958545552452d4e4f542d412d50415353574f5244222c226c6162656c223a224261636b7570206163636f756e74227d",
+          "sealed": "606162636465666768696a6ba558328d0815eaab2516cd33698b1f025651cc552f8c30d3151c2d9f5963544ce0e990c8d5c9bbfff55321e87f27271ef2f57e78b47a61180d7fb9815978b10b197f8df2590b4b4c1dd6de9254f3cc152c399225918743f4a53afb9b66dd7ef7e42128fb0949"
+        }
+      }
+    ]
+  }
+}

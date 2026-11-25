@@ -1,0 +1,154 @@
+{
+  "seam": "C3",
+  "name": "control-message-shape-v0.8",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U1",
+      "test": "owed: U1/U5 `terminal_control_shapes`: new exact messages/summary/error and version metadata, optional old fields still valid."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: U1/U5 `terminal_control_shapes`: new exact messages/summary/error and version metadata, optional old fields still valid."
+    }
+  ],
+  "description": "U1/U5 `terminal_control_shapes`: new exact messages/summary/error and version metadata, optional old fields still valid.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "seal_output",
+          "session_id": "fixture-session-a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "release_accounted",
+          "session_id": "fixture-session-a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "output_sealed",
+          "session_id": "fixture-session-a",
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "eof",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": false
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.8",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": true,
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "eof",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": false
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.8",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": true,
+          "output_seal": {
+            "sealed": false
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "seal_output"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "output_sealed",
+          "session_id": "fixture-session-a",
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "unknown",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": false
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "output_sealed",
+          "session_id": "fixture-session-a",
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "eof",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "output_sealed",
+          "session_id": "fixture-session-a",
+          "output_seal": {
+            "sealed": false
+          }
+        },
+        "note": "a seal reply is a successful seal: sealed:false is only a hello_ack summary"
+      }
+    ]
+  }
+}

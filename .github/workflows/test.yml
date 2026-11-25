@@ -19,9 +19,18 @@ defaults:
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, tsb-tui-ci]
     timeout-minutes: 90
     steps:
+      - name: Mask package cache address
+        env:
+          PACKAGE_CACHE_ADDR: ${{ secrets.PACKAGE_CACHE_ADDR }}
+        run: |
+          if [ -n "$PACKAGE_CACHE_ADDR" ]; then
+            echo "::add-mask::$PACKAGE_CACHE_ADDR"
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -130,9 +139,18 @@ jobs:
           docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-packaging || true
 
   lint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, tsb-tui-ci]
     timeout-minutes: 60
     steps:
+      - name: Mask package cache address
+        env:
+          PACKAGE_CACHE_ADDR: ${{ secrets.PACKAGE_CACHE_ADDR }}
+        run: |
+          if [ -n "$PACKAGE_CACHE_ADDR" ]; then
+            echo "::add-mask::$PACKAGE_CACHE_ADDR"
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -193,13 +211,14 @@ jobs:
         env:
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
+          TSB_LEAK_PATTERN: ${{ secrets.TSB_LEAK_PATTERN }}
         run: |
           set -euo pipefail
           docker run --rm \
             --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-lint \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
-            -e CI -e GITHUB_EVENT_NAME -e HEAD_REF -e BASE_REF \
+            -e CI -e GITHUB_EVENT_NAME -e HEAD_REF -e BASE_REF -e TSB_LEAK_PATTERN \
             ci-tui-py make lint
 
       - name: Remove this job's containers

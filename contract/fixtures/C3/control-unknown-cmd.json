@@ -1,0 +1,70 @@
+{
+  "seam": "C3",
+  "name": "control-unknown-cmd",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-unknown-cmd",
+  "description": "A worker answers a command it does not know with error unknown_cmd and keeps the connection. A later core relies on exactly this when it meets a v0.1 worker, so a v0.1 worker must never hang or drop the socket on a newer command. A collected run must hold such a probe — injected by the harness, marked probe: true in the capture — answered by error unknown_cmd.",
+  "corpus": [
+    "immortality §6.4",
+    "development-plan.md §2 v0.2"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-echo",
+          "protocol": "echo"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "x-fixture-later-command"
+        },
+        "unknown": true,
+        "note": "a command a later tag defines"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "unknown_cmd",
+          "message": "unknown cmd 'x-fixture-later-command'"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        },
+        "note": "the connection is still usable"
+      }
+    ]
+  }
+}

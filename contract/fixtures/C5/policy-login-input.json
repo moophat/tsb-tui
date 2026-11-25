@@ -1,0 +1,164 @@
+{
+  "seam": "C5",
+  "name": "policy-login-input",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "schema/policy/policy_test.go — TestTheLoginInputKnobLoadsOrIsRefusedAsTheFixtureSays: true, false and absent load; a string, and a recording with login_input and no enabled, are refused"
+    }
+  ],
+  "description": "policy.yaml's recording.login_input: whether a login supplied on session create is recorded in the session's recording (C8 sidecar codes 6 and 7), marked as login input. A boolean, beside recording.enabled, deployment-wide, and absent means false: with no key nothing of the login is recorded. It applies only to a recorded session, so it sits in the same object as enabled and enabled stays required. The core reads it at each create.",
+  "corpus": [
+    "open_decisions §5",
+    "decision 5.40a",
+    "credential §10.1"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "alice": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "session.terminate",
+                "target.discover"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": true,
+            "login_input": true
+          }
+        },
+        "note": "on: the supplied login is recorded"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "alice": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "session.terminate",
+                "target.discover"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": true,
+            "login_input": false
+          }
+        },
+        "note": "off, stated"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "alice": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "session.terminate",
+                "target.discover"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": true
+          }
+        },
+        "note": "absent: off, the default"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "alice": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "session.terminate",
+                "target.discover"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": true,
+            "login_input": "yes"
+          }
+        },
+        "note": "a boolean, not a string"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "alice": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "session.terminate",
+                "target.discover"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "login_input": true
+          }
+        },
+        "note": "enabled stays required: login_input has nothing to record into without it"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "alice": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "session.terminate",
+                "target.discover"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": true,
+            "login_input": true,
+            "per_target": true
+          }
+        },
+        "note": "deployment-wide: no per-target or per-user form"
+      }
+    ]
+  }
+}

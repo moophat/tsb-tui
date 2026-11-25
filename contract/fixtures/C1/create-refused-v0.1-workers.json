@@ -1,0 +1,39 @@
+{
+  "seam": "C1",
+  "name": "create-refused-v0.1-workers",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/worker/version_test.go — with only v0.1 supervisors live, POST /sessions answers 503 worker_unavailable, its message saying the workers predate the core, and no connection on a v0.1 worker is reused"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/n1-negative.sh — creation is refused 503 while only v0.1 workers run"
+    }
+  ],
+  "description": "No new session on a v0.1 worker (orchestrator DEFAULT, approval page). The core creates workers only through a supervisor whose manifest carries a C3 version it speaks, and never reuses a connection on a v0.1 worker: a session there would get no heartbeat, so a hung worker would never be found, and no worker-run timers, so an orphan would have no bound if the core were lost (session model §14 rejects that). With only v0.1 supervisors, POST /sessions answers 503 worker_unavailable with a message saying the workers predate the core. The cost: after a core-only upgrade, no new session until the workers restart — which the E1 upgrade does once (manage.sh restart-workers).",
+  "corpus": [
+    "immortality §6.4",
+    "session model §11",
+    "session model §14"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/Error",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "worker_unavailable",
+            "message": "the workers predate this core (contract-v0.1): no session is created on them; restart the workers"
+          }
+        }
+      }
+    ]
+  }
+}

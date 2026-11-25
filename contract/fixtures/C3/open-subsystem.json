@@ -1,0 +1,60 @@
+{
+  "seam": "C3",
+  "name": "open-subsystem",
+  "mark": {
+    "published": "e0"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "description": "A NETCONF session is an SSH subsystem channel on the existing connection, never a separate connection (lang-arch §3.2), tagged by its subsystem name (lang-arch §8.2). Published at this tag, required green in none yet.",
+  "corpus": [
+    "lang-arch §3.2",
+    "lang-arch §4.1",
+    "lang-arch §8.2",
+    "decision 5.21"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_subsystem",
+          "session_id": "fixture-session-b",
+          "name": "netconf"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-b",
+          "session_type": "netconf",
+          "socket": "sub-1.sock"
+        }
+      }
+    ]
+  }
+}

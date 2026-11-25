@@ -1,0 +1,407 @@
+{
+  "seam": "C1",
+  "name": "target-import-discard",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Synthetic Tabby preview, pre-commit abort, discard and receipt-only in-process resume.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "preview",
+            "format": "tabby",
+            "export_bytes": "dmVyc2lvbjogMQpwcm9maWxlczoKICAtIGlkOiBjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjCiAgICB0eXBlOiBzc2gKICAgIG5hbWU6IGNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MKICAgIG9wdGlvbnM6CiAgICAgIGhvc3Q6IGNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MKICAgICAgdXNlcjogZml4dHVyZS11c2VyCiAgICAgIHBhc3N3b3JkOiBGSVhUVVJFLU5PVC1BLVBBU1NXT1JECg=="
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets/0/has_credentials",
+              "eq": true
+            },
+            {
+              "pointer": "/credentials/0/kind",
+              "eq": "password"
+            },
+            {
+              "pointer": "",
+              "not_contains": [
+                "FIXTURE-NOT-A-PASSWORD"
+              ]
+            },
+            {
+              "pointer": "/targets/0/target/id",
+              "ne": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ],
+          "example": {
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "preview_token": "fixture_token",
+            "format": "tabby",
+            "targets": [
+              {
+                "entry": {
+                  "index": 1,
+                  "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                },
+                "source_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "target": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                  "tags": [],
+                  "discovered_by": "tsb",
+                  "host": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                  "port": 22
+                },
+                "change": "create",
+                "n": 0,
+                "has_credentials": true,
+                "key_file_referenced": false,
+                "definition": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                  "discovered_by": "tsb",
+                  "options": {
+                    "host": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    "user": "fixture-user"
+                  },
+                  "import_ref": {
+                    "format": "tabby",
+                    "source_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                  }
+                },
+                "mapping": {
+                  "reference": "import-aaaaaaaa-1",
+                  "state": "map"
+                }
+              }
+            ],
+            "not_carried": [],
+            "credentials": [
+              {
+                "reference": "import-aaaaaaaa-1",
+                "kind": "password",
+                "login_name": "fixture-user",
+                "target_ids": [
+                  "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+                ]
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        },
+        "save": {
+          "import_token": "/preview_token"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "abort",
+            "preview_token": "${import_token}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/outcome",
+              "eq": "aborted"
+            },
+            {
+              "pointer": "/targets",
+              "eq": []
+            },
+            {
+              "pointer": "",
+              "not_contains": [
+                "FIXTURE-NOT-A-PASSWORD"
+              ]
+            }
+          ],
+          "example": {
+            "outcome": "aborted",
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "targets": []
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "preview",
+            "format": "tabby",
+            "export_bytes": "dmVyc2lvbjogMQpwcm9maWxlczoKICAtIGlkOiBjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjCiAgICB0eXBlOiBzc2gKICAgIG5hbWU6IGNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MKICAgIG9wdGlvbnM6CiAgICAgIGhvc3Q6IGNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MKICAgICAgdXNlcjogZml4dHVyZS11c2VyCiAgICAgIHBhc3N3b3JkOiBGSVhUVVJFLU5PVC1BLVBBU1NXT1JECg=="
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets/0/has_credentials",
+              "eq": true
+            },
+            {
+              "pointer": "/credentials/0/kind",
+              "eq": "password"
+            },
+            {
+              "pointer": "",
+              "not_contains": [
+                "FIXTURE-NOT-A-PASSWORD"
+              ]
+            },
+            {
+              "pointer": "/targets/0/target/id",
+              "ne": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            }
+          ],
+          "example": {
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "preview_token": "fixture_token",
+            "format": "tabby",
+            "targets": [
+              {
+                "entry": {
+                  "index": 1,
+                  "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                },
+                "source_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "target": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                  "tags": [],
+                  "discovered_by": "tsb",
+                  "host": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                  "port": 22
+                },
+                "change": "create",
+                "n": 0,
+                "has_credentials": true,
+                "key_file_referenced": false,
+                "definition": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                  "discovered_by": "tsb",
+                  "options": {
+                    "host": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    "user": "fixture-user"
+                  },
+                  "import_ref": {
+                    "format": "tabby",
+                    "source_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                  }
+                },
+                "mapping": {
+                  "reference": "import-aaaaaaaa-1",
+                  "state": "map"
+                }
+              }
+            ],
+            "not_carried": [],
+            "credentials": [
+              {
+                "reference": "import-aaaaaaaa-1",
+                "kind": "password",
+                "login_name": "fixture-user",
+                "target_ids": [
+                  "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+                ]
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        },
+        "save": {
+          "import_token": "/preview_token",
+          "import_id": "/import_id",
+          "target_id": "/targets/0/target/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "commit",
+            "format": "tabby",
+            "export_bytes": "dmVyc2lvbjogMQpwcm9maWxlczoKICAtIGlkOiBjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjCiAgICB0eXBlOiBzc2gKICAgIG5hbWU6IGNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MKICAgIG9wdGlvbnM6CiAgICAgIGhvc3Q6IGNjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2MKICAgICAgdXNlcjogZml4dHVyZS11c2VyCiAgICAgIHBhc3N3b3JkOiBGSVhUVVJFLU5PVC1BLVBBU1NXT1JECg==",
+            "preview_token": "${import_token}",
+            "credential_choice": "discard"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/credentials/choice",
+              "eq": "discard"
+            },
+            {
+              "pointer": "/credentials/stored",
+              "eq": []
+            },
+            {
+              "pointer": "/credentials/mappings",
+              "eq": []
+            },
+            {
+              "pointer": "",
+              "not_contains": [
+                "FIXTURE-NOT-A-PASSWORD"
+              ]
+            }
+          ],
+          "example": {
+            "outcome": "written",
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "targets": [
+              {
+                "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "type": "ssh",
+                "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "tags": [],
+                "discovered_by": "tsb",
+                "host": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "port": 22
+              }
+            ],
+            "not_carried": [],
+            "credentials": {
+              "choice": "discard",
+              "stored": [],
+              "mappings": []
+            }
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "resume",
+            "import_id": "${import_id}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/credentials/choice",
+              "eq": "discard"
+            },
+            {
+              "pointer": "/credentials/stored",
+              "eq": []
+            },
+            {
+              "pointer": "/credentials/mappings",
+              "eq": []
+            },
+            {
+              "pointer": "",
+              "not_contains": [
+                "FIXTURE-NOT-A-PASSWORD"
+              ]
+            }
+          ],
+          "example": {
+            "outcome": "written",
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "targets": [
+              {
+                "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "type": "ssh",
+                "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "tags": [],
+                "discovered_by": "tsb",
+                "host": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "port": 22
+              }
+            ],
+            "not_carried": [],
+            "credentials": {
+              "choice": "discard",
+              "stored": [],
+              "mappings": []
+            }
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/${target_id}"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "ssh",
+            "name": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "tags": [],
+            "discovered_by": "tsb",
+            "host": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "port": 22
+          },
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "${target_id}"
+            },
+            {
+              "pointer": "",
+              "not_contains": [
+                "FIXTURE-NOT-A-PASSWORD"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/targets/${target_id}"
+      }
+    ]
+  }
+}

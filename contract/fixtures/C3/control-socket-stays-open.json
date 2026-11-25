@@ -1,0 +1,200 @@
+{
+  "seam": "C3",
+  "name": "control-socket-stays-open",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_worker.py — a core that stops reading past E0's thresholds keeps every session (backpressure, no hang-up); a core that closes the control socket without disconnect ends nothing"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/redial_control_test.go — TestEveryControlEOFDialsOnceHoweverSoonAfterTheLast: on a control-socket EOF with no connection_lost the core dials control.sock once; if the worker answers it ends nothing, and only a refused or missing socket is E9"
+    }
+  ],
+  "description": "The control socket clause (Tu, 2026-09-27). A worker closes a connection's control socket only after that connection's connection_lost, or by exiting — never to shed a slow core: session model §9 E9 reads a control socket that closes without connection_lost as the worker's death, which ends every session on it terminated / worker_lost. Here the first core stops reading for a while (backpressure — the worker stops reading the target — never a hang-up), and then closes its control socket without disconnect: the graceful restart. The worker ends nothing; the next core reattaches and finds the session live.",
+  "corpus": [
+    "session model §9 E9",
+    "immortality §2.1",
+    "phase-01 (manage.sh restart-core)"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 0
+        },
+        "note": "the core dialled the data socket first; nothing is committed yet",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": false
+        },
+        "note": "nothing buffered and no output yet: first_buffered_seq is current_seq + 1",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 1
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 0
+        },
+        "note": "through_seq 0 < from_seq 1: complete with no frame",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-a"
+        },
+        "note": "only now is the session offered northbound (the 201)",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "answering",
+          "last_ack_at": "2026-09-29T01:00:00Z"
+        },
+        "run": "01789000100000000000",
+        "note": "the worker kept the socket, the connection and the session"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 20
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 5,
+          "first_buffered_offset": 700,
+          "current_seq": 20,
+          "ended": false
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 21
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 20
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-a"
+        },
+        "run": "01789000100000000000"
+      }
+    ]
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "seam": "C4",
+  "name": "vt-snapshot-on-resize",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "A snapshot is forced on every PTY size change and on alt-screen enter/exit/clear, so no resize lies between the last snapshot and a crash (F3b; C4 decision 4). The core sends every PTY size change, wiggles included, so the grid always has the PTY's size (D18); each resize is answered by a snapshot_ready whose through_seq is the commit point. This fixture shows the control messages: hello, the grid's open, a resize, and the snapshot the core takes at that size change, answered by snapshot_ready. The alt-screen triggers ride screen_change (vt-screen-change). Graded by the U4 worker (owed) and the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 4",
+    "vt-ipc.schema.json resize",
+    "vt-ipc.schema.json snapshot",
+    "vt-ipc.schema.json snapshot_ready"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-1",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "resize",
+          "session_id": "sess-1",
+          "cols": 100,
+          "rows": 30
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "snapshot",
+          "session_id": "sess-1",
+          "request_id": "req-snap-resize"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "snapshot_ready",
+          "request_id": "req-snap-resize",
+          "session_id": "sess-1",
+          "through_seq": 4,
+          "cols": 100,
+          "rows": 30,
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          }
+        }
+      }
+    ]
+  }
+}

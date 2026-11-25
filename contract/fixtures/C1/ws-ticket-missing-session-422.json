@@ -1,0 +1,45 @@
+{
+  "seam": "C1",
+  "name": "ws-ticket-missing-session-422",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "A ticket is bound to one session, so a mint request without session_id is refused with 422: there is no ticket for 'whatever session I attach to next'.",
+  "corpus": [
+    "spine plan.md §3 C1",
+    "decision 5.34"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {},
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "session_id is required"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

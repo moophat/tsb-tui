@@ -1,0 +1,173 @@
+{
+  "seam": "C2",
+  "name": "token-event-on-detach",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "Token events (development-plan §2 v0.2 C2; PTY §7.1): the control token auto-transfers to the next attached client when its holder disconnects, and every attached client is told. Two sockets of one principal attach; the first holds the token. It leaves; the second receives a token frame with reason detach — the cause, never the destination — and holder naming itself, so it knows it may now type and resize. Nothing went client to server at v0.2: the explicit hand-off is the contract-v0.3 tag's.",
+  "corpus": [
+    "PTY §7.1",
+    "Contract §10",
+    "session model §9 E4",
+    "development-plan.md §2 v0.2"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          }
+        },
+        "expect": {
+          "status": 200
+        },
+        "save": {
+          "ta": "/ticket"
+        }
+      },
+      {
+        "ws_open": "a",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "a",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${ta}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "a",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            }
+          ],
+          "save": {
+            "client_a": "/client_id"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          }
+        },
+        "expect": {
+          "status": 200
+        },
+        "save": {
+          "tb": "/ticket"
+        }
+      },
+      {
+        "ws_open": "b",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "b",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${tb}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "b",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            },
+            {
+              "pointer": "/session/control_holder/client_id",
+              "eq": "${client_a}"
+            }
+          ],
+          "save": {
+            "client_b": "/client_id"
+          }
+        }
+      },
+      {
+        "ws_close": "a"
+      },
+      {
+        "ws_expect": "b",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "token"
+            },
+            {
+              "pointer": "/reason",
+              "eq": "detach"
+            },
+            {
+              "pointer": "/holder/client_id",
+              "eq": "${client_b}"
+            }
+          ],
+          "example": {
+            "t": "token",
+            "v": 1,
+            "kind": "control",
+            "holder": {
+              "client_id": "fixture-client-2",
+              "user": "fixture-user"
+            },
+            "reason": "detach"
+          }
+        }
+      },
+      {
+        "ws_close": "b"
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

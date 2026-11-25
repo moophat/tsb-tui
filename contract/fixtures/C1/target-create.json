@@ -1,0 +1,109 @@
+{
+  "seam": "C1",
+  "name": "target-create",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Create an ssh target, return the indexed record with default port, then read exactly that record and delete it.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Storage §10.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "fixture-w-${nonce}",
+            "type": "ssh",
+            "host": "192.0.2.60"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "fixture-w-${nonce}"
+            },
+            {
+              "pointer": "/discovered_by",
+              "eq": "tsb"
+            },
+            {
+              "pointer": "/host",
+              "eq": "192.0.2.60"
+            },
+            {
+              "pointer": "/port",
+              "eq": 22
+            }
+          ],
+          "example": {
+            "id": "fixture-w-01234567",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [],
+            "discovered_by": "tsb",
+            "port": 22
+          }
+        },
+        "save": {
+          "created_record": ""
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/fixture-w-${nonce}"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "",
+              "eq": "${created_record}",
+              "ignore": [
+                "login_hint"
+              ]
+            }
+          ],
+          "example": {
+            "id": "fixture-w-01234567",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [],
+            "discovered_by": "tsb",
+            "port": 22
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/targets/fixture-w-${nonce}"
+        },
+        "expect": {
+          "status": 204
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/targets/fixture-w-${nonce}"
+      }
+    ]
+  }
+}

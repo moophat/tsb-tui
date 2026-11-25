@@ -1,0 +1,64 @@
+{
+  "seam": "C3",
+  "name": "terminal-disposal-version-gate",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U3 `terminal_old_peer_unchanged`: old tags receive old messages/keys, live/unsealed new disposal refuses, absent duplicate succeeds without ack."
+    },
+    {
+      "unit": "U3",
+      "test": "owed: U2/U3 `terminal_old_peer_unchanged`: old tags receive old messages/keys, live/unsealed new disposal refuses, absent duplicate succeeds without ack."
+    }
+  ],
+  "description": "U2/U3 `terminal_old_peer_unchanged`: old tags receive old messages/keys, live/unsealed new disposal refuses, absent duplicate succeeds without ack.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "seal_output",
+          "session_id": "fixture-session-a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "release_accounted",
+          "session_id": "fixture-session-a"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "output_sealed",
+          "session_id": "fixture-session-a",
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "eof",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": false
+          }
+        },
+        "note": ""
+      }
+    ]
+  }
+}

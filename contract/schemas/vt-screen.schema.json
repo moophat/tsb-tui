@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C4 golden expected screen",
+  "description": "The expected-screen shape of the C4 golden fixtures (golden-alt-screen, golden-wide-chars, golden-resize-mid-stream, golden-reflow, golden-sgr, golden-input-modes, golden-mode-reset). **This is fixture-only: it is never on any wire.** No C4 message, and no client message anywhere, carries a structured cell or row API (R8; F19: the prefix/dump is the only cell-bearing form a client sees). A golden fixture feeds output bytes (and, F14d, resize events) through a fresh parser and asserts that the screen it then shows equals this document: rows per screen, the cursor, the active screen, the set modes and, where a case needs them, SGR runs. It encodes a screen as a test oracle, never as an API. Rows are plain text with trailing blanks trimmed; SGR runs are the styling a case cares about, addressed by row and column, and absent when the case does not test styling.",
+  "type": "object",
+  "required": ["cols", "rows", "active_screen", "screens", "cursor", "modes"],
+  "additionalProperties": false,
+  "properties": {
+    "cols": {"$ref": "common.schema.json#/$defs/cols", "description": "The terminal width the screen was parsed at."},
+    "rows": {"$ref": "common.schema.json#/$defs/rows", "description": "The terminal height the screen was parsed at."},
+    "active_screen": {"enum": ["primary", "alt"], "description": "Which screen is active when the parser reaches the expected state (the one CSI ?1049h/l switches between)."},
+    "screens": {"$ref": "#/$defs/screens"},
+    "cursor": {"$ref": "#/$defs/cursor"},
+    "modes": {"$ref": "#/$defs/modes"},
+    "sgr_runs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/sgr_run"},
+      "description": "Optional: the styling a case tests, each run addressed by screen, row and column. Absent when the case does not test styling."
+    }
+  },
+  "$defs": {
+    "screens": {
+      "type": "object",
+      "required": ["primary"],
+      "additionalProperties": false,
+      "properties": {
+        "primary": {"$ref": "#/$defs/screen", "description": "The primary screen's lines. Always present."},
+        "alt": {"$ref": "#/$defs/screen", "description": "The alternate screen's lines, present when the case has entered it."}
+      },
+      "description": "Both screens a case asserts, ordered as the dump emits them (primary first, then alt)."
+    },
+    "screen": {
+      "type": "object",
+      "required": ["lines"],
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "One string per visible row, top to bottom; trailing blanks trimmed. A wide glyph occupies its cell once and its continuation is not repeated."
+        }
+      }
+    },
+    "cursor": {
+      "type": "object",
+      "required": ["row", "col", "visible"],
+      "additionalProperties": false,
+      "properties": {
+        "row": {"type": "integer", "minimum": 0, "description": "Zero-based row of the cursor."},
+        "col": {"type": "integer", "minimum": 0, "description": "Zero-based column of the cursor."},
+        "visible": {"type": "boolean", "description": "Whether the cursor is shown."},
+        "style": {"type": "string", "minLength": 1, "description": "The cursor's style, present only when the engine exposes it (C4 decision 6, D20)."}
+      }
+    },
+    "modes": {
+      "type": "object",
+      "required": ["decckm", "keypad", "bracketed_paste", "mouse", "focus", "origin", "autowrap", "insert"],
+      "additionalProperties": false,
+      "properties": {
+        "decckm": {"type": "boolean", "description": "DECCKM (CSI ?1h/l)."},
+        "keypad": {"enum": ["numeric", "application"], "description": "Keypad mode: numeric (ESC >) or application (ESC =)."},
+        "bracketed_paste": {"type": "boolean", "description": "Bracketed paste (CSI ?2004h/l)."},
+        "mouse": {"$ref": "#/$defs/mouse"},
+        "focus": {"type": "boolean", "description": "Focus reporting (CSI ?1004h/l)."},
+        "origin": {"type": "boolean", "description": "Origin mode (DECOM, CSI ?6h/l)."},
+        "autowrap": {"type": "boolean", "description": "Autowrap (DECAWM, CSI ?7h/l)."},
+        "insert": {"type": "boolean", "description": "Insert mode (IRM, CSI 4h/l)."},
+        "kitty_keyboard": {"type": "integer", "minimum": 0, "description": "Kitty keyboard flags, present only when the engine exposes them (F14)."},
+        "modify_other_keys": {"type": "integer", "minimum": 0, "description": "modifyOtherKeys level, present only when the engine exposes it (F14)."}
+      },
+      "description": "The carried input modes the dump must set as their full state (C4 decision 6). Only the modes a case asserts are given values; each field here is the mode's state, never a default."
+    },
+    "mouse": {
+      "type": "object",
+      "required": ["mode"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"enum": ["off", "9", "1000", "1002", "1003"], "description": "The mouse tracking mode as set, never substituted."},
+        "encoding": {"enum": ["x10", "utf8", "sgr", "urxvt"], "description": "The mouse encoding as set (CSI ?1005/1006/1015), never substituted; x10 is the encoding with no ?1005/1006/1015 set."}
+      }
+    },
+    "sgr_run": {
+      "type": "object",
+      "required": ["screen", "row", "col", "length", "sgr"],
+      "additionalProperties": false,
+      "properties": {
+        "screen": {"enum": ["primary", "alt"]},
+        "row": {"type": "integer", "minimum": 0},
+        "col": {"type": "integer", "minimum": 0},
+        "length": {"type": "integer", "minimum": 1, "description": "The run's length in cells."},
+        "sgr": {"type": "string", "pattern": "^([0-9]{1,3})(;[0-9]{1,3})*$", "description": "The SGR parameters the run carries, semicolon-separated, without the leading CSI or the trailing m."}
+      },
+      "description": "One styled run a case asserts, addressed by screen, row and column."
+    }
+  }
+}

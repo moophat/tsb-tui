@@ -1,0 +1,122 @@
+{
+  "seam": "C6",
+  "name": "vault-user-record",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5's tests in schema/; E4 phase 4 (U5: the vault schema, policy.yaml and config.yaml E4 keys); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "vault_users: one user's vault, its salts, the sealed set and the plaintext index of (reference, kind) written in the same transaction (DEFAULTs 22, 42); or, minted and not yet sealed, its salts alone.",
+  "corpus": [
+    "credential-protection §3.3",
+    "E4 DEFAULT 22",
+    "E4 DEFAULT 42"
+  ],
+  "case": {
+    "schema": "schemas/vault.schema.json#/$defs/vault_user",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "user_id": "fixture-user",
+          "user_salt": "RklYVFVSRS1TQUxULTAwMA==",
+          "salt2": "RklYVFVSRS1TQUxUMi0wMA==",
+          "set_format": 1,
+          "encrypted_credentials": "RklYVFVSRS1TRUFMRUQtQ1JFREVOVElBTC1TRVQtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw",
+          "index": [
+            {
+              "reference": "lab-switch",
+              "kind": "password"
+            },
+            {
+              "reference": "lab-telnet",
+              "kind": "none"
+            }
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "user_id": "fixture-user",
+          "user_salt": "RklYVFVSRS1TQUxULTAwMA==",
+          "salt2": "RklYVFVSRS1TQUxUMi0wMA==",
+          "set_format": 1,
+          "encrypted_credentials": "RklYVFVSRS1TRUFMRUQtQ1JFREVOVElBTC1TRVQtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw",
+          "index": []
+        },
+        "note": "a freshly initialised vault: an empty set, still sealed"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "user_id": "fixture-peer",
+          "user_salt": "RklYVFVSRS1TQUxULTAwMA==",
+          "salt2": "RklYVFVSRS1TQUxUMi0wMA=="
+        },
+        "note": "minted, not sealed: the salts only"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "user_id": "fixture-peer",
+          "user_salt": "RklYVFVSRS1TQUxULTAwMA==",
+          "salt2": "RklYVFVSRS1TQUxUMi0wMA==",
+          "index": []
+        },
+        "note": "an index only with the sealed set"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "user_id": "fixture-user",
+          "user_salt": "RklYVFVSRS1TQUxULTAwMA==",
+          "salt2": "RklYVFVSRS1TQUxUMi0wMA==",
+          "set_format": 1,
+          "encrypted_credentials": "RklYVFVSRS1TRUFMRUQtQ1JFREVOVElBTC1TRVQtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw",
+          "index": [
+            {
+              "reference": "lab-switch",
+              "kind": "password",
+              "label": "Lab"
+            }
+          ]
+        },
+        "note": "the index holds reference and kind only"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "user_id": "fixture-user",
+          "user_salt": "RklYVFVSRS1TQUxULTAwMA==",
+          "salt2": "RklYVFVSRS1TQUxUMi0wMA==",
+          "set_format": 1,
+          "encrypted_credentials": "RklYVFVSRS1TRUFMRUQtQ1JFREVOVElBTC1TRVQtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw",
+          "index": [
+            {
+              "reference": "lab-switch",
+              "kind": "password"
+            },
+            {
+              "reference": "lab-telnet",
+              "kind": "none"
+            }
+          ],
+          "master_hash": "RklYVFVSRS1NQVNURVItSEFTSC0wMDAwMDAwMDAwMDA="
+        },
+        "note": "master_hash never reaches bbolt"
+      }
+    ]
+  }
+}

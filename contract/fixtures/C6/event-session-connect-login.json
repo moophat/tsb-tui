@@ -1,0 +1,106 @@
+{
+  "seam": "C6",
+  "name": "event-session-connect-login",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/audit/audit_test.go — TestSessionConnectSaysSuppliedAndNeverAValue: detail.login is supplied for a supplied login and stored for a stored credential, detail.login_recorded is true exactly when login frames were written, and no value of the login is in the line"
+    }
+  ],
+  "description": "session.connect says where the credential its connection used came from and whether a supplied login was recorded: detail.login is stored or supplied, detail.login_recorded a boolean that is true exactly when login frames (C8 sidecar codes 6 and 7) were written at the head of the session's recording. Never a value: no password, key, user name or prompt text is in the line.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "Storage §6",
+    "session-open step 19"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "supplied",
+            "login_recorded": false
+          }
+        },
+        "note": "a supplied login, the knob off: nothing recorded"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "supplied",
+            "login_recorded": true
+          }
+        },
+        "note": "a supplied login, the knob on and the session recorded"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "stored"
+          }
+        },
+        "note": "a stored credential"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "typed"
+          }
+        },
+        "note": "stored or supplied: nothing else is a source at this tag"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "supplied",
+            "login_recorded": "yes"
+          }
+        },
+        "note": "login_recorded is a boolean"
+      }
+    ]
+  }
+}

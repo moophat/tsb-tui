@@ -1,0 +1,115 @@
+{
+  "seam": "C1",
+  "name": "target-share-write-owner-only",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: TestAWriteOnAnUnnamedOwnTargetIs404"
+    }
+  ],
+  "description": "A named peer cannot PUT, DELETE or read definition of an own target: all return 403 forbidden.",
+  "corpus": [
+    "Storage §9",
+    "Storage §10.1b",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "fixture-user",
+              "peer"
+            ]
+          }
+        },
+        "expect": {
+          "status": 201
+        },
+        "save": {
+          "target_id": "/id"
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/${target_id}",
+          "as": "peer",
+          "body": {
+            "id": "${target_id}",
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "fixture-user",
+              "peer"
+            ]
+          }
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/targets/${target_id}",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/${target_id}/definition",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ]
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/targets/${target_id}"
+      }
+    ]
+  }
+}

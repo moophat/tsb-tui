@@ -1,0 +1,107 @@
+{
+  "seam": "C8",
+  "name": "recording-device-login-own-prompt",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "bytes",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/record/login_write_test.go — TestADeviceLoginWritesTSBsOwnPromptsAsCode8: code 8 `login as:` before the user name's code 7, and code 8 `Password:` before a password round's code 7, in exactly the x-own-prompt-line bytes"
+    }
+  ],
+  "description": "TSB's own prompt text on disk, sidecar code 8, in a device login's head. With policy.yaml recording.login_input on, `recording.enabled` on and `recording_acknowledged` true on the create, the head holds: (1) code 8, the fixed line `login as:`, then code 7, the user name typed at it; (2) a keyboard-interactive round as before, code 6 for the text the device sent and code 7 for the answer; (3) for a password round, code 8, the fixed line `Password:`, then code 7, the answer. Code 6 stays text the device sent and code 7 the answers, so a code-6 line never carries TSB's words, and the device's own `Password:` (code 6) cannot pass as TSB's (code 8). Code 8 carries no secret. It is written only where the login frames are, and a supplied login, which is never asked at a prompt, has none. Refused: a code-8 line with any other text or another tag, and a code-8 frame after the session's first output frame. The answers are the synthetic constant.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "5.46",
+    "device-login, what the recording holds",
+    "ttyrec.schema.json x-own-prompt-line"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "recording-device-login-own-prompt.ttyrec.bin",
+    "sidecar": "recording-device-login-own-prompt.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 100000,
+        "length": 31,
+        "marker": "own_prompt",
+        "data_hex": "0d0a5b5453423a206f776e2070726f6d70745d206c6f67696e2061733a0d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 100000,
+        "length": 39,
+        "marker": "login_answer",
+        "data_hex": "0d0a5b5453423a206c6f67696e20616e737765725d20666978747572652d6163636f756e740d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 200000,
+        "length": 39,
+        "marker": "login_prompt",
+        "data_hex": "0d0a5b5453423a206c6f67696e2070726f6d70745d20456e74657220796f757220636f64650d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 300000,
+        "length": 46,
+        "marker": "login_answer",
+        "data_hex": "0d0a5b5453423a206c6f67696e20616e737765725d20464958545552452d4e4f542d412d50415353574f52440d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 400000,
+        "length": 31,
+        "marker": "own_prompt",
+        "data_hex": "0d0a5b5453423a206f776e2070726f6d70745d2050617373776f72643a0d0a"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 400000,
+        "length": 46,
+        "marker": "login_answer",
+        "data_hex": "0d0a5b5453423a206c6f67696e20616e737765725d20464958545552452d4e4f542d412d50415353574f52440d0a"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 0,
+        "length": 40,
+        "direction": "out",
+        "data_hex": "4c617374206c6f67696e3a2053756e204e6f762020312031323a30303a303020323032360d0a2420"
+      },
+      {
+        "sec": 1789000003,
+        "usec": 0,
+        "length": 3,
+        "direction": "in",
+        "data_hex": "69640d"
+      }
+    ],
+    "invalid": [
+      {
+        "ttyrec_hex": "40f9a16aa0860100210000000d0a5b5453423a206f776e2070726f6d70745d20506173737068726173653a0d0a",
+        "sidecar_hex": "08",
+        "problem": "not the own-prompt line",
+        "note": "code 8 holds one of two fixed lines, `login as:` and `Password:`; any other text is refused"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100210000000d0a5b5453423a206c6f67696e20616e737765725d206c6f67696e2061733a0d0a",
+        "sidecar_hex": "08",
+        "problem": "not the own-prompt line",
+        "note": "code 8 carries its own tag, not the answer tag"
+      },
+      {
+        "ttyrec_hex": "40f9a16aa0860100270000000d0a5b5453423a206c6f67696e20616e737765725d20666978747572652d6163636f756e740d0a41f9a16a0000000002000000242042f9a16a000000001f0000000d0a5b5453423a206f776e2070726f6d70745d2050617373776f72643a0d0a",
+        "sidecar_hex": "070008",
+        "problem": "stand after frame",
+        "note": "a code-8 frame after the session's first output frame: the own-prompt lines are the head of the recording"
+      }
+    ]
+  }
+}

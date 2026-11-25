@@ -1,0 +1,86 @@
+{
+  "seam": "C3",
+  "name": "data-frame-shape",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:frames-envelope",
+  "description": "What an envelope may not be: another version, a flag bit no tag defines, the gap bit (bit 1, from contract-v0.2) on a frame that carries a payload, a seq of 0, an empty payload that is not a gap frame's, or a direction that contradicts the flags. Every frame a collected tap holds obeys the same rules.",
+  "corpus": [
+    "decision 5.14",
+    "immortality §6.4"
+  ],
+  "case": {
+    "schema": "schemas/ipc-data-frame.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 7,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "6c6f67696e3a20"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "version": 2,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 7,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "6c6f67696e3a20"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "version": 1,
+          "flags": 2,
+          "direction": "out",
+          "stream": 0,
+          "length": 7,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "6c6f67696e3a20"
+        },
+        "note": "bit 1 is the gap frame, which carries no payload"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 7,
+          "seq": 0,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "6c6f67696e3a20"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 0,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": ""
+        },
+        "note": "only the gap frame is empty, and it sets bit 1"
+      }
+    ]
+  }
+}

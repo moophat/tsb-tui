@@ -1,0 +1,31 @@
+{
+  "seam": "C2",
+  "name": "attach-scrollback-amount",
+  "mark": {"published": "e2", "required-green": "e5"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "The attach prefix says how much scrollback exists (C2 decision 4; 5.48; F15): `prefix.scrollback` is present with `first_seq` (the oldest output seq the raw ring holds) and `bytes` (the output payload bytes from first_seq through through_seq). Optional in the schema, required at e5 with pagination (no core ring exists at E2). This stub is an e5 provider, so a page fetch at through_seq must return output — the cross-check the plan names. Published e2 so the web lane may build against it; the exact bytes-equal-frames check the runner cannot express (no arithmetic in a match) is owed by U2's own test.",
+  "corpus": ["C2 decision 4", "C1 decision 3", "5.48", "F15"],
+  "case": {
+    "inputs": ["user", "password", "target_id"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"ta": "/ticket"}},
+      {"ws_open": "a", "path": "/ws/attach"},
+      {"ws_send": "a", "frame": {"t": "attach", "v": 1, "ticket": "${ta}", "session_id": "${sid}"}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_a": "/client_id"}}},
+      {"ws_expect": "a", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_send": "a", "bytes": "# scroll ${nonce}\r"},
+      {"ws_expect": "a", "output_contains": "scroll ${nonce}"},
+      {"ws_close": "a"},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"tb": "/ticket"}},
+      {"ws_open": "b", "path": "/ws/attach"},
+      {"ws_send": "b", "frame": {"t": "attach", "v": 1, "ticket": "${tb}", "session_id": "${sid}"}},
+      {"ws_expect": "b", "frame": {"match": [{"pointer": "/t", "eq": "attached"}]}},
+      {"ws_expect": "b", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}, {"pointer": "/scrollback/first_seq", "present": true}, {"pointer": "/scrollback/bytes", "present": true}], "binary_contains": ["scroll ${nonce}"], "save": {"through": "/through_seq"}}},
+      {"http": {"method": "GET", "path": "/sessions/${sid}/output?before_seq=1000&max_bytes=4096"}, "expect": {"status": 200, "headers": {"TSB-Page-More": "false"}, "binary_body": {"contains": ["scroll ${nonce}"]}}},
+      {"ws_close": "b"}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

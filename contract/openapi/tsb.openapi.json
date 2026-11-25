@@ -1,0 +1,1593 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TSB northbound API (C1)",
+    "version": "v0.26.1",
+    "description": "The Terminal Session Broker's northbound REST surface: TSB's own login (a session cookie), a one-time WebSocket attach ticket, the session lifecycle with each session's countdown, attached-client removal, output paging, and the operator alert stream behind broker.health. Every surface — TSB's own and a stranger's — uses exactly this; there is no privileged path (Contract §2). Responses are closed shapes: a field not declared here does not reach a consumer, and no response reveals anything about the broker host (Contract §4). Consumers ignore fields a later tag adds. Request bodies are application/json, and so is every response but GET /alerts' event stream (text/event-stream) and GET /sessions/{id}/output's page body (application/octet-stream). The attach stream itself is GET /ws/attach, framed per schemas/ws-frames.schema.json. A surface lists the targets its principal may see with GET /targets and reads one with GET /targets/{id}, and renders their strings as text. From the vault release (E4) it also carries C7, the vault and device operations (/vault/…, /devices…), and C1's E4 auth and lock operations (/auth/bind, /auth/activity, /auth/lock, /auth/screen-unlock) and the Layer 2a mapping (/profiles/batch); every byte value they carry is padded base64 (device_id base64url), and free text in them (references, labels, device names) is rendered as text. Target writes add createTarget, getTargetDefinition, replaceTarget and deleteTarget for the tsb source."
+  },
+  "servers": [{"url": "/", "description": "The core behind its TLS-terminating proxy."}],
+  "security": [{"session": []}],
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "tsb_session",
+        "description": "Set by POST /auth/login with HttpOnly, Secure and SameSite=Strict. Clients hold it in memory only and write it nowhere (decision 5.34). It is never bound to an installation at v1 (decision 5.41)."
+      }
+    },
+    "parameters": {
+      "SessionId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "../schemas/common.schema.json#/$defs/id"}
+      },
+      "ClientId": {
+        "name": "client_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "../schemas/common.schema.json#/$defs/id"}
+      },
+      "TargetId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "../schemas/common.schema.json#/$defs/id"}
+      },
+        "TargetLimit": {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {"type": "integer", "minimum": 1, "maximum": 500},
+          "description": "At most this many targets in the page. The range is a sanity bound (V7: the contract fixes the range, never a value)."
+        },
+        "BeforeSeq": {
+        "name": "before_seq",
+        "in": "query",
+        "required": false,
+        "schema": {"$ref": "../schemas/common.schema.json#/$defs/u64"},
+        "description": "The page ends before this seq: the body covers whole output frames whose seq is below it. Absent, the latest the ring holds."
+      },
+      "MaxBytes": {
+        "name": "max_bytes",
+        "in": "query",
+        "required": false,
+        "schema": {"$ref": "../schemas/common.schema.json#/$defs/u64"},
+        "description": "The page holds at most this many bytes, unless no parser-ground start lies within, in which case it goes back to the nearest one, bounded by the page-cap knob."
+      },
+      "DeviceId": {"name": "device_id", "in": "path", "required": true, "schema": {"$ref": "../schemas/common.schema.json#/$defs/device_id"}, "description": "The device's device_id, base64url without padding."},
+      "DeviceUser": {"name": "user", "in": "query", "required": false, "schema": {"$ref": "../schemas/common.schema.json#/$defs/username"}, "description": "Whose devices: absent means the caller's own. Another principal's is a vault administrator's question (policy.yaml vault.admin)."},
+      "CredentialRef": {"name": "reference", "in": "path", "required": true, "schema": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}},
+      "GrantId": {"name": "grant_id", "in": "path", "required": true, "schema": {"$ref": "../schemas/common.schema.json#/$defs/id"}},
+      "Username": {"name": "username", "in": "path", "required": true, "schema": {"$ref": "../schemas/common.schema.json#/$defs/username"}}
+    },
+    "responses": {
+      "ImportInternalError": {"description": "internal_error (500); no-store.", "headers": {"Cache-Control": {"schema": {"type": "string"}, "description": "no-store"}}, "content": {"application/json": {"schema": {"$ref": "../schemas/error.schema.json", "properties": {"error": {"properties": {"code": {"const": "internal_error"}}}}}}}},
+      "ImportInventoryUnavailable": {"description": "inventory_unavailable (503); no-store.", "headers": {"Cache-Control": {"schema": {"type": "string"}, "description": "no-store"}}, "content": {"application/json": {"schema": {"$ref": "../schemas/error.schema.json", "properties": {"error": {"properties": {"code": {"const": "inventory_unavailable"}}}}}}}},
+      "ImportConflict": {"description": "Import refusal; no-store.", "headers": {"Cache-Control": {"schema": {"type": "string"}, "description": "no-store"}}, "content": {"application/json": {"schema": {"$ref": "../schemas/error.schema.json", "properties": {"error": {"properties": {"code": {"enum": ["import_conflict", "import_preview_stale", "vault_not_initialized", "vault_locked", "broker_unlock_unavailable", "credential_exists"]}}}}}}}},
+      "ImportFormatUnsupported": {"description": "Import refusal; no-store.", "headers": {"Cache-Control": {"schema": {"type": "string"}, "description": "no-store"}}, "content": {"application/json": {"schema": {"$ref": "../schemas/error.schema.json", "properties": {"error": {"properties": {"code": {"enum": ["invalid_request", "import_format_unsupported"]}}}}}}}},
+
+      "Unauthenticated": {
+        "description": "No valid session cookie. Error code `unauthenticated`.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "Forbidden": {
+        "description": "The principal can see the session but may not do this. Error code `forbidden`.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "SessionNotFound": {
+        "description": "No such session, or one the principal may not see. Error code `session_not_found`.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "ClientNotFound": {
+        "description": "No such attached client on this session, or one the principal may not see. Error code `client_not_found`.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "NotImplemented": {
+        "description": "The core does not serve this yet. Error code `not_implemented`. GET /sessions/{id}/output returns this at E2, before the core has a ring to page.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "CrossOrigin": {
+        "description": "A browser write from a foreign origin: the request's Origin header is not the broker's own, so the core refuses it before it reads a credential or ends a login. Error code `forbidden`.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "InvalidRequest": {
+        "description": "The body does not match the request schema. Error code `invalid_request`. From this release it also answers a query parameter the operation does not declare, and a value outside the range its parameter states.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "TargetNotFound": {
+        "description": "No such target, or one the principal may not see. Error code `target_not_found`.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "InventoryUnavailable": {
+        "description": "The inventory index is down, so its two read operations have no answer. Error code `inventory_unavailable`. Session create does not read the index, so a create still works while it is down. Also the definition read when target visibility cannot be decided. For a target write, the audit line has already been written before the bounded index wait: if the wait runs out, the message says the change took effect and is audited but is not yet listed. A failed audit instead answers 500 internal_error, whatever the index does.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "VaultAdminForbidden": {"description": "From the vault release: the principal lacks the policy.yaml permission vault.admin. Error code `forbidden`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "DeviceNotTrusted": {"description": "From the vault release: the device is not on the allowlist, checked before anything else about a challenge. Error code `device_not_trusted`: the one answer on which a browser drops its stored device key and sealed Part 1.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "PassphraseLimited": {"description": "From the vault release: past the principal's passphrase limit (config.yaml vault.unlock_attempts in vault.unlock_window). Error code `rate_limited`. A correctly signed trusted unlock or regeneration is never refused by it.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "ActNotAudited": {"description": "From the vault release: `internal_error`. Among other failures, the act's audit line could not be written, so the act was refused and nothing was committed: every vault, device and grant act writes its line first, inside its bbolt write, as a login is refused when its line cannot be written (DEFAULT 49).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+      "TargetEditForbidden": {
+        "description": "The principal lacks target.edit, the new definition is outside its targets: filters, or the target is not in the tsb source. Error code forbidden. Another source answers: \"This target comes from <source> and is not edited through TSB.\"",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TargetIdTaken": {
+        "description": "A create named an id that a target file in any source already holds. Nothing was written. Error code target_id_taken.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TargetWriteNotAudited": {
+        "description": "The target change took effect, but its audit line is missing because the audit write failed after the file landed and before the index wait. Error code internal_error (500), taking precedence over an index timeout or any other index state. The file stays written (or deleted); the client re-reads before it retries. This is not ActNotAudited: no rollback is implied.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "AccountAdminForbidden": {
+        "description": "forbidden: account.admin is required on every administrator operation, with no record write or audit. On every account write a foreign Origin is forbidden before anything is read. Own password change needs no account.admin.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "AccountActNotAudited": {
+        "description": "internal_error: the audit line could not be written. No record or password is committed and no login ends.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {"$ref": "../schemas/error.schema.json"},
+      "SessionRecord": {"$ref": "../schemas/session-record.schema.json"},
+      "Health": {
+        "type": "object",
+        "required": ["status"],
+        "additionalProperties": false,
+        "properties": {"status": {"const": "ok"}},
+        "description": "Liveness only: no version, host name, uptime or dependency detail (Contract §4)."
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["username", "password"],
+        "additionalProperties": false,
+        "properties": {
+          "username": {"$ref": "../schemas/common.schema.json#/$defs/username"},
+          "password": {"type": "string", "minLength": 1, "maxLength": 1024}
+        }
+      },
+      "Principal": {
+        "type": "object",
+        "required": ["username"],
+        "additionalProperties": false,
+        "properties": {"username": {"$ref": "../schemas/common.schema.json#/$defs/username"}, "locks": {"$ref": "#/components/schemas/LockSettings"}},
+        "description": "The principal a login names. From the vault release it carries `locks`, the lock settings that apply to it now (the login answer and GET /auth/me), optional so an earlier core's body stays valid."
+      },
+      "Me": {
+        "type": "object",
+        "required": ["username"],
+        "additionalProperties": false,
+        "properties": {
+          "username": {"$ref": "../schemas/common.schema.json#/$defs/username"},
+          "recording": {
+            "type": "object",
+            "required": ["login_input"],
+            "additionalProperties": false,
+            "properties": {
+              "login_input": {"type": "boolean", "description": "The effective value: true only while `recording.enabled` and `recording.login_input` (policy.yaml) are both on, as the core reads them now. Then a login supplied on session create, or a device login's user name, TSB's own prompts, the device's prompts and every answer, would be recorded in the session's recording (C8 sidecar codes 6, 7 and 8); otherwise no byte of it would be (a login is recorded only in a recorded session), so a surface never warns of a recording nobody writes. A surface reads it before it sends a login, and warns before it sends one when it is true (session-open step 22). While it is true the create refuses a login whose `recording_acknowledged` is not true: 409 `login_recording_not_acknowledged`."}
+            },
+            "description": "From the release that adds `login` to SessionCreateRequest. Optional so an earlier core's body stays valid; a core of this release always sends it."
+          },
+          "locks": {"$ref": "#/components/schemas/LockSettings"},
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "../schemas/policy.schema.json#/$defs/permission"
+            },
+            "description": "The permission names policy.yaml grants this principal, whatever its target filters. Optional for earlier cores; a core of this release sends it. The login Principal is unchanged."
+          }
+        },
+        "description": "The answer of GET /auth/me: the principal (POST /auth/login answers `Principal`, which is unchanged) and, from the release that adds SessionCreateRequest.login, whether a login supplied now would be recorded (`recording.login_input`, the effective value)."
+      },
+      "SessionLoginAuth": {
+        "description": "What the login authenticates with. Two branches at this release: `password`, and `prompt`, a device login, which carries no secret on the create: the device's own SSH login questions are asked and answered in the pane afterwards (protocols/device-login.md). A later release may add branches (a private key, say); a sender sends only a branch its core's contract release lists, and a core refuses one it does not know with 422 `invalid_request`, because every shape here is closed. A core older than Release B refuses `prompt` that way.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["kind", "password"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {"const": "password"},
+              "password": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "The target account's password. At most 1024 bytes of UTF-8: `maxLength` is the schema's bound in characters, and the byte bound is the core's, a value past it 422 `invalid_request`. Never echoed in any answer, log line, audit event or error message (V4), and never stored by the create or the core (V10)."}
+            }
+          },
+          {
+            "type": "object",
+            "required": ["kind"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {"const": "prompt", "description": "A device login: nothing secret is sent now. The core answers 202 with a device login and a one-time ticket; the surface asks `login as:` itself before it creates, and the device's own prompts come to the pane on the socket the ticket opens (protocols/device-login.md). Needs a worker at proto_version 0.7 or later, else 503. A `prompt` login is allowed on `connection: new` only, and only on an ssh target."}
+            }
+          }
+        ]
+      },
+      "SessionLogin": {
+        "type": "object",
+        "required": ["user", "auth"],
+        "additionalProperties": false,
+        "properties": {
+          "user": {"type": "string", "minLength": 1, "maxLength": 256, "description": "The target's account (the SSH user name), not a TSB principal. The same bound as C3 `connect.user`."},
+          "auth": {"$ref": "#/components/schemas/SessionLoginAuth"},
+          "recording_acknowledged": {"type": "boolean", "description": "The operator's consent to the recording of this login. Absent means false. While `GET /auth/me` says `recording.login_input` is true, a login that does not set it true is refused 409 `login_recording_not_acknowledged` before anything is sent to a worker or recorded: the surface re-reads `/auth/me`, warns the operator and repeats the request with this field true. While it is false the field is accepted and changes nothing, so a surface may always send it."}
+        },
+        "description": "A login for one new connection: the account, and either its password (`kind: password`) or, in prompt mode (`kind: prompt`), nothing yet. The create, the device login and the core store nothing of a login (V10): a `password` login is used only to authenticate that connection and is never stored by the create, and a user who wants to keep one saves it into their own vault by a separate store request of their own (POST /vault/credentials), which is the vault's. Allowed on `connection: new` only. For a `password` login the core sends it to the worker in `connect.auth` exactly as it sends a stored credential (C3 is unchanged), so every worker that serves a stored password serves it; a `prompt` login is a device login, which needs a worker at proto_version 0.7 or later. It is recorded only when `recording.login_input` is true (GET /auth/me), and then only when the login sets `recording_acknowledged` true. The request carrying it is the operator's explicit choice of credential (Contract §12): the core does not resolve a stored credential for it, so no_resolving_credential and credential_choice_required never answer it. A login on a target whose type is not ssh is refused 422 `invalid_request` before any worker is asked: a telnet login is typed in the session."
+      },
+      "TicketRequest": {
+        "type": "object",
+        "required": ["session_id"],
+        "additionalProperties": false,
+        "properties": {"session_id": {"$ref": "../schemas/common.schema.json#/$defs/id"}},
+        "description": "A ticket is minted for one session. A surface creates or selects the session first, then mints."
+      },
+      "Ticket": {
+        "type": "object",
+        "required": ["v", "ticket", "expires_in"],
+        "additionalProperties": false,
+        "properties": {
+          "v": {"const": 1, "description": "Shape version of this response, so a later token format can be told apart."},
+          "ticket": {"$ref": "../schemas/common.schema.json#/$defs/ticket"},
+          "expires_in": {"type": "integer", "minimum": 1, "maximum": 60, "description": "Seconds until the ticket expires if unused: short-lived by contract, at most 60. The value within that bound is the core's configuration. A ticket presented after it expires is refused with close 4001."}
+        },
+        "description": "One-time, short-lived, bound to (principal, session_id), held by the core in memory. Presented once, in the first frame of GET /ws/attach."
+      },
+      "DeviceLoginPending": {
+        "type": "object",
+        "required": ["device_login_id", "ticket", "expires_in"],
+        "additionalProperties": false,
+        "properties": {
+          "device_login_id": {"$ref": "../schemas/common.schema.json#/$defs/id", "description": "Names the device login the ticket is bound to; sent back in `device_login_attach`."},
+          "ticket": {"$ref": "../schemas/common.schema.json#/$defs/ticket"},
+          "expires_in": {"type": "integer", "minimum": 1, "maximum": 60, "description": "Seconds until the ticket expires if unused: the ticket's lifetime, short by contract, at most 60. It is also the bound on an unattached device login, which ends and gives its place back when it passes."}
+        },
+        "description": "The 202 of createSession for a device login (`login.auth.kind` `prompt`): no session exists yet. A one-time ticket bound to (principal, device login), held by the core in memory, redeemable only by `device_login_attach` in the first frame of GET /ws/attach; the socket that redeems it becomes that one session's attach when the device accepts. It is its own closed shape and not `Ticket`, whose binding to (principal, session_id) stays true; a session ticket never opens a device login nor the reverse (closed 4003)."
+      },
+      "SessionCreateRequest": {
+        "description": "`connection` is required from this first tag (Contract §15.3). new: always open a new connection, with a fresh authentication. reuse: open the session on a connection this principal already holds to the target, with the same credential, whose transport is up — whether or not it has a session now — sharing its authentication. A connection is kept up after its last session ends for connection_linger, so that a quick reopen reuses the login (session model §5, §11). A connection that has closed, or whose transport was lost, is never a candidate: nothing is reused after a connection dies. With connection_id, that connection (one that is not such a candidate, and is not a prompted connection of this principal, is 422 invalid_request; a prompted connection, opened by a device login, is reusable by its own principal by id, and without one is among that principal's candidates: session-open steps 3 and 4); without it, the only candidate, or a new connection when there is none — and when there are two or more, 409 connection_choice_required: the broker presents the choice and never picks (Contract §12). A reuse with no connection_id, no login and no credential choice first counts the principal's own prompted connections to the target as candidates, before any credential is resolved: when there is at least one, neither no_resolving_credential nor credential_choice_required answers it, and the candidates are those connections plus, when exactly one stored credential resolves, the connections opened with it. A prompted connection is offered only to the principal who opened it. Neither choice is isolation: every connection lands in a worker process that holds N of them, and dies with it. A telnet connection carries one session, and its worker closes it once that session has ended. Until its connection_lost is reported, a reuse of it is refused by its worker, and the create is answered as any open the worker refuses: 502 target_connect_failed. Once it has closed, reuse opens a new one. From the release that adds `login`, the new branch may carry `login`: the account, and its password or, in prompt mode, nothing yet, for that one connection, supplied by the caller (SessionLogin). The reuse branch stays closed, so a `login` on a reuse is 422 `invalid_request` by shape: a reused connection shares the authentication it already has (Contract §15.3). A connection opened with a supplied login is never a candidate for a reuse by a request that carries no login (session-open step 4). From the vault release either branch may carry `credential_ref` with `credential_layer`, both or neither: the operator's choice of stored credential, after a 409 `credential_choice_required` listed the candidates (Contract §12; V14). A pair that is not a candidate for this principal and target is 422 `invalid_request`. The choice and `login` are exclusive in one request (each is the operator's choice of credential), so a `new` request carrying both is not this shape (422). On `reuse` the choice narrows the candidate connections to those opened with that credential, so no prompted connection is a candidate beside a choice. For a session whose credential the vault resolves, the login name sent to the target is the credential's own, never the target file's `options.user` (DEFAULT 52).",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["target_id", "connection", "term", "cols", "rows"],
+            "additionalProperties": false,
+            "properties": {
+              "target_id": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+              "connection": {"const": "new"},
+              "term": {"$ref": "../schemas/common.schema.json#/$defs/term"},
+              "cols": {"$ref": "../schemas/common.schema.json#/$defs/cols"},
+              "rows": {"$ref": "../schemas/common.schema.json#/$defs/rows"},
+              "login": {"$ref": "#/components/schemas/SessionLogin"},
+              "credential_ref": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"},
+              "credential_layer": {"$ref": "../schemas/common.schema.json#/$defs/credential_layer"}
+            },
+            "oneOf": [
+              {"properties": {"login": false, "credential_ref": false, "credential_layer": false}},
+              {"required": ["login"], "properties": {"credential_ref": false, "credential_layer": false}},
+              {"required": ["credential_ref", "credential_layer"], "properties": {"login": false}}
+            ]
+          },
+          {
+            "type": "object",
+            "required": ["target_id", "connection", "term", "cols", "rows"],
+            "additionalProperties": false,
+            "properties": {
+              "target_id": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+              "connection": {"const": "reuse"},
+              "connection_id": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+              "term": {"$ref": "../schemas/common.schema.json#/$defs/term"},
+              "cols": {"$ref": "../schemas/common.schema.json#/$defs/cols"},
+              "rows": {"$ref": "../schemas/common.schema.json#/$defs/rows"},
+              "credential_ref": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"},
+              "credential_layer": {"$ref": "../schemas/common.schema.json#/$defs/credential_layer"}
+            },
+            "anyOf": [
+              {"required": ["credential_ref", "credential_layer"]},
+              {"properties": {"credential_ref": false, "credential_layer": false}}
+            ]
+          }
+        ]
+      },
+      "HostKey": {
+        "type": "object",
+        "required": ["fingerprint", "first_use"],
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {"$ref": "../schemas/common.schema.json#/$defs/fingerprint"},
+          "first_use": {"const": true}
+        },
+        "description": "Present only when opening this session's connection accepted a target host key that was not yet recorded: accept, warn, record (decision 5.18). A surface shows the fingerprint and requires the operator's acknowledgement before it attaches."
+      },
+      "SessionCreateResponse": {
+        "type": "object",
+        "required": ["session"],
+        "additionalProperties": false,
+        "properties": {
+          "session": {"$ref": "#/components/schemas/SessionRecord"},
+          "hostkey": {"$ref": "#/components/schemas/HostKey"}
+        }
+      },
+      "AlertEvent": {
+        "type": "object",
+        "required": ["alert_id", "kind", "state", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "alert_id": {"$ref": "../schemas/common.schema.json#/$defs/id", "description": "Matches a clear to its raise; the audit events alert.raised and alert.cleared carry the same id."},
+          "kind": {"$ref": "../schemas/common.schema.json#/$defs/alert_kind"},
+          "state": {"enum": ["raised", "cleared"]},
+          "at": {"$ref": "../schemas/common.schema.json#/$defs/timestamp", "description": "When the core raised or cleared it."},
+          "supervisor_id": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+          "worker_id": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+          "session_ids": {"type": "array", "items": {"$ref": "../schemas/common.schema.json#/$defs/id"}, "description": "The sessions the alert affects, when any."}
+        },
+        "$ref": "../schemas/common.schema.json#/$defs/alert_subjects",
+        "description": "The data of one `alert` event on GET /alerts: an operator alert (session model §11), TSB's own internal state and never host state (Contract §4) — it names only TSB's components, never a pid, a path or a hostname, by the same rule the audit's alert events follow. A surface shows a kind it does not know as TSB's own alert, never as host state."
+      },
+      "SessionList": {
+        "type": "object",
+        "required": [
+          "sessions"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionRecord"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Opaque unsigned continuation after the last record returned, present only when more visible records matching ended may follow. Not a snapshot or an authorization. Repeat limit with this cursor."
+          }
+        },
+        "description": "Every session the principal may see.",
+        "x-paging": "The full retained visible list when unpaged; otherwise one page after visibility and ended filtering, ordered by (created_at, id) descending. next_cursor is absent on a short or empty page and on an unpaged answer. A full final page may omit it or carry one whose next page is empty; no look-ahead is required."
+      },
+      "TargetImportFormat": {"enum": ["tabby", "securecrt", "mobaxterm", "yaml"]},
+      "TargetImportPreviewRequest": {"type": "object", "required": ["action", "format", "export_bytes"], "additionalProperties": false, "properties": {"action": {"const": "preview"}, "format": {"$ref": "#/components/schemas/TargetImportFormat"}, "share": {"$ref": "../schemas/inventory-target.schema.json#/properties/share"}, "export_bytes": {"type": "string", "description": "Original export bytes, padded RFC 4648 base64, subject to import.max_bytes."}}},
+      "TargetImportCommitRequest": {"type": "object", "required": ["action", "preview_token", "format", "export_bytes"], "additionalProperties": false, "properties": {"action": {"const": "commit"}, "preview_token": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[A-Za-z0-9_-]+$"}, "format": {"$ref": "#/components/schemas/TargetImportFormat"}, "share": {"$ref": "../schemas/inventory-target.schema.json#/properties/share"}, "export_bytes": {"type": "string", "description": "Original export bytes, freshly supplied as padded RFC 4648 base64."}, "credential_choice": {"enum": ["save", "discard"]}, "credential_destination": {"enum": ["personal", "org"]}, "unlock_class": {"$ref": "../schemas/common.schema.json#/$defs/unlock_class"}}, "oneOf": [{"properties": {"credential_choice": false, "credential_destination": false, "unlock_class": false}}, {"required": ["credential_choice"], "properties": {"credential_choice": {"const": "discard"}, "credential_destination": false, "unlock_class": false}}, {"required": ["credential_choice"], "properties": {"credential_choice": {"const": "save"}, "credential_destination": {"const": "personal"}, "unlock_class": false}}, {"required": ["credential_choice", "credential_destination", "unlock_class"], "properties": {"credential_choice": {"const": "save"}, "credential_destination": {"const": "org"}}}], "description": "Choice is required for readable credentials. Destination and class are only for save; absent destination means personal, and class is required for org and forbidden for personal."},
+      "TargetImportAbortRequest": {"type": "object", "required": ["action", "preview_token"], "additionalProperties": false, "properties": {"action": {"const": "abort"}, "preview_token": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[A-Za-z0-9_-]+$"}}},
+      "TargetImportResumeRequest": {"type": "object", "required": ["action", "import_id"], "additionalProperties": false, "properties": {"action": {"const": "resume"}, "import_id": {"type": "string", "pattern": "^imp-[a-z2-7]{25}[aeimquy4]$"}}},
+      "TargetImportRequest": {"oneOf": [{"$ref": "#/components/schemas/TargetImportPreviewRequest"}, {"$ref": "#/components/schemas/TargetImportCommitRequest"}, {"$ref": "#/components/schemas/TargetImportAbortRequest"}, {"$ref": "#/components/schemas/TargetImportResumeRequest"}]},
+      "TargetImportIssue": {"$ref": "../schemas/import-receipt.schema.json#/$defs/issue"},
+      "TargetImportPreviewEntry": {"type": "object", "additionalProperties": false, "required": ["entry", "source_ref", "target", "change", "n", "has_credentials", "key_file_referenced", "definition", "mapping"], "properties": {"entry": {"$ref": "../schemas/import-receipt.schema.json#/$defs/locator"}, "source_ref": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]+$"}, "target": {"$ref": "#/components/schemas/TargetWriteRecord", "properties": {"id": {"type": "string", "pattern": "^g-[a-z2-7]{26}$"}}}, "change": {"enum": ["create", "update"]}, "n": {"type": ["integer", "null"], "minimum": 0}, "has_credentials": {"type": "boolean"}, "key_file_referenced": {"type": "boolean"}, "definition": {"$ref": "../schemas/inventory-target.schema.json", "properties": {"private_owner": false}}, "mapping": {"anyOf": [{"$ref": "../schemas/import-receipt.schema.json#/$defs/plan_mapping"}, {"type": "null"}]}}, "oneOf": [{"properties": {"change": {"const": "create"}, "n": {"type": "integer", "minimum": 0}}}, {"properties": {"change": {"const": "update"}, "n": {"type": "null"}}}]},
+      "TargetImportCredentialPreview": {"type": "object", "additionalProperties": false, "required": ["reference", "kind", "login_name", "target_ids"], "properties": {"reference": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, "kind": {"const": "password"}, "login_name": {"$ref": "../schemas/common.schema.json#/$defs/login_name"}, "target_ids": {"type": "array", "items": {"$ref": "../schemas/common.schema.json#/$defs/id"}, "minItems": 1}}},
+      "TargetImportPreview": {"type": "object", "additionalProperties": false, "required": ["import_id", "preview_token", "format", "targets", "not_carried", "credentials"], "properties": {"import_id": {"$ref": "../schemas/import-receipt.schema.json#/$defs/import_id"}, "preview_token": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[A-Za-z0-9_-]+$"}, "share": {"$ref": "../schemas/inventory-target.schema.json#/properties/share"}, "format": {"$ref": "#/components/schemas/TargetImportFormat"}, "targets": {"type": "array", "items": {"$ref": "#/components/schemas/TargetImportPreviewEntry"}}, "not_carried": {"type": "array", "items": {"$ref": "../schemas/import-receipt.schema.json#/$defs/issue"}}, "credentials": {"type": "array", "items": {"$ref": "#/components/schemas/TargetImportCredentialPreview"}}}},
+      "TargetImportMapping": {"type": "object", "additionalProperties": false, "required": ["target_id", "state"], "properties": {"target_id": {"$ref": "../schemas/common.schema.json#/$defs/id"}, "reference": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, "state": {"enum": ["mapped", "kept", "ambiguous"]}}, "oneOf": [{"required": ["reference"], "properties": {"state": {"enum": ["mapped", "kept"]}}}, {"properties": {"state": {"const": "ambiguous"}, "reference": false}}]},
+      "TargetImportCredentialDisposition": {"type": "object", "additionalProperties": false, "required": ["choice", "stored", "mappings"], "properties": {"choice": {"enum": ["save", "discard", "none"]}, "stored": {"type": "array", "items": {"$ref": "../schemas/import-receipt.schema.json#/$defs/stored_credential"}}, "mappings": {"type": "array", "items": {"$ref": "#/components/schemas/TargetImportMapping"}}}, "oneOf": [{"properties": {"choice": {"enum": ["discard", "none"]}, "stored": {"maxItems": 0}, "mappings": {"maxItems": 0}}}, {"properties": {"choice": {"const": "save"}, "stored": {"minItems": 1, "items": {"properties": {"layer": {"const": "personal"}}}}}}, {"properties": {"choice": {"const": "save"}, "stored": {"minItems": 1, "items": {"properties": {"layer": {"const": "org"}}}}, "mappings": {"maxItems": 0}}}]},
+      "TargetImportResult": {"oneOf": [{"type": "object", "additionalProperties": false, "required": ["outcome", "import_id", "targets", "not_carried", "credentials"], "properties": {"outcome": {"const": "written"}, "import_id": {"$ref": "../schemas/import-receipt.schema.json#/$defs/import_id"}, "targets": {"type": "array", "items": {"$ref": "#/components/schemas/TargetWriteRecord"}}, "not_carried": {"type": "array", "items": {"$ref": "../schemas/import-receipt.schema.json#/$defs/issue"}}, "credentials": {"$ref": "#/components/schemas/TargetImportCredentialDisposition"}}}, {"type": "object", "additionalProperties": false, "required": ["outcome", "import_id", "targets"], "properties": {"outcome": {"const": "aborted"}, "import_id": {"$ref": "../schemas/import-receipt.schema.json#/$defs/import_id"}, "targets": {"type": "array", "maxItems": 0, "items": {"$ref": "#/components/schemas/TargetWriteRecord"}}}}]},
+      "TargetImportProgress": {"$ref": "../schemas/import-receipt.schema.json#/$defs/progress"},
+      "TargetImportFailure": {"$ref": "../schemas/error.schema.json"},
+      "VendorPromptTemplate": {"type": "object", "required": ["vendor", "prompt_pattern"], "additionalProperties": false, "properties": {"vendor": {"$ref": "../schemas/common.schema.json#/$defs/id"}, "prompt_pattern": {"$ref": "../schemas/inventory-target.schema.json#/properties/prompt_pattern"}}},
+      "VendorPromptTemplateList": {"type": "object", "required": ["templates"], "additionalProperties": false, "properties": {"templates": {"type": "array", "items": {"$ref": "#/components/schemas/VendorPromptTemplate"}}}},
+      "TargetRecord": {
+        "type": "object",
+        "required": ["id", "type", "tags", "discovered_by"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+          "type": {"$ref": "../schemas/inventory-target.schema.json#/properties/type"},
+          "name": {"$ref": "../schemas/inventory-target.schema.json#/properties/name"},
+          "prompt_pattern": {"$ref": "../schemas/inventory-target.schema.json#/properties/prompt_pattern"},
+          "vendor": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+          "effective_prompt_pattern": {"$ref": "../schemas/inventory-target.schema.json#/properties/prompt_pattern"},
+          "share": {"$ref": "../schemas/inventory-target.schema.json#/properties/share"},
+          "owner": {"$ref": "../schemas/common.schema.json#/$defs/username"},
+          "group": {"$ref": "../schemas/inventory-target.schema.json#/properties/group"},
+          "tags": {"$ref": "../schemas/inventory-target.schema.json#/properties/tags"},
+          "discovered_by": {"$ref": "../schemas/inventory-target.schema.json#/properties/discovered_by"},
+          "last_seen": {"$ref": "../schemas/common.schema.json#/$defs/timestamp", "description": "Discovery freshness, present when the target file has one. A file may carry it in any zone (inventory-target's timestamp_any_zone); the core returns that instant converted to UTC with Z, so a record never carries an offset. One the core cannot convert makes the file invalid (fleet-discovery's case) (V6)."},
+          "host": {"$ref": "#/components/schemas/TargetRecord/$defs/host"},
+          "port": {"$ref": "#/components/schemas/TargetRecord/$defs/port"},
+          "login_hint": {"$ref": "#/components/schemas/TargetRecord/$defs/login_hint"}
+        },
+        "$defs": {
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "description": "The address in the inventory, in the same shape as the target file's options.host."
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "The port in force, so 22 for an ssh target and 23 for a telnet one when the target file names none."
+          },
+          "login_hint": {
+            "type": "string",
+            "enum": ["saved", "choice_required", "none", "unavailable"],
+            "description": "Caller-relative stored metadata candidates only: saved means one distinct (reference, layer), choice_required means two or more, none means successful zero-candidate resolution, unavailable means a resolution fault on a present runtime target, including an unsealed personal record backing a candidate. No material, unlock or authentication guarantee; saved/choice_required can still lead to no_resolving_credential when material is missing. Absent or unknown: suppress the hint, retain the target and normal connect flow; never default to none. unavailable makes no availability claim."
+          }
+        },
+        "anyOf": [
+          {"required": ["owner"]},
+          {"properties": {"share": false}}
+        ],
+        "oneOf": [
+          {
+            "properties": {"type": {"const": "ssh"}, "host": {"$ref": "#/components/schemas/TargetRecord/$defs/host"}, "port": {"$ref": "#/components/schemas/TargetRecord/$defs/port"}},
+            "required": ["host", "port"],
+            "description": "ssh: the address is present, with the port in force. login_hint remains optional."
+          },
+          {
+            "properties": {"type": {"const": "telnet"}, "host": {"$ref": "#/components/schemas/TargetRecord/$defs/host"}, "port": {"$ref": "#/components/schemas/TargetRecord/$defs/port"}, "login_hint": false},
+            "required": ["host", "port"],
+            "description": "telnet: the address is present, with the port in force. No login_hint."
+          },
+          {
+            "properties": {"type": {"enum": ["serial", "echo"]}, "host": false, "port": false, "login_hint": false},
+            "description": "serial and echo: no address. A serial target's options.port is a device path on the broker host, and a device path never crosses C1 (V11; Contract §4), so a serial record carries no port at all."
+          }
+        ],
+        "description": "One target as the inventory has it — what a surface needs to name a target and ask for a session on it. A receiver treats a type it does not know as opaque: it shows it and never errors (V5). name and group are present when the target file has them, tags may be empty, and every string here is text a surface renders as text, never as markup or terminal escapes. The caller-relative metadata login_hint is permitted. On an own target, share and owner are present; share is never present without owner. Never in a record: a path on the broker host, options, user, a credential reference, a login script. The optional login_hint is response-only caller-relative metadata on GET /targets and GET /targets/{id}, never persisted or audited. Both the returned record and the present runtime target must be SSH; use the runtime target for visibility, target-scoped session.create and candidate matching. Omit without resolution on permission failure or missing runtime target, never unavailable for absence. Do not compare index/runtime fields or signal synchronization lag. Annotate only the final selected page using one best-effort request context, no cross-request cache and no material retrieval, unlock access or unlock extension. No credential reference, kind, label, login name, secret, storing administrator, profile path or broker-host detail is disclosed by the hint."
+      },
+      "TargetWriteRecord": {
+        "type": "object",
+        "required": ["id", "type", "tags", "discovered_by"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+          "type": {"$ref": "../schemas/inventory-target.schema.json#/properties/type"},
+          "name": {"$ref": "../schemas/inventory-target.schema.json#/properties/name"},
+          "prompt_pattern": {"$ref": "../schemas/inventory-target.schema.json#/properties/prompt_pattern"},
+          "vendor": {"$ref": "../schemas/common.schema.json#/$defs/id"},
+          "effective_prompt_pattern": {"$ref": "../schemas/inventory-target.schema.json#/properties/prompt_pattern"},
+          "share": {"$ref": "../schemas/inventory-target.schema.json#/properties/share"},
+          "owner": {"$ref": "../schemas/common.schema.json#/$defs/username"},
+          "group": {"$ref": "../schemas/inventory-target.schema.json#/properties/group"},
+          "tags": {"$ref": "../schemas/inventory-target.schema.json#/properties/tags"},
+          "discovered_by": {"$ref": "../schemas/inventory-target.schema.json#/properties/discovered_by"},
+          "last_seen": {"$ref": "../schemas/common.schema.json#/$defs/timestamp", "description": "Discovery freshness, present when the target file has one. A file may carry it in any zone (inventory-target's timestamp_any_zone); the core returns that instant converted to UTC with Z, so a record never carries an offset. One the core cannot convert makes the file invalid (fleet-discovery's case) (V6)."},
+          "host": {"$ref": "#/components/schemas/TargetRecord/$defs/host"},
+          "port": {"$ref": "#/components/schemas/TargetRecord/$defs/port"}
+        },
+        "anyOf": [
+          {"required": ["share", "owner"]},
+          {"properties": {"share": false, "owner": false}}
+        ],
+        "oneOf": [
+          {
+            "properties": {"type": {"enum": ["ssh", "telnet"]}, "host": {"$ref": "#/components/schemas/TargetRecord/$defs/host"}, "port": {"$ref": "#/components/schemas/TargetRecord/$defs/port"}},
+            "required": ["host", "port"],
+            "description": "ssh and telnet: the address is present, with the port in force."
+          },
+          {
+            "properties": {"type": {"enum": ["serial", "echo"]}, "host": false, "port": false},
+            "description": "serial and echo: no address. A serial target's options.port is a device path on the broker host, and a device path never crosses C1 (V11; Contract §4), so a serial record carries no port at all."
+          }
+        ],
+        "description": "The target record returned by target create and replace (target-write). Write answers carry no caller-relative annotations; login_hint is forbidden. An own target carries both share and owner; a shared target carries neither."
+      },
+      "TargetList": {
+        "type": "object",
+        "required": ["targets"],
+        "additionalProperties": false,
+        "properties": {
+          "targets": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/TargetRecord"},
+            "description": "The targets the principal may see, ordered by id ascending. The core fills a page by searching further windows of the index until it holds limit visible targets or the index is exhausted, so a page holds fewer than limit only when it is the last. An invisible target never appears here."
+          },
+          "next_cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "Present when visible targets may follow, and only then: the core fills a page by searching further windows of the index until it holds limit visible targets or the index is exhausted, so a page holds fewer than limit only when it is the last; it carries no next_cursor then, and an empty page is only the last. next_cursor continues after the last target RETURNED — never after a target the principal cannot see — and a request carrying it continues after that id. An opaque string: a surface never parses it. Pages are not a snapshot — a target added or removed between two pages may be missed, or seen once. The bound 256 is a sanity bound."
+          }
+        },
+        "description": "One page of the inventory, mirroring SessionList: targets required, next_cursor when more visible targets follow."
+      },
+      "LockSettings": {"type": "object", "required": ["screen_lock_after", "vault_lock_on_idle", "vault_idle_after", "vault_hard_cap", "activity_interval"], "additionalProperties": false, "properties": {"screen_lock_after": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "Seconds with no input from its user after which a client hides session content and blocks input until the login password is re-checked (POST /auth/screen-unlock). The screen lock is always on."}, "vault_lock_on_idle": {"type": "boolean", "description": "Whether the core purges every vault unlock the user holds once the user has been idle across all their surfaces for vault_idle_after."}, "vault_idle_after": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "The vault idle timer, in seconds; never above vault_hard_cap."}, "vault_hard_cap": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "The longest one vault unlock lasts, in seconds from the passphrase entry that made it, however active the user."}, "activity_interval": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "Seconds between activity signals the core counts: a surface sends POST /auth/activity at most this often while its user is active."}}, "description": "From the vault release: the lock settings that apply to the caller's user, as the core's per-user resolver gives them now (credential-protection §5.5; DEFAULT 6, 34). Values the core states, as it states expires_in (V7): a surface takes them from here, never from a local value. The screen lock is each client's, enforced by the surface (a guardrail in v1); the vault lock is the core's. Optional so an earlier core's body stays valid; a vault-release core always sends it."},
+      "VaultSalt": {"type": "object", "required": ["initialized"], "additionalProperties": false, "properties": {"initialized": {"type": "boolean"}, "user_salt": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}}, "oneOf": [{"properties": {"initialized": {"const": true}}, "required": ["user_salt"]}, {"properties": {"initialized": {"const": false}}}], "description": "From the vault release: the caller's user_salt, the salt of master_hash = argon2id(passphrase, user_salt) (credential-protection §4.1), public. initialized is true once the vault is sealed (POST /vault/init), and then the salt is always present; false before that, with the salt when the vault is minted (POST /vault/salt) and without it when it is not."},
+      "VaultInitRequest": {"type": "object", "required": ["part1", "part2"], "additionalProperties": false, "properties": {"part1": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}, "part2": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}}, "description": "From the vault release: both halves of master_hash, which the surface derived from the passphrase and the minted user_salt and keeps nowhere."},
+      "VaultUnlockRequest": {"oneOf": [{"type": "object", "required": ["mode", "part1", "part2"], "additionalProperties": false, "properties": {"mode": {"const": "untrusted"}, "part1": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}, "part2": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}}}, {"type": "object", "required": ["mode", "challenge_id", "part1", "signature"], "additionalProperties": false, "properties": {"mode": {"const": "trusted"}, "challenge_id": {"$ref": "../schemas/vault.schema.json#/$defs/challenge_id"}, "part1": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}, "signature": {"$ref": "../schemas/vault.schema.json#/$defs/signature"}}}], "description": "From the vault release. untrusted (credential-protection §5.1): both halves of master_hash, which the surface derived from the passphrase and keeps nowhere. trusted (§5.4): Part 1 only, opened on the device from its sealed copy, with a vault.unlock challenge issued for this login's tied device and signed by its key; the core joins Part 1 to the device's Part 2 from Redis. Every byte value is padded base64."},
+      "Part2RegenerateRequest": {"type": "object", "required": ["challenge_id", "part1", "part2", "signature"], "additionalProperties": false, "properties": {"challenge_id": {"$ref": "../schemas/vault.schema.json#/$defs/challenge_id"}, "part1": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}, "part2": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}, "signature": {"$ref": "../schemas/vault.schema.json#/$defs/signature"}}, "description": "From the vault release: both halves, derived afresh from the passphrase, with a part2.regenerate challenge issued for this login's tied device and signed by its key (credential-protection §9, §7.2 step 3). The core stores Part 2 only when part1 ‖ part2 opens the credential set and the device is on the allowlist."},
+      "DeviceChallengeRequest": {"type": "object", "required": ["operation", "device_id"], "additionalProperties": false, "properties": {"operation": {"$ref": "../schemas/vault.schema.json#/$defs/challenge_operation"}, "device_id": {"$ref": "../schemas/common.schema.json#/$defs/device_id"}}, "description": "From the vault release: the one operation the challenge is for and the device that will sign it (for device.register, the device to be registered). A surface finishes every derivation before it asks, then signs and sends at once."},
+      "DeviceChallenge": {"type": "object", "required": ["challenge_id", "challenge", "login_handle", "expires_in"], "additionalProperties": false, "properties": {"challenge_id": {"$ref": "../schemas/vault.schema.json#/$defs/challenge_id"}, "challenge": {"$ref": "../schemas/vault.schema.json#/$defs/b64_32"}, "login_handle": {"$ref": "../schemas/vault.schema.json#/$defs/login_handle"}, "expires_in": {"type": "integer", "minimum": 1, "maximum": 60, "description": "Seconds until the challenge expires: at most 60 by contract, the value the knob vault.challenge_ttl (V7)."}}, "description": "From the vault release: 32 bytes from a CSPRNG, for one operation and one device, single-use. The device signs the bytes vault.schema.json x-associated-data device_challenge fixes — the label, challenge, the user, device_id, login_handle and the operation — with ECDSA P-256 / SHA-256, and sends the signature in IEEE P1363 form."},
+      "DeviceRegisterRequest": {"type": "object", "required": ["challenge_id", "part1", "part2", "public_key", "signature", "device_name"], "additionalProperties": false, "properties": {"challenge_id": {"$ref": "../schemas/vault.schema.json#/$defs/challenge_id"}, "part1": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}, "part2": {"$ref": "../schemas/vault.schema.json#/$defs/b64_16"}, "public_key": {"$ref": "../schemas/vault.schema.json#/$defs/public_key"}, "signature": {"$ref": "../schemas/vault.schema.json#/$defs/signature"}, "device_name": {"$ref": "../schemas/common.schema.json#/$defs/device_name"}}, "description": "From the vault release (credential-protection §5.2, §5.3, as N1 item 6 amends them): both halves, the new public key, and a device.register challenge signed by that key; the device is the one the challenge named. The core stores the device and Part 2 only after part1 ‖ part2 opens the credential set."},
+      "Device": {"type": "object", "required": ["device_id", "device_name", "registered_at", "last_used_at"], "additionalProperties": false, "properties": {"device_id": {"$ref": "../schemas/common.schema.json#/$defs/device_id"}, "device_name": {"$ref": "../schemas/common.schema.json#/$defs/device_name"}, "registered_at": {"$ref": "../schemas/common.schema.json#/$defs/timestamp"}, "last_used_at": {"$ref": "../schemas/common.schema.json#/$defs/timestamp"}, "revoked_at": {"$ref": "../schemas/common.schema.json#/$defs/timestamp"}, "revoke_reason": {"enum": ["user", "admin", "inactive"]}}, "description": "From the vault release: one trusted device of one user, as a person reads it; never its key. revoked_at and revoke_reason are present exactly when it was revoked."},
+      "DeviceList": {"type": "object", "required": ["devices"], "additionalProperties": false, "properties": {"devices": {"type": "array", "items": {"$ref": "#/components/schemas/Device"}}}},
+      "LoginBindRequest": {"type": "object", "required": ["challenge_id", "signature"], "additionalProperties": false, "properties": {"challenge_id": {"$ref": "../schemas/vault.schema.json#/$defs/challenge_id"}, "signature": {"$ref": "../schemas/vault.schema.json#/$defs/signature"}}, "description": "From the vault release: a login.bind challenge signed by a trusted device's key ties this login to that device, once (DEFAULT 39)."},
+      "ScreenUnlockRequest": {"type": "object", "required": ["password"], "additionalProperties": false, "properties": {"password": {"type": "string", "minLength": 1, "maxLength": 1024}}, "description": "From the vault release: the login password of the login the cookie names (an OTP as well, once MFA exists: credential-protection §5.5). Never the vault passphrase."},
+      "CredentialStoreRequest": {"type": "object", "required": ["reference", "kind"], "additionalProperties": false, "properties": {"reference": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, "kind": {"$ref": "../schemas/common.schema.json#/$defs/credential_kind"}, "login_name": {"$ref": "../schemas/common.schema.json#/$defs/login_name"}, "secret": {"type": "string", "minLength": 1, "maxLength": 16384}, "label": {"$ref": "../schemas/common.schema.json#/$defs/display_label"}}, "oneOf": [{"properties": {"kind": {"const": "key"}}, "required": ["login_name", "secret"]}, {"properties": {"kind": {"const": "password"}, "secret": {"type": "string", "maxLength": 1024}}, "required": ["login_name", "secret"]}, {"properties": {"kind": {"const": "none"}, "secret": false}}], "description": "From the vault release: one personal vault entry (vault.schema.json credential_entry). key: login_name and an unencrypted private key's text (an encrypted key is refused, DEFAULT 11). password: login_name and the password. none: no secret (a telnet target). The login name is the one the target receives (DEFAULT 52)."},
+      "CredentialStored": {"type": "object", "required": ["reference", "kind"], "additionalProperties": false, "properties": {"reference": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, "kind": {"$ref": "../schemas/common.schema.json#/$defs/credential_kind"}}},
+      "CredentialSummary": {"type": "object", "required": ["reference", "kind"], "additionalProperties": false, "properties": {"reference": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, "kind": {"$ref": "../schemas/common.schema.json#/$defs/credential_kind"}, "label": {"$ref": "../schemas/common.schema.json#/$defs/display_label"}}},
+      "CredentialList": {"type": "object", "required": ["credentials"], "additionalProperties": false, "properties": {"credentials": {"type": "array", "items": {"$ref": "#/components/schemas/CredentialSummary"}}}, "description": "From the vault release: the caller's own credentials. reference and kind come from the plaintext index, always; label only while this login holds a vault unlock, since labels are sealed (DEFAULT 42). Never a login name or a secret."},
+      "OrgCredentialStoreRequest": {"type": "object", "required": ["reference", "unlock_class", "kind"], "additionalProperties": false, "properties": {"reference": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, "unlock_class": {"$ref": "../schemas/common.schema.json#/$defs/unlock_class"}, "kind": {"$ref": "../schemas/common.schema.json#/$defs/credential_kind"}, "login_name": {"$ref": "../schemas/common.schema.json#/$defs/login_name"}, "secret": {"type": "string", "minLength": 1, "maxLength": 16384}, "label": {"$ref": "../schemas/common.schema.json#/$defs/display_label"}}, "oneOf": [{"properties": {"kind": {"const": "key"}}, "required": ["login_name", "secret"]}, {"properties": {"kind": {"const": "password"}, "secret": {"type": "string", "maxLength": 1024}}, "required": ["login_name", "secret"]}, {"properties": {"kind": {"const": "none"}, "secret": false}}], "description": "From the vault release: one org-vault credential (credential-protection §8.2). unlock_class is required for every kind, a no-secret entry included, and never inferred (DEFAULT 53)."},
+      "OrgCredentialStored": {"type": "object", "required": ["reference", "unlock_class", "kind"], "additionalProperties": false, "properties": {"reference": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, "unlock_class": {"$ref": "../schemas/common.schema.json#/$defs/unlock_class"}, "kind": {"$ref": "../schemas/common.schema.json#/$defs/credential_kind"}}},
+      "OrgCredentialSummary": {"type": "object", "required": ["reference", "unlock_class", "kind"], "additionalProperties": false, "properties": {"reference": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, "unlock_class": {"$ref": "../schemas/common.schema.json#/$defs/unlock_class"}, "kind": {"$ref": "../schemas/common.schema.json#/$defs/credential_kind"}, "label": {"$ref": "../schemas/common.schema.json#/$defs/display_label"}, "stored_by": {"$ref": "../schemas/common.schema.json#/$defs/username"}}},
+      "OrgCredentialList": {"type": "object", "required": ["credentials"], "additionalProperties": false, "properties": {"credentials": {"type": "array", "items": {"$ref": "#/components/schemas/OrgCredentialSummary"}}}, "description": "From the vault release: every org credential: reference, class, kind and the storing administrator always; label only where the core can open the blob now (broker_unlocked with a broker key, or user_unlocked while its storing administrator holds an unlock). Never a login name or a secret."},
+      "GrantCreateRequest": {"type": "object", "required": ["user", "selectors", "credential_ref"], "additionalProperties": false, "properties": {"user": {"$ref": "../schemas/common.schema.json#/$defs/username"}, "selectors": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "../schemas/policy.schema.json#/$defs/target_filter"}}, "credential_ref": {"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}}, "description": "From the vault release: grant an org credential (its reference, DEFAULT 8) to a principal (DEFAULT 9) over the targets the selectors match, in Storage §9's filter vocabulary (Storage §10.1a)."},
+      "GrantScopeRequest": {"type": "object", "required": ["selectors"], "additionalProperties": false, "properties": {"selectors": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "../schemas/policy.schema.json#/$defs/target_filter"}}}},
+      "Grant": {"$ref": "../schemas/vault.schema.json#/$defs/grant"},
+      "ProfileMapRequest": {"type": "object", "required": ["mappings"], "additionalProperties": false, "properties": {"mappings": {"type": "array", "minItems": 1, "maxItems": 1000, "items": {"type": "object", "required": ["target_id", "credential_ref"], "additionalProperties": false, "properties": {"target_id": {"$ref": "../schemas/common.schema.json#/$defs/id"}, "credential_ref": {"anyOf": [{"$ref": "../schemas/common.schema.json#/$defs/credential_ref"}, {"type": "null"}], "description": "One of the caller's own references (layer personal), or null to remove the target's mapping."}}}}}, "description": "From the vault release: Layer 2a, the caller's own mapping of targets to their own credentials in users/<name>/profiles.yaml (Storage §10.3, §10.6; Q7 (a)), many targets in one call: one read-modify-write of the one file, all or nothing. Each target at most once."},
+      "TargetDefinition": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "host"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "../schemas/common.schema.json#/$defs/id"
+          },
+          "type": {
+            "enum": [
+              "ssh",
+              "telnet"
+            ]
+          },
+          "name": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/name"
+          },
+          "vendor": {"anyOf": [{"$ref": "../schemas/common.schema.json#/$defs/id"}, {"type": "null"}]},
+          "prompt_pattern": {"$ref": "../schemas/inventory-target.schema.json#/properties/prompt_pattern"},
+          "group": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/group"
+          },
+          "tags": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/tags"
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Absent means 22 for ssh and 23 for telnet."
+          },
+          "user": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "share": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/share"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "type": {
+                "const": "ssh"
+              }
+            }
+          },
+          {
+            "properties": {
+              "type": {
+                "const": "telnet"
+              },
+              "user": false
+            }
+          }
+        ],
+        "description": "The editable target fields, closed per type. id is immutable. No secret, options, discovered_by or last_seen may be submitted. A replace preserves vendor, own prompt and share list when omitted; null vendor clears it, null prompt is invalid, null share is invalid and empty prompt detaches. Other noneditable options are carried over unchanged. host, port and user map to options; discovered_by is set to tsb or the owner's private source."
+      },
+      "TargetCreateRequest": {
+        "type": "object",
+        "required": [
+          "type",
+          "host"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "../schemas/common.schema.json#/$defs/id"
+          },
+          "type": {
+            "enum": [
+              "ssh",
+              "telnet"
+            ]
+          },
+          "name": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/name"
+          },
+          "vendor": {
+            "anyOf": [
+              {
+                "$ref": "../schemas/common.schema.json#/$defs/id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt_pattern": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/prompt_pattern"
+          },
+          "group": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/group"
+          },
+          "tags": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/tags"
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Absent means 22 for ssh and 23 for telnet."
+          },
+          "user": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "share": {
+            "$ref": "../schemas/inventory-target.schema.json#/properties/share"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "type": {
+                "const": "ssh"
+              }
+            }
+          },
+          {
+            "properties": {
+              "type": {
+                "const": "telnet"
+              },
+              "user": false
+            }
+          }
+        ],
+        "description": "Create fields, with an optional ID for a shared target and a generated ID for an own target with a share list. Vendor and own prompt are optional; null prompt is invalid."
+      },
+      "AccountPassword": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024,
+        "description": "UTF-8 password, counted in Unicode characters, not bytes. A newly set password must also meet config.yaml auth.account_password_min_length. Existing passwords, including the current_password proof, are not checked against the new minimum. Only in this request body; never logged, audited, echoed or stored except as an argon2id hash."
+      },
+      "AccountSummary": {
+        "type": "object",
+        "required": [
+          "username",
+          "created_at",
+          "disabled"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "username": {
+            "$ref": "../schemas/common.schema.json#/$defs/username"
+          },
+          "created_at": {
+            "$ref": "../schemas/common.schema.json#/$defs/timestamp"
+          },
+          "disabled": {
+            "type": "boolean"
+          }
+        },
+        "description": "Account list entry, never a hash or permissions. disabled false means enabled."
+      },
+      "AccountList": {
+        "type": "object",
+        "required": [
+          "accounts"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountSummary"
+            }
+          }
+        }
+      },
+      "AccountCreateRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "username": {
+            "$ref": "../schemas/common.schema.json#/$defs/username"
+          },
+          "password": {
+            "$ref": "#/components/schemas/AccountPassword"
+          }
+        },
+        "description": "Create a never-before-used name, not shared (case-insensitive), with a starting password. The password must meet the configured minimum."
+      },
+      "AccountPasswordRequest": {
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "$ref": "#/components/schemas/AccountPassword"
+          }
+        },
+        "description": "A new password for enable or administrator set-password; must meet the configured minimum."
+      },
+      "OwnPasswordChangeRequest": {
+        "type": "object",
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "current_password": {
+            "$ref": "#/components/schemas/AccountPassword"
+          },
+          "new_password": {
+            "$ref": "#/components/schemas/AccountPassword"
+          }
+        },
+        "description": "The logged-in user proves the current password and sets a new one meeting the configured minimum. Only other logins end."
+      },
+      "AccountCreated": {
+        "type": "object",
+        "required": [
+          "account",
+          "permissions"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountSummary"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "../schemas/policy.schema.json#/$defs/permission"
+            },
+            "description": "The permission names policy.yaml already grants this username, whatever its target filters, as GET /auth/me would report. No block means an empty list; create never grants rights."
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {"description": "The core is up.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Health"}}}}
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "login",
+        "summary": "TSB's own login (a password gate, decision 5.34)",
+        "security": [],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}}},
+        "responses": {
+          "200": {
+            "description": "Logged in. Sets the session cookie (HttpOnly, Secure, SameSite=Strict). From the vault release the Principal carries `locks`, the lock settings that apply to this login's user.",
+            "headers": {"Set-Cookie": {"description": "tsb_session=…; HttpOnly; Secure; SameSite=Strict; Path=/", "schema": {"type": "string"}}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Principal"}}}
+          },
+          "401": {"description": "Unknown user or wrong password, not distinguished. Error code `invalid_credentials`; no cookie is set. From E4b a disabled account is indistinguishable from these refusals, with the same hashing work, invalid_credentials and no cookie.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"$ref": "#/components/responses/CrossOrigin"},
+          "422": {"$ref": "#/components/responses/InvalidRequest"},
+          "429": {"description": "Too many failed logins. Error code `rate_limited`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "summary": "End the login session on the server and clear the cookie",
+        "responses": {
+          "204": {"description": "Logged out. The cookie's session is invalid from now on, whoever presents it."},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "403": {"$ref": "#/components/responses/CrossOrigin"}
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "me",
+        "summary": "Who the session cookie belongs to",
+        "responses": {
+          "200": {"description": "The principal, and what the deployment records of a supplied login (`recording.login_input`). From the vault release the answer also carries `locks`, the lock settings that apply to the caller's user.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Me"}}}},
+          "401": {"$ref": "#/components/responses/Unauthenticated"}
+        }
+      }
+    },
+    "/auth/ws-ticket": {
+      "post": {
+        "operationId": "mintWsTicket",
+        "summary": "Mint a one-time ticket to attach to one session",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TicketRequest"}}}},
+        "responses": {
+          "200": {"description": "The ticket. The only way to open GET /ws/attach.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Ticket"}}}},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/SessionNotFound"},
+          "422": {"$ref": "#/components/responses/InvalidRequest"}
+        }
+      }
+    },
+    "/target-imports": {"post": {"operationId": "importTargets", "summary": "Preview, commit, abort or resume target import", "description": "Authentication then Origin, closed envelope, destination and org permission, decoding, format recognition and parse. All answers are no-store; request bytes and secrets are forgotten after each answer. Resume uses the caller-owned receipt without an export, token or unlock. Shared imports refuse the whole request with fixed 403 if a proposed row or matched target is outside target.edit filters; no matched definition is revealed. A missing credential choice for readable credentials is 422 after stale validation; a choice for no readable secrets is ignored.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TargetImportRequest"}}}}, "responses": {"200": {"description": "Preview, written result or aborted result.", "headers": {"Cache-Control": {"schema": {"type": "string"}, "description": "no-store"}}, "content": {"application/json": {"schema": {"oneOf": [{"$ref": "#/components/schemas/TargetImportPreview"}, {"$ref": "#/components/schemas/TargetImportResult"}]}}}}, "401": {"description": "Import refusal; no-store.", "headers": {"Cache-Control": {"schema": {"type": "string"}, "description": "no-store"}}, "content": {"application/json": {"schema": {"$ref": "../schemas/error.schema.json", "properties": {"error": {"properties": {"code": {"enum": ["unauthenticated"]}}}}}}}}, "403": {"description": "Import refusal; no-store.", "headers": {"Cache-Control": {"schema": {"type": "string"}, "description": "no-store"}}, "content": {"application/json": {"schema": {"$ref": "../schemas/error.schema.json", "properties": {"error": {"properties": {"code": {"enum": ["forbidden"]}}}}}}}}, "409": {"$ref": "#/components/responses/ImportConflict"}, "422": {"$ref": "#/components/responses/ImportFormatUnsupported"}, "500": {"$ref": "#/components/responses/ImportInternalError"}, "503": {"$ref": "#/components/responses/ImportInventoryUnavailable"}}}},
+    "/vendor-prompt-templates": {"get": {"operationId": "listVendorPromptTemplates", "summary": "List release prompt templates", "description": "Available to any authenticated principal. Templates are read-only release product data; the core does not compile patterns.", "responses": {"200": {"description": "The release catalogue.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VendorPromptTemplateList"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}}}},
+    "/vendor-prompt-templates/{vendor}": {"get": {"operationId": "getVendorPromptTemplate", "summary": "Read a release prompt template", "description": "Available to any authenticated principal; an unknown vendor has no fallback.", "parameters": [{"name": "vendor", "in": "path", "required": true, "schema": {"$ref": "../schemas/common.schema.json#/$defs/id"}}], "responses": {"200": {"description": "The template.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VendorPromptTemplate"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"description": "vendor_template_not_found", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/targets": {
+      "parameters": [
+        {
+          "name": "type",
+          "in": "query",
+          "required": false,
+          "schema": {"$ref": "../schemas/inventory-target.schema.json#/properties/type"},
+          "description": "Exact match on the target's type."
+        },
+        {
+          "name": "tag",
+          "in": "query",
+          "required": false,
+          "schema": {"type": "array", "items": {"$ref": "../schemas/inventory-target.schema.json#/properties/tags/items"}},
+          "description": "Repeatable (the default query form, exploded: tag=a&tag=b), and each tag named must be on the target. Exact match on the index's TAG field."
+        },
+        {
+          "name": "group",
+          "in": "query",
+          "required": false,
+          "schema": {"$ref": "../schemas/inventory-target.schema.json#/properties/group"},
+          "description": "Exact match on the index's group. Text, as a surface renders it."
+        },
+        {
+          "name": "discovered_by",
+          "in": "query",
+          "required": false,
+          "schema": {"$ref": "../schemas/inventory-target.schema.json#/properties/discovered_by"},
+          "description": "Exact match on the source directory that wrote the target file."
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "schema": {"$ref": "#/components/parameters/TargetLimit/schema"},
+          "description": "At most this many targets in the page."
+        },
+        {
+          "name": "cursor",
+          "in": "query",
+          "required": false,
+          "schema": {"type": "string", "minLength": 1, "maxLength": 256},
+          "description": "An opaque string from a previous answer's next_cursor: the page continues after the last id that answer returned. A surface never parses it."
+        }
+      ],
+      "get": {
+        "operationId": "listTargets",
+        "summary": "The targets the principal may see",
+        "description": "The answer combines shared targets matching target.discover and the caller’s filters with own targets whose share list names the enabled caller while its owner is enabled, independently of those gates. Every viewer of an own target sees its share list and owner. No credential material is retrieved; eligible SSH records carry a caller-relative metadata login_hint (TargetRecord): a target visible with no resolving credential is listed, not connectable (§10.1a). A principal without `target.discover` may still see own targets naming them. The answer is ordered by id ascending. A parameter outside the list above, or a value outside its range, is 422 invalid_request. Optional login_hint follows inventory-list: runtime-only eligibility and target-scoped session.create, missing-runtime/permission omission, metadata candidates only, fixed unavailable on resolution faults. A saved hint does not prove material availability. Every response carrying any hint, including unavailable, MUST carry Cache-Control: no-store; no cross-request resolution cache.",
+        "responses": {
+          "200": {"description": "The page of targets.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TargetList"}}}, "headers": {"Cache-Control": {"description": "A hinted answer carries no-store (alone or with other directives) when this response carries at least one login_hint, including unavailable.", "schema": {"type": "string"}}}},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "422": {"$ref": "#/components/responses/InvalidRequest"},
+          "503": {"$ref": "#/components/responses/InventoryUnavailable"}
+        }
+      },
+      "post": {
+        "operationId": "createTarget",
+        "summary": "Create a target",
+        "description": "Shared create requires target.edit and matching filters; own-target create requires target.private and a share list naming the caller, and does not use shared filters. The order is authentication, Origin, caller holds target.edit or target.private, query parameters refused (422), body is an object, destination permission (share present needs target.private, absent needs target.edit; 403, no fallback), shape (422), supplied ID with share (422), list semantics (owner named, no duplicate, names exist, no kind entry; 422), supplied shared ID taken (409), shared filters (403). Open sessions are untouched. After the file lands, write the audit line before waiting for the index. Audit failure answers 500 internal_error regardless of the index; with the audit written, an index timeout answers 503 inventory_unavailable saying the change took effect and is audited but is not yet listed.",
+        "responses": {
+          "201": {
+            "description": "Create a target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetWriteRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/TargetEditForbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/TargetIdTaken"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/InventoryUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/TargetWriteNotAudited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetCreateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/targets/{id}": {
+      "parameters": [{"$ref": "#/components/parameters/TargetId"}],
+      "get": {
+        "operationId": "getTarget",
+        "summary": "One target",
+        "description": "An absent target and one the principal may not see are answered 404 `target_not_found`, word for word alike, as session-open step 2 requires: the gate never confirms that a target exists. An own target is visible to the enabled caller when named in its share list while its owner is enabled, with share and owner visible. Optional login_hint follows inventory-list: runtime-only eligibility and target-scoped session.create, missing-runtime/permission omission, metadata candidates only, fixed unavailable on resolution faults. A saved hint does not prove material availability. Every response carrying any hint, including unavailable, MUST carry Cache-Control: no-store; no cross-request resolution cache.",
+        "responses": {
+          "200": {"description": "The target.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TargetRecord"}}}, "headers": {"Cache-Control": {"description": "A hinted answer carries no-store (alone or with other directives) when this response carries at least one login_hint, including unavailable.", "schema": {"type": "string"}}}},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "404": {"$ref": "#/components/responses/TargetNotFound"},
+          "503": {"$ref": "#/components/responses/InventoryUnavailable"}
+        }
+      },
+      "put": {
+        "operationId": "replaceTarget",
+        "summary": "Replace the editable definition",
+        "description": "Authenticate, check Origin, holds target.edit or target.private, query parameters refused (422), shape (422), identity and visibility (404 alike for absent or invisible), destination right for where the ID lives (403 for another source or an own target the caller does not own), list semantics on own target and share forbidden on shared target (422), shared filters (403). Omitted prompt_pattern follows the template; a supplied pattern including empty detaches it. Preserve unrelated fields and noneditable options; omitted vendor preserves it and null clears it; omitted share preserves the stored list. Last write wins, including audited no-ops. Audit failure is 500 after the file lands; an audited index timeout is 503.",
+        "responses": {
+          "200": {
+            "description": "Replace the editable definition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetWriteRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/TargetEditForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TargetNotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/InventoryUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/TargetWriteNotAudited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetDefinition"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTarget",
+        "summary": "Delete a target",
+        "description": "Authenticate, check Origin, holds target.edit or target.private, query parameters refused (422), identity and visibility (404 alike for absent or invisible), destination right for where the ID lives (403 for another source or an own target the caller does not own), shared filters (403). Open sessions remain open. Audit failure is 500 after deletion; an audited index timeout is 503.",
+        "responses": {
+          "204": {
+            "description": "Delete a target"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/TargetEditForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TargetNotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/InventoryUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/TargetWriteNotAudited"
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "summary": "Sessions the principal may see",
+        "parameters": [
+          {
+            "name": "ended",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "include",
+                "exclude",
+                "only"
+              ]
+            },
+            "description": "Absent or include includes retained ended records; exclude removes every end state in common.schema.json#/$defs/session_state, including later end states; only selects exactly those ended states. Visibility is unchanged. Without paging the selected visible list is complete. Invalid values return 422 invalid_request with fixed rule text, never the supplied value. See session-list rule 8 for older-core handling."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            },
+            "description": "Opts into paging; required on every paging request, including a continuation with cursor. At most this many visible records matching ended; 1..500 is a sanity bound, not a default. No page-size knob."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Unsigned opaque position encoding the last returned record's created_at and id; continue strictly after that position in descending (created_at, id) order. Requires limit. Grants no access and carries no host detail; visibility and ended are re-evaluated. A deleted boundary record does not invalidate the position. Consumers copy, never parse it. Malformed: 422 invalid_request, message cursor is invalid, never echoed."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sessions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          }
+        },
+        "description": "Without limit or cursor, returns the full retained visible list (legacy meaning). Paging orders records by (created_at, id) descending: newest creation first, ties by id descending. Visibility and ended filtering precede page filling and are re-evaluated on every request. See protocols/session-list.md rules 8\u201310. A cursor without limit is 422 invalid_request. Malformed cursors return 422 invalid_request with fixed message cursor is invalid, never the supplied value. Pages are not snapshots."
+      },
+      "post": {
+        "operationId": "createSession",
+        "summary": "Open a shell session on a target",
+        "description": "On a 201 the create resolves the target and a credential, obtains a worker through a supervisor, connects (or reuses a connection, per `connection`) and opens a shell. The session exists, is recorded and stays alive with no client attached; attaching is a separate step (POST /auth/ws-ticket, then GET /ws/attach). From contract-v0.2 the 201 comes only once the session's reattach handshake has reached live (schemas/ipc-control.schema.json), so a client's first keystrokes are never refused as replaying. A connection on a v0.1 worker is never a reuse candidate. A request may carry a `login` on `connection: new`: the core then uses it, and only it, to authenticate that connection, and resolves no stored credential (session-open steps 3 and 7). The create stores nothing of the login (V10) and records it only when `recording.login_input` is true; while `GET /auth/me` says it is, a login that does not set `recording_acknowledged` true is refused 409 `login_recording_not_acknowledged` (session-open step 2b). A request whose login is `kind: prompt` is a device login and opens nothing yet: it answers 202 with `DeviceLoginPending`, nothing is listed, placed, dialled, recorded or audited, and only when the surface redeems the ticket with `device_login_attach` on GET /ws/attach does the core place a worker and connect (protocols/device-login.md).",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionCreateRequest"}}}},
+        "responses": {
+          "201": {"description": "Created. Carries `hostkey` when a host key was accepted on first use.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionCreateResponse"}}}},
+          "202": {"description": "A device login (the request's login is `kind: prompt`): no session exists yet. Carries the device login's id and a one-time ticket, the ticket's lifetime in `expires_in`. The surface opens GET /ws/attach and sends `device_login_attach` with the ticket within that time, else the device login ends and gives its place back. Nothing is listed, placed, dialled, recorded or audited by the 202 (protocols/device-login.md steps 3 to 8).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DeviceLoginPending"}}}},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "403": {"description": "The principal can see the target but lacks session.create. Error code `forbidden`. From the vault release also `device_not_trusted`: under policy.yaml devices.revocation next_connection, a new connection by a login tied to a revoked device. A prompt-mode create by a principal who may not join a session on the target (it holds session.create but neither session.join.ro nor session.join.rw there) is `forbidden` too, before any worker is asked: a device login becomes an attach (OQ5 (a)).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "No such target, or one the principal may not see. Error code `target_not_found`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "`no_resolving_credential`: visible target, no credential resolves (Storage §10.1a) — never 403; it does not answer a reuse that names no connection while the principal holds a prompted connection to the target (session-open step 3). `connection_choice_required`: reuse with two or more candidate connections and no connection_id; error.connection_ids lists them — the requesting principal's own, never another's, and never one opened with a supplied login; a connection a device login opened is listed to the principal who opened it and to no one else (session-open steps 3 and 4) — so the surface can ask the operator to pick one. `credential_choice_required`: more than one credential resolves; the broker does not pick (Contract §12; at this tag one resolves); it does not answer a reuse that names no connection while the principal holds a prompted connection to the target (session-open step 3). `hostkey_changed`: the target's host key differs from the recorded one; refused. `login_recording_not_acknowledged`: the request carries a `login` that would be recorded (`GET /auth/me` says `recording.login_input` is true) and does not set `login.recording_acknowledged` true; nothing was sent to a worker or recorded, and the surface repeats the request with the field set once it has warned the operator. `no_resolving_credential` and `credential_choice_required` never answer a request that carries a `login`: the core resolves no stored credential for it. From the vault release: `credential_choice_required` carries `candidates`, each a credential_ref with its credential_layer, never a kind, label or secret; `vault_locked`: a new connection whose personal credential carries a secret while this login holds no vault unlock, decided before any worker is asked (unlock with POST /vault/unlock and repeat; a reuse never gets it); and `org_credential_locked`: a new connection whose org credential is of class user_unlocked while no login of its storing administrator holds an unlock (credential-protection §8.2; the caller's own unlock never matters for it), decided before any worker is asked, no field; the surface says the credential's administrator must unlock and never asks for the operator's passphrase, which cannot help (a reuse never gets it). And `mapped_credential_missing`, carrying `credential_ref`: the principal's Layer 2a mapping for this target names a reference that is not in its vault; never skipped silently (Contract §12).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "The body does not match the request schema. Error code `invalid_request`. A `login` on `connection: reuse` is refused by shape. A `login` on a target whose type is not ssh (telnet, echo, serial) is refused before any worker is asked: a telnet login is typed in the session and a telnet `connect` carries no credential. A `password` past 1024 bytes of UTF-8 is refused. The message is fixed text and never echoes a value of the request, the `login` least of all (V4). From the vault release also a credential_ref and credential_layer pair that is not a candidate, and a `new` request carrying both a choice and a `login`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "429": {"description": "`rate_limited`: a prompt-mode create past the principal's device logins in progress (config.yaml worker.device_logins_max, 1 to 64), with the fixed text \"too many device logins in progress; finish or cancel one\". The check and the registration of the new device login are one step, so two creates at once never both take the last place; the device logins already in progress stand (protocols/device-login.md step 5).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "502": {"description": "`target_auth_failed` (the target refused the credential, a supplied login included: the device counts wrong passwords, TSB retries nothing and the surface may try again with a new create) or `target_connect_failed`. From this release `target_connect_failed` also answers a refused target address, and a reuse of a telnet connection, which carries one session.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "503": {"description": "`worker_unavailable`: no supervisor provided a worker — or every supervisor predates this core. A session on a v0.1 worker would get no heartbeat and no bound if the core were lost, so the core creates none there, and the message says the workers predate the core; restarting them (manage.sh restart-workers) is the operator's, out of band. From this release it also answers a create on a telnet target when no supervisor provides a worker at proto_version 0.5 or later: an older worker has no telnet driver, and the message says the workers predate telnet. From Release B it also answers a prompt-mode create when no supervisor provides a worker at proto_version 0.7 or later, with the fixed text \"no worker at proto_version 0.7 or later: the workers predate device logins\", decided before anything is placed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/sessions/{id}": {
+      "parameters": [{"$ref": "#/components/parameters/SessionId"}],
+      "get": {
+        "operationId": "getSession",
+        "summary": "One session",
+        "description": "A session that has ended (killed or terminated) stays readable, in that state, for as long as the core retains its record. A fully finalised ended record is removed no earlier than sessions.ended_retention after ended_at, or activity_at when ended_at is absent. It remains listed (subject to visibility and ended filtering) and readable until removed; consumers may see records past their retention age. Removal returns the existing 404 session_not_found, indistinguishable from unknown or invisible ids, and never removes audit lines or recordings. See session-list rule 10.",
+        "responses": {
+          "200": {"description": "The session.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionRecord"}}}},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "404": {"$ref": "#/components/responses/SessionNotFound"}
+        }
+      },
+      "delete": {
+        "operationId": "closeSession",
+        "summary": "End a session",
+        "description": "Allowed to the owner and to holders of session.terminate (Storage §9). An end through TSB: the record's state becomes `killed`, end reason owner or admin. Closes this session's channel only; sibling sessions and the connection survive (Contract §15.2). A telnet connection is the exception: it carries one session and closes with it. Attached clients are closed with WebSocket code 4010.",
+        "responses": {
+          "204": {"description": "Ended; the record's state is `killed`."},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/SessionNotFound"}
+        }
+      }
+    },
+    "/sessions/{id}/clients/{client_id}": {
+      "parameters": [
+        {"$ref": "#/components/parameters/SessionId"},
+        {"$ref": "#/components/parameters/ClientId"}
+      ],
+      "delete": {
+        "operationId": "removeClient",
+        "summary": "Remove one attached client",
+        "description": "Allowed to the owner and to holders of session.terminate (Storage §9), as DELETE /sessions/{id} is; the owner need not be attached to use it (Contract §10 owner token \"kill clients\"). The client's socket is closed with WebSocket code 4014 `removed` (4013 is retired vocabulary — session model §15), its token move is a detach, and every other attached client gets a `clients` frame. The session lives on. An audit event `session.kick` is written.",
+        "responses": {
+          "204": {"description": "Removed."},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/ClientNotFound"}
+        }
+      }
+    },
+    "/sessions/{id}/output": {
+      "parameters": [
+        {"$ref": "#/components/parameters/SessionId"},
+        {"$ref": "#/components/parameters/BeforeSeq"},
+        {"$ref": "#/components/parameters/MaxBytes"}
+      ],
+      "get": {
+        "operationId": "outputPage",
+        "summary": "A page of recorded output (published e2, required e5)",
+        "description": "One page of the session's raw output, for a principal that may attach to it (5.48: session.join.ro; D14: join.rw and the owner too, one rule with ticket minting). Published e2, required e5. The body is application/octet-stream carrying whole output frames first..last, with last the latest the ring holds below before_seq; a page never spans a gap and starts where the core's VT parser was at ground (C4 decision 8). Headers: TSB-Page-First-Seq and TSB-Page-Last-Seq name the frames included; TSB-Page-More is true when older output remains; TSB-Page-Gap is true when output was lost right before the first byte. At most max_bytes, unless no ground start lies within, in which case the page goes back to the nearest one, bounded by the page-cap knob; when no ground start lies within that cap, the body is empty, no first/last seq headers are sent, TSB-Page-No-Ground is true and TSB-Page-Next-Before-Seq carries the seq to continue from (an explicit false end-of-history is never sent). An ended session's ring is released: empty body. A core without a ring yet answers 501 not_implemented. Pages never touch the session, PTY, input or another client. Receiver rule: no prefix.scrollback means do not page.",
+        "responses": {
+          "200": {
+            "description": "A page of output frames.",
+            "headers": {
+              "TSB-Page-First-Seq": {"description": "The seq of the page's first frame; absent when the body is empty.", "schema": {"$ref": "../schemas/common.schema.json#/$defs/u64"}},
+              "TSB-Page-Last-Seq": {"description": "The seq of the page's last frame; absent when the body is empty.", "schema": {"$ref": "../schemas/common.schema.json#/$defs/u64"}},
+              "TSB-Page-More": {"description": "true when older output remains below the page.", "schema": {"type": "boolean"}},
+              "TSB-Page-Gap": {"description": "true when output was lost right before the page's first byte.", "schema": {"type": "boolean"}},
+              "TSB-Page-No-Ground": {"description": "true when no parser-ground start lies within the page cap: the body is empty and TSB-Page-Next-Before-Seq says where to continue.", "schema": {"type": "boolean"}},
+              "TSB-Page-Next-Before-Seq": {"description": "The seq to continue from when no ground start was found.", "schema": {"$ref": "../schemas/common.schema.json#/$defs/u64"}}
+            },
+            "content": {"application/octet-stream": {"schema": {"type": "string", "contentEncoding": "binary"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/SessionNotFound"},
+          "422": {"$ref": "#/components/responses/InvalidRequest"},
+          "501": {"$ref": "#/components/responses/NotImplemented"}
+        }
+      }
+    },
+    "/alerts": {
+      "get": {
+        "operationId": "alerts",
+        "summary": "The operator alert stream (server-sent events), for broker.health holders",
+        "description": "Operator alerts in the surface (session model §11; Tu, 2026-09-26): an elevated warning, only to a principal holding broker.health, because seeing TSB's internals is itself a permission. Authenticated by the login cookie — no ticket. The body is a text/event-stream: on connect one `alert` event per alert active now, then each raise and each clear, in order; each event's `data` is one AlertEvent as JSON, and a clear names the alert_id of its raise. A reconnecting surface gets the active set again, so no Last-Event-ID is needed. A comment line goes out whenever no event was sent for heartbeat_interval (the core's configuration, no knob of its own), so no proxy closes an idle stream. Authorization holds for the stream's life, not only at connect: the core ends the stream when that login logs out or expires, and when a policy.yaml reload removes broker.health from the principal or removes the principal (Storage §9: policy.yaml is hot-reloadable). How each kind clears: supervisor_unresponsive when that supervisor answers a ping again; worker_unkillable when the supervisor's list_workers, polled at the supervisor heartbeat cadence, no longer lists the worker; both when that supervisor is gone — its manifest removed or its socket refusing — which is what an operator's container restart, the remedy, leaves behind. Each raise and clear is also an audit event (alert.raised, alert.cleared), and a restarted core rebuilds the active set from the raises in the log that have no clear, re-checks each against live state, and clears what no longer holds. Acting on an alert at the host level is host administration and stays out of band.",
+        "responses": {
+          "200": {"description": "The event stream. Under OpenAPI 3.1 a media type's schema describes the whole body; here the schema describes one event's data, a stated deviation until OpenAPI 3.2's itemSchema, which x-itemSchema already names. A code generator types each `alert` event's data as AlertEvent, never the stream as one object. A receiver ignores an event type it does not know.", "content": {"text/event-stream": {"schema": {"$ref": "#/components/schemas/AlertEvent"}, "x-itemSchema": {"$ref": "#/components/schemas/AlertEvent"}}}},
+          "401": {"$ref": "#/components/responses/Unauthenticated"},
+          "403": {"description": "The principal lacks broker.health. Error code `forbidden`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/ws/attach": {
+      "get": {
+        "operationId": "attach",
+        "summary": "Session stream (WebSocket upgrade)",
+        "description": "Upgrades to a WebSocket. No cookie is needed and nothing identifies the session in the URL: the first frame is `attach` (the ticket and the session id) or, on a device-login socket, `device_login_attach` (the ticket and the device login's id). Frames, their order and the close codes are schemas/ws-frames.schema.json.",
+        "security": [],
+        "responses": {
+          "101": {"description": "Switching Protocols."}
+        },
+        "x-websocket": {
+          "client": {"$ref": "../schemas/ws-frames.schema.json#/$defs/client"},
+          "server": {"$ref": "../schemas/ws-frames.schema.json#/$defs/server"}
+        }
+      }
+    },
+    "/vault/salt": {"get": {"operationId": "vaultSalt", "summary": "Read the caller's user_salt (vault-unlock step 1)", "description": "From the vault release, seam C7. A read: it writes nothing, never mints (OPEN-1.3 (c)).", "responses": {"200": {"description": "The salt, or initialized false.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VaultSalt"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}}}, "post": {"operationId": "vaultMintSalt", "summary": "Mint the caller's salts: the first of initialisation's two calls (vault-unlock step 1b)", "description": "From the vault release, seam C7 (ruling 2026-10-29 21:07). No body. The first call stores fresh user_salt and salt2 (16 bytes each from a CSPRNG) in a vault that is minted but not sealed, and answers user_salt with initialized false; a repeat while the vault is unsealed answers the same salts and writes nothing. A minted vault does not expire; a wipe removes it. No audit line: no credential is stored, and cred §8.4 names no such event.", "responses": {"200": {"description": "The minted salt, initialized false.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VaultSalt"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "409": {"description": "`vault_exists`: the vault is sealed already. Nothing changed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/vault/unlock": {"post": {"operationId": "vaultUnlock", "summary": "Unlock the caller's vault for this login (vault-unlock)", "description": "From the vault release, seam C7. On success this login holds an unlock under the vault lock, replacing any it held (DEFAULT 69); a trusted unlock records its device. Another login of the same user holds its own (credential-protection §5.5). The core never answers with a credential.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VaultUnlockRequest"}}}}, "responses": {"204": {"description": "Unlocked."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/DeviceNotTrusted"}, "409": {"description": "`unlock_failed` (the halves did not open the set; counted; carries attempts_remaining), `challenge_failed`, `part2_missing` (trusted only; not counted: regenerate), `vault_not_initialized`. `vault_not_initialized` also answers a vault that is minted but not sealed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}, "429": {"$ref": "#/components/responses/PassphraseLimited"}}}},
+    "/vault/part2": {"post": {"operationId": "regeneratePart2", "summary": "Regenerate this device's Part 2 (vault-unlock step 3)", "description": "From the vault release, seam C7. Only for this login's tied device, on the allowlist, and only when part1 ‖ part2 opens the set; Part 2 is stored with a fresh TTL and this login holds an unlock.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Part2RegenerateRequest"}}}}, "responses": {"204": {"description": "Part 2 stored; unlocked."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/DeviceNotTrusted"}, "409": {"description": "`unlock_failed`, `challenge_failed`, `vault_not_initialized`. `vault_not_initialized` also answers a vault that is minted but not sealed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}, "429": {"$ref": "#/components/responses/PassphraseLimited"}}}},
+    "/devices/challenges": {"post": {"operationId": "issueDeviceChallenge", "summary": "Issue a device challenge for one operation and one device (device-trust)", "description": "From the vault release, seam C7. Checked at issue, before any signature work: for vault.unlock, part2.regenerate and login.bind the device must be on the allowlist (`device_not_trusted`, checked first); for vault.unlock and part2.regenerate it must be this login's tied device; for login.bind the login must be untied; for device.register a tied login may name only its own device. At most four outstanding per login: a fifth voids the oldest.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DeviceChallengeRequest"}}}}, "responses": {"200": {"description": "The challenge.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DeviceChallenge"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/DeviceNotTrusted"}, "409": {"description": "`challenge_failed`: every other refusal at issue.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}}}},
+    "/devices": {"get": {"operationId": "listDevices", "summary": "List a principal's devices", "description": "From the vault release, seam C7. The caller's own; another principal's (?user=) for a vault administrator only. Never a key.", "parameters": [{"$ref": "#/components/parameters/DeviceUser"}], "responses": {"200": {"description": "The devices, revoked ones included.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DeviceList"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"description": "`forbidden`: ?user= names another principal and the caller lacks vault.admin.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}, "post": {"operationId": "registerDevice", "summary": "Register (trust) the device a device.register challenge named", "description": "From the vault release, seam C7. Needs an initialised vault; proves the passphrase (the halves must open the set; a failure is counted); ties an untied login to the device; this login then holds an unlock (DEFAULTs 39, 69). Re-registering a revoked device_id is allowed.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/DeviceRegisterRequest"}}}}, "responses": {"201": {"description": "Registered.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Device"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "409": {"description": "`vault_not_initialized`, `unlock_failed` (counted; attempts_remaining), `challenge_failed`. `vault_not_initialized` also answers a vault that is minted but not sealed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}, "429": {"$ref": "#/components/responses/PassphraseLimited"}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/devices/{device_id}": {"delete": {"operationId": "revokeDevice", "summary": "Revoke a device", "description": "From the vault release, seam C7. By the device's own principal, or a vault administrator naming ?user=. Deletes the key and Part 2; then, under policy.yaml devices.revocation end_logins (the default), ends every login tied to the device and closes their attached clients with 4015 device_revoked, or, under next_connection, refuses those logins' next new connection. The terminal sessions live on. It stops the device, not a person who holds the login password (DEFAULT 40).", "parameters": [{"$ref": "#/components/parameters/DeviceId"}, {"$ref": "#/components/parameters/DeviceUser"}], "responses": {"204": {"description": "Revoked (also when Redis did not answer: bbolt committed and the logins ended)."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"description": "`device_not_found`: no such device of that principal. Another principal's device, asked about by a caller without vault.admin, is answered exactly as an absent one is, never 403, so no response tells a device that exists from one that does not (device-trust step 9; OPEN-1.6 (a)).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/vault/users/{username}": {"delete": {"operationId": "wipeVault", "summary": "Wipe a user's vault (a vault administrator)", "description": "From the vault release, seam C7 (D16). The vault.wipe line first; every device of the user revoked as one revocation is (reason admin); the user's vault record deleted; every unlock of the user purged; the user's Layer 2a mappings cleared (O30). Nothing is recovered; the user initialises again with the login alone. Live sessions are untouched.", "parameters": [{"$ref": "#/components/parameters/Username"}], "responses": {"204": {"description": "Wiped (also for a user with no vault)."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/VaultAdminForbidden"}, "404": {"description": "`user_not_found`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "409": {"description": "`vault_wipe_blocked`: the user stored user-unlocked org credentials, named in credential_refs (O31).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/vault/credentials": {"get": {"operationId": "listCredentials", "summary": "List the caller's own credentials", "description": "From the vault release, seam C7. Needs no unlock; labels only while this login holds one. A caller with no vault gets an empty list.", "responses": {"200": {"description": "The list.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CredentialList"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}}}, "post": {"operationId": "storeCredential", "summary": "Store one of the caller's own credentials", "description": "From the vault release, seam C7. Needs this login's unlock: the set is re-sealed, the index written in the same bbolt transaction, the cred.store line first (no unlock class: DEFAULT 50). Saving a login for a target is this, then POST /profiles/batch (D15).", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CredentialStoreRequest"}}}}, "responses": {"201": {"description": "Stored.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CredentialStored"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "409": {"description": "`vault_locked`, `vault_not_initialized`, `credential_exists` (O32).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/vault/credentials/{reference}": {"delete": {"operationId": "deleteCredential", "summary": "Delete one of the caller's own credentials", "description": "From the vault release, seam C7. Needs this login's unlock (the set is re-sealed). Clears every Layer 2a mapping to the reference, named in its cred.delete line (O30).", "parameters": [{"$ref": "#/components/parameters/CredentialRef"}], "responses": {"204": {"description": "Deleted."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "404": {"description": "`credential_not_found`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "409": {"description": "`vault_locked`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/vault/org-credentials": {"get": {"operationId": "listOrgCredentials", "summary": "List the org credentials (a vault administrator)", "description": "From the vault release, seam C7.", "responses": {"200": {"description": "The list.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrgCredentialList"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/VaultAdminForbidden"}}}, "post": {"operationId": "storeOrgCredential", "summary": "Store an org credential with its unlock class (a vault administrator)", "description": "From the vault release, seam C7 (credential-protection §8.2). user_unlocked needs this login's unlock (it is sealed under the administrator's encryption_key); broker_unlocked needs a broker key on this deployment. The cred.store line, with the class, first.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrgCredentialStoreRequest"}}}}, "responses": {"201": {"description": "Stored.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrgCredentialStored"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/VaultAdminForbidden"}, "409": {"description": "`vault_locked` (user_unlocked without this login's unlock), `vault_not_initialized` (user_unlocked, the administrator has no vault), `broker_unlock_unavailable`, `credential_exists` (O32).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/vault/org-credentials/{reference}": {"delete": {"operationId": "deleteOrgCredential", "summary": "Delete an org credential (a vault administrator)", "description": "From the vault release, seam C7. Refused while grants name it (DEFAULT 25).", "parameters": [{"$ref": "#/components/parameters/CredentialRef"}], "responses": {"204": {"description": "Deleted."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/VaultAdminForbidden"}, "404": {"description": "`credential_not_found`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "409": {"description": "`credential_has_grants`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/vault/grants": {"post": {"operationId": "createGrant", "summary": "Grant an org credential (a vault administrator)", "description": "From the vault release, seam C7 (Storage §10.1a). The cred.grant line first.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GrantCreateRequest"}}}}, "responses": {"201": {"description": "Granted.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Grant"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/VaultAdminForbidden"}, "422": {"description": "`invalid_request`, also for a credential_ref that is no org credential or a user that is no principal.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/vault/grants/{grant_id}": {"post": {"operationId": "changeGrantScope", "summary": "Change a grant's selectors (a vault administrator)", "description": "From the vault release, seam C7. The cred.scope_change line first.", "parameters": [{"$ref": "#/components/parameters/GrantId"}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GrantScopeRequest"}}}}, "responses": {"200": {"description": "The grant as it now is.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Grant"}}}}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/VaultAdminForbidden"}, "404": {"description": "`grant_not_found`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}, "delete": {"operationId": "revokeGrant", "summary": "Revoke a grant (a vault administrator)", "description": "From the vault release, seam C7. The cred.revoke line first. Live sessions opened under it are untouched (credential-protection §10.2).", "parameters": [{"$ref": "#/components/parameters/GrantId"}], "responses": {"204": {"description": "Revoked."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/VaultAdminForbidden"}, "404": {"description": "`grant_not_found`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "500": {"$ref": "#/components/responses/ActNotAudited"}}}},
+    "/auth/bind": {"post": {"operationId": "bindLogin", "summary": "Tie this login to a trusted device, once (device-trust)", "description": "From the vault release, seam C1. An untied login only; the device's later trusted unlocks and regenerations come only from it (DEFAULT 39). An untied login is an untrusted-mode login.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginBindRequest"}}}}, "responses": {"204": {"description": "Tied."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"$ref": "#/components/responses/DeviceNotTrusted"}, "409": {"description": "`challenge_failed`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}}}},
+    "/auth/activity": {"post": {"operationId": "activitySignal", "summary": "The user is active on this surface (vault-lock)", "description": "From the vault release, seam C1. Moves the user's last-active time; the core counts at most one per login per locks.activity_interval and ignores the rest, never refusing one (DEFAULT 34). A guardrail: the hard cap is the guarantee.", "responses": {"204": {"description": "Noted, or ignored."}, "401": {"$ref": "#/components/responses/Unauthenticated"}}}},
+    "/auth/lock": {"post": {"operationId": "lockNow", "summary": "Lock now: purge every vault unlock the user holds (vault-lock)", "description": "From the vault release, seam C1. Every unlock of the caller's user, from any of its logins, is purged; established sessions are untouched. The calling client also locks its own screen (screen-lock).", "responses": {"204": {"description": "Locked."}, "401": {"$ref": "#/components/responses/Unauthenticated"}}}},
+    "/auth/screen-unlock": {"post": {"operationId": "screenUnlock", "summary": "Re-check the login password to clear a screen lock (screen-lock)", "description": "From the vault release, seam C1. Checks the password of the login the cookie names; creates and ends no login.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ScreenUnlockRequest"}}}}, "responses": {"204": {"description": "The password is right; the client resumes."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "403": {"description": "`screen_unlock_failed`: a wrong password. The login and its vault unlock stay.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}, "429": {"description": "`rate_limited`: past the login's failed-login limit, which POST /auth/login shares.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/profiles/batch": {"post": {"operationId": "mapProfiles", "summary": "Map targets to the caller's own credentials (Layer 2a)", "description": "From the vault release, seam C1 (Storage §10.6's batch, its credential mapping only). Needs no unlock: the core checks each reference against the caller's plaintext index.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProfileMapRequest"}}}}, "responses": {"204": {"description": "Written, all of it."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "422": {"description": "`invalid_request`: a reference not in the caller's index, a target the caller cannot see or that does not exist, a target named twice. Nothing is written.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/vault/init": {"post": {"operationId": "vaultInit", "summary": "Seal the caller's empty credential set: the second of initialisation's two calls (vault-unlock step 3)", "description": "From the vault release, seam C7 (DEFAULT 2; ruling 2026-10-29 21:07). Both halves of master_hash = argon2id(passphrase, user_salt), derived after the mint answered the salt. The core derives encryption_key with the minted salt2 and seals a set with no entry, so the GCM tag exists to check every later passphrase against; this login then holds an unlock (DEFAULT 35). Needs only the login (DEFAULT 46). No audit line: no credential is stored.", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VaultInitRequest"}}}}, "responses": {"204": {"description": "Sealed; unlocked."}, "401": {"$ref": "#/components/responses/Unauthenticated"}, "409": {"description": "`vault_not_minted`: no salt was minted for this principal (POST /vault/salt first); `vault_exists`: the vault is sealed already. Nothing changed.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "422": {"$ref": "#/components/responses/InvalidRequest"}}}},
+    "/targets/{id}/definition": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TargetId"
+        }
+      ],
+      "get": {
+        "operationId": "getTargetDefinition",
+        "summary": "Read the editable definition",
+        "description": "Read the closed editable definition including SSH user. Authenticate, check Origin, holds target.edit or target.private, query parameters refused (422), identity and visibility (404 alike for absent or invisible), destination right for where the ID lives (403 for another source or an own target the caller does not own). Visibility unavailable is 503.",
+        "responses": {
+          "200": {
+            "description": "Read the editable definition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetDefinition",
+                  "properties": {"vendor": {"$ref": "../schemas/common.schema.json#/$defs/id"}}
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/TargetEditForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/TargetNotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/InventoryUnavailable"
+          }
+        }
+      }
+    },
+    "/accounts": {
+      "get": {
+        "operationId": "listAccounts",
+        "summary": "List accounts",
+        "description": "E4b, account-administration. Requires policy.yaml account.admin. No write or audit on a missing permission. The list is read-only. Accounts are ordered by username, ascending.",
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/AccountAdminForbidden"
+          },
+          "200": {
+            "description": "All accounts, enabled and disabled: names, created times and disabled flags only, no hashes or rights.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAccount",
+        "summary": "Create an account with a starting password",
+        "description": "E4b, account-administration. Requires policy.yaml account.admin. No write or audit on a missing permission. Every write authenticates first, then checks Origin before account or request-input reads. A new password must be valid UTF-8, nonempty, at most 1024 characters and at least auth.account_password_min_length (DEFAULT 15). Fixed refusal text names the rule, never the value. Every mutating act writes its account audit line before committing; an unwritable line refuses the act.",
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/AccountAdminForbidden"
+          },
+          "201": {
+            "description": "Created enabled, usable at once without restart; no rights granted. Includes existing policy permission names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "409": {
+            "description": "user_exists: the name exists, disabled included; no write or audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/AccountActNotAudited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{username}/disable": {
+      "parameters": [
+        {
+          "name": "username",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "../schemas/common.schema.json#/$defs/username"
+          },
+          "description": "Account name in the username shape; reserved shared (case-insensitive) is invalid_request, as is an out-of-shape name."
+        }
+      ],
+      "post": {
+        "operationId": "disableAccount",
+        "summary": "Disable and void the hash; end every login before answering. Already disabled: 204, no changes, audit or login effects.",
+        "description": "E4b, account-administration. Requires policy.yaml account.admin. No write or audit on a missing permission. Every write authenticates first, then checks Origin before account or request-input reads. Every mutating act writes its account audit line before committing; an unwritable line refuses the act.",
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/AccountAdminForbidden"
+          },
+          "204": {
+            "description": "Completed. Disable and void the hash; end every login before answering. Already disabled: 204, no changes, audit or login effects."
+          },
+          "404": {
+            "description": "user_not_found: no account of this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "account_self_disable: the administrator cannot disable their own account; nothing changes and no audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/AccountActNotAudited"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          }
+        }
+      }
+    },
+    "/accounts/{username}/enable": {
+      "parameters": [
+        {
+          "name": "username",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "../schemas/common.schema.json#/$defs/username"
+          },
+          "description": "Account name in the username shape; reserved shared (case-insensitive) is invalid_request, as is an out-of-shape name."
+        }
+      ],
+      "post": {
+        "operationId": "enableAccount",
+        "summary": "Enable with a new password; never restore the old hash.",
+        "description": "E4b, account-administration. Requires policy.yaml account.admin. No write or audit on a missing permission. Every write authenticates first, then checks Origin before account or request-input reads. A new password must be valid UTF-8, nonempty, at most 1024 characters and at least auth.account_password_min_length (DEFAULT 15). Fixed refusal text names the rule, never the value. Every mutating act writes its account audit line before committing; an unwritable line refuses the act.",
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/AccountAdminForbidden"
+          },
+          "204": {
+            "description": "Completed. Enable with a new password; never restore the old hash."
+          },
+          "404": {
+            "description": "user_not_found: no account of this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "409": {
+            "description": "account_already_enabled: already enabled; supplied password not set, no write or audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/AccountActNotAudited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountPasswordRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{username}/password": {
+      "parameters": [
+        {
+          "name": "username",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "$ref": "../schemas/common.schema.json#/$defs/username"
+          },
+          "description": "Account name in the username shape; reserved shared (case-insensitive) is invalid_request, as is an out-of-shape name."
+        }
+      ],
+      "post": {
+        "operationId": "setAccountPassword",
+        "summary": "Set a new password on an enabled account; end all logins, including the caller if acting on themselves.",
+        "description": "E4b, account-administration. Requires policy.yaml account.admin. No write or audit on a missing permission. Every write authenticates first, then checks Origin before account or request-input reads. A new password must be valid UTF-8, nonempty, at most 1024 characters and at least auth.account_password_min_length (DEFAULT 15). Fixed refusal text names the rule, never the value. Every mutating act writes its account audit line before committing; an unwritable line refuses the act.",
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/AccountAdminForbidden"
+          },
+          "204": {
+            "description": "Completed. Set a new password on an enabled account; end all logins, including the caller if acting on themselves."
+          },
+          "404": {
+            "description": "user_not_found: no account of this name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "409": {
+            "description": "account_disabled: enable alone gives a disabled account a usable password; no write or audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/AccountActNotAudited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountPasswordRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password": {
+      "post": {
+        "operationId": "changeOwnPassword",
+        "summary": "Change own password, proving the current one; keep this login and end every other login.",
+        "description": "E4b, account-administration. Every valid login may change its own password; account.admin is not required. Every write authenticates first, then checks Origin before account or request-input reads. A new password must be valid UTF-8, nonempty, at most 1024 characters and at least auth.account_password_min_length (DEFAULT 15). Fixed refusal text names the rule, never the value. Every mutating act writes its account audit line before committing; an unwritable line refuses the act.",
+        "responses": {
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "description": "password_change_failed: wrong current password, nothing changes and the login stays. Never 401. A foreign Origin is forbidden before anything is read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Completed. Change own password, proving the current one; keep this login and end every other login."
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/AccountActNotAudited"
+          },
+          "429": {
+            "description": "rate_limited: past the login failed-login limiter; nothing changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnPasswordChangeRequest"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

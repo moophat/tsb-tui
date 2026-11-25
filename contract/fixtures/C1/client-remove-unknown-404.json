@@ -1,0 +1,18 @@
+{
+  "seam": "C1",
+  "name": "client-remove-unknown-404",
+  "mark": {"required-green": "e2"},
+  "kind": "rest",
+  "grade": "live",
+  "description": "DELETE /sessions/{id}/clients/{client_id} with a client_id that names no attached client answers 404 client_not_found (C1 decision 2, C1 decision 4). The session is untouched.",
+  "corpus": ["C1 decision 2", "C1 decision 4", "Contract §10"],
+  "case": {
+    "inputs": ["user", "password", "target_id"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "DELETE", "path": "/sessions/${sid}/clients/fixture-client-gone"}, "expect": {"status": 404, "match": [{"pointer": "/error/code", "eq": "client_not_found"}]}},
+      {"http": {"method": "GET", "path": "/sessions/${sid}"}, "expect": {"status": 200, "match": [{"pointer": "/state", "eq": "detached"}]}}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

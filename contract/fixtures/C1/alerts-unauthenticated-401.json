@@ -1,0 +1,41 @@
+{
+  "seam": "C1",
+  "name": "alerts-unauthenticated-401",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "The operator alert stream is authenticated by the login cookie, like every other call but login: without one, GET /alerts is 401 unauthenticated and no stream opens.",
+  "corpus": [
+    "session model §11",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/alerts",
+          "as": "none"
+        },
+        "expect": {
+          "status": 401,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "unauthenticated"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "unauthenticated",
+              "message": "log in first"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

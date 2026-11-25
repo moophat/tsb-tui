@@ -1,0 +1,57 @@
+{
+  "seam": "C6",
+  "name": "event-hostkey-accepted",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:audit-hostkey-accepted",
+  "description": "An accepted host key is an audit event: who, which target, which fingerprint. The name target.hostkey_accepted is this tag's choice; the corpus says only that the acceptance is audited. In a collected run, every fingerprint a worker reported on first use (C3 hostkey) has a target.hostkey_accepted event.",
+  "corpus": [
+    "decision 5.18"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "target.hostkey_accepted",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "detail": {
+            "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+            "conn_id": "fixture-conn-1"
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "target.hostkey_accepted",
+          "target": "core-rtr-01",
+          "detail": {}
+        },
+        "note": "the fingerprint is the point"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "target.hostkey_accepted",
+          "target": "core-rtr-01",
+          "detail": {
+            "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+            "remark": "x"
+          }
+        },
+        "note": "detail is closed: fingerprint and conn_id"
+      }
+    ]
+  }
+}

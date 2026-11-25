@@ -1,0 +1,80 @@
+{
+  "seam": "C7",
+  "name": "unlock-attempt-limit",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "The passphrase limit is per principal, across all its logins: after vault.unlock_attempts failures in vault.unlock_window an untrusted unlock or a registration is 429 rate_limited until the window passes, even with the right passphrase (corpus: 5 per hour). A password holder can block a user's untrusted unlocks for the window: accepted (DEFAULT 45).",
+  "corpus": [
+    "credential-protection §11.1",
+    "credential-protection Appendix B",
+    "E4 DEFAULT 14",
+    "E4 DEFAULT 45"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "untrusted",
+            "part1": "RklYVFVSRS1QQVJUMi0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMS0wMA=="
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "unlock_failed",
+              "message": "the passphrase did not open the vault",
+              "attempts_remaining": 0
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "untrusted",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMi0wMA=="
+          }
+        },
+        "expect": {
+          "status": 429,
+          "example": {
+            "error": {
+              "code": "rate_limited",
+              "message": "too many failed attempts; try later"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

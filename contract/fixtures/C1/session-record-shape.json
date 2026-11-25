@@ -1,0 +1,277 @@
+{
+  "seam": "C1",
+  "name": "session-record-shape",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "with:session-create-new",
+  "description": "The northbound session record is closed. recording_path, a broker filesystem path that is audit data, must not appear in it. States are the session model's (§10): live and detached, and the two end states, killed (by TSB or through it) and terminated (from outside TSB); there is no disconnected state (decision 5.45). tier is 1–3; an active recording always carries the contract's warning code and text, unaltered. Consumers decode it strictly against this tag and ignore fields a later tag adds.",
+  "corpus": [
+    "Contract §4",
+    "Storage §6",
+    "session model §10",
+    "session model §12",
+    "immortality §3",
+    "decision 5.45",
+    "PTY §4",
+    "open_decisions §5"
+  ],
+  "case": {
+    "schema": "schemas/session-record.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "detached, control token in escrow, recorded"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "live",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": {
+            "client_id": "fixture-client-1",
+            "user": "fixture-user"
+          },
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": false
+          }
+        },
+        "note": "live, one client holds control, not recorded"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "killed",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "ended by TSB or through it"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "terminated",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "ended from outside TSB"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "disconnected",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "no disconnected state: with the connection gone there is nothing to keep (decision 5.45)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "the warning carries its code, so a surface can translate it later"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "recording_path": "~/.tsb/recordings/fixture-session-a.ttyrec"
+        },
+        "note": "a broker path never goes northbound"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "active",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "not a state name in this tag"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true
+          }
+        },
+        "note": "an active recording carries the warning"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session may be recorded."
+          }
+        },
+        "note": "the warning text is fixed; no surface softens it"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 0,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "tiers are 1 to 3"
+      }
+    ]
+  }
+}

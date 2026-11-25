@@ -1,0 +1,86 @@
+{
+  "seam": "C6",
+  "name": "event-device-revoke",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "device.revoke: by its own principal (user), a vault administrator (admin, a wipe included) or the inactivity sweep (inactive, no actor), so a revocation that ended logins can be explained afterwards (DEFAULT 10).",
+  "corpus": [
+    "credential-protection §8.4",
+    "E4 DEFAULT 10",
+    "E4 DEFAULT 49",
+    "E4 DEFAULT 51",
+    "credential-protection §7.1",
+    "credential-protection §7.2"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "device.revoke",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "actor": "fixture-user",
+          "reason": "user"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "device.revoke",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "actor": "fixture-admin",
+          "reason": "admin"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "device.revoke",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "reason": "inactive"
+        },
+        "note": "the core's sweep: no actor"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "device.revoke",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "actor": "fixture-admin",
+          "reason": "inactive"
+        },
+        "note": "the sweep has no actor"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "device.revoke",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "actor": "fixture-user"
+        },
+        "note": "a revocation says why"
+      }
+    ]
+  }
+}

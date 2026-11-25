@@ -1,0 +1,84 @@
+{
+  "seam": "C8",
+  "name": "gap-marker",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:recordings-gap",
+  "description": "The gap marker on disk (immortality §4.3: an explicit gap marker into the recording — wall-clock span and byte count lost; never splice silently; phase-01: a forced buffer overflow produces one). Frames 3 to 6 were lost while no core held the session's data socket; where they would have been, the recording holds one frame coded 2 whose data is a short fixed-format line (x-gap-line): 32 bytes lost, from the stamp of the last output frame the recording held (frame 2) to the stamp of the last frame lost (hello_ack's last_dropped_ts), and the frame is stamped with the span's end. A classic ttyrec player prints the line, so the recording tells the truth on its own; a TSB reader knows the marker by its code and parses the line. The byte count is the handshake's first_buffered_offset, 47, less the 15 bytes the recording held. Refused: an empty code-2 frame, data that is not the line, a line stamped elsewhere than its span's end, a span that ends before it starts. In a collected run every gap frame a tap holds has its marker, with the handshake's numbers.",
+  "corpus": [
+    "immortality §4.3",
+    "decision 5.14",
+    "development-plan.md §2 v0.2 (C8: the gap marker)",
+    "phase-01 (forced buffer overflow)"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "gap-marker.ttyrec.bin",
+    "sidecar": "gap-marker.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 123456,
+        "length": 2,
+        "direction": "out",
+        "data_hex": "2420"
+      },
+      {
+        "sec": 1789000000,
+        "usec": 124456,
+        "length": 13,
+        "direction": "out",
+        "data_hex": "7461696c202d66206c6f670d0a"
+      },
+      {
+        "sec": 1789000009,
+        "usec": 123456,
+        "length": 92,
+        "marker": "gap",
+        "data_hex": "0d0a5b545342206761703a203332206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a34302e3132343435365a20746f20323032362d30392d31305430303a32363a34392e3132333435365a5d0d0a"
+      },
+      {
+        "sec": 1789000009,
+        "usec": 223456,
+        "length": 8,
+        "direction": "out",
+        "data_hex": "6c696e6520370d0a"
+      },
+      {
+        "sec": 1789000009,
+        "usec": 323456,
+        "length": 8,
+        "direction": "out",
+        "data_hex": "6c696e6520380d0a"
+      }
+    ],
+    "invalid": [
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242040f9a16a28e601000d0000007461696c202d66206c6f670d0a49f9a16a40e201000000000049f9a16ae0680300080000006c696e6520370d0a49f9a16a80ef0400080000006c696e6520380d0a",
+        "sidecar_hex": "0000020000",
+        "problem": "a gap marker carries its readable line",
+        "note": "an empty code-2 frame"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242040f9a16a28e601000d0000007461696c202d66206c6f670d0a49f9a16a40e201000d0000006761703a20333220627974657349f9a16ae0680300080000006c696e6520370d0a49f9a16a80ef0400080000006c696e6520380d0a",
+        "sidecar_hex": "0000020000",
+        "problem": "is not the gap marker's line",
+        "note": "free text, not the fixed format"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242040f9a16a28e601000d0000007461696c202d66206c6f670d0a4af9a16a40e201005c0000000d0a5b545342206761703a203332206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a34302e3132343435365a20746f20323032362d30392d31305430303a32363a34392e3132333435365a5d0d0a49f9a16ae0680300080000006c696e6520370d0a49f9a16a80ef0400080000006c696e6520380d0a",
+        "sidecar_hex": "0000020000",
+        "problem": "is stamped with its span's end",
+        "note": "stamped a second after its span ends"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242040f9a16a28e601000d0000007461696c202d66206c6f670d0a49f9a16a40e201005c0000000d0a5b545342206761703a203332206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a35342e3030303030305a20746f20323032362d30392d31305430303a32363a34392e3132333435365a5d0d0a49f9a16ae0680300080000006c696e6520370d0a49f9a16a80ef0400080000006c696e6520380d0a",
+        "sidecar_hex": "0000020000",
+        "problem": "starts after it ends",
+        "note": "a span that ends before it starts"
+      }
+    ]
+  }
+}

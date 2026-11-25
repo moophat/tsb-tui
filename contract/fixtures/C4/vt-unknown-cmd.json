@@ -1,0 +1,74 @@
+{
+  "seam": "C4",
+  "name": "vt-unknown-cmd",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "The receiver rule for an unknown command (C4 decision 3): a kind-1 object whose command the worker does not know is answered with error unknown_cmd and the connection is kept — the worker neither drops the socket nor treats the message as bad_request. After hello and hello_ack the core sends a command this tag does not define; the VT answers unknown_cmd and a later valid command on the same socket is still served. The unknown command is marked `unknown`, so self-check proves the name is genuinely not in vt-ipc. Graded by the U4 worker (owed) and the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 3",
+    "vt-ipc.schema.json core_message",
+    "vt-ipc.schema.json error"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "frobnicate"
+        },
+        "unknown": true
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "error",
+          "code": "unknown_cmd",
+          "message": "unknown command 'frobnicate'"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-1",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      }
+    ]
+  }
+}

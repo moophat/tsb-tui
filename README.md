@@ -242,7 +242,7 @@ Menu) shows every knob in force and the layer its value came from. The order of 
     tsb_tui/__main__.py         `tsb-tui`'s entry point
     packaging/                  the Windows x64 zip assembler (`packaging/README.md`) and its launchers
     bench/                      the benchmarks the orchestrator runs on the integration node (below); `bench/README.md`
-    tests/                      the suite; the shapes it stands on are the contract's (`program/contract/`)
+    tests/                      the suite; the shapes it stands on are the contract's (`contract/`)
     tests/stub_server.py        a minimal, slow, chunked C1/C2 stub (test scaffolding, not a
                                 second fixture server) — built on `tsbc._wsframe`, the same codec
                                 `tsb_contract_client` uses
@@ -288,40 +288,54 @@ rebound with `[keys.leader_map]` in the config file, by action name. Letters mov
 `[keys.leader_map]` that names one of them must be updated, and one that now collides is refused at
 start-up, naming the key.
 
+### Build from source
+
+Clone the repository and set up a Python 3.12 virtual environment:
+
+    git clone https://github.com/moophat/tsb-tui.git
+    cd tsb-tui
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -e ".[test]"
+    make lint test
+
+### Contributing
+
+Pull requests are welcome. No CI runs on a fork's pull request without a maintainer's approval; a maintainer reviews the contribution, re-pushes it to a branch of this repository where CI runs, and merges it with your authorship. Contract changes are never made in `contract/`: open an issue.
+
 ### Install from source
 
 `pyproject.toml` declares `[project.scripts] tsb-tui`, so `pipx install .` gives a working
 `tsb-tui` script — except the contract client, which PEP 508 cannot name by a relative path (see
-the comment in `pyproject.toml`). `program/` is a submodule with `update = none`, so this copy
-needs `program/` populated by `make contract-init` from the repo root first. Inject it from a
-throwaway copy of `program/contract/`, never in place — building writes `build/` and
+the comment in `pyproject.toml`). It ships in `contract/` (copied from the `program` submodule).
+Inject it from a throwaway copy of `contract/`, never in place — building writes `build/` and
 `*.egg-info` into its source — and:
 
-    make contract-init   # from the repo root: populates program/ at the pinned release
-    cp -r program/contract /tmp/contract-$$   # throwaway; pip then builds inside the copy
+    make contract-copy-check   # verifies contract/ matches contract.pin
+    cp -r contract /tmp/contract-$$   # throwaway; pip then builds inside the copy
     pipx inject tsb-tui /tmp/contract-$$
 
 `tsb-core/deploy/manage.sh up`'s post-deploy hook does exactly this, for the operator who ran `sudo`: it
-installs `tsb-tui`, injects a throwaway copy of `program/contract/` (so pip's own `build/`
-and `*.egg-info` never land in the program submodule), then runs
+installs `tsb-tui`, injects a throwaway copy of `contract/` (so pip's own `build/`
+and `*.egg-info` never land in the tracked contract tree), then runs
 `tsb-core/harness/rigs/smoke.sh` and `tsb-tui --smoke` against the instance it just brought up.
 
 ### Tests and lint
 
 The Makefile holds the repository's gates (`make` alone runs `lint`):
 
-    make contract-init   # once after a clone and in every new worktree
-    make test            # runs contract-check, then pytest tests/
+    make contract-copy-check # proves the contract copy matches contract.pin
+    make test            # runs contract-copy-check, then pytest tests/
     make lint            # ruff, import lint, docs-branch guard, leak check, engine check
 
 `make lint` runs `ruff check` when ruff is installed; it is optional outside CI and required in CI. A direct run:
 
-    pip install -e ".[test]"   # from the repo root; tests/conftest.py puts program/contract/ and
-                                 # program/contract/client/ first on sys.path and imports the
+    pip install -e ".[test]"   # from the repo root; tests/conftest.py puts contract/ and
+                                 # contract/client/ first on sys.path and imports the
                                  # contract client from there — no separate contract install needed
     pytest tests/
 
-`tests/conftest.py` needs `program/contract/` populated (`make contract-init`) and the engine at
+`tests/conftest.py` needs `contract/` populated (`make contract-copy`) and the engine at
 `vendor/libghostty-vt/libghostty-vt.so` (vendored at its PIN; `TSB_TUI_TERM_LIBRARY` may override it locally), and fails loudly on either rather than
 skipping silently. No test is skipped (the harness's rule, `tsb-core/harness/README.md` "No skips"). Every test talks to the contract's in-process
 fixture server (`tsbc._serve`) or to `tests/stub_server.py`, never to a real sshd, a node or the workstation.
@@ -337,11 +351,11 @@ fixture server (`tsbc._serve`) or to `tests/stub_server.py`, never to a real ssh
 
 ### The contract pin
 
-`program/` is a sparse submodule of tsb-program at a pinned release: `program/contract/` is the contract this client
-speaks, and the flows it drives are in [`program/contract/protocols/`](program/contract/protocols/README.md), on edge
-[SF-CO](program/contract/protocols/edges/SF-CO.md): what a surface must and may do is in each protocol's consumer lines.
-`make contract-init` populates it at the release this branch already pins (run it after a clone and in every new
-worktree); `make contract-check` verifies the pin and runs inside `make test`.
+`contract/` is the repo's copy of the contract: the flows this client drives are in
+[`contract/protocols/`](contract/protocols/README.md), on edge [SF-CO](contract/protocols/edges/SF-CO.md):
+what a surface must and may do is in each protocol's consumer lines. Maintainers update it from the sparse submodule
+`program/` (`make contract-copy`); `make contract-copy-check` verifies the copy offline, and `make contract-check`
+proves the copy against the pinned commit in `program/`.
 
 ### CI and the repository gates
 

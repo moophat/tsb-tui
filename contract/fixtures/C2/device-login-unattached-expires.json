@@ -1,0 +1,89 @@
+{
+  "seam": "C2",
+  "name": "device-login-unattached-expires",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestAnUnattachedDeviceLoginIsDroppedAtTheTicketLifetimeWithNoWorker: no worker placed, the place given back at the ticket lifetime, nothing audited"
+    }
+  ],
+  "description": "An unattached device login ends when its ticket's lifetime does, and gives its cap place back: the 202's `expires_in` (1 to 60 seconds) is both the ticket's life and the unattached bound (OPEN-R1 (a)). Nothing was placed, dialled, recorded or audited, so nothing ends on a worker, and no socket exists to send anything to. The instances are the 202 body's bounds.",
+  "corpus": [
+    "device-login steps 5, 7",
+    "decision 5.34"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/DeviceLoginPending",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "device_login_id": "fixture-device-login-1",
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "expires_in": 30
+        },
+        "note": "30 s: the core's ticket lifetime"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "device_login_id": "fixture-device-login-1",
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "expires_in": 1
+        },
+        "note": "the least"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "device_login_id": "fixture-device-login-1",
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "expires_in": 60
+        },
+        "note": "the most: a ticket is short-lived by contract"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "device_login_id": "fixture-device-login-1",
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "expires_in": 0
+        },
+        "note": "below the least"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "device_login_id": "fixture-device-login-1",
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "expires_in": 61
+        },
+        "note": "past the most"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "device_login_id": "fixture-device-login-1",
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "expires_in": 30,
+          "v": 1
+        },
+        "note": "closed: not Ticket, which carries v"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "device_login_id": "fixture-device-login-1",
+          "expires_in": 30
+        },
+        "note": "the ticket is the point"
+      }
+    ]
+  }
+}

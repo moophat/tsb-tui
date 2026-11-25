@@ -1,0 +1,282 @@
+{
+  "seam": "C3",
+  "name": "control-message-shape-v0.2",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "artifacts:control-sequence",
+  "description": "Every message v0.2 adds to a connection's control socket, valid and refused: the handshake (no claim token: SO_PEERCRED alone, immortality §6.1), the heartbeat, link state, refused input, and the version pattern — digits, a dot, digits, so a later version reads as newer, never as malformed. Every message a collection captures validates against the same shapes.",
+  "corpus": [
+    "immortality §6.1",
+    "immortality §6.4",
+    "decision 5.30",
+    "session model §11"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 0
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.3",
+          "last_committed_seq": 0
+        },
+        "note": "a later version is a version, not an error"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "v0.2",
+          "last_committed_seq": 0
+        },
+        "note": "not a version string"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2.1",
+          "last_committed_seq": 0
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 0,
+          "claim_token": "FIXTURE-NOT-A-TICKET-0000000000"
+        },
+        "note": "no claim token on the local path"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2"
+        },
+        "note": "last_committed_seq is required"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 7,
+          "first_buffered_offset": 9000,
+          "current_seq": 12,
+          "ended": false,
+          "last_dropped_ts": 1789000000123456789
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 18446744073709551615
+        },
+        "note": "a u64, beyond 2^53"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 18446744073709551616
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 0,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": false
+        },
+        "note": "first_buffered_seq is at least 1"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 1
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 0
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 0
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "live",
+          "session_id": "fixture-session-a"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "release",
+          "session_id": "fixture-session-a"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "ping",
+          "n": 1
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "ping"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "pong",
+          "n": 1
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "missing",
+          "last_ack_at": "2026-09-29T01:00:00Z"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "lost",
+          "last_ack_at": "2026-09-29T01:00:00Z"
+        },
+        "note": "missing or answering"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "input_refused",
+          "session_id": "fixture-session-a",
+          "seq": 3,
+          "reason": "replaying"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "input_refused",
+          "session_id": "fixture-session-a",
+          "seq": 3,
+          "reason": "unreachable"
+        },
+        "note": "unreachable is a C2 reason, never the worker's"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [],
+          "cause": "linger",
+          "reason": "connection_linger ran out"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "code": "no_data_peer",
+          "session_id": "fixture-session-a",
+          "message": "no data peer"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0
+        },
+        "note": "ended is always said"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "error",
+          "code": "no_data_peer",
+          "message": "no data peer"
+        },
+        "note": "a handshake error names its session"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "cause": "linger",
+          "reason": "connection_linger ran out"
+        },
+        "note": "a linger close lists no session"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "code": "internal",
+          "message": "no session named"
+        },
+        "note": "other codes need not name one"
+      }
+    ]
+  }
+}

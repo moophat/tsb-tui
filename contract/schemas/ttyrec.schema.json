@@ -1,0 +1,467 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C8 recording frame",
+  "description": "One logical recording per session, both directions in it. Ordinarily it is in two files; after quarantine it is a linked chain of pairs (terminal-output-accounting §5.3). `<session_id>.ttyrec` is a classic ttyrec file (open_decisions §5, LOCKED: 'ttyrec format'; lang-arch §8.3): each frame is the 12-byte little-endian header [sec u32][usec u32][len u32] and then len bytes of data, append-only, no file header, so any ttyrec reader can read it. `<session_id>.dir` is its sidecar: one byte per ttyrec frame, in the same order, saying what the frame is — output (0, target → core), input (1, core → target), the gap marker (2, from contract-v0.2), or the end marker (3 killed, 4 terminated), the broker marker (5, from contract-v0.3), the login prompt and login answer (6 and 7), or TSB's own prompt (8, from the device login) — the direction tag lang-arch §8.3 requires the recording to capture and the classic frame has no field for. Outside a quarantined pair, the sidecar holds exactly as many bytes as the ttyrec holds frames — at rest, and after a crash once both files are cut by the reopen rule (x-sidecar). A classic player plays both directions interleaved; to play back only what the target printed, keep the frames whose sidecar byte is 0. `recording_path` names the .ttyrec. The core writes both from the C3 frames it taps (lang-arch §8.1), with the timestamps the frames carry: output frames the worker's (immortality §4.2, LOCKED; decision 5.22), input frames the core's send-time stamp, broker-originated markers (sidecar code 5, contract-v0.3) the core's too. Two clocks stamp the two directions, so a reader never assumes timestamps increase across directions. The nanosecond → sec/usec derivation is the contract's (x-derivation below), not the first writer's. The end marker (decision 5.44; development-plan §2 v0.1): when a session ends, the core finalizes its recording with exactly one end marker, as the last frame — on a worker's death (immortality §1.1, §3: 'finalized with a termination marker'), at a timer's end, and at every other end (session model §12). It is a ttyrec frame with no data, stamped with the time the session ended, as seen by the component that observed the end — the core, or the worker for an end the core records from the worker's stamp: one that happened while the core was away, whose stamp the core writes when it returns (session model §15, the spool), one the worker named on channel_closed by: worker, or one read from the spool at a connection_lost (ipc-control) — so a player writes no bytes to the terminal for it (an unpatched upstream ttyplay 1.0.8 may print a harmless 'fread' warning on stderr for an empty frame; Debian's build does not); its sidecar code says which end it was, killed (by TSB or through it) or terminated (from outside TSB), matching the end_state of the session's session.disconnect audit event. Why it ended — the end_reason — is only on that audit event, joined by session_id. The recording of a session still live when it is read has no marker. The gap marker (immortality §4.3: an explicit gap marker into the recording — wall-clock span and byte count lost; never splice silently): when output the core had not recorded was lost, the recording holds, where the lost frames would have been, one frame coded 2 whose data is a short fixed-format line (x-gap-line) carrying the byte count and the span, so a classic ttyrec player prints it and the recording tells the truth on its own; a TSB reader knows it by its code and parses the line by x-gap-line, and never counts it as payload. It stands before the first frame that survived the loss — or, for a loss the spool reports (spool-entry.schema.json), before the end marker — stamped with the span's end. The broker marker (sidecar code 5, contract-v0.3; 5.46: whatever is chosen is recorded as broker-originated): every answered stale-grid choice is recorded as broker-originated — for ctrl_l the marker precedes the code-1 input frame carrying 0x0C (the core records an input frame before it sends it); for wiggle the core sends a resize pair, which ttyrec has no frame for; for continue and fresh_session nothing is sent — and either way the recording holds one frame coded 5 whose data is the fixed pure-ASCII line x-broker-line, stamped on the core's input clock. Who chose is on the audit event only (session.stale_choice). The login frames (sidecar codes 6 and 7, from the release that adds SessionCreateRequest.login; the deployment's recording.login_input knob, off by default): when the knob is on, the username and the password of a login supplied on session create are recorded at the head of the session's recording, before its first output frame, as two code-7 frames whose data is the fixed line x-login-line, stamped on the core's input clock; with the knob off no byte of the login is in the recording. Code 6 is the same line for text the device sent while the user logged in, which a supplied login never has (a supplied login asks nothing); a device login's frames and their order are x-sidecar's rule for codes 6, 7 and 8. A device login's own prompt text, from the release that adds it (Release B), is code 8: with the same two knobs on and the operator's consent given, the head holds one code-8 frame for each prompt TSB itself shows, `login as:` and, for a password round, `Password:`, whose data is the fixed line x-own-prompt-line (the form of the login line, with a tag of its own), so no code-6 line carries TSB's words and no code-7 line is a prompt; a supplied login, which is never asked at a prompt, has none A classic player prints them as lines of their own; a TSB reader knows them by their code and never by their text. The payload-identical rule and the monotonic rule are x-compare. This schema describes the decoded form of one frame with its sidecar code, as the fixtures use it. Sidecar code 9, terminal_incomplete, declares an unknown terminal remainder before the original end, distinct from counted overflow; x-terminal-incomplete-line and terminal-output-accounting.md govern it. No frame is added to an already ended recording.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/data_frame"
+    },
+    {
+      "$ref": "#/$defs/end_marker"
+    },
+    {
+      "$ref": "#/$defs/gap_marker"
+    },
+    {
+      "$ref": "#/$defs/broker_marker"
+    },
+    {
+      "$ref": "#/$defs/login_prompt_marker"
+    },
+    {
+      "$ref": "#/$defs/login_answer_marker"
+    },
+    {
+      "$ref": "#/$defs/own_prompt_marker"
+    },
+    {
+      "$ref": "#/$defs/terminal_incomplete_marker"
+    }
+  ],
+  "$defs": {
+    "sec": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "usec": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 999999
+    },
+    "data_frame": {
+      "type": "object",
+      "required": [
+        "sec",
+        "usec",
+        "length",
+        "direction",
+        "data_hex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sec": {
+          "$ref": "#/$defs/sec"
+        },
+        "usec": {
+          "$ref": "#/$defs/usec"
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "direction": {
+          "enum": [
+            "out",
+            "in"
+          ],
+          "description": "The frame's sidecar code, spelled out: out = 0 (target → core), in = 1 (core → target)."
+        },
+        "data_hex": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
+        }
+      }
+    },
+    "end_marker": {
+      "type": "object",
+      "required": [
+        "sec",
+        "usec",
+        "length",
+        "end",
+        "data_hex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sec": {
+          "$ref": "#/$defs/sec"
+        },
+        "usec": {
+          "$ref": "#/$defs/usec"
+        },
+        "length": {
+          "const": 0,
+          "description": "No data: a player writes no bytes to the terminal for the marker."
+        },
+        "end": {
+          "enum": [
+            "killed",
+            "terminated"
+          ],
+          "description": "The frame's sidecar code, spelled out: killed = 3, terminated = 4 — the session's end_state (Storage §6, §8.2). Never the reason."
+        },
+        "data_hex": {
+          "const": ""
+        }
+      }
+    },
+    "gap_marker": {
+      "description": "Sidecar code 2: output was lost here. data is the line x-gap-line gives, stamped with the span's end.",
+      "type": "object",
+      "required": [
+        "sec",
+        "usec",
+        "length",
+        "marker",
+        "data_hex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sec": {
+          "$ref": "#/$defs/sec"
+        },
+        "usec": {
+          "$ref": "#/$defs/usec"
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "marker": {
+          "const": "gap",
+          "description": "The frame's sidecar code, spelled out: gap = 2."
+        },
+        "data_hex": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
+        }
+      }
+    },
+    "broker_marker": {
+      "description": "Sidecar code 5, from contract-v0.3: a stale-grid choice was answered and the core acted on it for the session, and the recording marks it broker-originated (5.46: whatever is chosen is recorded as broker-originated). data is the line x-broker-line gives, carrying the stale-grid choice that was made, stamped on the core's input clock. For ctrl_l the marker precedes the code-1 input frame carrying 0x0C, because the core records an input frame before it sends it; for wiggle the core sends a resize pair, which ttyrec has no frame for; for continue and fresh_session nothing is sent; either way the choice is recorded. Who chose is on the session.stale_choice audit event, never here. A v0.2 reader refuses code 5 as v0.1 refused 2.",
+      "type": "object",
+      "required": [
+        "sec",
+        "usec",
+        "length",
+        "marker",
+        "data_hex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sec": {
+          "$ref": "#/$defs/sec"
+        },
+        "usec": {
+          "$ref": "#/$defs/usec"
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "marker": {
+          "const": "broker",
+          "description": "The frame's sidecar code, spelled out: broker = 5."
+        },
+        "data_hex": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "length": {
+              "const": 57
+            },
+            "data_hex": {
+              "const": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d20776967676c652063686f73656e5d0d0a"
+            }
+          }
+        },
+        {
+          "properties": {
+            "length": {
+              "const": 57
+            },
+            "data_hex": {
+              "const": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d206374726c5f6c2063686f73656e5d0d0a"
+            }
+          }
+        },
+        {
+          "properties": {
+            "length": {
+              "const": 59
+            },
+            "data_hex": {
+              "const": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d20636f6e74696e75652063686f73656e5d0d0a"
+            }
+          }
+        },
+        {
+          "properties": {
+            "length": {
+              "const": 64
+            },
+            "data_hex": {
+              "const": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d2066726573685f73657373696f6e2063686f73656e5d0d0a"
+            }
+          }
+        }
+      ]
+    },
+    "login_prompt_marker": {
+      "description": "Sidecar code 6, from the release that adds SessionCreateRequest.login: text the device sent while the user logged in before the session started (a banner, a round's name or instruction, the text of a prompt). Marked as login input, not target output and not typed session input. data is the line x-login-line gives, stamped on the core's input clock when the core received it. A login supplied on session create asks nothing, so a recording of one holds no code-6 frame; a device login's recording holds one for each piece of device text, in the order its login produced them (x-sidecar's rule for codes 6 and 7), a prompt with empty text as the tag alone. A code-6 frame is text the device sent; TSB's own prompt text is code 8 (x-own-prompt-line), so no code-6 line carries TSB's words. Written only with policy.yaml recording.login_input true. A reader of an earlier tag refuses it, as a v0.2 reader refused code 5.",
+      "type": "object",
+      "required": [
+        "sec",
+        "usec",
+        "length",
+        "marker",
+        "data_hex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sec": {
+          "$ref": "#/$defs/sec"
+        },
+        "usec": {
+          "$ref": "#/$defs/usec"
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 24,
+          "maximum": 4294967295
+        },
+        "marker": {
+          "const": "login_prompt",
+          "description": "The frame's sidecar code, spelled out: login_prompt = 6."
+        },
+        "data_hex": {
+          "type": "string",
+          "pattern": "^0d0a5b5453423a206c6f67696e2070726f6d70745d20([0-9a-f]{2})*0d0a$",
+          "description": "The line x-login-line gives, in hex: this marker's tag, the escaped text, CR LF. The pattern fixes the tag and the line end; the escape rule over the text is x-login-line's, which the codec enforces."
+        }
+      }
+    },
+    "login_answer_marker": {
+      "description": "Sidecar code 7, from the release that adds SessionCreateRequest.login: what was sent into SSH's authentication, at the protocol layer and never through the PTY. For a supplied login, two frames at the head of the recording, before the first output frame, in order: the username, then the password. Marked as login input, so a replay and the audit can tell it from the typed input of code 1. data is the line x-login-line gives, stamped on the core's input clock when the core received each piece. Written only with policy.yaml recording.login_input true, and only when the session is recorded at all; the audit event session.connect says so (detail.login_recorded). A reader of an earlier tag refuses it, as a v0.2 reader refused code 5. A device login's answers are code-7 frames too, each after its own prompt's frame: the user name after TSB's code-8 `login as:`, a keyboard-interactive answer after the device's code-6 prompt, a password round's after TSB's code-8 `Password:`.",
+      "type": "object",
+      "required": [
+        "sec",
+        "usec",
+        "length",
+        "marker",
+        "data_hex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sec": {
+          "$ref": "#/$defs/sec"
+        },
+        "usec": {
+          "$ref": "#/$defs/usec"
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 24,
+          "maximum": 4294967295
+        },
+        "marker": {
+          "const": "login_answer",
+          "description": "The frame's sidecar code, spelled out: login_answer = 7."
+        },
+        "data_hex": {
+          "type": "string",
+          "pattern": "^0d0a5b5453423a206c6f67696e20616e737765725d20([0-9a-f]{2})*0d0a$",
+          "description": "The line x-login-line gives, in hex: this marker's tag, the escaped text, CR LF. The pattern fixes the tag and the line end; the escape rule over the text is x-login-line's, which the codec enforces."
+        }
+      }
+    },
+    "own_prompt_marker": {
+      "description": "Sidecar code 8, from the release that adds the device login (Release B): TSB's own prompt text, the two lines a device login's user is asked by TSB itself and not by the device, `login as:` before the user name and `Password:` before a password round's answer. Marked as login input, so a replay and the audit can tell it from the device's own text (code 6), from the answers (code 7), from target output and from typed input. data is the line x-own-prompt-line gives, stamped on the core's input clock when the core showed the prompt. It stands in the head of the recording with the other login frames, before the first frame of any other code, and is written only where they are: with policy.yaml recording.login_input and recording.enabled on and the operator's consent given (recording_acknowledged true on the create). A supplied login is never asked at a prompt and has no code-8 frame; the host-key decision is audited, not recorded. It carries no secret: its two texts are fixed. A reader of an earlier tag refuses it, as a v0.2 reader refused code 5.",
+      "type": "object",
+      "required": [
+        "sec",
+        "usec",
+        "length",
+        "marker",
+        "data_hex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sec": {
+          "$ref": "#/$defs/sec"
+        },
+        "usec": {
+          "$ref": "#/$defs/usec"
+        },
+        "length": {
+          "const": 31
+        },
+        "marker": {
+          "const": "own_prompt",
+          "description": "The frame's sidecar code, spelled out: own_prompt = 8."
+        },
+        "data_hex": {
+          "type": "string",
+          "pattern": "^0d0a5b5453423a206f776e2070726f6d70745d20(6c6f67696e2061733a|50617373776f72643a)0d0a$",
+          "description": "The line x-own-prompt-line gives, in hex: the tag, one of its two fixed texts, CR LF."
+        }
+      }
+    },
+    "terminal_incomplete_marker": {
+      "type": "object",
+      "required": [
+        "sec",
+        "usec",
+        "length",
+        "marker",
+        "data_hex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sec": {
+          "$ref": "#/$defs/sec"
+        },
+        "usec": {
+          "$ref": "#/$defs/usec"
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 167
+        },
+        "marker": {
+          "const": "terminal_incomplete"
+        },
+        "data_hex": {
+          "type": "string",
+          "pattern": "^0d0a([0-9a-f]{2})+0d0a$"
+        }
+      },
+      "description": "Code 9. Codec checks full x-terminal-incomplete-line grammar, ranges, header derivation and length equals decoded bytes; never payload or counted loss. C8/terminal-incomplete-reader-refusal, provider codec tests owed."
+    }
+  },
+  "x-binary-layout": {
+    "byte_order": "little-endian",
+    "header_bytes": 12,
+    "fields": [
+      {
+        "name": "sec",
+        "offset": 0,
+        "type": "u32",
+        "note": "Seconds since the Unix epoch."
+      },
+      {
+        "name": "usec",
+        "offset": 4,
+        "type": "u32",
+        "note": "Microseconds within the second, 0 to 999999."
+      },
+      {
+        "name": "length",
+        "offset": 8,
+        "type": "u32",
+        "note": "Data bytes that follow the header; 0 only for an end marker."
+      }
+    ],
+    "payload": "`length` bytes of data: exactly the C3 frame's payload for a data frame, the x-gap-line line for a gap marker, none for an end marker."
+  },
+  "x-sidecar": {
+    "file": "<session_id>.dir, beside <session_id>.ttyrec",
+    "layout": "one byte per ttyrec frame, in the same order; the file's length equals the number of frames",
+    "values": {
+      "0": "out",
+      "1": "in",
+      "2": "gap",
+      "3": "end:killed",
+      "4": "end:terminated",
+      "5": "broker",
+      "6": "login_prompt",
+      "7": "login_answer",
+      "8": "own_prompt",
+      "9": "terminal_incomplete"
+    },
+    "reserved": [],
+    "rules": [
+      "0 and 1 mark data frames: length at least 1.",
+      "3 and 4 mark the end marker: length 0; at most one per recording, and it is the last frame; present exactly when the session has ended.",
+      "2 marks the gap marker (from contract-v0.2; held at v0.1, so adding it renumbered nothing): its data is exactly the x-gap-line line, and the frame is stamped with the span's end. A v0.1 reader refuses it, as it refuses every code it does not know.",
+      "5 marks the broker marker (from contract-v0.3): a stale-grid choice was answered and the core acted on it for the session (5.46: whatever is chosen is recorded as broker-originated), and its data is exactly the x-broker-line line, stamped on the core's input clock. For a stale-grid ctrl_l it precedes the code-1 input frame carrying 0x0C; for wiggle the core sends a resize pair, which ttyrec has no frame for; for continue and fresh_session nothing is sent; either way the choice is recorded. A v0.2 reader refuses it, as it refuses every code it does not know.",
+      "6 marks a login prompt and 7 a login answer (from the release that adds SessionCreateRequest.login): login input, text the device sent and what was sent into SSH's authentication before the session started. The data is exactly the x-login-line line, with the tag of its code (a code-6 frame carries the prompt tag, a code-7 frame the answer tag), stamped on the core's input clock when the core received it. They stand at the head of the recording, before the first output frame, and a recording holds them only when policy.yaml recording.login_input was true for its session. A supplied login is two code-7 frames, the username then the password, and no code-6 frame; a device login's frames, with policy.yaml recording.login_input and recording.enabled on at start and recording_acknowledged true on the create, stand at the head in this order, each stamped on the core's input clock when the core received it, the clock never decreasing: (1) code 8, TSB's own `login as:`, then code 7, the user name typed at it, both stamped when the create arrived; (2) code 6, the banner's text, if one came; (3) for each keyboard-interactive round, in order: code 6 for `name`, then code 6 for `instruction`, each when not empty, then, interleaved, code 6 for a prompt's text and code 7 for its answer; a prompt with empty text is written as the tag alone, so every answer follows its own prompt's frame, and a prompt written after an earlier answer of its round carries that answer's stamp, since the clock never decreases; (4) for a password round, code 8, TSB's own `Password:`, then code 7, the answer: the code-8 frame, and never a code-6 one, is a password round's prompt, since a `Password:` the device sent is code 6 and never TSB's; (5) the host-key decision is not recorded: it is audited. A code-6 frame is text the device sent and a code-7 frame an answer; TSB's own prompt text is code 8, so no code-6 line can carry TSB's words, and a keyboard-interactive round, whose prompts are the device's own, has no code-8 frame; a supplied login has none either. A reader of an earlier tag refuses them, as a v0.2 reader refuses code 5. 8 marks TSB's own prompt (from the release that adds the device login, Release B): its data is exactly the x-own-prompt-line line, stamped on the core's input clock when the core showed the prompt, and it stands in the head with codes 6 and 7, before the first frame of any other code, written only where they are (both recording knobs on and the operator's consent given). A reader of a tag before it refuses it, as a v0.2 reader refuses code 5.",
+      "Any other value is not a recording of this tag.",
+      "9 marks terminal_incomplete: x-terminal-incomplete-line, only before the sole original end, never after it. Adds no seq/payload byte; older readers refuse unknown 9. C8/terminal-incomplete-before-end, C8/terminal-incomplete-reader-refusal (provider tests owed)."
+    ],
+    "write_order": "For every frame the writer appends the frame to the .ttyrec first, then its code to the .dir.",
+    "reopen": "A pair quarantined by a recording or directory sync failure is never cut or reopened for writing; its continuation follows terminal-output-accounting §5.3. Before appending to an existing recording — after a crash, or when a restarted core resumes it — the writer cuts both files to the last frame both hold: the .ttyrec to the end of its last complete frame that has a code, the .dir to that many codes. It never pads a missing code, which would shift every later one. That is the only cut: no complete frame is ever cut — no input frame, broker marker, gap marker, end marker or output frame — and never back to the commit point (open_decisions §5, LOCKED: no byte is dropped from the recording stream; Contract §13). A non-quarantined recording read while its session is live may hold a torn or uncoded last frame; a reader cuts it the same way, and a harness collects a live recording only cut by this rule. A quarantined pair is never cut; its suffix remains unconfirmed evidence. From contract-v0.2, per direction: output — after a reattach no output payload is recorded twice or lost: the handshake replays from the next seq after the core's last_committed_seq (ipc-control hello), which the core first brings to the recording's end (C6 continuity-state top), never above P for a pair quarantined by a recording sync failure (terminal-output-accounting §5.3). The core finds that end by walking the recording forward from its commit point (C6 recording_committed_offset, with recording_last_seq_out, out_bytes_committed and recording_last_seq_in counting the frames before it): each code-0 frame is the next output seq and adds its length to the output bytes; each code-1 frame is the next input seq; a code-5, code-6, code-7 or code-8 frame counts for neither; a code-3 or code-4 frame is the end marker, after which the recording takes nothing more. A gap marker a handshake writes is a commit point: the core appends no frame after it until the write that commits it lands, an end marker excepted. So the walk meets gap markers past the commit point only as one or more markers at the end of the recording (each core died before that write) or right before an end marker. From E2 each adds its byte count (x-gap-line) to the output bytes and gets no seq, and the walk's last output seq stays the frame before them; an E1 core counted none of them and declared that loss again. A grid the VT worker kept may already have applied the gap frame of such a marker (the core records a frame before it feeds it), so it stands past the walk's last output seq: the realign does not snapshot that grid, but restores the stored snapshot over it and re-feeds the recording to that seq, so the snapshot and the commit point name the same frame. The handshake that follows re-sends the gap frame, which gives the marker its seq, and the gap's hold commits it (C6 continuity-state top; reattach-handshake). The recording's end — the walk's last output seq, its output bytes and its last input seq — is what the core holds in memory and keeps as it records; it persists a position only as the commit point (C6). Input — the core records an input frame before it sends it, so every keystroke that reached the broker is in the recording even when a kill lands between the two (Contract §13: the broker records what actually reached it). A complete code-9 marker is preserved; code 9 adds neither seq nor bytes. It never repairs a completed end. C8/terminal-incomplete-crash-reopen (U2/U11 owed)."
+  },
+  "x-derivation": {
+    "sec": "timestamp // 1000000000",
+    "usec": "(timestamp % 1000000000) // 1000 — truncated, never rounded, so a frame never lands in the next microsecond or second",
+    "direction": "bit 0 of the C3 envelope's flags, as the sidecar code (0 or 1)",
+    "data": "the C3 envelope's payload",
+    "end marker": "the time the session ended, as seen by the component that observed the end (the core, or the worker for a spooled end), derived the same way; sidecar code 3 for end_state killed, 4 for terminated",
+    "gap marker": "stamped with the span's end — the gap frame's timestamp (hello_ack last_dropped_ts), or the spool's last_out_ts — derived the same way; sidecar code 2; data the x-gap-line line",
+    "broker marker": "stamped on the core's input clock, the same clock and derivation as an input frame; sidecar code 5; data the x-broker-line line",
+    "limit": "a timestamp whose sec exceeds u32 (after 2106-02-07T06:28:15Z) cannot be written at this tag",
+    "login frames": "stamped on the core's input clock, the same clock and derivation as an input frame, when the core received each piece; sidecar code 6 for a prompt, 7 for an answer; data the x-login-line line",
+    "terminal incomplete": "Core observation T: sec=T//1000000000, usec=(T%1000000000)//1000; code 9; x-terminal-incomplete-line; not the original end timestamp."
+  },
+  "x-gap-line": {
+    "format": "CR LF [TSB gap: <lost> bytes lost from <start> to <end>] CR LF — ASCII, exactly this, with no other byte",
+    "pattern": "^\\r\\n\\[TSB gap: ([1-9][0-9]{0,19}) bytes lost from ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z) to ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z)\\]\\r\\n$",
+    "lost": "decimal, at least 1: the output payload bytes lost — hello_ack's first_buffered_offset, or the spool's out_bytes, minus the output bytes the recording held before the marker (code-0 payload and earlier markers' counts)",
+    "start": "the span's start, exclusive: the stamp of the last output frame or gap marker the recording held before this marker (the session's created_at when it held neither), as sec/usec in RFC 3339 UTC with six fractional digits. Starting at an earlier marker's stamp keeps two markers' spans from overlapping. No collected file holds created_at, so a collection grades a first span's start between the start of the core run that opened the session and the ts of its session.connect audit event.",
+    "end": "the span's end, inclusive: the stamp of the last frame lost — the gap frame's timestamp, or the spool's last_out_ts — derived to usec by truncation, in the same form; the frame's own sec/usec are this",
+    "parse": "A TSB reader knows the marker by its code, 2, never by its text, and reads the three fields with the pattern; data that does not match is not a recording of this tag. The leading and trailing CR LF put the line on its own row when a classic player prints it."
+  },
+  "x-broker-line": {
+    "format": "CR LF [TSB: stale screen after lost output - <choice> chosen] CR LF — pure ASCII, exactly this but for the choice, with no other byte. The separator is a plain ASCII hyphen-minus (0x2D), never an em dash (0x2014). <choice> is one of the four stale-grid choices, spelled wiggle, ctrl_l, continue, fresh_session — underscores, one spelling everywhere (C2, the audit, the recording).",
+    "pattern": "^\\r\\n\\[TSB: stale screen after lost output - (wiggle|ctrl_l|continue|fresh_session) chosen\\]\\r\\n$",
+    "reader": "A TSB reader knows the marker by its code, 5, never by its text, and reads the choice with the pattern; data that does not match is not a recording of this tag. The leading and trailing CR LF put the line on its own row when a classic player prints it.",
+    "stamp": "the core's input clock, the same clock an input frame carries: a stale-grid choice was answered and the core acted on it for the session, and this marker records that it did.",
+    "graded_by": "the codec (tsbc/_binfmt.py) writes and parses exactly this line, and the artefact check recordings-broker-marker proves a collected forced gap + ctrl_l answer shows the marker and the 0x0C input frame."
+  },
+  "x-login-line": {
+    "format": "CR LF [TSB: login prompt] <text> CR LF for a code-6 frame, CR LF [TSB: login answer] <text> CR LF for a code-7 frame — UTF-8, one printable row. The tag is fixed ASCII with one space after the closing bracket, and <text> follows it directly (empty text leaves the space). A code-6 frame carries the prompt tag only, a code-7 frame the answer tag only.",
+    "escape": "<text> is the value's UTF-8 encoding with exactly two substitutions, made character by character: a backslash (U+005C) becomes the two characters \\\\ (backslash backslash), and every C0 control (U+0000 to U+001F), DEL (U+007F) and C1 control (U+0080 to U+009F) becomes the four characters \\xNN, NN being the two lowercase hex digits of the character's code point (\\x1b for ESC, \\x0a for LF, \\x85 for U+0085). No other character changes. So the line holds no control for a player to act on, no CR or LF before its own CR LF, and no raw C1; it is one printable row, however hostile the value. The escape is the only encoding, so two equal values have equal lines (they are compared line for line): a reader refuses \\x41 (a character that needs no escape), uppercase hex digits, any other backslash sequence, a raw control, a raw C1 character, and bytes that are not UTF-8. A value that is not valid Unicode text (a lone surrogate) has no line and is never written.",
+    "pattern": "^\\r\\n\\[TSB: login (prompt|answer)\\] ([^\\x00-\\x1f\\x7f-\\x9f\\\\]|\\\\x([01][0-9a-f]|7f|[89][0-9a-f])|\\\\\\\\)*\\r\\n$",
+    "pattern_applies_to": "the data decoded as UTF-8: the pattern fixes the tag, the line end and the escape alphabet over the decoded characters, and the codec decides UTF-8 validity before it applies it.",
+    "reader": "A TSB reader knows the frame by its code, 6 or 7, never by its text; it reads the text by undoing the escape (\\\\ to a backslash, \\xNN to the character with that code point), and data that does not match is not a recording of this tag. The leading and trailing CR LF put the line on its own row when a classic player prints it.",
+    "stamp": "the core's input clock, when the core received each piece (see x-derivation).",
+    "graded_by": "the codec (tsbc/_binfmt.py) writes and parses exactly this line, and self-check proves its own lines match the published pattern, parse back to the value, and that lines breaking the escape rule match neither."
+  },
+  "x-own-prompt-line": {
+    "format": "CR LF [TSB: own prompt] <text> CR LF for a code-8 frame, <text> being exactly one of the two texts below — ASCII, one printable row. The tag is fixed ASCII with one space after the closing bracket, the form of x-login-line with a tag of its own.",
+    "texts": [
+      "login as:",
+      "Password:"
+    ],
+    "text": "`login as:` is the prompt TSB shows for the user name of a device login, `Password:` the prompt it shows for a password round. Each is the whole text, with no trailing space and nothing after it. They are the only two: a code-8 frame holding any other text, or the tag of code 6 or 7, is not a recording of this tag. The line has no escape, because its text is never a value.",
+    "pattern": "^\\r\\n\\[TSB: own prompt\\] (login as:|Password:)\\r\\n$",
+    "pattern_applies_to": "the data decoded as ASCII: the pattern fixes the tag, the two texts and the line end.",
+    "reader": "A TSB reader knows the frame by its code, 8, never by its text, and reads the text by matching one of the two; data that does not match is not a recording of this tag. The leading and trailing CR LF put the line on its own row when a classic player prints it.",
+    "when": "Only where the login frames are: policy.yaml recording.login_input and recording.enabled on, and recording_acknowledged true on the create, in a device login's head, before the first frame of any other code. A supplied login has none (it is never asked at a prompt). No secret is in it, so a collection keeps it.",
+    "stamp": "the core's input clock, when the core showed the prompt (see x-derivation).",
+    "graded_by": "the codec (tsbc/_binfmt.py) writes and parses exactly this line, and self-check proves its own lines match the published pattern, parse back, and that other texts and tags match neither."
+  },
+  "x-compare": {
+    "payload-identical": "For a continuation chain, linearize trusted prefixes through P and successors, excluding every unconfirmed suffix from effective output; compare the existing marker lines across those effective chains. Input is never replayed, so input sent between a quarantined pair's P and the switch exists only in that pair's unconfirmed suffix, and a chain lacking it proves nothing (§5.3: never treated as equal or absent). Over a chain with a quarantined predecessor its trusted input is a list of segments in order: each pair's input at or below its P (for a quarantined pair) or whole (for an unquarantined last pair), the continuation's from its switch; a chain whose last pair is quarantined with no continuation (a held session) ends in a trailing gap, because its input after P is unknown. Input comparison, by case: when neither side has a quarantine gap it is `equal` if the input payloads are identical and `different` otherwise; when exactly one side has gaps its trusted segments are placed in order in the other side's complete input (the first a prefix, the last a suffix only when it has no trailing gap, the middle ones in order: greedy leftmost placement decides it), `different` when they cannot be, else `unconfirmed`; when both sides have gaps the result is `different` only when their first segments disagree as prefixes (neither is a prefix of the other), or when neither side has a trailing gap and their last segments disagree as suffixes (neither is a suffix of the other); otherwise `unconfirmed`, because every middle segment and any segment before a trailing gap can sit in a gap. Never `equal` when either side has a gap; equal requires single unquarantined pairs. Payloads compare concatenated, as `payload_identical.in` does. Comparison and export include linked audit facts; a missing link or predecessor quarantine notice is indeterminate. Per direction, the concatenated payloads of the data frames (codes 0 and 1) of two recordings of one session — an uninterrupted run and one across a core restart — are byte-equal (phase-01: payload-identical to an uninterrupted run). Frame boundaries may differ; the end markers (codes 3, 4) are left out, and the gap markers (code 2) must be the same, line for line, for output to be identical: a recording with a gap marker is never payload-identical to one without, however its payload reads — the gap is declared, not closed. The broker markers (code 5) are left out of the payload: a broker-originated send is not target output, and it is compared line for line like a gap marker when two recordings' output is compared. The login frames (codes 6 and 7) are left out of the payload the same way: a login is not session input, and when two recordings are compared their login frames are compared line for line, prompts with prompts and answers with answers, in order. The own-prompt frames (code 8) are left out of the payload the same way and compared line for line, in order. Code 9 is excluded from payload and compared line-for-line in order under out, not in; absent/different notice makes out unequal. Comparison/export includes linked recording.output_incomplete facts. C8/terminal-incomplete-payload-identical (U11 owed).",
+    "monotonic": "For a continuation chain carry each direction clock across trusted prefixes and successors; unconfirmed suffixes do not set or reset the effective output clock and their clock validity is unconfirmed. Within one direction timestamps never decrease, across the restart included; the gap marker and the broker marker both belong to the clock they are stamped on — the gap marker to the output clock, the broker marker and the login frames to the input clock. Each stamp keeps its owner: the worker keeps each session's output stamps non-decreasing at the source — a clock that steps back stamps the previous value, never a smaller one — and the core never alters an output stamp (immortality §4.2; decision 5.22); the core keeps its own input stamps non-decreasing the same way, and stamps a broker marker on that same input clock. Across directions nothing is assumed: two clocks stamp them. The own-prompt frames (code 8) belong to the input clock like the login frames. Code 9 has clock=None, compared against neither in nor out and never resetting their accumulators; its core observation is separate. C8/terminal-incomplete-clock (codec; U11/U5 owed).",
+    "graded_by": "U11's differ implements payload-identical; tsbc checks monotonic in every collected recording (recordings-monotonic) and in the taps (frames-monotonic)."
+  },
+  "x-terminal-incomplete-line": {
+    "format": "CR LF [TSB: output incomplete after seq <L> bytes <B>; reason <R>; observed_ns <T>; remaining unknown] CR LF; exact ASCII spaces/punctuation. Canonical decimal L/B u64; T 1..4294967295999999999 ns. Unknown reason/range invalid.",
+    "pattern": "^\\r\\n\\[TSB: output incomplete after seq (0|[1-9][0-9]{0,19}) bytes (0|[1-9][0-9]{0,19}); reason (core_wait_timeout|core_stop|worker_drain_timeout|worker_read_error); observed_ns ([1-9][0-9]{0,18}); remaining unknown\\]\\r\\n$",
+    "baseline": "L/B are preserved recording walk seq and code-0 plus counted code-2 bytes; no upper count/output timestamp. Gap without committed seq invents no seq.",
+    "reason": "Closed enum core_wait_timeout, core_stop, worker_drain_timeout, worker_read_error. At writing: core_stop first, else validated worker timeout/error, else core_wait_timeout.",
+    "reader": "Identify by code 9, not text; unknown is unconfirmed, not zero/EOF. Header derives from T; length equals decoded bytes; 100..167. C8/terminal-incomplete-reader-refusal (codec), U5/U11 tests owed.",
+    "example": "\r\n[TSB: output incomplete after seq 42 bytes 8192; reason core_wait_timeout; observed_ns 1794708000123456789; remaining unknown]\r\n"
+  }
+}

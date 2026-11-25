@@ -1,0 +1,102 @@
+{
+  "seam": "C6",
+  "name": "users-record",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: E4b account management provider tests; Users bucket keyed by username: legacy fields preserved, E4b disabled flag emitted. Disabled hash empty; new enabled hashes are argon2id PHC strings. Provider verifies hashing, empty-hash old-core refusal and key equals username; shape uses a synthetic non-authenticating opaque hash."
+    }
+  ],
+  "description": "Users bucket keyed by username: legacy fields preserved, E4b disabled flag emitted. Disabled hash empty; new enabled hashes are argon2id PHC strings. Provider verifies hashing, empty-hash old-core refusal and key equals username; shape uses a synthetic non-authenticating opaque hash.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "schema": "schemas/users.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "username": "fixture-account",
+          "password_hash": "FIXTURE-NOT-A-PASSWORD",
+          "created_at": "2026-11-13T09:00:00Z",
+          "owner_id": "",
+          "tenant_id": "",
+          "disabled": false
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "username": "fixture-account",
+          "password_hash": "",
+          "created_at": "2026-11-13T09:00:00Z",
+          "owner_id": "",
+          "tenant_id": "",
+          "disabled": true
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "username": "fixture-account",
+          "password_hash": "FIXTURE-NOT-A-PASSWORD",
+          "created_at": "2026-11-13T09:00:00Z",
+          "owner_id": "",
+          "tenant_id": "",
+          "disabled": true
+        },
+        "note": "disabled can never retain a usable hash"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "username": "fixture-account",
+          "password_hash": "",
+          "created_at": "2026-11-13T09:00:00Z",
+          "owner_id": "",
+          "tenant_id": "",
+          "disabled": false
+        },
+        "note": "enabled needs hash"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "username": "fixture-account",
+          "password_hash": "FIXTURE-NOT-A-PASSWORD",
+          "created_at": "2026-11-13T09:00:00Z",
+          "owner_id": "",
+          "tenant_id": "",
+          "disabled": "false"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "username": "fixture-account",
+          "password_hash": "FIXTURE-NOT-A-PASSWORD",
+          "created_at": "2026-11-13T09:00:00Z",
+          "owner_id": "",
+          "tenant_id": "",
+          "disabled": false,
+          "password": "FIXTURE-NOT-A-PASSWORD"
+        },
+        "note": ""
+      }
+    ]
+  }
+}

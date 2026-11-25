@@ -1,0 +1,78 @@
+{
+  "seam": "C7",
+  "name": "revoke-switch-next-connection",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "Under devices.revocation next_connection a revocation leaves the device's logins up, and each one's next create on a new connection is refused 403 device_not_trusted at the allowlist check; a reuse still opens (it sends no credential).",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection §5.2",
+    "credential-protection §5.3",
+    "credential-protection §7.2",
+    "device-trust",
+    "decision 5.40c",
+    "E4 Q8 (a)",
+    "E4 D5",
+    "E4 DEFAULT 48",
+    "E4 DEFAULT 49"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/devices/FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "as": "fresh",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 403,
+          "example": {
+            "error": {
+              "code": "device_not_trusted",
+              "message": "this device is not trusted"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

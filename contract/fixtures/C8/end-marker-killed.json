@@ -1,0 +1,114 @@
+{
+  "seam": "C8",
+  "name": "end-marker-killed",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:recordings-end-marker-killed",
+  "description": "An ended session's recording closes with exactly one end marker, as its last frame (decision 5.44; development-plan §2 v0.1): a ttyrec frame with no data — so a player writes no bytes to the terminal for it (an unpatched upstream ttyplay 1.0.8 may print a harmless 'fread' warning on stderr; Debian's build does not) — stamped with the time the session ended, as seen by the component that observed the end (the core, or the worker for an end spooled while the core was away, session model §15), whose sidecar code says which end it was. 3 is killed, the end by TSB or through it: a timer (idle, unattended, orphan), the owner, an admin. 4 is terminated, the end from outside TSB (end-marker-terminated). Why the session ended is the audit's end_reason, joined by session_id, never the recording's. The invalid cases are recordings a reader must refuse: a frame after the marker, two markers, a marker with data, a sidecar code this tag does not define, a code-2 frame that is not a gap marker's readable line, an empty data frame, a sidecar that does not count the frames. In a collected run, every recording whose session the audit ended ends in the marker of that end_state, a recording that ends in one has that end event, and a live session's recording has none; at least one recording of a killed session must be collected. A session the audit ends twice fails: a session ends once.",
+  "corpus": [
+    "immortality §1.1",
+    "immortality §3",
+    "session model §12",
+    "Storage §6",
+    "decision 5.44",
+    "decision 5.45",
+    "development-plan.md §2 v0.1 (C8: the termination marker)",
+    "lang-arch §8.3",
+    "session model §15"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "end-marker-killed.ttyrec.bin",
+    "sidecar": "end-marker-killed.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 123456,
+        "length": 2,
+        "direction": "out",
+        "data_hex": "2420"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 123456,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "65"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 123556,
+        "length": 1,
+        "direction": "out",
+        "data_hex": "65"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 323456,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "0d"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 323506,
+        "length": 4,
+        "direction": "out",
+        "data_hex": "0d0a2420"
+      },
+      {
+        "sec": 1789000005,
+        "usec": 123456,
+        "length": 0,
+        "end": "killed",
+        "data_hex": ""
+      }
+    ],
+    "invalid": [
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242045f9a16a40e201000000000041f9a16aa4e201000100000065",
+        "sidecar_hex": "000300",
+        "problem": "it must be the last frame",
+        "note": "a frame after the end marker"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242045f9a16a40e201000000000045f9a16a40e2010000000000",
+        "sidecar_hex": "000304",
+        "problem": "a session ends once",
+        "note": "two end markers"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242045f9a16a40e201000100000078",
+        "sidecar_hex": "0003",
+        "problem": "an end marker carries no data",
+        "note": "a marker with data a classic player would print"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242045f9a16a40e2010000000000",
+        "sidecar_hex": "000a",
+        "problem": "codes [10] this tag does not define",
+        "note": "a sidecar code no tag has defined"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242045f9a16a40e20100050000005b6761705d",
+        "sidecar_hex": "0002",
+        "problem": "is not the gap marker's line",
+        "note": "a code-2 frame whose data is not the x-gap-line line"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e201000000000045f9a16a40e2010000000000",
+        "sidecar_hex": "0003",
+        "problem": "an empty data frame",
+        "note": "only the end marker has no data"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242045f9a16a40e2010000000000",
+        "sidecar_hex": "00",
+        "problem": "the sidecar holds 1 bytes for 2 ttyrec frames",
+        "note": "the sidecar counts the frames"
+      }
+    ]
+  }
+}

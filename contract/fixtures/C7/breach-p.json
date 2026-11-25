@@ -1,0 +1,54 @@
+{
+  "seam": "C7",
+  "name": "breach-p",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "Breach row §6.1 passphrase alone: NO. The test takes each component from a live system after real unlocks — the browser's localStorage and IndexedDB as the browser left them, the Redis keys as they are, the bbolt file copied while the lab core is stopped (DEFAULT 63) — and tries to decrypt the user's credentials with everything it holds; an implementation that leaks Part 1 into Redis, keeps the hash on disk or caches credentials in the browser fails it. The YES rows (passphrase + bbolt, the full server) are not tested (phase-04 exit 4).",
+  "corpus": [
+    "credential-protection §6 (corrected 2026-10-28)",
+    "E4 D12",
+    "phase-04 exit 4"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/breach_case",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "row": "§6.1 passphrase alone",
+          "held": [
+            "passphrase"
+          ],
+          "decrypts": false,
+          "why": "Needs user_salt, salt2 and the ciphertext from bbolt."
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "row": "§6.1 passphrase alone",
+          "held": [
+            "passphrase"
+          ],
+          "decrypts": true,
+          "why": "Needs user_salt, salt2 and the ciphertext from bbolt."
+        },
+        "note": "a breach case is a NO row"
+      }
+    ]
+  }
+}

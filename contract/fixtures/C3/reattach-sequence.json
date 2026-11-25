@@ -1,0 +1,216 @@
+{
+  "seam": "C3",
+  "name": "reattach-sequence",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-reattach",
+  "description": "The local reattach handshake across a core restart (immortality §6.1, LOCKED: SO_PEERCRED alone, no claim token; the §6.3 sketch with every token field stripped). Run 1 opens a session and runs its first handshake. The core is killed; run 2 is a new core process, which reattaches the connection instead of reconnecting it: the worker's first event to it is link_state, the core resends the timer values, dials the session's data socket and sends hello with last_committed_seq — the last output frame or gap marker its recording keeps. The worker answers on the new data peer: its ring holds frames 4 to 9 (first_buffered_offset counts the output bytes before frame 4). The core asks for everything after 5; the worker writes 6 to 9 with their original seq and stamp, then replay_done through 9, its current_seq, since from hello until live it reads nothing from the channel. Only after live does the worker resume output and accept input. A capture of a real run must show this order in every run.",
+  "corpus": [
+    "immortality §6.1",
+    "immortality §4.1",
+    "immortality §6.3",
+    "immortality §6.4",
+    "decision 5.30",
+    "plan.md §3 C3",
+    "session model §15"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 0
+        },
+        "note": "the core dialled the data socket first; nothing is committed yet",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": false
+        },
+        "note": "this capture's worker held no output: first_buffered_seq is current_seq + 1. A real target's banner may already be buffered, and the ack then reports current_seq ≥ 1",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 1
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 0
+        },
+        "note": "through_seq 0 < from_seq 1: complete with no frame",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-a"
+        },
+        "note": "only now is the session offered northbound (the 201)",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          }
+        },
+        "run": "01789000100000000000",
+        "note": "the full set at reattach; the worker keeps the last it received"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "answering",
+          "last_ack_at": "2026-09-29T01:00:00Z"
+        },
+        "run": "01789000100000000000",
+        "note": "the first event to a new control peer of a connected connection"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 5
+        },
+        "run": "01789000100000000000",
+        "note": "the recording keeps output 1 to 5"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 4,
+          "first_buffered_offset": 311,
+          "current_seq": 9,
+          "ended": false
+        },
+        "run": "01789000100000000000",
+        "note": "the ring holds 4 to 9; nothing the core had not committed was lost"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 6
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 9
+        },
+        "run": "01789000100000000000",
+        "note": "frames 6 to 9 are on the data peer; replay is complete once frame 9 has arrived"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-a"
+        },
+        "run": "01789000100000000000",
+        "note": "input authority only now"
+      }
+    ]
+  }
+}

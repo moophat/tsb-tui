@@ -1,0 +1,49 @@
+{
+  "seam": "C5",
+  "name": "inventory-import-atomic-publish",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: Providers check one locked fsynced swap, marker retention and unrelated-target preservation."
+    },
+    {
+      "unit": "U2",
+      "test": "owed: Providers check one locked fsynced swap, marker retention and unrelated-target preservation."
+    }
+  ],
+  "description": "Providers check one locked fsynced swap, marker retention and unrelated-target preservation.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "schema": "schemas/import-receipt.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "version": 1,
+          "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "note": "publication marker"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "version": 1,
+          "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "export_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "note": "no export commitment in marker"
+      }
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "seam": "C6",
+  "name": "terminal-recording-sync-quarantine",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2 `recording_sync_failure_quarantine`: a failed recording fsync appends unconfirmed recording_unsynced at bbolt's commit point P, below A; no exact fact above P and no release_accounted, in the running core and after a restart; a restart keeps the commit point at P, so its hello carries P's seq, and no realign or later successful fsync lifts the quarantine; the §8 notice reuses the key at P; a failed quarantine append leaves only the in-process rule."
+    }
+  ],
+  "description": "U2 `recording_sync_failure_quarantine`: a failed recording fsync appends unconfirmed recording_unsynced at bbolt's commit point P, below A; no exact fact above P and no release_accounted, in the running core and after a restart; a restart keeps the commit point at P, so its hello carries P's seq, and no realign or later successful fsync lifts the quarantine; the §8 notice reuses the key at P; a failed quarantine append leaves only the in-process rule.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "recording_path": "recordings/s1.ttyrec",
+          "detail": {
+            "version": 1,
+            "kind": "unconfirmed",
+            "key": "ri1:s1:u:40:8000",
+            "baseline_seq": 40,
+            "baseline_bytes": 8000,
+            "reason": "recording_unsynced",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": "The durable quarantine (#137): the running core saw the recording's fsync fail and wrote this at P, the session record's commit point in bbolt (recording_last_seq_out 40, out_bytes_committed 8000), below the walk's A (42, 8192). The pair is never relied on above P."
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s4",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s4:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "recording_unsynced",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": "recording_unsynced is an unconfirmed reason only: an entirely unrecorded session has no recording pair to quarantine."
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unconfirmed",
+            "key": "ri1:s1:u:40:8000",
+            "baseline_seq": 40,
+            "baseline_bytes": 8000,
+            "reason": "recording_unsynced",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": "The quarantine names the pair it quarantines: recording_path is required, as for every unconfirmed fact."
+      }
+    ]
+  }
+}

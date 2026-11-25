@@ -1,0 +1,35 @@
+{
+  "seam": "C2",
+  "name": "size-request-applied",
+  "mark": {"required-green": "e2"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "The holder's target-size request and the applied-size answer (C2 decision 8; 5.50 §3): the holder requests an in-bounds size and gets a `size` frame with reason `applied`; the same `size` frame goes to every other attached client; and the session record's cols/rows follow. The stub's floor is 40x12 and its ceiling 200x60 (README Inputs name the graded prefix's bounds).",
+  "corpus": ["C2 decision 8", "5.50 §3", "terminal-size-and-control.md §1–§4"],
+  "case": {
+    "inputs": ["user", "password", "target_id", "peer_user", "peer_password"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"ta": "/ticket"}},
+      {"ws_open": "a", "path": "/ws/attach"},
+      {"ws_send": "a", "frame": {"t": "attach", "v": 1, "ticket": "${ta}", "session_id": "${sid}"}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "attached"}, {"pointer": "/session/control_holder/client_id", "eq": "${client_a}"}], "save": {"client_a": "/client_id"}}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}, "as": "peer"}, "expect": {"status": 200}, "save": {"tp": "/ticket"}},
+      {"ws_open": "p", "path": "/ws/attach"},
+      {"ws_send": "p", "frame": {"t": "attach", "v": 1, "ticket": "${tp}", "session_id": "${sid}"}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_p": "/client_id"}}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_send": "a", "frame": {"t": "resize", "v": 1, "cols": 132, "rows": 43}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "size"}, {"pointer": "/reason", "eq": "applied"}, {"pointer": "/cols", "eq": 132}, {"pointer": "/rows", "eq": 43}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "size"}, {"pointer": "/reason", "eq": "applied"}, {"pointer": "/cols", "eq": 132}, {"pointer": "/rows", "eq": 43}]}},
+      {"http": {"method": "GET", "path": "/sessions/${sid}"}, "expect": {"status": 200, "match": [{"pointer": "/cols", "eq": 132}, {"pointer": "/rows", "eq": 43}]}},
+      {"ws_close": "p"},
+      {"ws_close": "a"}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

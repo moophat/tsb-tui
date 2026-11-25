@@ -1,0 +1,48 @@
+{
+  "seam": "C4",
+  "name": "golden-mode-reset",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "bytes",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "A golden C4 screen case, graded by the U4 libghostty-vt round trip: the sibling .bin is raw output fed to a fresh parser; the dump the worker then produces is fed to a second parser and must show the same screen and modes. **No expected screen is stored** (F14: expected screens are never hand-written, they come from the round trip at a pinned engine); the fixture asserts every carried mode back to its reset state after the second chunk, the full state the dump must emit.",
+  "corpus": [
+    "plan.md C4 decision 6",
+    "plan.md C4 decision 9",
+    "vt-screen.schema.json"
+  ],
+  "case": {
+    "format": "c4-vt-frames",
+    "file": "golden-mode-reset.bin",
+    "max_message_bytes": 200,
+    "messages": [
+      {
+        "kind": 2,
+        "session_id": "sess-1",
+        "frame": {
+          "flags": 0,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "1b5b3f31681b5b3f32303034681b5b3f31303030681b5b3f31303034681b5b3f36681b5b34682420"
+        }
+      },
+      {
+        "kind": 2,
+        "session_id": "sess-1",
+        "frame": {
+          "flags": 0,
+          "seq": 2,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "1b5b3f316c1b5b3f323030346c1b5b3f313030306c1b5b3f313030346c1b5b3f366c1b5b346c2420"
+        }
+      }
+    ]
+  }
+}

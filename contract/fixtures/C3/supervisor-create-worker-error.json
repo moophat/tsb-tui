@@ -1,0 +1,53 @@
+{
+  "seam": "C3",
+  "name": "supervisor-create-worker-error",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:supervisor-error",
+  "description": "The supervisor's wait for a spawned worker is bounded, and its failures are answers, never silence: spawn_failed (with the exit code when the child exited before it was ready), ready_timeout, capacity. Each names the connection it answers, since requests can be in flight together. A collected run must show one (provoke a failed spawn).",
+  "corpus": [
+    "decision 5.13"
+  ],
+  "case": {
+    "socket": "supervisor-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 1
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-2",
+          "placement_key": "fixture-user",
+          "n_max": 1
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "error",
+          "reason": "spawn_failed",
+          "conn_id": "fixture-conn-1",
+          "exit_code": 1
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "error",
+          "reason": "ready_timeout",
+          "conn_id": "fixture-conn-2"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "seam": "C1",
+  "name": "auth-logout",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Logout ends the login on the server, not only in the client: the cookie held before logout is refused afterwards (401 unauthenticated), so a copied cookie dies with the logout.",
+  "corpus": [
+    "decision 5.34",
+    "Contract §13"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/login",
+          "as": "fresh",
+          "body": {
+            "username": "${user}",
+            "password": "${password}"
+          }
+        },
+        "expect": {
+          "status": 200
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/logout",
+          "as": "fresh",
+          "keep_cookies": true
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/auth/me",
+          "as": "fresh"
+        },
+        "expect": {
+          "status": 401,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "unauthenticated"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "unauthenticated",
+              "message": "log in first"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "seam": "C3",
+  "name": "ended-release-attached",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_reattach.py — an ended session stays in the manifest with its data socket until release, and goes on release"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/reattach_test.go — an end while attached: the core records the output to the data peer's EOF, writes the end marker, then sends release"
+    }
+  ],
+  "description": "An end while a core is attached. The target closes the session's channel; the worker writes the session's last output frame and closes that data peer, and the core records the output to that EOF, writes the end marker and the audit event, and sends release at once. Until release the worker keeps the session's ring, data socket and manifest entry: it cannot know the core has consumed what it sent, so a core killed between the end and its recording would otherwise lose the tail silently.",
+  "corpus": [
+    "immortality §4.1",
+    "immortality §4.3",
+    "session model §13",
+    "decision 5.44"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 0
+        },
+        "note": "the core dialled the data socket first; nothing is committed yet"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": false
+        },
+        "note": "nothing buffered and no output yet: first_buffered_seq is current_seq + 1"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 1
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 0
+        },
+        "note": "through_seq 0 < from_seq 1: complete with no frame"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-a"
+        },
+        "note": "only now is the session offered northbound (the 201)"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "target",
+          "reason": "the shell exited"
+        },
+        "note": "retained until release"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "release",
+          "session_id": "fixture-session-a"
+        },
+        "note": "the recording is closed with its end marker"
+      }
+    ]
+  }
+}

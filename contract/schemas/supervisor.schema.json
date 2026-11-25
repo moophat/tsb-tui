@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C3 supervisor clause (NDJSON)",
+  "description": "/tmp/tsb/supervisors/{supervisor_id}/control.sock (decision 5.13, immortality §2.1). The supervisor owns worker lifecycle, so workers outlive the core; the core asks it for a worker per connection. The core addresses supervisors as a set — every live supervisor manifest names one — and never assumes there is only one. The clause is transport-agnostic: these messages over a unix socket today, over an SSH channel when a supervisor is a satellite. One JSON object per line. Trust is SO_PEERCRED, as on every C3 socket: the supervisor accepts a peer only when its uid is the TSB service uid (immortality §6.1, LOCKED). Routing, placement and capacity only: create_worker carries a placement key the supervisor compares but never interprets, and no credential and no connect detail — the core sends those to the connection's own control socket afterwards. Every request line gets exactly one answer — a refusal included. Replies need not follow request order: each names its request (conn_id, worker_id or n), and a pong is never held behind another request's work — a kill waiting out its reap_timeout, say — so a slow kill never reads as a silent supervisor. An error with no conn_id answers a line the supervisor cannot answer otherwise — a line of a kind this tag does not define, or a request missing its key (conn_id, worker_id or n) — and goes out as that line is read, so it answers the oldest such line pending: never a ping, a list_workers or a request that names its key, which each get their own reply. So supervisor_heartbeat's \"request unanswered\" rule (session model §11) never fires on a supervisor that is merely refusing. The core pings each supervisor every heartbeat_interval (session model §9 E11): a supervisor that stops answering pings, or a request within that request's timeout, raises the operator alert supervisor_unresponsive, and its workers and their sessions are untouched — TSB never restarts it by itself (Contract §12); the operator does, out of band. Version (immortality §6.4): a v0.2 supervisor writes proto_version in its manifest (supervisor-manifest.schema.json) and in every worker_created; a core creates workers only through a supervisor whose proto_version it speaks, because a session on a v0.1 worker would get no heartbeat and no worker-run timers. With no such supervisor, POST /sessions answers 503 worker_unavailable, saying the workers predate the core.",
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/reply"}
+  ],
+  "$defs": {
+    "request": {
+      "description": "core → supervisor.",
+      "oneOf": [{"$ref": "#/$defs/create_worker"}, {"$ref": "#/$defs/list_workers"}, {"$ref": "#/$defs/ping"}, {"$ref": "#/$defs/kill_worker"}]
+    },
+    "reply": {
+      "description": "supervisor → core.",
+      "oneOf": [{"$ref": "#/$defs/worker_created"}, {"$ref": "#/$defs/workers"}, {"$ref": "#/$defs/error"}, {"$ref": "#/$defs/pong"}, {"$ref": "#/$defs/worker_killed"}, {"$ref": "#/$defs/kill_failed"}]
+    },
+    "create_worker": {
+      "description": "Provide a worker for connection conn_id. Placement (session model §4): a worker's placement_key is the one it was spawned with, fixed for its life. The supervisor puts the connection only into a live worker with the same placement_key that holds fewer than n_max connections; otherwise it spawns one with this key. So a worker never holds connections of two keys, not even one after the other: a worker that once held one user's connections never serves another user's. The core sets the key from its configuration: worker.placement per_user (the default) → the owning TSB user's login name, so one user's worker crash never reaches another user's sessions (Contract §4: users are tenants); shared → one constant for every connection. Placement isolates crashes, not compromise: every worker runs as the one TSB service uid that SO_PEERCRED trusts (session model §4; immortality §6.1, LOCKED), so a compromised worker holds what the whole broker holds. The supervisor compares keys and never learns what they mean. n_max is worker.max_connections (decision 5.36, a knob); the contract fixes only its range. undialled_timeout bounds a connection no core ever dials: when no core has dialled the connection's control socket within it, the worker drops that connection — its conn_dir — because no connect will ever reach it (a core that timed out, say), and exits only if it then holds no other (lang-arch §6.4 step 4; immortality §2.2, LOCKED: a worker is a pool, and its other connections live on). Optional, so a v0.1 request stays valid; a range, never a default.",
+      "type": "object",
+      "required": ["cmd", "conn_id", "placement_key", "n_max"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "create_worker"},
+        "conn_id": {"$ref": "common.schema.json#/$defs/id"},
+        "placement_key": {"$ref": "#/$defs/placement_key"},
+        "n_max": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "undialled_timeout": {"$ref": "common.schema.json#/$defs/duration_ms"}
+      }
+    },
+    "list_workers": {
+      "type": "object",
+      "required": ["cmd"],
+      "additionalProperties": false,
+      "properties": {"cmd": {"const": "list_workers"}}
+    },
+    "worker_created": {
+      "description": "Sent only after the worker has bound conn_dir/control.sock, so the socket is connectable the moment the core reads this. proto_version is the worker's, so the core knows a new worker's version before its manifest need exist; a v0.1 supervisor never sends it. At this tag a capable worker advertises C3 0.8, including terminal sealing/accounted disposal; old workers retain their version (C3/control-message-shape-v0.8; C3/terminal-disposal-version-gate).",
+      "type": "object",
+      "required": ["event", "conn_id", "worker_id", "conn_dir"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "worker_created"},
+        "conn_id": {"$ref": "common.schema.json#/$defs/id"},
+        "worker_id": {"$ref": "common.schema.json#/$defs/id"},
+        "conn_dir": {"$ref": "#/$defs/conn_dir"},
+        "proto_version": {"$ref": "common.schema.json#/$defs/proto_version"}
+      }
+    },
+    "workers": {
+      "type": "object",
+      "required": ["event", "workers"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "workers"},
+        "workers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["worker_id", "pid", "placement_key", "connections"],
+            "additionalProperties": false,
+            "properties": {
+              "worker_id": {"$ref": "common.schema.json#/$defs/id"},
+              "pid": {"$ref": "#/$defs/pid"},
+              "placement_key": {"$ref": "#/$defs/placement_key", "description": "The key this worker was spawned with, fixed for its life (create_worker), so a core that lists workers after a restart sees the boundary."},
+              "connections": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/id"}}
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "description": "A request failed. For create_worker the supervisor's wait for a spawned worker's readiness is bounded: spawn_failed (the child could not start, or exited before it was ready; exit_code when known), ready_timeout (the worker did not become ready in time: a spawned one is killed and reaped; a live worker the connection was handed to has the hand-off withdrawn, and nothing is killed), capacity (no worker can take the connection). bad_request: a malformed request, or a duplicate create_worker for a connection the supervisor already placed — not capacity, which would misname it. unknown_cmd: a command this supervisor does not know, kept apart from a malformed line as the connection control socket keeps it, so a later core can tell an older supervisor from a broken request. conn_id is required with every other reason, and optional with bad_request and unknown_cmd alone, for a line with no readable conn_id.",
+      "type": "object",
+      "required": ["event", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "error"},
+        "reason": {"enum": ["spawn_failed", "ready_timeout", "capacity", "bad_request", "unknown_cmd"]},
+        "conn_id": {"$ref": "common.schema.json#/$defs/id"},
+        "exit_code": {"type": "integer"},
+        "message": {"type": "string"}
+      },
+      "oneOf": [
+        {"properties": {"reason": {"enum": ["spawn_failed", "ready_timeout", "capacity"]}}, "required": ["conn_id"]},
+        {"properties": {"reason": {"enum": ["bad_request", "unknown_cmd"]}}}
+      ]
+    },
+    "ping": {
+      "description": "core → supervisor: the supervisor heartbeat (session model §9 E11), every heartbeat_interval. Answered by pong with the same n.",
+      "type": "object",
+      "required": ["cmd", "n"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "ping"},
+        "n": {"$ref": "common.schema.json#/$defs/count"}
+      }
+    },
+    "pong": {
+      "description": "supervisor → core: the answer to ping n.",
+      "type": "object",
+      "required": ["event", "n"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "pong"},
+        "n": {"$ref": "common.schema.json#/$defs/count"}
+      }
+    },
+    "kill_worker": {
+      "description": "core → supervisor: kill a hung worker (session model §11 worker_heartbeat, §13; Contract §4: a worker that will not die). A worker whose event loop stops answering the core's ping is dead to the core, and every session in it ends terminated / worker_lost; this is how its process goes too. The supervisor sends SIGKILL and reaps it; reap_timeout bounds how long it waits for the process to go. Answered by worker_killed, or by kill_failed.",
+      "type": "object",
+      "required": ["cmd", "worker_id", "reap_timeout"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "kill_worker"},
+        "worker_id": {"$ref": "common.schema.json#/$defs/id"},
+        "reap_timeout": {"$ref": "common.schema.json#/$defs/duration_ms"}
+      }
+    },
+    "worker_killed": {
+      "description": "supervisor → core: the worker is gone, sent only after the reap. A kill_worker for a worker this supervisor no longer holds is answered the same way: the worker is gone either way.",
+      "type": "object",
+      "required": ["event", "worker_id"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "worker_killed"},
+        "worker_id": {"$ref": "common.schema.json#/$defs/id"}
+      }
+    },
+    "kill_failed": {
+      "description": "supervisor → core: the process outlived SIGKILL past reap_timeout (unkillable). The core raises the operator alert worker_unkillable, which says the process may still hold its target connections; the sessions still end terminated / worker_lost, their input refused and their recordings closed. The alert clears when the supervisor's list_workers no longer lists the worker, or when the supervisor is gone.",
+      "type": "object",
+      "required": ["event", "worker_id", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "kill_failed"},
+        "worker_id": {"$ref": "common.schema.json#/$defs/id"},
+        "reason": {"const": "unkillable"}
+      }
+    },
+    "conn_dir": {
+      "type": "string",
+      "pattern": "^(/[A-Za-z0-9_][A-Za-z0-9._-]*)*/conn-[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "description": "Absolute path of the connection's directory, ending in conn-{conn_id} (lang-arch §4.1). No segment starts with a dot, so none is '..'."
+    },
+    "placement_key": {
+      "$ref": "common.schema.json#/$defs/username",
+      "description": "Which connections may share a worker (session model §4). Opaque to the supervisor, which only compares it for equality. It has a user name's shape — a TSB login name may hold '@', which an id may not — so a per_user key is the owning TSB user's login name as is; under shared placement it is one constant."
+    },
+    "pid": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "description": "Informational: meaningful only inside the writer's PID namespace. The worker and its supervisor run in their own container, so the core cannot test a pid; liveness is dialling the published socket — missing or refused means dead."
+    }
+  }
+}

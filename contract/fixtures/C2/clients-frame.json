@@ -1,0 +1,249 @@
+{
+  "seam": "C2",
+  "name": "clients-frame",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "Attached clients (C2 decision 5): the session record carries the attached-client set, and every attached client gets a `clients` frame on attach, detach and removal. One principal's two sockets attach, so each sees the other in the set after each event. The record's `clients` entries carry client_id, user and may_control (the principal's session.join.rw).",
+  "corpus": [
+    "C2 decision 5",
+    "PTY \u00a77.1",
+    "Frontend \u00a73.4",
+    "Frontend \u00a79"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          }
+        },
+        "expect": {
+          "status": 200
+        },
+        "save": {
+          "ta": "/ticket"
+        }
+      },
+      {
+        "ws_open": "a",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "a",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${ta}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "a",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            }
+          ],
+          "save": {
+            "client_a": "/client_id"
+          }
+        }
+      },
+      {
+        "ws_expect": "a",
+        "prefix": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "prefix"
+            }
+          ]
+        }
+      },
+      {
+        "ws_expect": "a",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "clients"
+            },
+            {
+              "pointer": "/clients",
+              "some": {
+                "/client_id": "${client_a}",
+                "/may_control": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          }
+        },
+        "expect": {
+          "status": 200
+        },
+        "save": {
+          "tb": "/ticket"
+        }
+      },
+      {
+        "ws_open": "b",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "b",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${tb}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "b",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            }
+          ],
+          "save": {
+            "client_b": "/client_id"
+          }
+        }
+      },
+      {
+        "ws_expect": "b",
+        "prefix": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "prefix"
+            }
+          ]
+        }
+      },
+      {
+        "ws_expect": "b",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "clients"
+            },
+            {
+              "pointer": "/clients",
+              "some": {
+                "/client_id": "${client_a}"
+              }
+            },
+            {
+              "pointer": "/clients",
+              "some": {
+                "/client_id": "${client_b}"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "ws_expect": "a",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "clients"
+            },
+            {
+              "pointer": "/clients",
+              "some": {
+                "/client_id": "${client_a}"
+              }
+            },
+            {
+              "pointer": "/clients",
+              "some": {
+                "/client_id": "${client_b}"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "ws_close": "b"
+      },
+      {
+        "ws_expect": "a",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "clients"
+            },
+            {
+              "pointer": "/clients",
+              "some": {
+                "/client_id": "${client_a}"
+              }
+            },
+            {
+              "pointer": "/clients",
+              "none": {
+                "/client_id": "${client_b}"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "ws_close": "a"
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

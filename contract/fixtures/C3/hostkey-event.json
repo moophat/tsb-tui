@@ -1,0 +1,47 @@
+{
+  "seam": "C3",
+  "name": "hostkey-event",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:control-hostkey-first-use",
+  "description": "The hostkey event: the connection, the fingerprint in OpenSSH SHA256 form, and first_use. It is sent only when a key was accepted on first use, so first_use is always true at this tag; a known key needs no event and a changed key is an error, never a hostkey. A collected run must show one between connect and connected.",
+  "corpus": [
+    "decision 5.18"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json#/$defs/hostkey",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "event": "hostkey",
+          "conn_id": "fixture-conn-1",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+          "first_use": true
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "hostkey",
+          "conn_id": "fixture-conn-1",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+          "first_use": false
+        },
+        "note": "no event for a key already recorded"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "hostkey",
+          "conn_id": "fixture-conn-1",
+          "fingerprint": "md5:aa:bb",
+          "first_use": true
+        },
+        "note": "OpenSSH SHA256 form only"
+      }
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "seam": "C5",
+  "name": "import-tabby-timer-units",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks 0, 1, 1000 and 1001 milliseconds round to 0, 1, 1 and 2 seconds; readyTimeout is dropped."
+    }
+  ],
+  "description": "Provider checks 0, 1, 1000 and 1001 milliseconds round to 0, 1, 1 and 2 seconds; readyTimeout is dropped.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/inventory-target.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "options": {
+            "host": "fixture.invalid",
+            "keepaliveInterval": 0
+          }
+        },
+        "note": "0 seconds"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "options": {
+            "host": "fixture.invalid",
+            "keepaliveInterval": 1
+          }
+        },
+        "note": "1 seconds"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "options": {
+            "host": "fixture.invalid",
+            "keepaliveInterval": 2
+          }
+        },
+        "note": "2 seconds"
+      }
+    ]
+  }
+}

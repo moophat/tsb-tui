@@ -1,0 +1,58 @@
+{
+  "seam": "C1",
+  "name": "target-get",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "GET /targets/{id} answers 200 with one TargetRecord whose id is the one asked for, so a surface can read a target it has by id and render its strings as text. The record carries the address in force, so an ssh target with no port in its file is read as 22.",
+  "corpus": [
+    "Storage §3.1",
+    "Storage §3.2",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/${target_id}"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "${target_id}"
+            },
+            {
+              "pointer": "/type",
+              "present": true
+            }
+          ],
+          "example": {
+            "id": "fixture-target",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "scenario",
+              "shell"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22
+          }
+        }
+      }
+    ]
+  }
+}

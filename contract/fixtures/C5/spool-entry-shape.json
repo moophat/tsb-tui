@@ -1,0 +1,196 @@
+{
+  "seam": "C5",
+  "name": "spool-entry-shape",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_spool.py — every end the worker originates or observes from outside TSB is spooled atomically and fsync'd before it is acted on, in exactly this shape"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/spool_test.go — the core reads the spool before any E10 decision, writes the end marker and session.disconnect stamped ended_at, and deletes the entry"
+    }
+  ],
+  "description": "The spool (session model §11 orphan_timeout, §15): an end while the core is away is written to disk, because after orphan_timeout ends a connection's last session the connection lingers out and the worker exits — a spool in memory would die with it and the returning core would read E10 worker_lost. Exactly the pairs a worker can name: killed / orphan, idle or unattended (the timers it runs while the core is gone) and terminated / target_closed or connection_lost. The core persists every end it asks for itself, so owner, admin and worker_lost never appear. last_seq, out_bytes and last_out_ts let the core declare a gap before the end marker when output was lost; a session with no output has all three 0.",
+  "corpus": [
+    "session model §11",
+    "session model §12",
+    "session model §15",
+    "lang-arch §6.4",
+    "immortality §4.3"
+  ],
+  "case": {
+    "schema": "schemas/spool-entry.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        },
+        "note": "orphan_timeout fired while the core was away"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "unattended",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "terminated",
+          "end_reason": "target_closed",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "terminated",
+          "end_reason": "connection_lost",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 0,
+          "out_bytes": 0,
+          "last_out_ts": 0
+        },
+        "note": "no output ever"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "owner",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        },
+        "note": "the core persists the ends it asks for"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "admin",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "terminated",
+          "end_reason": "worker_lost",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        },
+        "note": "a dead worker spools nothing"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "terminated",
+          "end_reason": "orphan",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        },
+        "note": "a reason of the other end state"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 0,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        },
+        "note": "no output means no bytes and no stamp"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session_id": "fixture-session-a",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789,
+          "credential": "FIXTURE-NOT-A-PASSWORD"
+        },
+        "note": "closed: nothing else, a credential least of all"
+      }
+    ]
+  }
+}

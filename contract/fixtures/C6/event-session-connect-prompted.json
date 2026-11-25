@@ -1,0 +1,157 @@
+{
+  "seam": "C6",
+  "name": "event-session-connect-prompted",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/audit/audit_test.go — TestSessionConnectSaysPromptedAndRefusedAttempts"
+    }
+  ],
+  "description": "`session.connect` for a session opened by a device login: `detail.login` is `prompted`; `login_recorded` is true exactly when login frames were written at the head of the recording (the knob on and consent given); `refused_attempts` is the number of distinct attempt numbers the core relayed an answer for that are below the highest attempt the device login saw, written when it is at least 1 (derived 9: a guessing record that would otherwise miss guesses that ended in success). A session on a reused prompted connection writes `prompted`, `login_recorded` false and no `refused_attempts`. A `session.connect` rebuilt at a restart cannot carry `refused_attempts`, which is not persisted: the one place a rebuilt line differs from the live one. Never a value.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "Storage §6",
+    "device-login step 20",
+    "session-open step 19"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "prompted",
+            "login_recorded": false
+          }
+        },
+        "note": "a device login, the knob off"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "prompted",
+            "login_recorded": true
+          }
+        },
+        "note": "the knob on, consent given, the session recorded"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "prompted",
+            "login_recorded": false,
+            "refused_attempts": 1
+          }
+        },
+        "note": "a wrong password first, then the right one"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "prompted",
+            "login_recorded": false
+          }
+        },
+        "note": "a session on a reused prompted connection: no refused_attempts"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "supplied",
+            "login_recorded": false
+          }
+        },
+        "note": "a supplied login, unchanged"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "prompted",
+            "refused_attempts": 0
+          }
+        },
+        "note": "refused_attempts is written when it is at least 1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "typed"
+          }
+        },
+        "note": "stored, supplied or prompted: nothing else is a source"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "detail": {
+            "login": "prompted",
+            "refused_attempts": "1"
+          }
+        },
+        "note": "an integer"
+      }
+    ]
+  }
+}

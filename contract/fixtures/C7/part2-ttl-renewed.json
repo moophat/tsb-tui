@@ -1,0 +1,73 @@
+{
+  "seam": "C7",
+  "name": "part2-ttl-renewed",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "Part 2's TTL is set anew to vault.part2_ttl on each successful trusted unlock and regeneration, so a device in steady use keeps its Part 2 (DEFAULT 43). Graded by reading the key's TTL.",
+  "corpus": [
+    "credential-protection §3.2",
+    "credential-protection §9",
+    "credential-protection Appendix B",
+    "E4 DEFAULT 43"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/devices/challenges",
+          "body": {
+            "operation": "vault.unlock",
+            "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "challenge_id": "ch-0001",
+            "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+            "login_handle": "lh-fixture-0001",
+            "expires_in": 30
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "trusted",
+            "challenge_id": "ch-0001",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "signature": "RklYVFVSRS1TSUdOQVRVUkUtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA=="
+          }
+        },
+        "expect": {
+          "status": 204
+        }
+      }
+    ]
+  }
+}

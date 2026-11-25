@@ -1,0 +1,1435 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C3 connection control socket (NDJSON)",
+  "description": "/tmp/tsb/conn-{conn_id}/control.sock, one per connection (lang-arch §4.1). One JSON object per line, UTF-8, newline-terminated. The core sends commands (`cmd`); the worker sends events (`event`). The message set is lang-arch §4.1's, plus what the corpus requires of it: connection-scoped events name the connection (Contract §15; lang-arch §6.4 step 3); every session-scoped message names its session, because a connection carries N sessions (decision 5.21) and closing one closes only that channel (Contract §15.2); a telnet connection (from proto_version 0.5) carries one session and closes with it; the worker reports a host key it accepted on first use (decision 5.18). Credentials travel only here, only inside connect.auth and, from proto_version 0.7, inside auth_answer — never in create_worker, argv, the environment, a manifest, the spool or a data socket. Trust is SO_PEERCRED on every C3 socket — this control socket, the data sockets and the supervisor's socket: a peer is accepted only when its uid is the TSB service uid, with no token (immortality §6.1, LOCKED: the reattach handshake below carries none). How a session ends from outside TSB (session model §9 E5, §13; decision 5.45): the worker reports what the protocol said, and who said it. A channel_closed with by: target — the target sent SSH_MSG_CHANNEL_CLOSE (RFC 4254 §5.3) on a channel the core did not ask to close; CHANNEL_EOF alone only means no more output — ends that session, terminated / target_closed, and its siblings live on (Contract §15.2). A connection_lost says why in cause: target_disconnect — the target sent SSH_MSG_DISCONNECT (RFC 4253 §11.1) — ends every session it lists, terminated / target_closed; transport — our end of the TCP connection is gone (EOF, ECONNRESET, ETIMEDOUT, EPIPE) — and keepalive_timeout — the worker's link_timeout fired — end every session it lists, terminated / connection_lost; disconnect answers the core's own disconnect. A core treats a cause it does not know as transport, and a by it does not know as target: an end it cannot place is an end from outside TSB. A channel_closed by: worker (from proto_version 0.4) is not such an end: the worker ended the session itself when a timer it runs while the core is gone fired, and names that end (end_state, end_reason, ended_at, out_bytes, last_seq, last_out_ts), so a core records it as TSB's, killed with that reason, at once and without a replay; output the spool entry counts that the recording lacks is declared lost by a gap marker (session-end-by-tsb step 23b); its attached clients are closed 4010. One missing any of the six, or with one outside its enum, is an end the core cannot place. Every such end closes attached clients 4012. No exit status or exit signal is ever acted on (optional in RFC 4254 §6.10, unreliable on network gear; session model §12): at this release the contract does not carry one, and carrying it to the clients as data is E5's, with exec; reason is free text for the log — it may name an SSH disconnect reason code — and is never parsed; nothing matches prompts (Contract §6: the core executes, never interprets). Relaying SSH's own authentication messages — the pre-login banner, a keyboard-interactive info request, a password request — to the pane, and the answers back into SSH's authentication, is not matching a prompt in the stream (conventions V13): the worker reads the protocol's message, never the bytes of a session. Telnet has no end message (session model §8, §9 E5): a telnet target that closes its socket ends the connection, connection_lost cause transport, and every session it lists ends terminated / connection_lost (session model T9, §13). From proto_version 0.5 a connection is SSH, telnet or the echo driver; serial arrives with a later release. A telnet connection carries one session and closes with it (cause single_session). Telnet on the wire (PW-TG): the worker resolves connect.host once, refuses an address in its deployment's deny list with error target_address_refused naming the target id and never the address, checks an IPv4-mapped IPv6 address as the IPv4 address it maps, and connects to the address it checked. It opens TCP and negotiates options (RFC 854, RFC 855), answers TERMINAL-TYPE (RFC 1091) with connect.term, and sends the size by NAWS (RFC 1073) from connect's cols and rows; a later size from open_shell or a resize that differs goes by NAWS. Every payload byte the worker reads on the connection from the TCP connect, after IAC processing, belongs to the connection's one session: bytes read before open_shell are that session's first output frames, from seq 1, in the order read, held in its ring and replayed at its first handshake. Bytes are kept up to buffer_bytes; past that the worker stops reading until open_shell, so TCP's flow control holds the rest at the target and nothing is dropped there; any loss after that is a declared gap, never silent. While reads are paused at buffer_bytes before open_shell, link_timeout and the missing timer are disarmed for that connection until open_shell: a reply the worker is deliberately not reading never counts as a dead link, and a missing already sent stays; both re-arm fresh at open_shell. They are discarded whenever the connection closes before its first open_shell succeeds. An output frame carries what remains after removing IAC commands, negotiations and subnegotiations and un-doubling IAC IAC to one 0xFF; CR NUL, CR LF and bytes 0x80–0xFE pass unchanged. The liveness probe is IAC DO TIMING-MARK (RFC 860); a WILL or a WONT TIMING-MARK answering a probe the worker sent, the second answer to one probe included, or any payload counts as E3; a TIMING-MARK answer the worker did not ask for is not an E3, and the worker sends no reply to it. The worker sends no event between the connection's one session's end and its single_session report, which goes right after the flushed channel_closed; a hello answer still pending is dropped with the peer. A worker answers a `cmd` it does not know with `error` code unknown_cmd; a core ignores an `event` it does not know; both ignore fields they do not know. Version (immortality §6.4, LOCKED): proto_version is \"0.8\" at this tag — on hello and hello_ack, on both manifests and on worker_created — and its absence means v0.1, everywhere. The core speaks N and N-1 at least (§6.4): 0.8, 0.7, 0.6, 0.5, 0.4, 0.3 and 0.2 at this tag, offering each peer its own version on hello and sending it exactly that version's messages. It sends a telnet connect only to a peer at proto_version 0.5 or later, open_shell's open_timeout only to a peer at 0.6 or later, and the device-login messages (a prompt-mode connect with its login_timeout, hostkey_answer and auth_answer) only to a peer at 0.7 or later. A v0.1 worker has no handshake: the core sends it no hello, ping, timers or release; its live sessions are unreachable / protocol and are never killed by worker_heartbeat (§6.4: never silently killed); their idle and unattended timers and their owner and admin ends still reach it as close_channel (session model §11, §14), their input is refused (decision 5.38), and the operator drains them. The core neither reads nor records a v0.1 worker's data sockets (decision 5.38: the core shows what it already has): it dials each once, as rediscovery does — a socket it cannot dial is E10, as at v0.1 — and closes it unread. So output after the upgrade is not in such a session's recording, and nothing there marks it, since a v0.1 worker reports no byte count to declare; and its idle timer sees none of that output. The core creates workers only through a supervisor whose proto_version it speaks and never reuses a connection on a v0.1 worker, because a session there would have no heartbeat, and no bound if the core were lost. A peer whose version the core does not know gets hello with the core's own version; error unsupported_proto or unknown_cmd in answer makes its sessions unreachable / protocol. Reattach (immortality §6.1, §4.1; decision 5.30): every data-socket peer of a v0.2 worker starts with the handshake hello → hello_ack → replay → replay_done → live — for a new session, after a core restart and after a lone data-socket re-dial alike — so output lost on a dead socket is replayed, by one path rather than three. The core dials the session's data socket first, then sends hello here; the order of the rest, and why, is on each message. After a core restart, toward a worker whose version the core speaks, the first ping on a control socket goes before the first hello there (ping; core-restart step 22). An ended session's handshake ends in release instead of live. Only PTY sessions — shell, at this tag — get the worker-side ring, a replay and a gap (Contract §15.1, binding: only PTY streams get the ring; session model §4): a non-PTY session runs the same handshake, which gates its input and resumes its output, but while no core peer holds its data socket the worker stops reading that channel, so it reads nothing no core can receive, nothing is replayed, and its hello_ack says first_buffered_seq = current_seq + 1. For an sftp session, output that had already gone to a peer that died, or reached a core that died before recording it, is the transfer layer's: a file transfer resumes by offset at its own layer (Contract §15.1: it is never replayed through a buffer), outside the recording contract and with no gap frame. For exec, netconf and forward this tag has no loss rule: no v0.2 worker opens one — exec and forward have no command here, and a worker may answer open_subsystem netconf not_supported — and the tag that first opens one says how its loss is declared. Until then this contract does not claim their loss is covered, and admits no silent splice for them either (immortality §4.3). The control socket (Tu, 2026-09-27): a worker closes a connection's control socket only after that connection's connection_lost, or by exiting — never to shed a slow core. Session model §9 E9 reads a control socket that closes without connection_lost as the worker's death, which ends every session on it terminated / worker_lost, and every event a hung-up worker dropped is lost; a slow core is backpressure (the worker stops reading the target or blocks its own write), and a stuck core is caught by core_heartbeat, never by a hang-up. In the other direction a worker ends nothing when its core closes a control socket without disconnect: that is the graceful core restart, and a worker that tidied up there would end every session on every deploy. On a control-socket EOF with no connection_lost the core dials that control.sock once, through the same trusted dial: if the worker answers, the core carries on and ends nothing; only a refused or missing socket is E9, because a false E9 ends live sessions. Spool (session model §11 orphan_timeout, §15): an end the worker originates, or observes from outside TSB, is written to disk before the channel's end is acted on, whether or not a core is attached, so it outlives the worker (spool-entry.schema.json); the core reads the spool before any E10 decision, and for each session a connection_lost lists before it maps the cause: an entry there is that session's end (session-end-from-outside step 5). The device login (from proto_version 0.7; protocols/device-login.md): a connect whose auth.kind is prompt carries no secret, and the worker asks the device's own SSH login questions through hostkey_ask and auth_prompt, which the core relays to the pane, and gets the answers back in hostkey_answer and auth_answer. Eight rules govern it. (1) Versions: the core sends a prompt-mode connect, hostkey_answer and auth_answer only to a peer at 0.7 or later. (2) Order: after a prompt-mode connect, at most one hostkey_ask, before any auth_prompt; hostkey_answer only after it, and once; one auth_prompt with a prompt_id outstanding at a time, the next only after the core's auth_answer to it; display-only auth_prompts (a banner, a round with no prompts) at any time before the terminal answer; then exactly one terminal answer (connected, auth_failed or error); never a hostkey event; no hostkey_ask or auth_prompt after the terminal answer. Before the terminal answer the core sends on that connection only hostkey_answer, auth_answer, disconnect and ping. (3) A cancel: a disconnect before the terminal answer ends the attempt, closes the transport (probe or real), and is answered connection_lost with cause disconnect naming no session, as an unconnected connection's disconnect is answered today. (4) The peer: a prompt-mode connect never outlives its control peer; a peer that goes or is replaced ends it, with nothing sent; a connected reached with no peer is closed and never listed; the manifest lists the connection only from connected. (5) The probe sends no user name and no authentication request; a probed key on record as revoked is refused before any ask, error with no code; the real connect dials the address the probe reached. (6) One terminal answer: before the terminal answer, every error the worker sends is the terminal answer. A hostkey_answer with no hostkey_ask outstanding, or a second one; an auth_answer with no prompt outstanding, naming another prompt_id or carrying another count than the prompt's; or either command malformed: each is answered error bad_request, the worker closes the transport (probe or real), and the connection ends as a refused one does. After its terminal answer the worker ignores hostkey_answer and auth_answer, and logs each with no answer and no prompt text. (7) At the core: an auth_prompt method or a hostkey_ask kind it does not know, or an event out of turn before the terminal answer (a second hostkey_ask, an auth_prompt while a hostkey_ask is unanswered, a second prompt outstanding), is answered disconnect, and the device login ends connect_failed, logged as a worker fault. An auth_failed code it does not know is read as refused. A device-login event after the terminal answer, or on a connection not in prompt mode, is logged and ignored. (8) Attempts: the worker numbers attempts as common.schema.json login_attempt says: it raises the number only after the device refuses a request that carried an answer, never after a partial success. tsbc's control-sequence check grades the rules a capture can show (2, 3, 6, 7 and 8, and an auth_failed code or a device-login event where none is allowed); rules 1, 4 and 5 are graded by the providers' own tests, since a version is the peer's and the probe and the peer's end are not on this socket. C3 0.8 adds seal_output, output_sealed, release_accounted, optional hello_ack.output_seal and version-gated output_drain_timeout; terminal-output-accounting.md governs their sequence (C3/control-message-shape-v0.8; C3/terminal-disposal-version-gate).",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/command"
+    },
+    {
+      "$ref": "#/$defs/event"
+    }
+  ],
+  "$defs": {
+    "command": {
+      "description": "core → worker.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/connect"
+        },
+        {
+          "$ref": "#/$defs/open_shell"
+        },
+        {
+          "$ref": "#/$defs/open_sftp"
+        },
+        {
+          "$ref": "#/$defs/open_subsystem"
+        },
+        {
+          "$ref": "#/$defs/resize"
+        },
+        {
+          "$ref": "#/$defs/close_channel"
+        },
+        {
+          "$ref": "#/$defs/disconnect"
+        },
+        {
+          "$ref": "#/$defs/hello"
+        },
+        {
+          "$ref": "#/$defs/replay"
+        },
+        {
+          "$ref": "#/$defs/live"
+        },
+        {
+          "$ref": "#/$defs/release"
+        },
+        {
+          "$ref": "#/$defs/timers"
+        },
+        {
+          "$ref": "#/$defs/ping"
+        },
+        {
+          "$ref": "#/$defs/hostkey_answer"
+        },
+        {
+          "$ref": "#/$defs/auth_answer"
+        },
+        {
+          "$ref": "#/$defs/seal_output"
+        },
+        {
+          "$ref": "#/$defs/release_accounted"
+        }
+      ]
+    },
+    "event": {
+      "description": "worker → core.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hostkey"
+        },
+        {
+          "$ref": "#/$defs/connected"
+        },
+        {
+          "$ref": "#/$defs/auth_failed"
+        },
+        {
+          "$ref": "#/$defs/channel_opened"
+        },
+        {
+          "$ref": "#/$defs/channel_closed"
+        },
+        {
+          "$ref": "#/$defs/connection_lost"
+        },
+        {
+          "$ref": "#/$defs/error"
+        },
+        {
+          "$ref": "#/$defs/hello_ack"
+        },
+        {
+          "$ref": "#/$defs/replay_done"
+        },
+        {
+          "$ref": "#/$defs/pong"
+        },
+        {
+          "$ref": "#/$defs/link_state"
+        },
+        {
+          "$ref": "#/$defs/input_refused"
+        },
+        {
+          "$ref": "#/$defs/hostkey_ask"
+        },
+        {
+          "$ref": "#/$defs/auth_prompt"
+        },
+        {
+          "$ref": "#/$defs/output_sealed"
+        }
+      ]
+    },
+    "connect": {
+      "description": "The first command on a connection's socket: open the one authenticated transport this connection is. The message is protocol-agnostic (lang-arch §3.1/§4.1); protocol names the driver. `echo` is the loopback driver that needs no target, behind the same interface as ssh (phase-00). telnet is added at proto_version 0.5; serial arrives with a later release. For telnet, the transport is the TCP connection and its option negotiation, and it authenticates nothing (RFC 854): the connection's one login is the one the operator types in its one session. target_id is recorded in the worker's manifest so a restarted core knows what the connection reaches. The core also sends the values this connection's sessions run by (session model §15; Storage §8.1; decision 5.36): timers, buffer_bytes and input_frame_max. A v0.2 worker refuses a connect that lacks any of them with error bad_request: it has no value of its own for them, and a default in its code is what decision 5.36 forbids, for either protocol. They are optional in this schema only so that a v0.1 connect stays valid (immortality §6.4: additive only). A telnet server asks for the terminal type and the size the moment TCP is up, before any open_shell exists, and Linux telnetd sets TERM from the answer before it spawns login, so the telnet branch names term, cols and rows: the core sends the same three values it will put on open_shell. The telnet branch carries no user and no auth — TSB types no vault secret into a stream (the operator's ruling, 2026-10-18) — so a telnet connect carrying either is invalid. From proto_version 0.7 the ssh branch also takes login_timeout, integer milliseconds, 10000 to 1800000: the one clock for a device login, from connect to its terminal answer, the probe and the human's answers included. It is sent only with auth.kind prompt, and only to a peer at 0.7 or later; a worker refuses a prompt-mode connect that lacks it with error bad_request and opens nothing. It is optional in this schema only so that every earlier connect stays valid (immortality §6.4: additive only).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "cmd",
+            "target_id",
+            "protocol",
+            "host",
+            "port",
+            "user",
+            "auth"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "cmd": {
+              "const": "connect"
+            },
+            "target_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "protocol": {
+              "const": "ssh"
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "user": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "auth": {
+              "$ref": "#/$defs/auth"
+            },
+            "login_timeout": {
+              "$ref": "common.schema.json#/$defs/duration_ms",
+              "minimum": 10000,
+              "maximum": 1800000,
+              "description": "From proto_version 0.7: the bound on a device login, in integer milliseconds, 10000 to 1800000 (10 s to 30 min): the target's options.login_timeout or config.yaml's worker.login_timeout, which the core sends. Sent only with auth.kind prompt, and only to a peer at 0.7 or later; the worker's bound is the one clock, and asyncssh's own login timer is off. A prompt-mode connect without it is refused error bad_request."
+            },
+            "timers": {
+              "$ref": "#/$defs/timer_values"
+            },
+            "buffer_bytes": {
+              "$ref": "#/$defs/buffer_bytes"
+            },
+            "input_frame_max": {
+              "$ref": "#/$defs/input_frame_max"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "cmd",
+            "target_id",
+            "protocol"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "cmd": {
+              "const": "connect"
+            },
+            "target_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "protocol": {
+              "const": "echo"
+            },
+            "timers": {
+              "$ref": "#/$defs/timer_values"
+            },
+            "buffer_bytes": {
+              "$ref": "#/$defs/buffer_bytes"
+            },
+            "input_frame_max": {
+              "$ref": "#/$defs/input_frame_max"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "cmd",
+            "target_id",
+            "protocol",
+            "host",
+            "port",
+            "term",
+            "cols",
+            "rows",
+            "timers",
+            "buffer_bytes",
+            "input_frame_max"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "cmd": {
+              "const": "connect"
+            },
+            "target_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "protocol": {
+              "const": "telnet"
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "term": {
+              "$ref": "common.schema.json#/$defs/term"
+            },
+            "cols": {
+              "$ref": "common.schema.json#/$defs/cols"
+            },
+            "rows": {
+              "$ref": "common.schema.json#/$defs/rows"
+            },
+            "timers": {
+              "$ref": "#/$defs/timer_values"
+            },
+            "buffer_bytes": {
+              "$ref": "#/$defs/buffer_bytes"
+            },
+            "input_frame_max": {
+              "$ref": "#/$defs/input_frame_max"
+            }
+          }
+        }
+      ]
+    },
+    "auth": {
+      "description": "The credential, on this socket only. The worker injects it at the protocol layer, below the byte stream TSB records, so it never enters the PTY stream or a recording (open_decisions §5, LOCKED). `key` is the private key file's text. From proto_version 0.7 a third branch, `{kind: prompt}`, carries no credential at all: the connect names no secret, and the device login's answers come later, one round at a time, in auth_answer (the same socket, the same rule: V10).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "key"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "key"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "password"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "password"
+            },
+            "password": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "prompt"
+            }
+          }
+        }
+      ]
+    },
+    "open_shell": {
+      "description": "Open a shell session on this connection (lang-arch §7.3: TERM and size travel from the surface through the core). The core mints session_id; the worker names its channel with it. Answered by channel_opened, or by error with the same session_id. From proto_version 0.6 the core also sends open_timeout: how long the worker waits for the target to open the shell (the session channel, pty-req and shell). Past the bound the worker gives the open up: it answers error naming the session, with no code — the shape it already uses for an open the target refuses — never sends channel_opened for that session afterwards, and closes a channel the target already confirmed. Absent means no bound: an older core sends none, and the worker waits for the target as before. The core sends open_timeout only to peers at proto_version 0.6 or later. It bounds its own wait for channel_opened by open_timeout plus one heartbeat_interval, so the worker's error arrives first, and on an error that arrives after it gave up it drops the open (session-open steps 12–14). That wait applies toward every worker, with or without open_timeout: a peer below 0.6 is given no bound, and the core waits the target's bound plus one heartbeat_interval the same. A channel_opened that arrives after the core gave up — from a peer below 0.6, or from a 0.6 peer racing its own bound — is closed with close_channel, and on the channel_closed that answers it the core sends release, recording nothing (no session record, no recording, no audit line): it never offered the session (session-open step 14). The value is a config.yaml knob, worker.open_timeout, and a target's own value overrides it (inventory-target options.open_timeout); the contract fixes its range, never its value (decision 5.36).",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id",
+        "term",
+        "cols",
+        "rows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "open_shell"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "term": {
+          "$ref": "common.schema.json#/$defs/term"
+        },
+        "cols": {
+          "$ref": "common.schema.json#/$defs/cols"
+        },
+        "rows": {
+          "$ref": "common.schema.json#/$defs/rows"
+        },
+        "open_timeout": {
+          "$ref": "common.schema.json#/$defs/duration_ms",
+          "description": "From proto_version 0.6: how long the worker waits for the target to open the shell, integer milliseconds, 1 to 2^53-1. Past it the worker answers error naming the session (no code), never channel_opened for it, and closes a channel the target already confirmed. Optional: absent means no bound (an older core). The core sends it only to peers at proto_version 0.6 or later. The value is the config.yaml knob worker.open_timeout, or the target's own options.open_timeout, never this schema's (decision 5.36)."
+        }
+      }
+    },
+    "open_sftp": {
+      "description": "Open an SFTP session on this connection. Published at this tag so N channels per connection is expressible (decision 5.21); a worker may answer error not_supported until a later release defines the file surface (decision 5.43).",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "open_sftp"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "open_subsystem": {
+      "description": "Open a subsystem session (NETCONF is an SSH subsystem, not a separate connection: lang-arch §3.2). Published at this tag, like open_sftp; a worker may answer error not_supported.",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "open_subsystem"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "name": {
+          "enum": [
+            "netconf"
+          ]
+        }
+      }
+    },
+    "resize": {
+      "description": "Set one session's terminal size (lang-arch §3.2: resize is out-of-band). Names the session, because a connection carries N. Each resize reaches the target as its own window-change, in order; a worker never coalesces two — from contract-v0.3 this is stated because the attach redraw wiggle and every applied size request arrive as resizes, and the target must see both of the wiggle's two changes. A resize for a telnet session whose peer refused NAWS, or turned it off with DONT NAWS, is dropped by the worker with no answer: the core answers that size request not_resizable from the session's resizable (size-control step 3), so a resize reaches such a session only as this defense.",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id",
+        "cols",
+        "rows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "resize"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "cols": {
+          "$ref": "common.schema.json#/$defs/cols"
+        },
+        "rows": {
+          "$ref": "common.schema.json#/$defs/rows"
+        }
+      }
+    },
+    "close_channel": {
+      "description": "Close one session's channel. Its sibling sessions and the connection survive (Contract §15.2). A telnet connection is the exception: it carries one session and closes with it (connection_lost cause single_session). Answered by channel_closed.",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "close_channel"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "disconnect": {
+      "description": "Close the connection and every session on it; before a prompt-mode connect's terminal answer it instead ends the attempt (rule 3): the worker closes the transport, probe or real, and its connection_lost, cause disconnect, names no session. The worker answers with connection_lost naming those sessions, then closes this socket; it exits only if it holds no other connection (lang-arch §6.4 step 4).",
+      "type": "object",
+      "required": [
+        "cmd"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "disconnect"
+        }
+      }
+    },
+    "hostkey": {
+      "description": "The target presented a host key the worker had not recorded; the worker accepted it, recorded it, and says so before `connected`: accept, warn, record (decision 5.18) — on a connect that is not in prompt mode. On a prompt-mode connect the worker never sends hostkey: it asks first with hostkey_ask and records the key only when the operator accepts. The core writes the audit event target.hostkey_accepted and returns the fingerprint in the session-create response so the operator is warned. A changed key is never accepted: that is error hostkey_changed.",
+      "type": "object",
+      "required": [
+        "event",
+        "conn_id",
+        "fingerprint",
+        "first_use"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "hostkey"
+        },
+        "conn_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "fingerprint": {
+          "$ref": "common.schema.json#/$defs/fingerprint"
+        },
+        "first_use": {
+          "const": true
+        }
+      }
+    },
+    "hostkey_ask": {
+      "description": "worker → core, from proto_version 0.7, prompt-mode connect only: the target presented a host key the worker has no record of, and the worker asks before anything is authenticated. The key was fetched by a key-only probe connection (key exchange, offering public-key host-key algorithms and no certificate algorithm; no user name and no authentication request crosses it), so the device has seen no login name. At most one per connect, before any auth_prompt; the core relays it to the pane (C2 device_login_hostkey), writes target.hostkey_accepted or target.hostkey_refused, and answers hostkey_answer. The worker records the key only on accept, under its flock, shared, one per device. `kind` has one value at this release: the changed-key acceptance of a later release adds a value, never a message. A core that meets a kind it does not know answers disconnect and ends the device login connect_failed (rule 7). Never a hostkey event on a prompt-mode connect.",
+      "type": "object",
+      "required": [
+        "event",
+        "conn_id",
+        "kind",
+        "fingerprint"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "hostkey_ask"
+        },
+        "conn_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "first_use"
+          ]
+        },
+        "fingerprint": {
+          "$ref": "common.schema.json#/$defs/fingerprint"
+        }
+      }
+    },
+    "hostkey_answer": {
+      "description": "core → worker, from proto_version 0.7: the operator's decision on the key hostkey_ask asked about. Sent once, and only after the ask; the core writes the audit line before it relays. accept true: the worker records the key and goes on to the real connect, which is checked against known_hosts with nothing recorded and dials the address the probe reached. accept false: the worker records nothing and answers error hostkey_refused. An answer with no hostkey_ask outstanding, or a second one, or a malformed one, is answered error bad_request, which is the terminal answer (rule 6); after the terminal answer the worker ignores it.",
+      "type": "object",
+      "required": [
+        "cmd",
+        "accept"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "hostkey_answer"
+        },
+        "accept": {
+          "type": "boolean"
+        }
+      }
+    },
+    "connected": {
+      "description": "The transport is up and authenticated. Names the connection: a connection is not a session (Contract §15). For telnet, connected means the TCP connection is up and the opening negotiation is done: the base protocol has no authentication (RFC 854), so, as with the echo driver, nothing was authenticated. There is never a hostkey or an auth_failed on a telnet connection.",
+      "type": "object",
+      "required": [
+        "event",
+        "conn_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "connected"
+        },
+        "conn_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "auth_failed": {
+      "description": "The target refused the credential or, on a prompt-mode connect, its bound passed or the device asked for a password change, which `code` says. The connection is not established. `code` is sent only on the answer to a prompt-mode connect: refused (the device has no method left), login_timeout (the worker's bound, connect.login_timeout, passed) or password_change_requested (the password method's change request; a PAM password change asked through keyboard-interactive rounds is relayed and done in the pane instead). The core acts on the code and never on `reason`; a code it does not know is read as refused (V4, V5).",
+      "type": "object",
+      "required": [
+        "event",
+        "conn_id",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "auth_failed"
+        },
+        "conn_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "refused",
+            "login_timeout",
+            "password_change_requested"
+          ],
+          "description": "From proto_version 0.7: why the connect ended, on the answer to a prompt-mode connect only. Optional so that every earlier auth_failed stays valid."
+        }
+      }
+    },
+    "auth_prompt": {
+      "description": "worker → core, from proto_version 0.7, prompt-mode connect only: one round of the device's own SSH authentication, relayed unread (Contract §6), in the order the device sent it. `method` banner: the SSH_MSG_USERAUTH_BANNER text (RFC 4252 §5.4), display-only, with no prompt_id, no attempt and no answer. `password`: the device asks for a password; the request carries no device text. `keyboard-interactive` (RFC 4256, SSH_MSG_USERAUTH_INFO_REQUEST): name, instruction and prompts, and prompt_id exactly when prompts is not empty; a round with no prompts is display-only, and the worker answers it itself with no round trip. One auth_prompt with a prompt_id is outstanding at a time, and the next comes only after the core's auth_answer to it (rule 2). `attempt` is common.schema.json login_attempt (rule 8). Bounds, in characters: banner text 16384, name 1024, instruction 4096, a prompt's text 1024, 0 to 16 prompts; past one the worker ends the login error not_supported. Device text that is not UTF-8 ends the login inside asyncssh, and the worker answers an error with no code; nothing is relayed. A core that meets a method it does not know answers disconnect and ends the device login connect_failed (rule 7).",
+      "type": "object",
+      "required": [
+        "event",
+        "conn_id",
+        "method"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "auth_prompt"
+        },
+        "conn_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "method": {
+          "enum": [
+            "banner",
+            "password",
+            "keyboard-interactive"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 16384,
+          "description": "The banner's text, plain text, at most 16384 characters. `banner` only."
+        },
+        "attempt": {
+          "$ref": "common.schema.json#/$defs/login_attempt"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024,
+          "description": "The round's name, at most 1024 characters, possibly empty. `keyboard-interactive` only."
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 4096,
+          "description": "The round's instruction, at most 4096 characters, possibly empty. `keyboard-interactive` only."
+        },
+        "prompts": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "$ref": "common.schema.json#/$defs/login_prompt_item"
+          },
+          "description": "The round's questions, 0 to 16. `keyboard-interactive` only."
+        },
+        "prompt_id": {
+          "$ref": "common.schema.json#/$defs/login_prompt_id"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "method": {
+              "const": "banner"
+            },
+            "attempt": false,
+            "name": false,
+            "instruction": false,
+            "prompts": false,
+            "prompt_id": false
+          },
+          "required": [
+            "text"
+          ]
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "password"
+            },
+            "text": false,
+            "name": false,
+            "instruction": false,
+            "prompts": false
+          },
+          "required": [
+            "attempt",
+            "prompt_id"
+          ]
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "keyboard-interactive"
+            },
+            "text": false,
+            "prompts": {
+              "type": "array",
+              "minItems": 1
+            }
+          },
+          "required": [
+            "attempt",
+            "name",
+            "instruction",
+            "prompts",
+            "prompt_id"
+          ]
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "keyboard-interactive"
+            },
+            "text": false,
+            "prompts": {
+              "type": "array",
+              "maxItems": 0
+            },
+            "prompt_id": false
+          },
+          "required": [
+            "attempt",
+            "name",
+            "instruction",
+            "prompts"
+          ]
+        }
+      ]
+    },
+    "auth_answer": {
+      "description": "core → worker, from proto_version 0.7: the answers to the one outstanding auth_prompt that carries prompt_id, one string per prompt (exactly one for a password request), 1 to 16, each 0 to 1024 characters (the core relays only strings of at most 1024 bytes of UTF-8). The worker feeds them into SSH's authentication at the protocol layer, below the byte stream TSB records, so they never enter the PTY stream. An answer with no prompt outstanding, naming another prompt_id, or carrying another count than the prompt's, or a malformed one, is answered error bad_request, which is the terminal answer (rule 6); after the terminal answer the worker ignores it. The answers are credentials: they travel only here and on C2, never in a log, a manifest, the spool or a data socket (V10), and a collection holds only the synthetic constant for each.",
+      "type": "object",
+      "required": [
+        "cmd",
+        "prompt_id",
+        "answers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "auth_answer"
+        },
+        "prompt_id": {
+          "$ref": "common.schema.json#/$defs/login_prompt_id"
+        },
+        "answers": {
+          "$ref": "common.schema.json#/$defs/login_answers"
+        }
+      }
+    },
+    "channel_opened": {
+      "description": "A session's channel is open and its data socket is listening at conn-{conn_id}/{socket}. The worker picks the name: shell.sock for a connection's first shell and sftp.sock, sub-{N}.sock as lang-arch §4.1 lays them out, and a distinct name for every further channel. session_type is what the audit log and the recording are tagged with (Storage §6, lang-arch §8.2).",
+      "type": "object",
+      "required": [
+        "event",
+        "session_id",
+        "session_type",
+        "socket"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "channel_opened"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_type": {
+          "$ref": "common.schema.json#/$defs/session_type"
+        },
+        "socket": {
+          "$ref": "#/$defs/socket"
+        },
+        "resizable": {
+          "type": "boolean",
+          "description": "From proto_version 0.5, on a telnet connection: what NAWS negotiation says when the session is offered. true exactly when the peer agreed to NAWS (DO NAWS) before the worker sent this event; absent means true, so every earlier instance and every ssh and echo session keeps its meaning. The core keeps the value it was told for the session's life, across a restart."
+        }
+      }
+    },
+    "channel_closed": {
+      "description": "One session's channel closed. by: core — the answer to close_channel: the worker reports by: core whenever the core's close_channel for the session reached it before this event was sent. by: target — the target sent SSH_MSG_CHANNEL_CLOSE (RFC 4254 §5.3) without being asked, which ends the session, terminated / target_closed. by: worker (from proto_version 0.4) — the worker closed the channel itself because a timer it runs while the core is gone fired (orphan_timeout, idle or unattended; session model §11), and it names the end it decided: end_state, end_reason, ended_at, out_bytes, last_seq and last_out_ts, as its final spool write for the session states them. The six are present with by: worker and absent with by: core and by: target; that is graded by fixtures and by the control-sequence check on captures, never by required (conventions V1). A core records a by: worker end as TSB's, killed with that reason and never as an end from outside TSB, at once and without a replay: the core computes the gap from the event's out_bytes, not from the spool entry, so a failed spool write leaves no undeclared tail; output the event's numbers count that the recording lacks is declared lost by a gap marker before the end marker (session-end-by-tsb steps 23a–23b). The connection and sibling sessions live on (Contract §15.2). A telnet connection is the exception: it carries one session and closes with it (connection_lost cause single_session). reason is free text, never an exit status: at this release the contract does not carry one, and carrying it to the clients as data, never acted on, is E5's, with exec. For C3 0.8 terminal recovery, terminal-output-accounting.md specifies sealing, accounting and the connection-close branch without changing legacy release (C3/terminal-disposal-version-gate; provider tests owed).",
+      "type": "object",
+      "required": [
+        "event",
+        "session_id",
+        "by",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "channel_closed"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "by": {
+          "enum": [
+            "core",
+            "target",
+            "worker"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "end_state": {
+          "const": "killed",
+          "description": "With by: worker only: the end state the worker decided (spool-entry.schema.json)."
+        },
+        "end_reason": {
+          "enum": [
+            "orphan",
+            "idle",
+            "unattended"
+          ],
+          "description": "With by: worker only: the timer that ended the session: orphan for orphan_timeout, idle, or unattended (spool-entry.schema.json)."
+        },
+        "ended_at": {
+          "$ref": "common.schema.json#/$defs/timestamp",
+          "description": "With by: worker only: the spool entry's ended_at, by the worker's clock, when the worker finished the end (spool-entry.schema.json ended_at). The core stamps the end marker and session.disconnect with it."
+        },
+        "out_bytes": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "description": "With by: worker only: the ring's final output payload bytes from the session's start, never reset (spool-entry.schema.json out_bytes)."
+        },
+        "last_seq": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "description": "With by: worker only: the session's last output seq, 0 when it had no output (spool-entry.schema.json last_seq)."
+        },
+        "last_out_ts": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "description": "With by: worker only: the timestamp of output frame last_seq in the data frame's clock, nanoseconds; 0 when the session had no output (spool-entry.schema.json last_out_ts)."
+        }
+      }
+    },
+    "connection_lost": {
+      "description": "The connection is gone. Connection-scoped: it names the connection and every session still open on it, because the loss reaches every channel, and an event naming one session would leave its siblings falsely live (lang-arch §6.4 step 3). cause says why: disconnect — the answer to the core's disconnect; target_disconnect — the target sent SSH_MSG_DISCONNECT (RFC 4253 §11.1): every listed session ends terminated / target_closed; transport — our end of the TCP connection is gone; keepalive_timeout — link_timeout fired: for both, every listed session ends terminated / connection_lost (session model §13); linger — connection_linger ran out on a connection with no session left (session model §11), so session_ids is empty: a retained ended session is not listed, and the close releases it. linger is also how a connection that never carried a session closes. A v0.1 core reads the unknown cause as transport, and the event lists no session to end. single_session (from proto_version 0.5): the connection carries one session (telnet), and it closed because that session ended or its open failed; session_ids is empty. The worker sends it only once that session's end has reached a core that knew the session — its channel_closed, the error answering the first open_shell, or the core's release for that session, never hello_ack alone — and before it reads another command on that control socket; at the bound heartbeat_interval × heartbeat_missed from the end, when a control peer is attached, it lists that session, so the core reads its spool first and records the worker's end. The report goes right after the flushed channel_closed; a hello answer still pending is dropped with the peer. A core ends every session it has not ended on the connection, listed or not; a listed one is read from its spool first.",
+      "type": "object",
+      "required": [
+        "event",
+        "conn_id",
+        "session_ids",
+        "cause",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "connection_lost"
+        },
+        "conn_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "cause": {
+          "enum": [
+            "disconnect",
+            "target_disconnect",
+            "transport",
+            "keepalive_timeout",
+            "linger",
+            "single_session"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "cause": {
+              "const": "linger"
+            },
+            "session_ids": {
+              "maxItems": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "cause": {
+              "enum": [
+                "disconnect",
+                "target_disconnect",
+                "transport",
+                "keepalive_timeout"
+              ]
+            }
+          }
+        },
+        {
+          "description": "single_session lists at most the connection's one session: empty once that session's end has reached the core, or exactly that session at the bound when a control peer is attached.",
+          "properties": {
+            "cause": {
+              "const": "single_session"
+            },
+            "session_ids": {
+              "maxItems": 1
+            }
+          }
+        }
+      ]
+    },
+    "error": {
+      "description": "A command failed. session_id is present when the command named a session. code, when present: hostkey_changed (the target's key differs from the recorded one; refused), not_supported (the driver or this tag does not provide it), unknown_cmd (a command this worker does not know), bad_request (a line that is not a valid command, or a connect that lacks timers, buffer_bytes or input_frame_max, or a timers or connect carrying a keepalive_probe_interval outside its range), internal; and, answering hello, unsupported_proto (the worker cannot speak the hello's proto_version), no_such_session (the worker holds no such session: session model §9 E10, which v0.1 could not say) and no_data_peer (no new data peer arrived within heartbeat_interval of the hello, so a core that failed to dial is told). Each of the three names the session. target_address_refused (from proto_version 0.5): the worker resolved the connect host once and found the address in its deployment's deny list, so it opened no TCP connection; the message names the target id, never the address, and an IPv4-mapped IPv6 address is checked as the IPv4 address it maps. The core answers the create 502 target_connect_failed. A 0.5 worker cannot know its peer's version at connect, so a receiver reads a code it does not know as a failed command: on connect, any error from the worker is a refused connection. From proto_version 0.7 on a prompt-mode connect, hostkey_refused: the operator refused the first-use host key the worker asked about (hostkey_answer accept false); the worker recorded nothing and the connect ends. Like every error before a prompt-mode connect's terminal answer it is that terminal answer (rule 6), and it names no session. A probed key on record as revoked is refused before any ask by an error with no code. From C3 0.8, terminal_busy names the session on hello while sealing or a core-requested end is in flight; only the attempted new data peer closes. Core retries fresh after output_sealed or channel_closed. C3/terminal-hello-busy (reference, U2/U3 tests owed). A C3 0.8 worker answers a hello offering a version below 0.8 for such a session with unsupported_proto naming the session, never terminal_busy, and sends output_sealed and terminal_busy only to a peer that stated 0.8 in a hello it parsed or by sending seal_output on that control connection (terminal-output-accounting §3.1, tsb-program #138, tsb-core #783). C3/terminal-legacy-offer-mid-seal (reference, U2/U3 tests owed).",
+      "type": "object",
+      "required": [
+        "event",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "error"
+        },
+        "message": {
+          "type": "string"
+        },
+        "code": {
+          "enum": [
+            "hostkey_changed",
+            "not_supported",
+            "unknown_cmd",
+            "bad_request",
+            "internal",
+            "unsupported_proto",
+            "no_such_session",
+            "no_data_peer",
+            "target_address_refused",
+            "hostkey_refused",
+            "terminal_busy"
+          ]
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "code": {
+              "enum": [
+                "unsupported_proto",
+                "no_such_session",
+                "no_data_peer",
+                "terminal_busy"
+              ]
+            }
+          },
+          "required": [
+            "code",
+            "session_id"
+          ]
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": [
+                "hostkey_changed",
+                "not_supported",
+                "unknown_cmd",
+                "bad_request",
+                "internal",
+                "target_address_refused",
+                "hostkey_refused"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "hello": {
+      "description": "core → worker: open the reattach handshake for one session (immortality §6.1, §4.1; the §6.3 sketch with every token field stripped, decision 5.30). The core sends it only after it has dialled that session's data socket, for a new session, after a core restart, and after a lone data-socket re-dial alike. last_committed_seq is C6 recording_last_seq_out, which is snapshot_seq for a session that has a grid_snapshot_record (immortality §4.1, §5.1; decision 5.39): the seq of the last output frame or gap marker the core's recording keeps at its commit point — a gap marker counts as the seq of the gap frame it records, the last lost seq; for a session that is not recorded, the last output frame the core received there — 0 before any. Before every hello — for a new session, after a core restart, after a lone data-socket re-dial — the core realigns, moving the commit point to the recording's end (C6 continuity-state top), so the worker replays only what the recording lacks. A gap marker is a commit point, so a core that dies after one asks for what follows the loss, and the worker declares a gap again only for frames dropped since; from E2, a gap marker the recording holds past the commit point (a core that died before that marker's write) is counted by its bytes (hello_ack). From hello — and, after a lone data-socket loss, from that loss — until live the core forwards no client input to this session and holds none for later: keystrokes typed while the screen still replays are how you type into the wrong prompt (§6.3), so it refuses them on C2 (input_refused replaying).",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id",
+        "proto_version",
+        "last_committed_seq"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "hello"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "proto_version": {
+          "$ref": "common.schema.json#/$defs/proto_version"
+        },
+        "last_committed_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        }
+      }
+    },
+    "hello_ack": {
+      "description": "worker → core: what the worker holds for the session. It answers only once it holds a data peer for that session accepted after the previous one ended, and it replays on that peer; it waits for one at most heartbeat_interval (the value the core sent, no knob of its own), then answers error no_data_peer instead. first_buffered_seq is the seq of the oldest frame its ring still holds, current_seq + 1 when it holds none; current_seq is the session's last output seq, 0 before any output. first_buffered_offset is the count of the session's output payload bytes before that frame, counted from the session's start and never reset; last_dropped_ts is the timestamp of the last frame the ring dropped, present once it has dropped one. The core computes what was lost from these alone: first_buffered_offset minus the output bytes its recording holds (C6 out_bytes_committed, plus the byte count of a gap marker the recording holds past the commit point) is the byte count, and the span runs from the stamp of the last output frame or gap marker it recorded to last_dropped_ts — frames the ring dropped that the recording holds are not a loss. ended is true when the session has ended and is retained (release). From hello until live, or release, the worker reads nothing from that session's channel, so current_seq cannot move and nothing is lost mid-handshake. That holds while the core that sent the hello is present (ruling 2026-10-14). From proto_version 0.4 the worker takes that core as gone only when its control peer drops or is replaced, it sends close_channel for the session, the worker enters orphan-pending after that hello, or the connection ends; it then reads an ended session's remaining output into the ring, where the next handshake finds it. An end that lands meanwhile waits: for live, and its tail then goes out live, or for release, which settles it ended with nothing more read. A non-PTY session has no ring: first_buffered_seq is current_seq + 1 and it never carries a gap, even when current_seq is past last_committed_seq — for sftp those bytes are the transfer layer's; exec, netconf and forward have no loss rule at this tag (the description says why). For C3 0.8 terminal recovery, terminal-output-accounting.md specifies sealing, accounting and the connection-close branch without changing legacy release (C3/terminal-disposal-version-gate; provider tests owed).",
+      "type": "object",
+      "required": [
+        "event",
+        "session_id",
+        "proto_version",
+        "first_buffered_seq",
+        "first_buffered_offset",
+        "current_seq",
+        "ended"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "hello_ack"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "proto_version": {
+          "$ref": "common.schema.json#/$defs/proto_version"
+        },
+        "first_buffered_seq": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        },
+        "first_buffered_offset": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "last_dropped_ts": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1,
+          "description": "Nanoseconds since the Unix epoch, the data frame's clock (ipc-data-frame.schema.json timestamp)."
+        },
+        "current_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "ended": {
+          "type": "boolean"
+        },
+        "output_seal": {
+          "$ref": "#/$defs/output_seal"
+        }
+      }
+    },
+    "replay": {
+      "description": "core → worker: replay from from_seq, which is last_committed_seq + 1. The worker writes on the data peer, in order: the gap frame when frames the core's recording does not hold were lost (first_buffered_seq > from_seq on a PTY session; ipc-data-frame.schema.json), then every buffered frame from max(from_seq, first_buffered_seq) with its original seq and timestamp; then it sends replay_done here.",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id",
+        "from_seq"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "replay"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "from_seq": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        }
+      }
+    },
+    "replay_done": {
+      "description": "worker → core: the replay is written. through_seq is the last seq it covers, which is hello_ack's current_seq: the worker read nothing since. The data frames and this event travel on two sockets, so replay is complete for the core when replay_done has arrived and either frame through_seq has arrived on the data peer, or nothing was due: no gap frame (a non-PTY session, or first_buffered_seq ≤ from_seq) and no buffered frame at or after from_seq (through_seq < max(from_seq, first_buffered_seq)) — as for a new session, or an sftp session whose in-flight output died with a peer. The worker accepts input on that peer only after it has sent replay_done.",
+      "type": "object",
+      "required": [
+        "event",
+        "session_id",
+        "through_seq"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "replay_done"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "through_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        }
+      }
+    },
+    "live": {
+      "description": "core → worker: the replay is complete; the worker resumes the session's output after it. The core sends it only after replay_done, and sends input only after it, so an input frame that arrives after replay_done was sent after live (immortality §6.3: input authority must not activate before REPLAY_DONE). A new session is offered northbound — the POST /sessions 201, and so any attach — only after its handshake has reached live, so a client's first keystrokes are never refused as replaying.",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "live"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "release": {
+      "description": "core → worker: the core has recorded this ended session to its end, end marker included. An end whose output a core may not have received is retained (immortality §4.1, §4.3: never splice silently): the worker keeps the session's ring, its data socket and its manifest entry until release, or until its connection closes. The core sends release at once when it was attached at the end — the session's data peer reached EOF after the end, so its recording holds the output — or after a handshake whose hello_ack reported ended: true and whose replay is complete; release then takes live's place. The core also sends release for a session it gave up before offering it: a channel_opened that arrived after its wait for it expired (open_shell), once the channel_closed that answers its close_channel has arrived, after deleting its spool entry, if any; there is nothing to record (session-open step 14). An end the worker names itself (channel_closed by: worker, from proto_version 0.4) is released once the core has recorded it, with no replay, even when output the worker still holds did not reach the recording and even when a hello for the session crossed the event: the core first declares that output lost by a gap marker before the end marker, from the event's out_bytes, and the worker then drops it (session-end-by-tsb step 23b). That is a declared loss (immortality §4.3), never a silent splice. From proto_version 0.4, a release that reaches a worker whose end of the session is still under way settles that end: the worker reads nothing more of the channel into the ring, sends no channel_closed for it, and drops it. A retained session is not a session for connection_linger, which arms as soon as no live session is left, so a retained session never holds a connection, or its target login, open (session model §11, §14); when the connection closes, its retained sessions are released and the spool's numbers stand. Retention is thus bounded by the connection's life, keeps no worker running, and keeps its memory within the connection's buffer_bytes per session. For C3 0.8 terminal recovery, terminal-output-accounting.md specifies sealing, accounting and the connection-close branch without changing legacy release (C3/terminal-disposal-version-gate; provider tests owed).",
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "release"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "timers": {
+      "description": "core → worker: a full new set of timer values, sent on a change (a config.yaml reload) and at reattach. The worker keeps the last set it received, so its timers keep running while the core is away (session model §15; Storage §8.1).",
+      "type": "object",
+      "required": [
+        "cmd",
+        "timers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "timers"
+        },
+        "timers": {
+          "$ref": "#/$defs/timer_values"
+        }
+      }
+    },
+    "ping": {
+      "description": "core → worker: the heartbeat (session model §9 E6, E7; §11), sent on every connection's control socket every heartbeat_interval. The worker answers pong with the same n from its own event loop, so a worker whose loop is stuck stops answering though its process and socket are alive (worker_heartbeat). A ping on any of a worker's connections resets that worker's core_heartbeat: it runs per worker, and needs no socket of its own. After a restart, toward a worker whose version it speaks, the core sends its first ping on each control socket it dialled before its first hello there (core-restart step 22), so that worker has left orphan-pending, and handed idle and unattended back to the core, before any handshake opens. A worker of a version the core does not know is offered hello with no ping before it.",
+      "type": "object",
+      "required": [
+        "cmd",
+        "n"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "ping"
+        },
+        "n": {
+          "$ref": "common.schema.json#/$defs/count",
+          "description": "The core's own counter; the pong names it back."
+        }
+      }
+    },
+    "pong": {
+      "description": "worker → core: the answer to ping n, from the worker's own event loop.",
+      "type": "object",
+      "required": [
+        "event",
+        "n"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "pong"
+        },
+        "n": {
+          "$ref": "common.schema.json#/$defs/count"
+        }
+      }
+    },
+    "link_state": {
+      "description": "worker → core: what link_timeout's countdown is computed from (session model §11 expiry_notice: the countdown runs from the first missed keepalive and only the core computes it). state missing when a keepalive interval passes with no E3; answering when E3 returns; and, so a restarted core has the countdown at once, as the first event to every new control peer of a connection that is connected (before connected there is no link to report). During the single_session wait, each new control peer gets one answering link_state, its last_ack_at the last E3, as its first event, and no timer-driven link_state. last_ack_at is when the last E3 arrived — the time the connection was established, before the first. A connection whose protocol gives no liveness signal, or whose keepalive_interval is 0, only ever reports answering.",
+      "type": "object",
+      "required": [
+        "event",
+        "conn_id",
+        "state",
+        "last_ack_at"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "link_state"
+        },
+        "conn_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "state": {
+          "enum": [
+            "missing",
+            "answering"
+          ]
+        },
+        "last_ack_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      }
+    },
+    "input_refused": {
+      "description": "worker → core: an input frame the worker did not deliver to the target, named by its seq; the worker counts and logs it. error is a command's failure, and a data frame is not a command. replaying: it arrived before the worker sent replay_done — a core defect, since the core sends input only after live. ended: the session had already ended. too_large: its header declared more than the connection's input_frame_max; the worker refuses it from the header alone and then closes that data peer, because skipping the payload would mean reading it. The session lives: the core re-dials and runs the handshake. A correct core splits client input at the connection's input_frame_max — the value it sent on connect, kept in the connection's C6 record — so too_large too marks a core defect, and the re-dial it costs is a data-path loss like any other.",
+      "type": "object",
+      "required": [
+        "event",
+        "session_id",
+        "seq",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "input_refused"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "seq": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        },
+        "reason": {
+          "enum": [
+            "replaying",
+            "ended",
+            "too_large"
+          ]
+        }
+      }
+    },
+    "timer_values": {
+      "description": "The timer values this connection's sessions run by (session model §11). Each is a config.yaml knob (decision 5.36): the contract fixes the field and its range, never its value. All but the two heartbeat values and output_drain_timeout take a per-target override. The latter is connection-wide from C3 0.8, a separate operational drain bound, not session expiry. heartbeat_interval and heartbeat_missed bound core_heartbeat, whose scope is the worker (session model §11), and a worker holds connections to many targets, so they are core-wide: every connection carries the same pair, and the worker uses the latest pair it received on any of its connections. That departs from session model §11's \"a target's own value overrides it\" for these two keys, and says so on the approval page. Durations are integer milliseconds. heartbeat_interval × heartbeat_missed is core_heartbeat, the worker's bound on a silent core. keepalive_interval × keepalive_count_max is link_timeout; keepalive_interval 0 turns link_timeout off for this target (Storage §3.2's keepalive option). connection_linger 0 closes a connection with its last session. The worker runs orphan_timeout, and idle and unattended while the core is gone. expiry_notice and quiet_prompt are the core's alone and are never sent. From contract-v0.3 the set may also carry keepalive_probe_interval (5.51): how often the worker probes a silent link — SSH keepalive@openssh.com with want-reply; from proto_version 0.5 Telnet IAC DO TIMING-MARK — separate from keepalive_interval, which keeps its meaning (the missing mark and link_timeout's bound). The re-arm rule, as session model §11 states it: the probe is sent when now − max(last(E3), last probe) ≥ keepalive_probe_interval, so any E3 and each probe reset it and a silent link is probed once per interval, never continuously. Range rule (prose, cross-field: R4 keeps it out of the schema): greater than 0 and less than keepalive_interval when that is greater than 0; with keepalive_interval 0 (link_timeout off) the field is ignored. Absent, the worker probes every keepalive_interval — v0.2's behaviour, so a timer_values valid at v0.2.1 stays acceptable and a rolled-back v0.2 core still drives a 0.3 or 0.4 worker. A worker at 0.3 or later refuses a connect or timers carrying an out-of-range value with error bad_request. The core sends the field only to peers at proto_version ≥ 0.3, because the frozen v0.2 worker refuses a timers whose key set is not exactly the eight it knows. The default (half of keepalive_interval) is U5's config.yaml value, never this schema's. connection_linger never holds a telnet connection after its one session: a telnet connection that never received open_shell closes by connection_linger, cause linger, as any connection that never carried a session. When the target's socket closes with the session, the worker stops that connection's link timers and sends no further link_state for it.",
+      "type": "object",
+      "required": [
+        "heartbeat_interval",
+        "heartbeat_missed",
+        "keepalive_interval",
+        "keepalive_count_max",
+        "connection_linger",
+        "orphan_timeout",
+        "idle",
+        "unattended"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "heartbeat_interval": {
+          "$ref": "common.schema.json#/$defs/duration_ms"
+        },
+        "heartbeat_missed": {
+          "$ref": "common.schema.json#/$defs/count"
+        },
+        "keepalive_interval": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Integer milliseconds, as duration_ms, or 0: link_timeout off for this target."
+        },
+        "keepalive_count_max": {
+          "$ref": "common.schema.json#/$defs/count"
+        },
+        "keepalive_probe_interval": {
+          "$ref": "common.schema.json#/$defs/duration_ms",
+          "description": "How often the worker probes a silent link (5.51; session model §9 E3, §11). Integer milliseconds, 1 to 2^53-1. Greater than 0 and less than keepalive_interval when that is greater than 0; with keepalive_interval 0 the field is ignored. Optional: a v0.2 set without it is valid, and the worker probes every keepalive_interval then. The core sends it only to peers at proto_version ≥ 0.3. Its default (half of keepalive_interval) is U5's config.yaml value, never this schema's."
+        },
+        "connection_linger": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Integer milliseconds, as duration_ms, or 0: the connection closes with its last session."
+        },
+        "orphan_timeout": {
+          "$ref": "common.schema.json#/$defs/duration_ms"
+        },
+        "idle": {
+          "$ref": "common.schema.json#/$defs/duration_ms"
+        },
+        "unattended": {
+          "$ref": "common.schema.json#/$defs/duration_ms"
+        },
+        "output_drain_timeout": {
+          "$ref": "common.schema.json#/$defs/duration_ms",
+          "description": "From C3 0.8 only. Connection-wide worker.output_drain_timeout, the second exception beside the heartbeat pair to per-target timers. Required runtime key; optional additive wire shape. Snapshotted per attempt, reload next attempt, retained while core absent. No contract default. C5/config-output-drain-timeout (reference, U5/U2/U3 tests owed)."
+        }
+      }
+    },
+    "buffer_bytes": {
+      "$ref": "common.schema.json#/$defs/count",
+      "description": "Bytes of the worker-side ring per PTY session of this connection (immortality §4.3's per-session buffer knob; decision 5.36). It travels on connect, not create_worker, because the ring is per session of one connection and a worker holds connections placed by several create_worker requests. Fixed for the connection's life: the core keeps it in the connection's C6 record. The worker splits its output reads so that no frame is larger than buffer_bytes, so the ring can always hold the newest frame and no value in range is refused. On overflow the oldest frames are dropped and seq keeps counting (§4.3, LOCKED). A worker holds at most its connections' buffer_bytes per retained or live PTY session; there is no worker-wide cap at this tag."
+    },
+    "input_frame_max": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295,
+      "description": "The largest input frame payload, in bytes, the worker accepts on this connection's data sockets (decision 5.36: a config.yaml knob; the contract fixes only the range). Fixed for the connection's life: the core keeps it in the connection's C6 record, and splits client input into frames no longer than that recorded value — never at a value its configuration now holds, which a restart may have changed. The worker refuses a longer frame from its header alone (input_refused too_large)."
+    },
+    "socket": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}\\.sock$",
+      "description": "A bare file name inside the connection's directory: no slash, so it cannot point elsewhere."
+    },
+    "seal_output": {
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "seal_output"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "release_accounted": {
+      "type": "object",
+      "required": [
+        "cmd",
+        "session_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {
+          "const": "release_accounted"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      }
+    },
+    "output_seal_final": {
+      "type": "object",
+      "required": [
+        "sealed",
+        "read_outcome",
+        "final_last_seq",
+        "final_out_bytes",
+        "final_last_out_ts",
+        "observed_at_ns",
+        "unknown_suffix"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sealed": {
+          "const": true
+        },
+        "read_outcome": {
+          "enum": [
+            "eof",
+            "timeout",
+            "read_error"
+          ]
+        },
+        "final_last_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "final_out_bytes": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "final_last_out_ts": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "observed_at_ns": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        },
+        "unknown_suffix": {
+          "type": "boolean"
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "final_last_seq": {
+              "const": 0
+            },
+            "final_out_bytes": {
+              "const": 0
+            },
+            "final_last_out_ts": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "final_last_seq": {
+              "minimum": 1
+            },
+            "final_out_bytes": {
+              "minimum": 1
+            },
+            "final_last_out_ts": {
+              "minimum": 1
+            }
+          }
+        }
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "read_outcome": {
+              "const": "eof"
+            },
+            "unknown_suffix": {
+              "const": false
+            }
+          }
+        },
+        {
+          "properties": {
+            "read_outcome": {
+              "enum": [
+                "timeout",
+                "read_error"
+              ]
+            },
+            "unknown_suffix": {
+              "const": true
+            }
+          }
+        }
+      ],
+      "description": "The sealed:true branch, the only successful sealing result: all producers stopped/joined with immutable counters, never losslessness. terminal-output-accounting §3.1; C3/terminal-seal-idempotent, C3/terminal-drain-read-error (reference, provider tests owed)."
+    },
+    "output_seal": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "sealed"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "sealed": {
+              "const": false
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/output_seal_final"
+        }
+      ],
+      "description": "Terminal producer result from C3 0.8, as a hello_ack's optional summary: sealed:false is the preliminary summary with no other field and no finality claimed; sealed:true is the immutable result, kept in $defs/output_seal_final. Unknown outcome or absent proof withholds accounted release. terminal-output-accounting rules 2–4; C3/terminal-seal-idempotent, C3/terminal-drain-read-error (reference, provider tests owed)."
+    },
+    "output_sealed": {
+      "type": "object",
+      "required": [
+        "event",
+        "session_id",
+        "output_seal"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "const": "output_sealed"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "output_seal": {
+          "$ref": "#/$defs/output_seal_final",
+          "description": "A seal reply is a successful seal: only the sealed:true branch (terminal-output-accounting §3.1); C3/terminal-seal-idempotent."
+        }
+      }
+    }
+  }
+}

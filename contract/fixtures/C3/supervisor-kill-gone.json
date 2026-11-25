@@ -1,0 +1,41 @@
+{
+  "seam": "C3",
+  "name": "supervisor-kill-gone",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_supervisor.py — kill_worker SIGKILLs and reaps the worker, and answers only after the reap"
+    }
+  ],
+  "description": "A kill_worker for a worker the supervisor no longer holds — it exited, or was reaped before the request arrived — is answered worker_killed: the worker is gone either way, and a refusal would read to the core as a kill that failed.",
+  "corpus": [
+    "session model §11",
+    "decision 5.13"
+  ],
+  "case": {
+    "socket": "supervisor-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "kill_worker",
+          "worker_id": "fixture-worker-9",
+          "reap_timeout": 5000
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "worker_killed",
+          "worker_id": "fixture-worker-9"
+        },
+        "note": "already gone"
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "seam": "C2",
+  "name": "recording-hold-data-path",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: recording_hold_data_path"
+    }
+  ],
+  "description": "A held attach receives one lost marker following its retained prefix.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "data_path",
+          "v": 1,
+          "session_id": "s1",
+          "state": "lost",
+          "at": "2026-11-15T02:15:00Z"
+        }
+      }
+    ]
+  }
+}

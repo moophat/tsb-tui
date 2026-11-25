@@ -1,0 +1,84 @@
+{
+  "seam": "C2",
+  "name": "size-coalesced",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U2", "test": "owed by the E2 core plan"}
+  ],
+  "description": "The core coalesces a burst of size requests, last wins (C2 decision 8; 5.50; D37): it applies the last request of a burst, then answers every request of the burst, in request order, each with the size that applied and the reason that size got. So the answers all say the same final size, and obeying any of them is obeying the last. The clamp reasons name why the final size is what it is. The live shape is graded by U2 (owed by the E2 core plan).",
+  "corpus": [
+    "C2 decision 8",
+    "5.50",
+    "D37",
+    "terminal-size-and-control.md §3"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 120,
+          "rows": 40,
+          "reason": "applied"
+        },
+        "note": "the last request of the burst was applied"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 120,
+          "rows": 40,
+          "reason": "clamped_floor"
+        },
+        "note": "the same final size, its reason the floor"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 200,
+          "rows": 50,
+          "reason": "clamped_ceiling"
+        },
+        "note": "clamped down to the ceiling; the answer is final until the surface's own window changes"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 120,
+          "rows": 40,
+          "reason": "not_typist"
+        },
+        "note": "a non-holder's request: the one refusal path for a size request, carrying the size in effect"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 120,
+          "rows": 40,
+          "reason": "coalesced"
+        },
+        "note": "coalescing is the core's, not a reason on the wire"
+      }
+    ]
+  }
+}

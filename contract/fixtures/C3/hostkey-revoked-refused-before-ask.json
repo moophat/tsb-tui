@@ -1,0 +1,63 @@
+{
+  "seam": "C3",
+  "name": "hostkey-revoked-refused-before-ask",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_a_revoked_key_is_refused_before_any_ask"
+    }
+  ],
+  "description": "A probed key that known_hosts marks `@revoked` is refused before any ask, the way the driver refuses one today: `error` with no code, as the terminal answer, and no `hostkey_ask` ever. The core maps an `error` with no code to the outcome `connect_failed`.",
+  "corpus": [
+    "decision 5.18",
+    "device-login step 11",
+    "ipc-control rule 5"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "message": "the host key is marked revoked"
+        },
+        "note": "terminal: no code, and no hostkey_ask before it"
+      }
+    ]
+  }
+}

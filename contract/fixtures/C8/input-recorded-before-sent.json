@@ -1,0 +1,47 @@
+{
+  "seam": "C8",
+  "name": "input-recorded-before-sent",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/handshake_test.go — TestInputIsRecordedBeforeItIsSent: the core records an input frame before it writes it to the data socket, so a kill between the two leaves the frame in the recording"
+    }
+  ],
+  "description": "The broker records what actually reached it (Contract §13). The core records each input frame — the recording's code-1 frame, with its send stamp — before it sends the frame to the worker, so every keystroke that reached the broker is in the recording even when a kill lands between the two. The reverse order loses a keystroke that did reach the target. The in-direction check stays strict: every tapped input frame is in the recording, in order.",
+  "corpus": [
+    "Contract §13",
+    "open_decisions §5",
+    "immortality §4.1"
+  ],
+  "case": {
+    "schema": "schemas/ttyrec.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "sec": 1789000001,
+          "usec": 0,
+          "length": 3,
+          "direction": "in",
+          "data_hex": "6c730d"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1789000001,
+          "usec": 0,
+          "length": 0,
+          "direction": "in",
+          "data_hex": ""
+        },
+        "note": "an input frame carries what was typed"
+      }
+    ]
+  }
+}

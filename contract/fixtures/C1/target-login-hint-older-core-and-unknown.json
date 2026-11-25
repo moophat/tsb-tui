@@ -1,0 +1,102 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-older-core-and-unknown",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U1",
+      "test": "Contract client consumer decoding and historical omission compatibility tests in tests/test_target_login_hint.py."
+    }
+  ],
+  "description": "Older core omits login_hint and still validates. Older consumer ignores the additive field. Consumer tests inject an unknown enum and unknown target type: suppress hint, keep row and normal connect flow; absent never means none. No unknown sender enum example is accepted by the current schema. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-old-core"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-old-core"
+              }
+            },
+            {
+              "pointer": "/targets/0/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-old-core",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-old-core"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-old-core"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-old-core"
+            },
+            {
+              "pointer": "/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "id": "hint-old-core",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-old-core"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,215 @@
+{
+  "seam": "C1",
+  "name": "client-remove-by-owner",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "The owner removes another attached client: DELETE /sessions/{id}/clients/{client_id} returns 204, the removed client's socket closes with 4014 `removed` (the session lives on), and the other attached clients receive a `clients` frame with the reduced set. The owner's token move is a detach; the session's remaining client keeps control. Needs a peer login with session.join.rw (inputs peer_user, peer_password) to attach a second client.",
+  "corpus": [
+    "Contract \u00a710",
+    "C1 decision 2",
+    "PTY \u00a77.1",
+    "Frontend \u00a79",
+    "session model \u00a715"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          }
+        },
+        "expect": {
+          "status": 200
+        },
+        "save": {
+          "ta": "/ticket"
+        }
+      },
+      {
+        "ws_open": "a",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "a",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${ta}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "a",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            }
+          ],
+          "save": {
+            "client_a": "/client_id"
+          }
+        }
+      },
+      {
+        "ws_expect": "a",
+        "prefix": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "prefix"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          },
+          "as": "peer"
+        },
+        "expect": {
+          "status": 200
+        },
+        "save": {
+          "tp": "/ticket"
+        }
+      },
+      {
+        "ws_open": "b",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "b",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${tp}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "b",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            }
+          ],
+          "save": {
+            "client_b": "/client_id"
+          }
+        }
+      },
+      {
+        "ws_expect": "b",
+        "prefix": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "prefix"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/sessions/${sid}/clients/${client_b}"
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "ws_expect": "b",
+        "close": 4014
+      },
+      {
+        "ws_expect": "a",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "clients"
+            },
+            {
+              "pointer": "/clients",
+              "some": {
+                "/client_id": "${client_a}"
+              }
+            },
+            {
+              "pointer": "/clients",
+              "none": {
+                "/client_id": "${client_b}"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/${sid}"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/state",
+              "eq": "live"
+            },
+            {
+              "pointer": "/control_holder/client_id",
+              "eq": "${client_a}"
+            }
+          ]
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

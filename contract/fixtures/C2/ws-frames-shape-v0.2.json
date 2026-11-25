@@ -1,0 +1,133 @@
+{
+  "seam": "C2",
+  "name": "ws-frames-shape-v0.2",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "with:token-event-on-detach",
+  "description": "Every frame v0.2 adds to the session stream, valid and refused. Each is additive: a v0.1 client ignores a t it does not know (unknown-frame-ignored), and a v0.2 receiver that meets a value it does not know reads holder (a token reason) or shows ends_at (an ends_by). No frame carries a delivered position: there is no client-side ack or resume frame (decision 5.15). The live run of token-event-on-detach validates real server frames against the same shapes.",
+  "corpus": [
+    "decision 5.15",
+    "PTY §7.1",
+    "session model §11",
+    "development-plan.md §2 v0.2"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "notice",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "ends_at": "2026-09-29T01:06:00Z",
+          "ends_by": "link_timeout",
+          "ending": true
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "quiet_prompt",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "code": "quiet_prompt.kill",
+          "text": "Kill the session?"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": null,
+          "reason": "detach"
+        },
+        "note": "to escrow"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": {
+            "client_id": "fixture-client-2",
+            "user": "fixture-user"
+          },
+          "reason": "attach"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "input_refused",
+          "v": 1,
+          "reason": "replaying"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "data_path",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "lost",
+          "at": "2026-09-29T01:00:01Z"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "quiet_prompt_answer",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "kill": false
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "owner",
+          "holder": null,
+          "reason": "attach"
+        },
+        "note": "the owner token never moves by itself"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": null,
+          "reason": "fixture-client-2"
+        },
+        "note": "the cause, never the destination"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "ack",
+          "v": 1,
+          "seq": 42
+        },
+        "note": "no ack frame (decision 5.15)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "resume",
+          "v": 1,
+          "from_seq": 43
+        },
+        "note": "no resume frame"
+      }
+    ]
+  }
+}

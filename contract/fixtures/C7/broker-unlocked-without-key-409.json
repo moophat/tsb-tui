@@ -1,0 +1,62 @@
+{
+  "seam": "C7",
+  "name": "broker-unlocked-without-key-409",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "With no broker key configured, a broker_unlocked store is 409 broker_unlock_unavailable: the class is opt-in by construction (credential-protection §8.2; DEFAULT 7).",
+  "corpus": [
+    "credential-protection §8.2",
+    "credential-protection §8.3",
+    "open_decisions §7",
+    "E4 D7",
+    "E4 DEFAULT 53"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/org-credentials",
+          "body": {
+            "reference": "fleet-backup",
+            "unlock_class": "broker_unlocked",
+            "kind": "password",
+            "login_name": "svc",
+            "secret": "FIXTURE-NOT-A-PASSWORD"
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "broker_unlock_unavailable",
+              "message": "this deployment holds no broker key"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

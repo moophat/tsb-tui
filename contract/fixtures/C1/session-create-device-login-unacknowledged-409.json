@@ -1,0 +1,66 @@
+{
+  "seam": "C1",
+  "name": "session-create-device-login-unacknowledged-409",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/device_login_test.go — TestAPromptLoginThatWouldBeRecordedNeedsConsent: 409 while the knob is on and the login lacks recording_acknowledged; 202 once it is set; nothing placed on the 409"
+    }
+  ],
+  "description": "A prompt-mode login is a login: while `GET /auth/me` says `recording.login_input` is true, the user name, the device's prompt text and every answer would be recorded, and a create that does not set `login.recording_acknowledged` true is 409 `login_recording_not_acknowledged` before anything is placed or dialled (session-open step 2b). The surface re-reads `/auth/me`, warns the operator before it asks `login as:`, and repeats the request with the field true. A run cannot control the deployment's knob, so only the core's own test grades this.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "session-open step 2b",
+    "device-login step 1, 4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "prompt"
+              }
+            }
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "login_recording_not_acknowledged"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "login_recording_not_acknowledged",
+              "message": "the login would be recorded; acknowledge the recording and repeat the request"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "seam": "C2",
+  "name": "account-device-login-ended-close-4017",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Account act ends a device-login socket in progress with 4017 before successful response; no device_login_result or session exists. Consumer never auto-reattaches."
+    },
+    {
+      "unit": "U7",
+      "test": "owed: Account act ends a device-login socket in progress with 4017 before successful response; no device_login_result or session exists. Consumer never auto-reattaches."
+    }
+  ],
+  "description": "Account act ends a device-login socket in progress with 4017 before successful response; no device_login_result or session exists. Consumer never auto-reattaches.",
+  "corpus": [
+    "Storage §5",
+    "Storage §9",
+    "Contract §2",
+    "Contract §13",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json#/$defs/device_login_attach",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_attach",
+          "v": 1,
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "device_login_id": "fixture-device-login-1"
+        },
+        "note": "Provider starts device login then account act; 4017 with no result frame."
+      }
+    ]
+  }
+}

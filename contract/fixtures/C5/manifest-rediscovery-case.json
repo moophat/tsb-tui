@@ -1,0 +1,145 @@
+{
+  "seam": "C5",
+  "name": "manifest-rediscovery-case",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/worker/rediscover_test.go — manifests on disk with live, refused and missing sockets: the core dials exactly the live ones and ends the rest terminated"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/kill-core.sh — SIGKILL the core only; on restart it rediscovers the untouched worker"
+    }
+  ],
+  "description": "What a core restarted after kill -9 does with the manifests it finds. Liveness is the dial: a published socket that accepts a connection is live; one that refuses, or is missing (absent from `sockets`), is dead. Never a pid, which means nothing outside the writer's container: fixture-worker-2 writes pid 1, alive in every namespace, and is dead; fixture-sup-2 shares fixture-sup-1's pid and is dead. Every supervisor whose control socket connects is addressed (they are a set). For each connection whose control.sock connects, the core dials it and each session socket that connects — authenticated by SO_PEERCRED alone, with no token and no catch-up of missed bytes at this tag. A session whose socket does not connect (fixture-session-b), and every session of a connection whose control socket does not (fixture-session-c, fixture-session-d — a session socket that still answers does not revive a dead connection), goes down the dead-peer path: a worker the core cannot reach is a dead worker and its sessions are terminated (immortality §3) — worker_lost in the audit, a terminated marker in the recording. The rule is executable in tsbc (_binfmt.rediscover); this case is its record.",
+  "corpus": [
+    "immortality §2.1",
+    "immortality §3",
+    "immortality §6.1",
+    "decision 5.13",
+    "decision 5.30",
+    "decision 5.44",
+    "phase-00 (rediscovery)"
+  ],
+  "case": {
+    "transform": "c5-rediscovery",
+    "input": {
+      "supervisors": [
+        {
+          "supervisor_id": "fixture-sup-1",
+          "pid": 4101,
+          "control_sock": "/tmp/tsb/supervisors/fixture-sup-1/control.sock",
+          "started_at": "2026-09-23T11:59:00Z"
+        },
+        {
+          "supervisor_id": "fixture-sup-2",
+          "pid": 4101,
+          "control_sock": "/tmp/tsb/supervisors/fixture-sup-2/control.sock",
+          "started_at": "2026-09-23T11:59:00Z"
+        }
+      ],
+      "workers": [
+        {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                },
+                {
+                  "session_id": "fixture-session-b",
+                  "session_type": "shell",
+                  "socket": "shell-2.sock"
+                }
+              ]
+            },
+            {
+              "conn_id": "fixture-conn-2",
+              "target_id": "fixture-echo",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-2",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-c",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "worker_id": "fixture-worker-2",
+          "pid": 1,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-3",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-3",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-d",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "sockets": {
+        "/tmp/tsb/supervisors/fixture-sup-1/control.sock": "connectable",
+        "/tmp/tsb/supervisors/fixture-sup-2/control.sock": "refused",
+        "/tmp/tsb/conn-fixture-conn-1/control.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-1/shell.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-2/control.sock": "refused",
+        "/tmp/tsb/conn-fixture-conn-2/shell.sock": "connectable"
+      }
+    },
+    "output": {
+      "supervisors": [
+        "/tmp/tsb/supervisors/fixture-sup-1/control.sock"
+      ],
+      "dial": [
+        {
+          "worker_id": "fixture-worker-1",
+          "conn_id": "fixture-conn-1",
+          "control": "/tmp/tsb/conn-fixture-conn-1/control.sock",
+          "sessions": [
+            {
+              "session_id": "fixture-session-a",
+              "socket": "/tmp/tsb/conn-fixture-conn-1/shell.sock"
+            }
+          ]
+        }
+      ],
+      "dead_supervisors": [
+        "fixture-sup-2"
+      ],
+      "dead_connections": [
+        "fixture-conn-2",
+        "fixture-conn-3"
+      ],
+      "dead_sessions": [
+        "fixture-session-b",
+        "fixture-session-c",
+        "fixture-session-d"
+      ]
+    }
+  }
+}

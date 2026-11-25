@@ -1,6 +1,6 @@
 """A minimal C1/C2 stub for the pilot tests: replays the shapes contract-v0.1's C1/C2 fixtures
-assert (`program/contract/fixtures/C1/session-create-new.json`,
-`program/contract/fixtures/C2/attach-ok-bytes-roundtrip.json`), on purpose with delay and fragmentation
+assert (`contract/fixtures/C1/session-create-new.json`,
+`contract/fixtures/C2/attach-ok-bytes-roundtrip.json`), on purpose with delay and fragmentation
 between output chunks, so a pilot test can prove the app stays responsive while a slow target is
 still writing, and with real UTF-8/escape-sequence fragmentation across frames, so a test proving
 that boundary matters has something to prove it against. Test scaffolding, not a second fixture
@@ -38,7 +38,7 @@ HOSTKEY = {
 
 class ServerWS:
     """Server side of one WebSocket: reads masked client frames, writes unmasked frames — the
-    same split program/contract/tests/stub_server.py uses, kept as its own copy here (tui/ and
+    same split contract/tests/stub_server.py uses, kept as its own copy here (tui/ and
     contract/ each ship independently; a sub writes only its own unit's tree)."""
 
     def __init__(self, rfile, wfile, connection: socket.socket | None = None) -> None:

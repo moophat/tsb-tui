@@ -1,0 +1,80 @@
+{
+  "seam": "C1",
+  "name": "screen-unlock",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "The screen lock's password re-check: the login password of the login the cookie names. Right: 204, the client resumes. Wrong: 403 screen_unlock_failed, never 401, so the surface keeps its login and the login keeps its vault unlock (DEFAULT 67). A body without a password is 422.",
+  "corpus": [
+    "credential-protection §5.5",
+    "Frontend §10.4",
+    "E4 D9",
+    "E4 D14",
+    "E4 H5 (b)",
+    "E4 DEFAULT 67"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/screen-unlock",
+          "body": {
+            "password": "${password}"
+          }
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/screen-unlock",
+          "body": {
+            "password": "FIXTURE-WRONG-PASSWORD"
+          }
+        },
+        "expect": {
+          "status": 403,
+          "example": {
+            "error": {
+              "code": "screen_unlock_failed",
+              "message": "that password is not right"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/screen-unlock",
+          "body": {},
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "a password is required"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

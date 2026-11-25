@@ -1,0 +1,85 @@
+{
+  "seam": "C7",
+  "name": "device-list-shape",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "The device list's shape: never a key; a device name bounded and free of control characters (DEFAULT 59).",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection §5.2",
+    "credential-protection §5.3",
+    "credential-protection §7.2",
+    "device-trust"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/DeviceList",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "devices": [
+            {
+              "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+              "device_name": "Work laptop",
+              "registered_at": "2026-10-29T08:00:00Z",
+              "last_used_at": "2026-10-29T08:00:00Z"
+            }
+          ]
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "devices": [
+            {
+              "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+              "device_name": "Work laptop",
+              "registered_at": "2026-10-29T08:00:00Z",
+              "last_used_at": "2026-10-29T08:00:00Z",
+              "device_pubkey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+            }
+          ]
+        },
+        "note": "a list never carries a key"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "devices": [
+            {
+              "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+              "device_name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "registered_at": "2026-10-29T08:00:00Z",
+              "last_used_at": "2026-10-29T08:00:00Z"
+            }
+          ]
+        },
+        "note": "a device name is at most 64 characters"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "devices": [
+            {
+              "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+              "device_name": "bad\u001b[31m",
+              "registered_at": "2026-10-29T08:00:00Z",
+              "last_used_at": "2026-10-29T08:00:00Z"
+            }
+          ]
+        },
+        "note": "no control character in free text"
+      }
+    ]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "seam": "C6",
+  "name": "terminal-unrecorded-and-partial",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U5 `unrecorded_not_partial`: disabled gets no fabricated missing extent, partial remains integrity path, original unaudited marker/end repaired. Includes the ruled unrecorded close notice; never a fabricated recording baseline."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: U2/U5 `unrecorded_not_partial`: disabled gets no fabricated missing extent, partial remains integrity path, original unaudited marker/end repaired. Includes the ruled unrecorded close notice; never a fabricated recording baseline."
+    }
+  ],
+  "description": "U2/U5 `unrecorded_not_partial`: disabled gets no fabricated missing extent, partial remains integrity path, original unaudited marker/end repaired. Includes the ruled unrecorded close notice; never a fabricated recording baseline.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "not_recorded",
+            "key": "ri1:s1:n",
+            "final_last_seq": 44,
+            "final_out_bytes": 8200,
+            "final_last_out_ts": 1794708000123000000,
+            "read_outcome": "timeout",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true,
+            "recording_enabled": false
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unconfirmed",
+            "key": "ri1:s1:u:42:8192",
+            "baseline_seq": 42,
+            "baseline_bytes": 8192,
+            "reason": "core_wait_timeout",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "seam": "C7",
+  "name": "account-inflight-unlock-not-installed",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider starts vault unlock on account login A and pauses before install. A separate administrator login disables A account or sets its password, or another login of A changes own password. The acted-on account is the owner of the challenged login, not the administrator. Resume unlock: no install after login end. Exercise both orderings: install before purge is removed, otherwise install refused. All ends and purges complete before successful account response. Trusted devices, terminal sessions and stored credentials remain."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Provider starts vault unlock on account login A and pauses before install. A separate administrator login disables A account or sets its password, or another login of A changes own password. The acted-on account is the owner of the challenged login, not the administrator. Resume unlock: no install after login end. Exercise both orderings: install before purge is removed, otherwise install refused. All ends and purges complete before successful account response. Trusted devices, terminal sessions and stored credentials remain."
+    }
+  ],
+  "description": "Provider starts vault unlock on account login A and pauses before install. A separate administrator login disables A account or sets its password, or another login of A changes own password. The acted-on account is the owner of the challenged login, not the administrator. Resume unlock: no install after login end. Exercise both orderings: install before purge is removed, otherwise install refused. All ends and purges complete before successful account response. Trusted devices, terminal sessions and stored credentials remain.",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection \u00a75.2",
+    "credential-protection \u00a75.3",
+    "credential-protection \u00a77.2",
+    "device-trust",
+    "decision 5.40c",
+    "E4 Q8 (a)",
+    "E4 D5",
+    "E4 DEFAULT 48",
+    "E4 DEFAULT 49"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/devices/challenges",
+          "body": {
+            "operation": "vault.unlock",
+            "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "challenge_id": "ch-0001",
+            "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+            "login_handle": "lh-fixture-0001",
+            "expires_in": 30
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/accounts/fixture-account/disable"
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "trusted",
+            "challenge_id": "ch-0001",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "signature": "RklYVFVSRS1TSUdOQVRVUkUtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA=="
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "challenge_failed",
+              "message": "the challenge was refused"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

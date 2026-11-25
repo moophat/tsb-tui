@@ -1,0 +1,111 @@
+{
+  "seam": "C6",
+  "name": "event-target-auth-failed",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/create_test.go — TestAnAuthFailedIsAuditedWithoutTheSecret: a refused supplied login writes one target.auth_failed naming the principal and the target, a refused stored credential writes none, and no value of the login is in the line"
+    }
+  ],
+  "description": "A typed login makes TSB a place to guess a target's passwords from, and a refused create writes no audit line, so a refused supplied login is audited: target.auth_failed, naming the TSB principal who made the create (user, never the target account), the target and the connection, with detail.login supplied. It is written only for a refused supplied login; a refused stored credential stays as it was, with no event. There is no session, so no session_id; and no password, no key and none of the device's own reason text is in the line.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "Storage §6",
+    "session-open steps 11 and 19"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "user": "alice",
+          "action": "target.auth_failed",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "supplied",
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "the principal, the target, the connection"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "user": "alice",
+          "action": "target.auth_failed",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "supplied"
+          }
+        },
+        "note": "no connection id when the worker had none"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "user": "alice",
+          "action": "target.auth_failed",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "stored",
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "only a supplied login is audited here"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "user": "alice",
+          "action": "target.auth_failed",
+          "target": "core-rtr-01",
+          "detail": {
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "the source is the point"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "user": "alice",
+          "action": "target.auth_failed",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "supplied",
+            "reason": "Permission denied"
+          }
+        },
+        "note": "never the device's reason text: detail is closed"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T12:00:00Z",
+          "user": "alice",
+          "action": "target.auth_failed",
+          "target": "core-rtr-01",
+          "detail": {
+            "login": "supplied",
+            "conn_id": "fixture-conn-1"
+          },
+          "session_id": "fixture-session-a"
+        },
+        "note": "no session exists"
+      }
+    ]
+  }
+}

@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C7 vectors and breach cases",
+  "description": "From the vault release (E4): the shape of C7's published vector files and breach cases. A vector file is an instance fixture under fixtures/C7/ named kat-*.json (a known-answer vector from a standard) or chain-*.json (a step of TSB's own key chain), whose one document is one of the $defs below. Every byte value in a vector file is lower-case hex, as the standards print it (DEFAULT 44); a passphrase, a user and the other text inputs are JSON strings. Vector files hold credential-named keys (password, secret, passphrase, master_hash, part1, …) with real values a test needs: they are fixtures, not secrets, and tsbc's self-check exempts exactly those two file-name patterns under fixtures/C7/ from its credential-key rule. The known-answer vectors are copied from the standard each names; the chain vectors were computed once by the authoring script tools/author-c7-vectors.py in tsb-program, outside contract/ (DEFAULT 55: a third tool, run by no CI) and are reproduced by the two implementations each names (plan D11; 5.26 (c)). A vector a product disagrees with is investigated, never edited to match. tsbc recomputes the SHA-256 and PBKDF2 vectors with the standard library (contract/tests); argon2id, AES-GCM, ECDSA and OpaqueString need libraries tsbc does not carry, so those vectors are graded by the implementations they name. A breach case (breach_case) is one NO row of cred §6 as corrected 2026-10-28.",
+  "$defs": {
+    "hex": {"type": "string", "pattern": "^(?:[0-9a-f]{2})*$"},
+    "hex16": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "hex32": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "hex12": {"type": "string", "pattern": "^[0-9a-f]{24}$"},
+    "implementation": {
+      "type": "object",
+      "required": ["unit", "what"],
+      "additionalProperties": false,
+      "properties": {
+        "unit": {"type": "string", "pattern": "^U[0-9]{1,2}[a-c]?$"},
+        "what": {"type": "string", "minLength": 1}
+      }
+    },
+    "implementations": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/implementation"},
+      "description": "The two independent implementations of plan D11's table that must reproduce this chain vector (the first, then the second)."
+    },
+    "argon2_params": {
+      "type": "object",
+      "required": ["version", "time_cost", "memory_kib", "parallelism", "tag_length"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {"const": 19, "description": "Argon2 version 0x13."},
+        "time_cost": {"type": "integer", "minimum": 1},
+        "memory_kib": {"type": "integer", "minimum": 8},
+        "parallelism": {"type": "integer", "minimum": 1},
+        "tag_length": {"type": "integer", "minimum": 4}
+      }
+    },
+    "kat_argon2id": {
+      "type": "object",
+      "required": ["primitive", "source", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "primitive": {"const": "argon2id"},
+        "source": {"type": "string", "minLength": 1},
+        "checked_by": {"type": "string", "minLength": 1, "description": "Which implementations can check these cases (OPEN-1.7 (c): each checks those it can)."},
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "params", "password", "salt", "tag"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "params": {"$ref": "#/$defs/argon2_params"},
+              "password": {"$ref": "#/$defs/hex"},
+              "salt": {"$ref": "#/$defs/hex"},
+              "secret": {"$ref": "#/$defs/hex", "description": "Argon2's optional secret value K; absent means empty."},
+              "ad": {"$ref": "#/$defs/hex", "description": "Argon2's optional associated data X; absent means empty."},
+              "tag": {"$ref": "#/$defs/hex"}
+            }
+          }
+        }
+      }
+    },
+    "kat_pbkdf2": {
+      "type": "object",
+      "required": ["primitive", "source", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "primitive": {"const": "pbkdf2-hmac-sha256"},
+        "source": {"type": "string", "minLength": 1},
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["password", "salt", "iterations", "dk_length", "dk"],
+            "additionalProperties": false,
+            "properties": {
+              "password": {"$ref": "#/$defs/hex"},
+              "salt": {"$ref": "#/$defs/hex"},
+              "iterations": {"type": "integer", "minimum": 1},
+              "dk_length": {"type": "integer", "minimum": 1},
+              "dk": {"$ref": "#/$defs/hex"}
+            }
+          }
+        }
+      }
+    },
+    "kat_aes_gcm": {
+      "type": "object",
+      "required": ["primitive", "source", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "primitive": {"const": "aes-256-gcm"},
+        "source": {"type": "string", "minLength": 1},
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "key", "iv", "plaintext", "aad", "ciphertext", "tag"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "key": {"$ref": "#/$defs/hex32"},
+              "iv": {"$ref": "#/$defs/hex12"},
+              "plaintext": {"$ref": "#/$defs/hex"},
+              "aad": {"$ref": "#/$defs/hex"},
+              "ciphertext": {"$ref": "#/$defs/hex"},
+              "tag": {"$ref": "#/$defs/hex16"}
+            }
+          }
+        }
+      }
+    },
+    "kat_ecdsa": {
+      "type": "object",
+      "required": ["primitive", "source", "public_key", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "primitive": {"const": "ecdsa-p256-sha256-p1363"},
+        "source": {"type": "string", "minLength": 1},
+        "public_key": {"$ref": "#/$defs/hex", "description": "SubjectPublicKeyInfo DER, as a device key arrives at registration."},
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["tc_id", "comment", "message", "signature", "valid"],
+            "additionalProperties": false,
+            "properties": {
+              "tc_id": {"type": "integer", "minimum": 1, "description": "The source's test-case id."},
+              "comment": {"type": "string"},
+              "message": {"$ref": "#/$defs/hex"},
+              "signature": {"$ref": "#/$defs/hex", "description": "The P1363 signature as the source gives it, which may be malformed on purpose."},
+              "valid": {"type": "boolean", "description": "Whether a verifier MUST accept it."}
+            }
+          }
+        }
+      }
+    },
+    "kat_sha256": {
+      "type": "object",
+      "required": ["primitive", "source", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "primitive": {"const": "sha-256"},
+        "source": {"type": "string", "minLength": 1},
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["message", "digest"],
+            "additionalProperties": false,
+            "properties": {
+              "message": {"$ref": "#/$defs/hex"},
+              "digest": {"$ref": "#/$defs/hex32"}
+            }
+          }
+        }
+      }
+    },
+    "kat_opaquestring": {
+      "type": "object",
+      "required": ["primitive", "source", "cases"],
+      "additionalProperties": false,
+      "properties": {
+        "primitive": {"const": "rfc8265-opaquestring-utf8"},
+        "source": {"type": "string", "minLength": 1},
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "passphrase"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "passphrase": {"type": "string", "description": "The text as typed."},
+              "bytes": {"$ref": "#/$defs/hex", "description": "UTF-8 of the profile's output: the bytes argon2id takes as its password. Absent when refused."},
+              "refused": {"const": true, "description": "The profile refuses the text (an empty string, a disallowed code point): no bytes, and the surface derives nothing."}
+            },
+            "oneOf": [
+              {"required": ["bytes"], "properties": {"refused": false}},
+              {"required": ["refused"], "properties": {"bytes": false}}
+            ]
+          }
+        }
+      }
+    },
+    "chain_passphrase_bytes": {
+      "type": "object",
+      "required": ["step", "implementations", "passphrase", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"const": "passphrase-bytes"},
+        "implementations": {"$ref": "#/$defs/implementations"},
+        "passphrase": {"type": "string"},
+        "bytes": {"$ref": "#/$defs/hex"}
+      }
+    },
+    "chain_master_hash": {
+      "type": "object",
+      "required": ["step", "implementations", "params", "passphrase_bytes", "user_salt", "master_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"const": "master-hash"},
+        "implementations": {"$ref": "#/$defs/implementations"},
+        "params": {"$ref": "#/$defs/argon2_params"},
+        "passphrase_bytes": {"$ref": "#/$defs/hex"},
+        "user_salt": {"$ref": "#/$defs/hex16"},
+        "master_hash": {"$ref": "#/$defs/hex32"}
+      }
+    },
+    "chain_split": {
+      "type": "object",
+      "required": ["step", "implementations", "master_hash", "part1", "part2"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"const": "split"},
+        "implementations": {"$ref": "#/$defs/implementations"},
+        "master_hash": {"$ref": "#/$defs/hex32"},
+        "part1": {"$ref": "#/$defs/hex16"},
+        "part2": {"$ref": "#/$defs/hex16"}
+      }
+    },
+    "chain_device_id": {
+      "type": "object",
+      "required": ["step", "implementations", "facts_bytes", "device_id", "device_id_b64url"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"const": "device-id"},
+        "implementations": {"$ref": "#/$defs/implementations"},
+        "facts_bytes": {"$ref": "#/$defs/hex", "description": "One example of the facts' canonical bytes. Which facts and how they are made canonical is the vault client's plan (cred §4.2; DEFAULT 17); the vector fixes the digest step and the wire form."},
+        "device_id": {"$ref": "#/$defs/hex32"},
+        "device_id_b64url": {"$ref": "common.schema.json#/$defs/device_id"}
+      }
+    },
+    "chain_storage_key": {
+      "type": "object",
+      "required": ["step", "implementations", "params", "passphrase_bytes", "device_id", "storage_key"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"const": "storage-key"},
+        "implementations": {"$ref": "#/$defs/implementations"},
+        "params": {"$ref": "#/$defs/argon2_params"},
+        "passphrase_bytes": {"$ref": "#/$defs/hex"},
+        "device_id": {"$ref": "#/$defs/hex32", "description": "The argon2id salt: device_id's 32 raw bytes."},
+        "storage_key": {"$ref": "#/$defs/hex32"}
+      }
+    },
+    "chain_seal": {
+      "type": "object",
+      "required": ["step", "implementations", "key", "iv", "aad_fields", "aad", "plaintext", "sealed"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"enum": ["part1-seal", "set-seal", "org-seal-broker", "org-seal-user"]},
+        "implementations": {"$ref": "#/$defs/implementations"},
+        "key_name": {"enum": ["storage_key", "encryption_key", "broker_key"], "description": "Which key seals it."},
+        "key": {"$ref": "#/$defs/hex32"},
+        "iv": {"$ref": "#/$defs/hex12", "description": "A fixed IV for the vector only; a writer draws a fresh one from a CSPRNG for every encryption."},
+        "aad_fields": {"type": "array", "minItems": 2, "items": {"type": "string"}, "description": "The associated data's fields, the label first; a byte field (device_id) in hex."},
+        "aad": {"$ref": "#/$defs/hex", "description": "The encoded associated data (vault.schema.json x-associated-data)."},
+        "plaintext": {"$ref": "#/$defs/hex"},
+        "sealed": {"$ref": "#/$defs/hex", "description": "IV ‖ ciphertext ‖ tag."}
+      }
+    },
+    "chain_encryption_key": {
+      "type": "object",
+      "required": ["step", "implementations", "iterations", "master_hash", "salt2", "encryption_key"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"const": "encryption-key"},
+        "implementations": {"$ref": "#/$defs/implementations"},
+        "iterations": {"const": 100000},
+        "master_hash": {"$ref": "#/$defs/hex32", "description": "PBKDF2's password: master_hash's 32 raw bytes."},
+        "salt2": {"$ref": "#/$defs/hex16"},
+        "encryption_key": {"$ref": "#/$defs/hex32"}
+      }
+    },
+    "chain_challenge": {
+      "type": "object",
+      "required": ["step", "implementations", "challenge", "user_id", "device_id", "login_handle", "operation", "signed_bytes", "public_key", "signature", "wrong_operation_signed_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "step": {"const": "challenge-signed-bytes"},
+        "implementations": {"$ref": "#/$defs/implementations"},
+        "challenge": {"$ref": "#/$defs/hex32"},
+        "user_id": {"$ref": "common.schema.json#/$defs/username"},
+        "device_id": {"$ref": "#/$defs/hex32"},
+        "login_handle": {"$ref": "vault.schema.json#/$defs/login_handle"},
+        "operation": {"$ref": "vault.schema.json#/$defs/challenge_operation"},
+        "signed_bytes": {"$ref": "#/$defs/hex"},
+        "public_key": {"$ref": "#/$defs/hex", "description": "SPKI DER of a test key the authoring script holds; its private half is published nowhere."},
+        "signature": {"$ref": "#/$defs/hex", "description": "One P1363 signature over signed_bytes that MUST verify. ECDSA signing is randomised, so this is a verification vector, never a signing vector."},
+        "wrong_operation_signed_bytes": {"$ref": "#/$defs/hex", "description": "The same challenge's bytes built for part2.regenerate: signature MUST NOT verify over them (the replay suite's first case, as bytes)."}
+      }
+    },
+    "breach_case": {
+      "type": "object",
+      "required": ["row", "held", "decrypts", "why"],
+      "additionalProperties": false,
+      "properties": {
+        "row": {"type": "string", "minLength": 1, "description": "The row of cred §6.1–§6.3 as corrected 2026-10-28."},
+        "held": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"enum": ["localStorage", "redis", "bbolt", "passphrase"]},
+          "description": "The components the attacker holds, each taken from a live system after real unlocks (plan D12): the browser's localStorage and IndexedDB as the browser left them, the Redis keys as they are, the bbolt file (or a copy, a backup, a disk image), the passphrase."
+        },
+        "device": {"enum": ["same", "other", "original"], "description": "For a row holding localStorage and the passphrase: whether the attacker works on the device that wrote localStorage."},
+        "decrypts": {"const": false, "description": "Every breach case is a NO row: with what it holds, the attacker cannot decrypt the user's credentials offline. The YES rows are not tested (phase-04 exit 4)."},
+        "why": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

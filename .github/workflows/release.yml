@@ -24,6 +24,14 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.ref_name }}
     steps:
+      - name: Mask package cache address
+        env:
+          PACKAGE_CACHE_ADDR: ${{ secrets.PACKAGE_CACHE_ADDR }}
+        run: |
+          if [ -n "$PACKAGE_CACHE_ADDR" ]; then
+            echo "::add-mask::$PACKAGE_CACHE_ADDR"
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -172,11 +180,13 @@ jobs:
           PYTHON
           rm -rf dist build tsb_tui.egg-info
           pip wheel --no-deps --no-build-isolation -w dist .
-          # Building writes into its source tree; keep the pinned submodule read-only.
+          # Building writes into its source tree; keep the contract copy read-only.
           contract_dir="$(mktemp -d)"
           trap 'rm -rf "$contract_dir"' EXIT
-          cp -R program/contract "$contract_dir/contract"
+          cp -R contract "$contract_dir/contract"
           pip wheel --no-deps --no-build-isolation -w "$PWD/dist" "$contract_dir/contract"
+          SOURCE_DATE_EPOCH="$(git -C program log -1 --format=%ct HEAD 2>/dev/null || echo 0)"
+          SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" bash contract/tools/build-tarball.sh "$PWD/dist"
           # The engine that ships in the archive is the one `make lint` verifies, checked before it is packed.
           PYTHON=python bash tools/check-engine.sh
           tar -czf dist/libghostty-vt-linux-x86_64.tar.gz -C vendor/libghostty-vt \
@@ -187,7 +197,9 @@ jobs:
           [[ "$#" == 1 && -f "$1" ]] || { echo 'expected exactly one TUI wheel'; exit 1; }
           set -- tsb_contract-*.whl
           [[ "$#" == 1 && -f "$1" ]] || { echo 'expected exactly one contract wheel'; exit 1; }
-          sha256sum tsb_tui-*.whl tsb_contract-*.whl libghostty-vt-linux-x86_64.tar.gz install.sh install.ps1 > SHA256SUMS
+          set -- tsb-*.tar.gz
+          [[ "$#" == 1 && -f "$1" ]] || { echo 'expected exactly one contract tarball'; exit 1; }
+          sha256sum tsb_tui-*.whl tsb_contract-*.whl tsb-*.tar.gz libghostty-vt-linux-x86_64.tar.gz install.sh install.ps1 > SHA256SUMS
           sha256sum --check SHA256SUMS
           BUILD
 
@@ -214,15 +226,15 @@ jobs:
           }
           if gh release view "$RELEASE_TAG" >/dev/null; then
             gh release upload "$RELEASE_TAG" --clobber \
-              dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
+              dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/tsb-*.tar.gz dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
               dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/tsb-tui-*-macos-*.zip dist/tsb-tui-*-macos-*.zip.sha256 dist/SHA256SUMS
           else
             gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --notes-from-tag \
-              dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
+              dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/tsb-*.tar.gz dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
               dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/tsb-tui-*-macos-*.zip dist/tsb-tui-*-macos-*.zip.sha256 dist/SHA256SUMS
           fi
           assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
-          for asset in dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
+          for asset in dist/tsb_tui-*.whl dist/tsb_contract-*.whl dist/tsb-*.tar.gz dist/libghostty-vt-linux-x86_64.tar.gz dist/install.sh dist/install.ps1 \
             dist/tsb-tui-*-windows-x64.zip dist/tsb-tui-*-windows-x64.zip.sha256 dist/tsb-tui-*-macos-*.zip dist/tsb-tui-*-macos-*.zip.sha256 dist/SHA256SUMS; do
             asset_name="$(basename "$asset")"
             grep -Fxq -- "$asset_name" <<< "$assets" || {

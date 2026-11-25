@@ -1,0 +1,81 @@
+{
+  "seam": "C3",
+  "name": "telnet-output-from-connect",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed by the E3 worker plan"
+    }
+  ],
+  "description": "The session's bytes are the data bytes the telnet layer delivers (after IAC processing) from the moment TCP is up, including any that arrive in the same read as the opening options: a banner and a login prompt printed before open_shell are that session's first output frames, from seq 1, in the order read, held in its ring and replayed at its first handshake, so they are recorded and fed to the grid as any output is. Bytes are kept up to buffer_bytes; past that the worker stops reading until open_shell, so TCP's flow control holds the rest at the target and nothing is dropped there; any loss after that is a declared gap, never silent. They are discarded whenever the connection closes before its first open_shell succeeds. The case shows the order on the control socket: the bytes travel on the data socket between connected and open_shell, with no handshake gate before them.",
+  "corpus": [
+    "open_decisions §5",
+    "session model §9 E2",
+    "lang-arch §4.1",
+    "immortality §4.3"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-telnet",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 4096,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        },
+        "note": "the target prints its banner and login prompt as negotiation ends: the payload read from the TCP connect, interleaved with the opening options, is already the session's bytes"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        },
+        "note": "the banner and prompt are this session's first output frames, from seq 1, in the order read, replayed at its first handshake"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      }
+    ]
+  }
+}

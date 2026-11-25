@@ -1,0 +1,77 @@
+{
+  "seam": "C3",
+  "name": "auth-failed-codes",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_refused_login_timeout_and_password_change_each_carry_their_code"
+    }
+  ],
+  "description": "`auth_failed` carries an optional `code`, sent only on the answer to a prompt-mode connect: `refused` (the device has no method left), `login_timeout` (the worker's bound passed) and `password_change_requested` (the password method's change request; a PAM change asked through keyboard-interactive rounds is relayed and done in the pane instead). The core acts on the code and never on `reason`, which is free text (V4). An absent `code` is what a non-prompt connect sends, and a core reads an unknown one as `refused` (V5).",
+  "corpus": [
+    "open_decisions §5",
+    "device-login step 18",
+    "conventions V4, V5",
+    "ipc-control rule 7"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json#/$defs/auth_failed",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "the device refused every method",
+          "code": "refused"
+        },
+        "note": "no method left"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "login_timeout passed",
+          "code": "login_timeout"
+        },
+        "note": "the worker's bound"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "the device asked for a new password",
+          "code": "password_change_requested"
+        },
+        "note": "the password method's change request"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "the device refused every method"
+        },
+        "note": "no code: a connect that was not in prompt mode"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "the device refused every method",
+          "code": "locked"
+        },
+        "note": "a code this release does not define"
+      }
+    ]
+  }
+}

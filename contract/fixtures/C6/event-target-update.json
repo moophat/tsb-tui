@@ -1,0 +1,133 @@
+{
+  "seam": "C6",
+  "name": "event-target-update",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/audit/audit_test.go — TestEachWriteIsAuditedWithFieldNamesNeverValues"
+    }
+  ],
+  "description": "Target update audit: source and field names only, no session id.",
+  "corpus": [
+    "Storage §10.1",
+    "Contract §13"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-07T02:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "fixture-target",
+          "detail": {
+            "source": "tsb",
+            "fields": [
+              "name"
+            ]
+          }
+        },
+        "note": "names only; delete omits fields"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-07T02:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "fixture-target",
+          "detail": {
+            "source": "tsb",
+            "fields": []
+          }
+        },
+        "note": "no-op update is audited"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-07T02:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "fixture-target",
+          "detail": {
+            "source": "tsb",
+            "fields": [
+              "192.0.2.60"
+            ]
+          }
+        },
+        "note": "no field values"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-07T02:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "fixture-target",
+          "detail": {
+            "source": "tsb",
+            "fields": [
+              "name"
+            ]
+          },
+          "session_id": "fixture-session"
+        },
+        "note": "no session_id; source is required"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-07T02:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "fixture-target",
+          "detail": {
+            "fields": [
+              "name"
+            ]
+          }
+        },
+        "note": "no session_id; source is required"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-07T02:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "fixture-target",
+          "detail": {
+            "source": "tsb"
+          }
+        },
+        "note": "delete forbids fields; create and update require fields"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-07T02:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "fixture-target",
+          "detail": {
+            "source": "manual",
+            "fields": [
+              "name"
+            ]
+          }
+        },
+        "note": "only the core-owned tsb source can emit a target-write event; manual is a valid id but not this source"
+      }
+    ]
+  }
+}

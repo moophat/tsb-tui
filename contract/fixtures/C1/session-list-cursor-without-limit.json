@@ -1,0 +1,51 @@
+{
+  "seam": "C1",
+  "name": "session-list-cursor-without-limit",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: session history session-list-cursor-without-limit provider test"
+    }
+  ],
+  "description": "A cursor without limit is 422 invalid_request. The example rule text is illustrative; do not echo the supplied cursor. Published e4 so surfaces can build against the shape; required-green e5 so the addition does not retroactively fail the existing e4 provider.",
+  "corpus": [
+    "session-list rules 8\u201310",
+    "conventions V1, V4, V7, V8",
+    "Storage \u00a78.6"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions?cursor=fixture-opaque-history-position"
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "limit is required with cursor"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

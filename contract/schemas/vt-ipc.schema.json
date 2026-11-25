@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C4 core ↔ VT worker seam",
+  "description": "The core's own seam to the VT worker, the process that holds per-session terminal grids behind VTParser (open_decisions §1, LOCKED: libghostty-vt via CGo, detached). It is not C3: no C3 worker speaks it, and no client reaches it. **Where and trust (D15).** The VT worker listens on /tmp/tsb/vt/{vt_id}.sock, one socket per VT worker; the core dials every socket there. Trust is SO_PEERCRED as on every local socket (immortality §6.1, LOCKED): a peer is accepted only when its uid is the TSB service uid, with no token anywhere on this seam. N VT workers are allowed and one is configured (5.21's spirit); which session goes where is the core's own policy, never the contract's. **Framing (D16).** One stream, big-endian throughout, as the embedded C3 envelope is (ipc-data-frame.schema.json x-binary-layout: 'big-endian (network order)'): a message is [u32 BE length][u8 kind][body], where length counts the bytes after the kind byte. There is a stated maximum message size — a contract range (R7), a config.yaml knob (5.36), never a default — and a blob whose kind-3 body would exceed it is split across messages, each chunk a kind-3 message carrying the same request_id, reassembled by that id in arrival order (D16). Kind 1 is a JSON control object (UTF-8). Kind 2 is an output frame: [u8 id_len][session_id][C3 data-frame envelope + payload] — the very frame the core tapped, verbatim and including gap frames, the C3 envelope and payload byte-identical (DRY with ipc-data-frame.schema.json). One exception: an output frame the core re-feeds from its recording after a restore is the recorded frame, not a tapped one — the seq the recording's walk gives it (ttyrec.schema.json x-sidecar reopen), its payload byte-identical, and its recorded stamp, which is to the microsecond. The VT worker applies a frame by its seq and payload; no rule here reads its stamp. Kind 3 is a blob: [u8 id_len][request_id][bytes], a dump or snapshot VT → core, a snapshot core → VT. The binary layout below is normative and the fixtures' .bin files are its ground truth; tsbc/_binfmt.py proves its codec equal to it (self-check). **Messages (D17).** The kinds and bodies are fixed here; the control objects of kind 1 are the $defs below — core → VT and VT → core. **Order and idempotence (D18).** Per session the VT applies output frames and resizes in arrival order; it ignores a frame whose seq is at or below its through_seq, so a re-feed after a restart is harmless; it refuses a jump without a gap frame with seq_jump and leaves the grid unchanged (never a silent splice, as C3), and the core then raises the stale flow with cause grid_lost (5.52; C2 decision 10). A gap frame moves through_seq to its seq and nothing else; staleness is the core's. The core sends every PTY size change, wiggles included, so the grid always has the PTY's size. The VT applies a frame before the core commits it (F3e), so a snapshot's through_seq is by construction a commit point (C6). The VT worker answers a snapshot at once, with the grid as applied, and never waits for a later frame: a C3 hello and a gap's hold wait on that answer, at most snapshot.wait_sec (continuity-state.schema.json top). A VT worker that dies while the core lives (F3d): the core restores the last snapshot into the restarted worker and feeds it the recording's own output frames past the commit point, then the frames it recorded meanwhile, in seq order. The data path never broke, so no C3 handshake runs and nothing is recorded twice (continuity-state.schema.json top). A session that is not recorded has nothing to re-feed: a VT worker's death loses its grid, and the core raises the stale flow with cause grid_lost. The core records an output frame before it feeds it to the VT worker, so no grid ever stands past the recording. A VT worker that misses heartbeats is treated as dead: the core stops using it and raises vt_unavailable (F20); restarting its container is out of band. **Grids outlive the core (D19).** The VT worker keeps every grid when its core's socket closes and drops one only on close or exit; hello_ack.grids tells a returning core what it holds, because the vt compose service survives restart-core. **Snapshot (D21).** snapshot returns the engine's own binary snapshot, opaque to the core, with through_seq and engine; restore with a snapshot from another engine version yields snapshot_incompatible — the core then opens an empty grid, feeds it the frames past the snapshot (the recording's own, then the worker's replay), and raises the stale flow with cause grid_lost (5.52; C2 decision 10). **Ground marks (D22).** applied {session_id, through_seq, mid_sequence[]} is batched and lists the frames after which the parser was not at ground; published e2, required e5 (only pages need it). **Version (§6.4).** proto_version '0.3' on hello/hello_ack; additive only, unknown fields ignored, from this first version. ping/pong are answered from the VT worker's own loop (session model §9 E7's rule, by analogy): a hung CGo call is a dead VT worker. web attach uses a one-time ticket minted by an authenticated session — never a token in a URL — but no attach or client message crosses this seam; the dump and the snapshot are the only cell-bearing forms, and cell content stays inside the broker (R8).",
+  "oneOf": [
+    {"$ref": "#/$defs/core_message"},
+    {"$ref": "#/$defs/vt_message"}
+  ],
+  "$defs": {
+    "core_message": {
+      "description": "Kind 1, core → VT: the JSON control objects the core sends. A message whose command the worker does not know is answered with error unknown_cmd and the connection is kept.",
+      "oneOf": [
+        {"$ref": "#/$defs/hello"},
+        {"$ref": "#/$defs/open"},
+        {"$ref": "#/$defs/resize"},
+        {"$ref": "#/$defs/prefix"},
+        {"$ref": "#/$defs/snapshot"},
+        {"$ref": "#/$defs/restore"},
+        {"$ref": "#/$defs/close"},
+        {"$ref": "#/$defs/ping"}
+      ]
+    },
+    "vt_message": {
+      "description": "Kind 1, VT → core: the JSON control objects the VT worker sends. An unknown field is ignored; an unknown event is ignored (receiver rules).",
+      "oneOf": [
+        {"$ref": "#/$defs/hello_ack"},
+        {"$ref": "#/$defs/prefix_ready"},
+        {"$ref": "#/$defs/snapshot_ready"},
+        {"$ref": "#/$defs/restored"},
+        {"$ref": "#/$defs/screen_change"},
+        {"$ref": "#/$defs/applied"},
+        {"$ref": "#/$defs/pong"},
+        {"$ref": "#/$defs/error"}
+      ]
+    },
+    "proto_version": {
+      "const": "0.3",
+      "description": "The C4 protocol version this tag speaks, on hello and hello_ack. Additive only from here: a later tag adds messages and fields, and a receiver ignores what it does not know."
+    },
+    "engine": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 64, "description": "The VT engine behind VTParser, e.g. libghostty-vt."},
+        "version": {"type": "string", "minLength": 1, "maxLength": 128, "description": "The engine's own version string, carried so a core can tell whether a snapshot it holds was taken by a compatible engine."}
+      }
+    },
+    "scrollback_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "The VT worker's scrollback budget per grid, in bytes (R7; decision 5.36: a config.yaml knob — the contract fixes the field and its range, never a value). A range, never a default."
+    },
+    "max_message_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295,
+      "description": "The stated maximum message size for this seam (D16; R7; decision 5.36: a config.yaml knob — the contract fixes the range, never a value). Counts the bytes after the kind byte, as the frame's length does; the header's 32-bit unsigned length field caps it at 4294967295 (2^32-1), the largest body the wire format can represent, so a larger configured limit would advertise a size it cannot encode. A kind-3 blob whose body would exceed it is split across messages, each chunk carrying the same request_id."
+    },
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/id",
+      "description": "Correlates a request (prefix, snapshot, restore) with its answer, and identifies every chunk of a chunked kind-3 blob (F18; D16). Its shape is common.schema.json id's: a path-safe opaque token, no slash and no leading dot."
+    },
+    "session_id": {"$ref": "common.schema.json#/$defs/id"},
+    "output_frame": {
+      "type": "object",
+      "required": ["flags", "seq", "timestamp", "payload_hex"],
+      "additionalProperties": false,
+      "properties": {
+        "flags": {"enum": [0, 1, 2], "description": "The C3 envelope's flags, verbatim: bit 0 the direction (0 out), bit 1 the gap marker (output only, so 3 never occurs)."},
+        "seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1},
+        "timestamp": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1},
+        "payload_hex": {"type": "string", "pattern": "^([0-9a-f]{2})*$"}
+      },
+      "description": "The decoded form of the C3 data-frame envelope carried inside a kind-2 body and made byte-identical to ipc-data-frame.schema.json's frame by _binfmt.py; the schema of record for that envelope is ipc-data-frame.schema.json."
+    },
+    "hello": {
+      "type": "object",
+      "required": ["cmd", "proto_version"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "hello"},
+        "proto_version": {"$ref": "#/$defs/proto_version"}
+      },
+      "description": "core → VT: the first message on the socket. Carries proto_version. The worker answers hello_ack, or error unsupported_proto when it cannot speak the version."
+    },
+    "open": {
+      "type": "object",
+      "required": ["cmd", "session_id", "cols", "rows", "scrollback_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "open"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"},
+        "scrollback_bytes": {"$ref": "#/$defs/scrollback_bytes"}
+      },
+      "description": "core → VT: open a grid for this session. **PTY shell sessions only** (F12): no open is sent for any other session type, so exec, sftp, netconf and forward sessions never get a grid, a prefix, pages or the stale flow, and the no-prefix receiver rule covers their attach. A session already open is idempotent: the worker keeps the grid it holds. A grid that has applied no output frame MUST take the seq of the first output frame it is fed as its start — its through_seq becomes that seq − 1 — so a replay or live stream that starts past seq 1 is applied, not refused [owed: no C4 fixture]. Once it has applied a frame, the order and idempotence rules and seq_jump apply unchanged (D18)."
+    },
+    "resize": {
+      "type": "object",
+      "required": ["cmd", "session_id", "cols", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "resize"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"}
+      },
+      "description": "core → VT: the PTY's new size. The core sends every PTY size change, wiggles included, so the grid always has the PTY's size (D18). A resize for a session with no grid is error unknown_session."
+    },
+    "prefix": {
+      "type": "object",
+      "required": ["cmd", "session_id", "request_id"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "prefix"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "request_id": {"$ref": "#/$defs/request_id"}
+      },
+      "description": "core → VT: request the attach prefix, the dump — the only cell-bearing form any client sees, sent at attach (R8; 5.47; Contract §11). The worker answers prefix_ready plus a kind-3 blob. **The dump (D20; C4 decision 6).** It is answered at the first parser-ground point after every frame received before the request; through_seq is that point. If the parser is not at ground when a prefix is requested and no ground point arrives within a short wait (a knob), the worker answers with through_seq equal to the last frame applied and appends, after the dump, the raw output bytes since the last ground point, so the client's parser ends in the same mid-sequence state — no 4011 loop (F8). It carries: cells and SGR including the current SGR pen (a wide glyph written once); cursor position and visibility (style when the engine exposes it); the alternate screen — when active, primary first, then CSI ?1049h, then alt (both screens, ordered emission); origin, autowrap, insert and every carried input mode: DECCKM (1), keypad (ESC = / ESC >), bracketed paste (2004), mouse 9/1000/1002/1003 and their encodings as set (never substituted), focus (1004), kitty keyboard flags and modifyOtherKeys when the engine exposes them (F14). It emits the full state of every carried mode — each as its own CSI ? n h or l, so a client terminal that still holds stale modes is corrected, not kept — and CSI ?1049l first when the primary screen is active (the alt ordering stays when alt is active), then cursor home + ED 2 (never ED 3) before the cells (F7). It never carries history (clients own scrollback), RIS, 2026 left set, tab stops, scroll region, charsets or a saved cursor (5.47's accepted display-only loss; carried only if a pinned engine exposes them). Faithful (5.47): a standard terminal parser rebuilds the same screen — checked by a libghostty-vt round trip (the dump re-fed to a fresh engine gives the same grid and modes) and at each surface by its own renderer, the TUI first; no surface renderer is part of the contract."
+    },
+    "snapshot": {
+      "type": "object",
+      "required": ["cmd", "session_id", "request_id"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "snapshot"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "request_id": {"$ref": "#/$defs/request_id"}
+      },
+      "description": "core → VT: take the engine's binary snapshot of this grid. The worker answers snapshot_ready plus a kind-3 blob. The snapshot is opaque to the core (D21). A snapshot that cannot be taken because the worker is down does not advance the commit point and raises vt_unavailable (F3f). It is answered at once with the grid as applied, through_seq the last frame applied, never after a later frame: when a commit must land now (the realign before a C3 hello, or a gap marker's hold) the core sends that grid no later frame while it waits, at most snapshot.wait_sec for the whole snapshot, snapshot_ready and every chunk of its blob (continuity-state.schema.json top). An open sequence is carried in the snapshot; one the worker cannot carry it refuses at once with error bad_request. A refused or unanswered snapshot that no commit waits on changes nothing; one a commit waits on gives the grid up: the core deletes the session's grid_snapshot_record, commits record-only and raises the stale flow with cause grid_lost (C6 grid_snapshot_record)."
+    },
+    "restore": {
+      "type": "object",
+      "required": ["cmd", "session_id", "request_id", "snapshot_seq", "cols", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "restore"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "request_id": {"$ref": "#/$defs/request_id"},
+        "snapshot_seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 0, "description": "The seq the snapshot was taken at (the commit point it is); 0 means the snapshot is of a fresh grid with no output."},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"}
+      },
+      "description": "core → VT: restore a grid from a snapshot, sent with a kind-3 blob carrying the engine's snapshot bytes. A snapshot taken by another engine version yields error snapshot_incompatible; the core then opens an empty grid, feeds it the frames past the snapshot (the recording's own, then the worker's replay), and raises the stale flow with cause grid_lost (5.52; C2 decision 10). The worker answers restored."
+    },
+    "close": {
+      "type": "object",
+      "required": ["cmd", "session_id"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "close"},
+        "session_id": {"$ref": "#/$defs/session_id"}
+      },
+      "description": "core → VT: drop this session's grid. A grid is dropped only on close or on worker exit; when the core's socket merely closes the VT keeps every grid (D19)."
+    },
+    "ping": {
+      "type": "object",
+      "required": ["cmd"],
+      "additionalProperties": false,
+      "properties": {
+        "cmd": {"const": "ping"}
+      },
+      "description": "core → VT: a liveness probe answered from the VT worker's own loop (D17): a hung CGo call is a dead VT worker. The worker answers pong."
+    },
+    "hello_ack": {
+      "type": "object",
+      "required": ["event", "proto_version", "engine", "grids"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "hello_ack"},
+        "proto_version": {"$ref": "#/$defs/proto_version"},
+        "engine": {"$ref": "#/$defs/engine"},
+        "grids": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/held_grid"},
+          "description": "The grids the VT worker holds when the ack is sent. It keeps every grid when a core's socket closes, so a returning core learns here what survived (D19)."
+        }
+      },
+      "description": "VT → core: answers hello. engine says which engine this worker runs; grids lists what it holds."
+    },
+    "held_grid": {
+      "type": "object",
+      "required": ["session_id", "through_seq", "cols", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "through_seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 0, "description": "The highest output seq this grid has applied, or 0 for a fresh grid with no output yet. A frame at or below it is ignored (D18)."},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"}
+      }
+    },
+    "prefix_ready": {
+      "type": "object",
+      "required": ["event", "request_id", "session_id", "through_seq", "cols", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "prefix_ready"},
+        "request_id": {"$ref": "#/$defs/request_id"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "through_seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 0, "description": "The parser-ground point after every frame received before the prefix request — or 0 when no output frame was ever received — or, when the parser was not at ground and no ground point arrived within the wait, the last frame applied, with the raw bytes since the last ground point appended after the dump (F8)."},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"}
+      },
+      "description": "VT → core: answers prefix, followed by a kind-3 blob with the dump. through_seq, cols and rows describe the state the dump restores."
+    },
+    "snapshot_ready": {
+      "type": "object",
+      "required": ["event", "request_id", "session_id", "through_seq", "cols", "rows", "engine"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "snapshot_ready"},
+        "request_id": {"$ref": "#/$defs/request_id"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "through_seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 0, "description": "The commit point the snapshot is by construction (C6): the VT applies a frame before the core commits it (F3e). 0 when the snapshot is of a fresh grid with no committed output."},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"},
+        "engine": {"$ref": "#/$defs/engine"}
+      },
+      "description": "VT → core: answers snapshot, followed by a kind-3 blob with the engine's opaque snapshot. engine is carried so restore can refuse a snapshot from another engine version (D21)."
+    },
+    "restored": {
+      "type": "object",
+      "required": ["event", "request_id", "session_id", "through_seq"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "restored"},
+        "request_id": {"$ref": "#/$defs/request_id"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "through_seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 0, "description": "The seq the restored grid is at; 0 means the snapshot restored a fresh grid with no output."}
+      },
+      "description": "VT → core: the grid was restored from the snapshot. through_seq is the seq the restored grid is at."
+    },
+    "screen_change": {
+      "type": "object",
+      "required": ["event", "session_id", "seq", "change"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "screen_change"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1, "description": "The output seq that caused the change."},
+        "change": {"enum": ["alt_enter", "alt_exit", "clear"], "description": "The input snapshot.on_alt_screen needs (immortality §5.2): alt_enter on CSI ?1049h, alt_exit on CSI ?1049l, clear on ED 2/ED 3."}
+      },
+      "description": "VT → core: a small steady-state event (C4 decision 9), naming the seq that caused it."
+    },
+    "applied": {
+      "type": "object",
+      "required": ["event", "session_id", "through_seq", "mid_sequence"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "applied"},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "through_seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1, "description": "The highest output seq applied when this mark is sent."},
+        "mid_sequence": {
+          "type": "array",
+          "items": {"$ref": "common.schema.json#/$defs/u64"},
+          "description": "The output seqs after which the parser was not at ground (C4 decision 8; 5.48: 'a page starts at a parser-clean boundary'). Batched; published e2, required e5 (only pages need it)."
+        }
+      },
+      "description": "VT → core: the ground marks (D22). Lists the frames after which the parser was not at ground."
+    },
+    "pong": {
+      "type": "object",
+      "required": ["event"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "pong"}
+      },
+      "description": "VT → core: answers ping, from the worker's own loop."
+    },
+    "error": {
+      "type": "object",
+      "required": ["event", "code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {"const": "error"},
+        "code": {"enum": ["unknown_session", "seq_jump", "snapshot_incompatible", "bad_request", "unknown_cmd", "unsupported_proto"]},
+        "session_id": {"$ref": "#/$defs/session_id"},
+        "request_id": {"$ref": "#/$defs/request_id"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "A human-readable line; never parsed for control."}
+      },
+      "description": "VT → core: a refusal. code is one of the six. session_id is present when the command named a session; request_id when it answered a correlatable request. unknown_session: the worker holds no such grid. seq_jump: a frame jumped without a gap frame — the grid is unchanged; the core MUST close that grid and open an empty one, feed it from the refused frame on, and raise the stale flow with cause grid_lost (5.52; C2 decision 10) [C4/vt-grid-lost; the core's side owed to U2]. snapshot_incompatible: a restore carried a snapshot from another engine version — the core MUST close that grid and open an empty one, feed it the frames past the snapshot (the recording's own, then the worker's replay), and raise the stale flow with cause grid_lost (5.52; C2 decision 10) [C4/vt-grid-lost; the core's side owed to U2]. bad_request: a frame or object that breaks this schema, or a snapshot the engine cannot take now (an open sequence it cannot carry; snapshot). unknown_cmd: a kind-1 object whose command this worker does not know; the connection is kept. unsupported_proto: the worker cannot speak the hello's proto_version. vt_unavailable is the core's operator alert, not a VT error code (C6 decision 2)."
+    }
+  },
+  "x-binary-layout": {
+    "byte_order": "big-endian (network order)",
+    "header_bytes": 5,
+    "max_message_bytes_range": {"$ref": "#/$defs/max_message_bytes"},
+    "fields": [
+      {"name": "length", "offset": 0, "type": "u32", "note": "The count of bytes after the kind byte (the body). Little enough that a receiver reads exactly this many bytes for the body."},
+      {"name": "kind", "offset": 4, "type": "u8", "note": "1 a JSON control object; 2 an output frame; 3 a blob (or a chunk of one)."}
+    ],
+    "body": "`length` bytes, whose form depends on kind: kind 1 a UTF-8 JSON object (this schema's $defs); kind 2 `[u8 id_len][session_id: id_len bytes][C3 data-frame envelope + payload]` — the C3 envelope and its payload byte-identical to ipc-data-frame.schema.json's x-binary-layout; kind 3 `[u8 id_len][request_id: id_len bytes][blob bytes]`, the blob split across messages of the same request_id when it exceeds max_message_bytes.",
+    "kinds": [
+      {"kind": 1, "name": "control", "body": "A UTF-8 JSON object, one of this schema's $defs (core → VT or VT → core).", "core_to_vt": ["hello", "open", "resize", "prefix", "snapshot", "restore", "close", "ping"], "vt_to_core": ["hello_ack", "prefix_ready", "snapshot_ready", "restored", "screen_change", "applied", "pong", "error"]},
+      {"kind": 2, "name": "output-frame", "prefix": "u8 id_len, then id_len bytes of session_id", "body": "A C3 data-frame envelope plus its payload, byte-identical to ipc-data-frame.schema.json (gap frames included)."},
+      {"kind": 3, "name": "blob", "prefix": "u8 id_len, then id_len bytes of request_id", "body": "Opaque blob bytes (a dump or snapshot VT → core, a snapshot core → VT), split across messages of the same request_id when the body would exceed max_message_bytes and reassembled in arrival order."}
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "seam": "C3",
+  "name": "supervisor-kill-failed",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_supervisor.py — kill_worker SIGKILLs and reaps the worker, and answers only after the reap"
+    }
+  ],
+  "description": "A worker that will not die (Contract §4; session model §11): the process outlives SIGKILL past reap_timeout — stuck in the kernel, say — and the supervisor answers kill_failed, unkillable. The core raises the operator alert worker_unkillable, which says the process may still hold its target connections; the sessions still end terminated / worker_lost. Restarting the worker container is the operator's, out of band — never TSB's.",
+  "corpus": [
+    "session model §11",
+    "Contract §4",
+    "Contract §12"
+  ],
+  "case": {
+    "socket": "supervisor-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "kill_worker",
+          "worker_id": "fixture-worker-1",
+          "reap_timeout": 5000
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "kill_failed",
+          "worker_id": "fixture-worker-1",
+          "reason": "unkillable"
+        }
+      }
+    ]
+  }
+}

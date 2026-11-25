@@ -1,0 +1,81 @@
+{
+  "seam": "C6",
+  "name": "event-cred-store-org",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "cred.store for an org credential carries the unlock class its administrator chose (credential-protection §8.2, §8.4), and names the credential by reference and layer.",
+  "corpus": [
+    "credential-protection §8.4",
+    "E4 DEFAULT 10",
+    "E4 DEFAULT 49",
+    "E4 DEFAULT 51",
+    "E4 DEFAULT 50"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.store",
+          "credential_ref": "fleet-backup",
+          "credential_layer": "org",
+          "unlock_class": "broker_unlocked",
+          "kind": "password"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.store",
+          "credential_ref": "fleet-backup",
+          "credential_layer": "org",
+          "kind": "password"
+        },
+        "note": "an org store carries its class"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.store",
+          "credential_ref": "fleet-backup",
+          "credential_layer": "org",
+          "unlock_class": "broker_unlocked",
+          "kind": "password",
+          "secret": "FIXTURE-NOT-A-PASSWORD"
+        },
+        "note": "never a secret"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.store",
+          "credential_ref": "fleet-backup",
+          "credential_layer": "org",
+          "unlock_class": "broker_unlocked",
+          "kind": "password",
+          "label": "Backup"
+        },
+        "note": "never a label"
+      }
+    ]
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "seam": "C8",
+  "name": "payload-identical-across-restart",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U11",
+      "test": "harness/rigs/kill-core.sh with the ttyrec differ — a recording across kill -9 of the core is payload-identical to an uninterrupted run, and monotonic per direction"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/reattach_test.go — a reattach replays from last_committed_seq + 1 and records no output payload twice and none lost"
+    }
+  ],
+  "description": "The E1 gate's comparator (phase-01: recording across the restart payload-identical to an uninterrupted run, timestamps monotonic across the seam; x-compare). Per direction the concatenated payloads of the data frames are byte-equal; frame boundaries may differ — here the restart split one output frame in two, and the replay kept each part's own stamp — and the end markers are left out, so two different end times do not matter; neither recording declares a loss, so their gap markers (none) are the same. Byte-identical is unachievable once worker-owned timestamps are compared, and vacuous if they are not. A recording with a gap marker is never payload-identical to one without: the gap is declared, not closed.",
+  "corpus": [
+    "phase-01 (payload-identical)",
+    "immortality §4.1",
+    "immortality §4.2",
+    "decision 5.22"
+  ],
+  "case": {
+    "transform": "c8-compare",
+    "input": {
+      "a": {
+        "frames": [
+          {
+            "sec": 1789000000,
+            "usec": 123456,
+            "length": 2,
+            "direction": "out",
+            "data_hex": "2420"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 0,
+            "length": 3,
+            "direction": "in",
+            "data_hex": "6c730d"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 100,
+            "length": 17,
+            "direction": "out",
+            "data_hex": "6c730d0a6e6f7465732e7478740d0a2420"
+          },
+          {
+            "sec": 1789000009,
+            "usec": 0,
+            "length": 0,
+            "end": "killed",
+            "data_hex": ""
+          }
+        ]
+      },
+      "b": {
+        "frames": [
+          {
+            "sec": 1789000000,
+            "usec": 123456,
+            "length": 2,
+            "direction": "out",
+            "data_hex": "2420"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 0,
+            "length": 3,
+            "direction": "in",
+            "data_hex": "6c730d"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 100,
+            "length": 4,
+            "direction": "out",
+            "data_hex": "6c730d0a"
+          },
+          {
+            "sec": 1789000001,
+            "usec": 100,
+            "length": 13,
+            "direction": "out",
+            "data_hex": "6e6f7465732e7478740d0a2420"
+          },
+          {
+            "sec": 1789000011,
+            "usec": 0,
+            "length": 0,
+            "end": "killed",
+            "data_hex": ""
+          }
+        ]
+      }
+    },
+    "output": {
+      "payload_identical": {
+        "out": true,
+        "in": true
+      },
+      "monotonic": {
+        "a": true,
+        "b": true
+      }
+    }
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "seam": "C1",
+  "name": "target-definition-read",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "An editor reads user in a tsb definition only; public records carry no user and another source is forbidden.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Storage §10.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "fixture-w-${nonce}",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "user": "fixture-account"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "id": "fixture-w-01234567",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [],
+            "discovered_by": "tsb",
+            "port": 22
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/fixture-w-${nonce}/definition"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/user",
+              "eq": "fixture-account"
+            }
+          ],
+          "example": {
+            "id": "fixture-w-01234567",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "user": "fixture-account"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/fixture-w-${nonce}"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/user",
+              "absent": true
+            }
+          ],
+          "example": {
+            "id": "fixture-w-01234567",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [],
+            "discovered_by": "tsb",
+            "port": 22
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/${target_id}/definition"
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "forbidden",
+              "message": "target request refused"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/targets/fixture-w-${nonce}"
+        },
+        "expect": {
+          "status": 204
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/targets/fixture-w-${nonce}"
+      }
+    ]
+  }
+}

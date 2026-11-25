@@ -1,0 +1,48 @@
+{
+  "seam": "C6",
+  "name": "terminal-audit-repair-order",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2 `audit_exclusive_repair`: existing ownership before repair/writer exposure, inspect/truncate/sync failure stops initialization, crashes retry without cutting full lines."
+    }
+  ],
+  "description": "U2 `audit_exclusive_repair`: existing ownership before repair/writer exposure, inspect/truncate/sync failure stops initialization, crashes retry without cutting full lines.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unconfirmed",
+            "key": "ri1:s1:u:42:8192",
+            "baseline_seq": 42,
+            "baseline_bytes": 8192,
+            "reason": "core_wait_timeout",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      }
+    ]
+  }
+}

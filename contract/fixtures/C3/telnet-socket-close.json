@@ -1,0 +1,94 @@
+{
+  "seam": "C3",
+  "name": "telnet-socket-close",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed by the E3 worker plan"
+    },
+    {
+      "unit": "U2",
+      "test": "owed by the E3 core plan"
+    }
+  ],
+  "description": "The target ends its telnet session by closing the socket (EOF, RST): the worker sends connection_lost cause transport, listing the session, which ends terminated / connection_lost. Telnet has no end message, so there is no target_disconnect and no channel_closed by: target. When the target's socket closes with the session, the worker stops that connection's link timers and sends no further link_state for it. The audit says terminated / connection_lost. U3 test with telnetlib3's in-process server; the U2 test; both owed.",
+  "corpus": [
+    "session model §9 E5",
+    "session model T9",
+    "session model §13",
+    "Contract §15"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-telnet",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": ["fixture-session-a"],
+          "cause": "transport",
+          "reason": "the target closed the socket"
+        },
+        "note": "the session ends terminated / connection_lost; no end message precedes it"
+      }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "seam": "C8",
+  "name": "recording-chain-collection",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "artifacts:recording-chains-complete",
+  "description": "A collected chain carries every pair through the captured generation bound and its linked audit notices; incomplete evidence fails closed.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3"
+  ],
+  "case": {
+    "schema": "schemas/artifacts-collected.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "collected_at": "2026-11-15T02:15:00Z",
+          "node_role": "lab",
+          "items": []
+        },
+        "note": "The additive manifest leaves old collections valid."
+      }
+    ]
+  }
+}

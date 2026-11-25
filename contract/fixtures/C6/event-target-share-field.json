@@ -1,0 +1,58 @@
+{
+  "seam": "C6",
+  "name": "event-target-share-field",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2 verifies target write audit events contain field names only, including share"
+    }
+  ],
+  "description": "Target write audit events accept share among field names, never values.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a713"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-24T00:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "detail": {
+            "source": "private-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "fields": [
+              "share"
+            ]
+          }
+        },
+        "note": "target update auditing share field name"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-24T00:00:00Z",
+          "user": "fixture-user",
+          "action": "target.update",
+          "target": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "detail": {
+            "source": "private-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "fields": [
+              "fixture-user"
+            ]
+          }
+        },
+        "note": "a value instead of a field name is invalid"
+      }
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "seam": "C3",
+  "name": "control-connect-echo",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-connect-echo",
+  "description": "The echo driver behind the same connect message as ssh: no host, no credential, no target to reach. It is what makes the protocol-driver seam falsifiable at E0 and what the harness's N=2 test drives (phase-00). A collected run must show at least one echo connection in this order.",
+  "corpus": [
+    "phase-00 (a second, trivial driver)",
+    "lang-arch §3.1",
+    "decision 5.16",
+    "decision 5.21"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-echo",
+          "protocol": "echo"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      }
+    ]
+  }
+}

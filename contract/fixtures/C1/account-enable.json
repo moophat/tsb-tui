@@ -1,0 +1,44 @@
+{
+  "seam": "C1",
+  "name": "account-enable",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: E4b account management provider tests; From disabled with a void hash, enable installs a fresh argon2id hash; only the new password authenticates, never the pre-disable password; account.enable precedes commit. Trusted device still unlocks unchanged vault with unchanged passphrase."
+    }
+  ],
+  "description": "From disabled with a void hash, enable installs a fresh argon2id hash; only the new password authenticates, never the pre-disable password; account.enable precedes commit. Trusted device still unlocks unchanged vault with unchanged passphrase.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/accounts/fixture-account/enable",
+          "body": {
+            "password": "FIXTURE-NOT-A-PASSWORD"
+          }
+        },
+        "expect": {
+          "status": 204
+        }
+      }
+    ]
+  }
+}

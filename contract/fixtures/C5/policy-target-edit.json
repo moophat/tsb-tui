@@ -1,0 +1,89 @@
+{
+  "seam": "C5",
+  "name": "policy-target-edit",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "schema/policy/policy_test.go — TestTheTargetEditPermissionLoads"
+    }
+  ],
+  "description": "target.edit is granted by name; spelling and type remain closed.",
+  "corpus": [
+    "Storage §9"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "target.edit"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "target.edit"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "target.write"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "target.write"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "target.edit "
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "target.edit "
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                7
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "7"
+      }
+    ]
+  }
+}

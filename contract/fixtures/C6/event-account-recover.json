@@ -1,0 +1,83 @@
+{
+  "seam": "C6",
+  "name": "event-account-recover",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: host recovery and seed replace write account.recover without actor before commit."
+    }
+  ],
+  "description": "account.recover host recovery or seed replace re-enables and sets password; actor is absent.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-13T09:00:00Z",
+          "user": "fixture-account",
+          "action": "account.recover"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-13T09:00:00Z",
+          "user": "fixture-account",
+          "action": "account.recover",
+          "actor": "fixture-admin"
+        },
+        "note": "host event has no actor"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-13T09:00:00Z",
+          "user": "fixture-account",
+          "action": "account.disable",
+          "password": "FIXTURE-NOT-A-PASSWORD",
+          "actor": "fixture-admin"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-13T09:00:00Z",
+          "user": "fixture-account",
+          "action": "account.disable",
+          "password_hash": "FIXTURE-NOT-A-PASSWORD",
+          "actor": "fixture-admin"
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-13T09:00:00Z",
+          "user": "fixture-account",
+          "action": "account.disable",
+          "detail": {
+            "password": "FIXTURE-NOT-A-PASSWORD"
+          },
+          "actor": "fixture-admin"
+        },
+        "note": ""
+      }
+    ]
+  }
+}

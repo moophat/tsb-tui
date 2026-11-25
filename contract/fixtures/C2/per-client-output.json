@@ -1,0 +1,88 @@
+{
+  "seam": "C2",
+  "name": "per-client-output",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U2", "test": "owed by the E2 core plan"}
+  ],
+  "description": "Each attached client has its own output state (C2 decisions 3 and 5): a client that stops reading delays no other, and each gets its own prefix and its own copy of the shared frames. The server tells every attached client the current client set with a `clients` frame after each attach, detach and removal. The live shapes are graded by U2 (owed by the E2 core plan).",
+  "corpus": [
+    "C2 decision 3",
+    "C2 decision 5",
+    "PTY §7.1"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "clients",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "clients": [
+            {"client_id": "fixture-client-1", "user": "fixture-user", "may_control": true},
+            {"client_id": "fixture-client-2", "user": "fixture-viewer", "may_control": false}
+          ]
+        },
+        "note": "every attached client gets the set; may_control follows the principal's session.join.rw"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "clients",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "clients": [
+            {"client_id": "fixture-client-1", "user": "fixture-user", "may_control": true}
+          ]
+        },
+        "note": "one client left: the remaining set is sent on detach"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "clients",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "clients": []
+        },
+        "note": "the last client's removal leaves an empty set; a frame still goes to the others before the socket closes"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "clients",
+          "v": 1,
+          "session_id": "fixture-session-a"
+        },
+        "note": "clients is required, even when empty"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "clients",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "clients": [{"client_id": "fixture-client-1", "user": "fixture-user"}]
+        },
+        "note": "may_control is required on each entry"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "prefix",
+          "v": 1,
+          "through_seq": 15,
+          "cols": 132,
+          "rows": 43
+        },
+        "note": "each client's own prefix: its dump and geometry"
+      }
+    ]
+  }
+}

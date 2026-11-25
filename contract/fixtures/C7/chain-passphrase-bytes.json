@@ -1,0 +1,50 @@
+{
+  "seam": "C7",
+  "name": "chain-passphrase-bytes",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain2_test.go — TestPassphraseBytesVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "Chain step 1: the passphrase's bytes, UTF-8 after RFC 8265's OpaqueString profile; this passphrase holds a non-ASCII space and a decomposed character. A surface computes it; the core never sees a passphrase.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_passphrase_bytes",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "passphrase-bytes",
+          "implementations": [
+            {
+              "unit": "U8c",
+              "what": "the browser vault client (web/src/vault/); U7, the TUI, for the steps it runs"
+            },
+            {
+              "unit": "U6",
+              "what": "Go test code in vault/ (golang.org/x/text/secure/precis; golang.org/x/crypto/argon2)"
+            }
+          ],
+          "passphrase": "Fixture passphrase café 7",
+          "bytes": "46697874757265207061737370687261736520636166c3a92037"
+        }
+      }
+    ]
+  }
+}

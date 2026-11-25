@@ -1,0 +1,112 @@
+{
+  "seam": "C6",
+  "name": "terminal-continuation-audit",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: recording_continuation_terminal_continuation_audit_u2: validates continuation link and generation-specific quarantine semantics"
+    }
+  ],
+  "description": "A continuation link and generation-specific quarantine have closed audit shapes; unknown fields and other quarantine reasons are refused.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "recording_path": "recordings/s1.ttyrec",
+          "detail": {
+            "version": 1,
+            "kind": "continuation",
+            "key": "ri1:s1:c:1",
+            "generation": 1,
+            "previous_path": "recordings/s1.ttyrec",
+            "previous_seq_out": 40,
+            "previous_bytes": 8000,
+            "previous_offset": 9000,
+            "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "recording_path": "recordings/s1.ttyrec",
+          "detail": {
+            "version": 1,
+            "kind": "continuation",
+            "key": "ri1:s1:c:1",
+            "generation": 1,
+            "previous_path": "recordings/s1.ttyrec",
+            "previous_seq_out": 40,
+            "previous_bytes": 8000,
+            "previous_offset": 9000,
+            "continuation_path": "recordings/s1.chain/continuation-1.ttyrec",
+            "unexpected": true
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "recording_path": "recordings/s1.chain/continuation-1.ttyrec",
+          "detail": {
+            "version": 1,
+            "kind": "continuation_unconfirmed",
+            "key": "ri1:s1:q:1",
+            "generation": 1,
+            "baseline_seq": 40,
+            "baseline_bytes": 8000,
+            "baseline_offset": 0,
+            "reason": "recording_unsynced",
+            "observed_at_ns": 1,
+            "unknown_suffix": true
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "recording_path": "recordings/s1.chain/continuation-1.ttyrec",
+          "detail": {
+            "version": 1,
+            "kind": "continuation_unconfirmed",
+            "key": "ri1:s1:q:1",
+            "generation": 1,
+            "baseline_seq": 40,
+            "baseline_bytes": 8000,
+            "baseline_offset": 0,
+            "reason": "worker_absent",
+            "observed_at_ns": 1,
+            "unknown_suffix": true
+          }
+        }
+      }
+    ]
+  }
+}

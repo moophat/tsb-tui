@@ -1,0 +1,79 @@
+{
+  "seam": "C1",
+  "name": "vendor-prompt-template-reads",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Authenticated catalogue reads, missing template, and no template writes."
+    },
+    {
+      "unit": "U7",
+      "test": "owed: Surface reads the core catalogue without a local override."
+    }
+  ],
+  "description": "An authenticated principal reads the release catalogue and one template; a missing vendor is 404. Provider tests cover access without target permissions and absence of template write or instance seed routes.",
+  "corpus": [
+    "Storage \u00a73.6",
+    "Contract \u00a72",
+    "Contract \u00a76"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/vendor-prompt-templates"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "templates": [
+              {
+                "vendor": "cisco-ios",
+                "prompt_pattern": "[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?[>#]"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/vendor-prompt-templates/cisco-ios"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "vendor": "cisco-ios",
+            "prompt_pattern": "[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?[>#]"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/vendor-prompt-templates/fixture-missing"
+        },
+        "expect": {
+          "status": 404,
+          "example": {
+            "error": {
+              "code": "vendor_template_not_found",
+              "message": "no such template"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

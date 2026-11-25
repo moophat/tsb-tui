@@ -1,0 +1,68 @@
+{
+  "seam": "C5",
+  "name": "import-tabby-groups",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider imports Tabby version 2 with groups Parent and Child linked by parentGroupId and a profile referencing Child; it checks Parent/Child, source identity, root omission and bounded rejection of cyclic group metadata. Version 1 literal groups remain literal. Synthetic input: version 2; groups [{id: p, name: Parent}, {id: c, name: Child, parentGroupId: p}]; profile {id: foreign, type: ssh, name: router, group: c, options: {host: fixture.invalid}}."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Provider imports Tabby version 2 with groups Parent and Child linked by parentGroupId and a profile referencing Child; it checks Parent/Child, source identity, root omission and bounded rejection of cyclic group metadata. Version 1 literal groups remain literal. Synthetic input: version 2; groups [{id: p, name: Parent}, {id: c, name: Child, parentGroupId: p}]; profile {id: foreign, type: ssh, name: router, group: c, options: {host: fixture.invalid}}."
+    }
+  ],
+  "description": "Provider imports Tabby version 2 with groups Parent and Child linked by parentGroupId and a profile referencing Child; it checks Parent/Child, source identity, root omission and bounded rejection of cyclic group metadata. Version 1 literal groups remain literal. Synthetic input: version 2; groups [{id: p, name: Parent}, {id: c, name: Child, parentGroupId: p}]; profile {id: foreign, type: ssh, name: router, group: c, options: {host: fixture.invalid}}.",
+  "corpus": [
+    "Storage §7.4",
+    "Contract §12"
+  ],
+  "case": {
+    "schema": "schemas/inventory-target.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "name": "router",
+          "options": {
+            "host": "fixture.invalid"
+          },
+          "group": "Parent/Child"
+        },
+        "note": "version 2 ancestor display names"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "name": "router",
+          "options": {
+            "host": "fixture.invalid"
+          }
+        },
+        "note": "root omits group"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "name": "router",
+          "options": {
+            "host": "fixture.invalid"
+          },
+          "group": 17
+        },
+        "note": "group is text"
+      }
+    ]
+  }
+}

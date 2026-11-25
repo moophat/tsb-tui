@@ -1,0 +1,44 @@
+{
+  "seam": "C1",
+  "name": "target-get-unknown-404",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "A target no file has is answered 404 target_not_found, the same body a principal gets for a target they may not see: reading one target by id never confirms that a target exists, which is what makes the visibility gate a gate (Storage §10.1a; session-open step 2).",
+  "corpus": [
+    "Storage §10.1a",
+    "Storage §9"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/fixture-no-such-target"
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "target_not_found",
+              "message": "no such target"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "seam": "C7",
+  "name": "chain-challenge-signed-bytes",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/challenge_test.go — TestChallengeSignedBytesVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "The device challenge's signed bytes (device-trust, the challenge): the label, then the challenge, the user, device_id, the login handle and the operation, each length-prefixed (vault.schema.json x-associated-data device_challenge), and one P1363 signature that verifies over them and not over the same challenge built for part2.regenerate. ECDSA signing is randomised, so this fixes the bytes and a verification, never a signature an implementation must reproduce.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55",
+    "credential-protection Amendment 2026-09-14"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_challenge",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "challenge-signed-bytes",
+          "implementations": [
+            {
+              "unit": "U8c",
+              "what": "the browser builds the bytes and signs them (WebCrypto ECDSA P-256, SHA-256)"
+            },
+            {
+              "unit": "U6",
+              "what": "the Go core builds the bytes from its own record and verifies"
+            }
+          ],
+          "challenge": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+          "user_id": "fixture-user",
+          "device_id": "36582605103cf07de683402644dce9ef79cadfc9fc47e97016e98ade52a168a0",
+          "login_handle": "lh-fixture-0001",
+          "operation": "vault.unlock",
+          "signed_bytes": "00177473622e6465766963652e6368616c6c656e67652e76310020808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f000c666978747572652d75736572002036582605103cf07de683402644dce9ef79cadfc9fc47e97016e98ade52a168a0000f6c682d666978747572652d30303031000c7661756c742e756e6c6f636b",
+          "public_key": "3059301306072a8648ce3d020106082a8648ce3d030107034200042948c28a709e00336cc4f9d6cec477b9df06963d92b146adf17433d9315d690b3ca755288cc6e04a01a810676edec1ffbb01df7309d53861aeefa5eb28c71c6a",
+          "signature": "0cb12f071938265007dca956fe4808742da4aa96dc7849d51d0e6928a6671555fcd60c1bdadb5f2ed1fe550e876b7dad0e5aa6e70e32adeeca1e805fbb6af9ad",
+          "wrong_operation_signed_bytes": "00177473622e6465766963652e6368616c6c656e67652e76310020808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f000c666978747572652d75736572002036582605103cf07de683402644dce9ef79cadfc9fc47e97016e98ade52a168a0000f6c682d666978747572652d30303031001070617274322e726567656e6572617465"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,174 @@
+{
+  "seam": "C5",
+  "name": "inventory-layout",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed by the E3 schema plan (the loader reads every tree)"
+    },
+    {
+      "unit": "U2",
+      "test": "owed by the E3 U2 plan (the core's reader and its alerts)"
+    }
+  ],
+  "description": "The inventory layout, read twice: rules 1-3 and 5-9 of the target schema's x-layout. Read 1, current resolved through its link: a writer's temporary name (.core-rtr-02.yaml.tmp) is ignored, as is a hidden name whose stem fails id's pattern; a file whose id differs from its stem is refused; a telnet file that does not validate is skipped and the rest loaded; a discovered_by that is not its source directory is refused; two sources holding one id load neither, and the alert names the id and both sources. Read 2, current missing: the index stays as it is and an alert is raised — it never empties. The reader never takes inventory/.lock, and a staging directory is never read. The rule is executable in tsbc (_inventory.inventory_read); this case is its record. `alerts` is the reader's report of what it refused; the core writes each as a log line (x-layout identity-and-refusals, missing-current).",
+  "corpus": [
+    "Storage §2.1",
+    "Storage §2.3",
+    "Storage §2.5",
+    "Storage §3.1",
+    "Contract §8"
+  ],
+  "case": {
+    "transform": "inventory-layout",
+    "input": {
+      "reads": [
+        {
+          "current": "v17",
+          "root_files": [".lock"],
+          "files": [
+            {
+              "source": "manual",
+              "name": "core-rtr-01.yaml",
+              "doc": {
+                "id": "core-rtr-01",
+                "type": "ssh",
+                "name": "Core Router 01",
+                "group": "core-network",
+                "tags": ["prod", "core"],
+                "options": {"host": "10.0.1.1"}
+              }
+            },
+            {
+              "source": "manual",
+              "name": ".core-rtr-02.yaml.tmp",
+              "doc": {
+                "id": "core-rtr-02",
+                "type": "ssh",
+                "options": {"host": "10.0.1.2"}
+              }
+            },
+            {
+              "source": "manual",
+              "name": ".hidden.yaml",
+              "doc": {
+                "id": "hidden",
+                "type": "ssh",
+                "options": {"host": "10.0.1.9"}
+              }
+            },
+            {
+              "source": "manual",
+              "name": "core-rtr-03.yaml",
+              "doc": {
+                "id": "core-rtr-99",
+                "type": "ssh",
+                "options": {"host": "10.0.1.3"}
+              }
+            },
+            {
+              "source": "manual",
+              "name": "lab-sw-01.yaml",
+              "doc": {
+                "id": "lab-sw-01",
+                "type": "telnet",
+                "tags": ["lab"],
+                "options": {"host": "10.0.2.1"}
+              }
+            },
+            {
+              "source": "manual",
+              "name": "core-sw-02.yaml",
+              "doc": {
+                "id": "core-sw-02",
+                "type": "telnet",
+                "options": {"port": 23}
+              }
+            },
+            {
+              "source": "tailscale-lab",
+              "name": "lab-sw-01.yaml",
+              "doc": {
+                "id": "lab-sw-01",
+                "type": "telnet",
+                "tags": ["lab"],
+                "discovered_by": "tailscale-lab",
+                "options": {"host": "10.0.2.1"}
+              }
+            },
+            {
+              "source": "tailscale-lab",
+              "name": "core-rtr-04.yaml",
+              "doc": {
+                "id": "core-rtr-04",
+                "type": "ssh",
+                "discovered_by": "manual",
+                "options": {"host": "10.0.1.4"}
+              }
+            }
+          ]
+        },
+        {
+          "current": null,
+          "index_before": [
+            {"id": "core-rtr-01", "source": "manual", "tags": ["prod", "core"]}
+          ],
+          "files": [
+            {
+              "source": "manual",
+              "name": "core-rtr-01.yaml",
+              "doc": {
+                "id": "core-rtr-01",
+                "type": "ssh",
+                "tags": ["prod", "core"],
+                "options": {"host": "10.0.1.1"}
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "results": [
+        {
+          "index": [
+            {"id": "core-rtr-01", "source": "manual", "tags": ["prod", "core"]}
+          ],
+          "alerts": [
+            {"kind": "stem_mismatch", "stem": "core-rtr-03", "source": "manual"},
+            {"kind": "invalid_file", "stem": "core-sw-02", "source": "manual"},
+            {"kind": "discovered_by_mismatch", "stem": "core-rtr-04", "source": "tailscale-lab"},
+            {"kind": "duplicate_id", "id": "lab-sw-01", "sources": ["manual", "tailscale-lab"]}
+          ],
+          "docs": [
+            {
+              "stem": "core-rtr-01",
+              "source": "manual",
+              "doc": {
+                "id": "core-rtr-01",
+                "type": "ssh",
+                "name": "Core Router 01",
+                "group": "core-network",
+                "tags": ["prod", "core"],
+                "options": {"host": "10.0.1.1"}
+              }
+            }
+          ]
+        },
+        {
+          "index": [
+            {"id": "core-rtr-01", "source": "manual", "tags": ["prod", "core"]}
+          ],
+          "alerts": [{"kind": "missing_current"}],
+          "docs": []
+        }
+      ]
+    }
+  }
+}

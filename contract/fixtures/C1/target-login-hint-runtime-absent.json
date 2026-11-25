@@ -1,0 +1,106 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-runtime-absent",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Runtime lookup and captured runtime view; no index/runtime comparison signal and no metadata resolution on missing runtime."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: No metadata read/preparation for missing-runtime omission."
+    }
+  ],
+  "description": "Visible indexed SSH target is absent from the runtime store: list and single return the indexed row with login_hint omitted, never unavailable. No synchronization-lag enum or index-derived matching fallback. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-runtime-absent"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-runtime-absent"
+              }
+            },
+            {
+              "pointer": "/targets/0/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-runtime-absent",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-runtime-absent"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-runtime-absent"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-runtime-absent"
+            },
+            {
+              "pointer": "/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "id": "hint-runtime-absent",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-runtime-absent"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22
+          }
+        }
+      }
+    ]
+  }
+}

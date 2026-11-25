@@ -1,0 +1,234 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-protocol-omission",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    }
+  ],
+  "description": "Telnet, echo, serial and unknown types carry no hint. Unknown types are a consumer compatibility input (current sender enum remains closed), checked by consumer tests; no new sender type is introduced. Echo synthetic candidate never means saved. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-telnet"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-telnet"
+              }
+            },
+            {
+              "pointer": "/targets/0/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-telnet",
+                "type": "telnet",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-telnet"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 23
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-telnet"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-telnet"
+            },
+            {
+              "pointer": "/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "id": "hint-telnet",
+            "type": "telnet",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-telnet"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 23
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-echo"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-echo"
+              }
+            },
+            {
+              "pointer": "/targets/0/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-echo",
+                "type": "echo",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-echo"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-echo"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-echo"
+            },
+            {
+              "pointer": "/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "id": "hint-echo",
+            "type": "echo",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-echo"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-serial"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-serial"
+              }
+            },
+            {
+              "pointer": "/targets/0/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-serial",
+                "type": "serial",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-serial"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-serial"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-serial"
+            },
+            {
+              "pointer": "/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "id": "hint-serial",
+            "type": "serial",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-serial"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z"
+          }
+        }
+      }
+    ]
+  }
+}

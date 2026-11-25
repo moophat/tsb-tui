@@ -1,0 +1,45 @@
+{
+  "seam": "C1",
+  "name": "alerts-without-broker-health-403",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Seeing TSB's internals is itself a permission (session model §11; External_Study §1.3): a logged-in principal without broker.health — the peer principal, which the deploy's policy template does not grant it — is refused GET /alerts 403 forbidden. It sees only what an alert does to its own sessions.",
+  "corpus": [
+    "session model §11",
+    "External_Study §1.3",
+    "Storage §9"
+  ],
+  "case": {
+    "inputs": [
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/alerts",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "forbidden",
+              "message": "the alert stream needs broker.health"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

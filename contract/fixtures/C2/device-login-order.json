@@ -1,0 +1,60 @@
+{
+  "seam": "C2",
+  "name": "device-login-order",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/ws/device_login_test.go — TestAnInfoRoundAndABannerJustBeforeConnectedReachThePaneAndTheRecordingFirst: 200 device logins with the knob on; the pane and the recording head hold the round and the banner before the result"
+    }
+  ],
+  "description": "The device's last words reach the pane before the result (H1). Every event of a device login's connection, its terminal answer included, travels on one first-in, first-out queue per device login: `hostkey_ask`, `auth_prompt`, `connected`, `auth_failed`, `error`, `connection_lost` and the control socket's end. The core takes the entries in order, finishes each before the next, and writes each frame to the socket and holds each piece for the recording before the next. So a banner and a display-only round that the device sent just before accepting are in the pane, and in the recording's head, before `device_login_result`. Here: a display-only round, then the banner, then the result. The queue never holds more than 36 entries (32 rounds and 64 KiB).",
+  "corpus": [
+    "open_decisions §5",
+    "Contract §6",
+    "device-login, the device login's order",
+    "ipc-control rule 2"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "Last notice",
+          "instruction": "Your password expires in 3 days.",
+          "prompts": []
+        },
+        "note": "a display-only round the device sent just before accepting"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "banner",
+          "text": "Authorized use only. Activity is logged."
+        },
+        "note": "a banner that came after it"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "connected"
+        },
+        "note": "the result comes last, after both"
+      }
+    ]
+  }
+}

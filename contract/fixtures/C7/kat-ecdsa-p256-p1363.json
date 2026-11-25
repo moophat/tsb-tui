@@ -1,0 +1,110 @@
+{
+  "seam": "C7",
+  "name": "kat-ecdsa-p256-p1363",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/challenge_test.go — TestECDSAP256P1363KnownAnswers: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "ECDSA P-256 / SHA-256 verification of IEEE P1363 signatures (r ‖ s, the form WebCrypto produces), a named Wycheproof subset: a valid signature, r or s pushed out of range or overflowed, r and s zero, a signature of the wrong length. The core verifies every device challenge this way; a verifier that accepts any case marked invalid fails. Published e4: reference, graded by U6's verifier tests and U8c's signer, tests owed (phase 16).",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "decision 5.18",
+    "decision 5.26 (c)"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/kat_ecdsa",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "primitive": "ecdsa-p256-sha256-p1363",
+          "source": "Wycheproof testvectors_v1/ecdsa_secp256r1_sha256_p1363_test.json, the first test group, test cases 1, 2, 4, 5, 7, 11, 12, 15, 16, 20",
+          "public_key": "3059301306072a8648ce3d020106082a8648ce3d030107034200042927b10512bae3eddcfe467828128bad2903269919f7086069c8c4df6c732838c7787964eaac00e5921fb1498a60f4606766b3d9685001558d1a974e7341513e",
+          "cases": [
+            {
+              "tc_id": 1,
+              "comment": "signature malleability",
+              "message": "313233343030",
+              "signature": "2ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e184cd60b855d442f5b3c7b11eb6c4e0ae7525fe710fab9aa7c77a67f79e6fadd76",
+              "valid": true
+            },
+            {
+              "tc_id": 2,
+              "comment": "replaced r by r + n",
+              "message": "313233343030",
+              "signature": "012ba3a8bd6b94d5ed80a6d9d1190a436ebccc0833490686deac8635bcb9bf536900b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db",
+              "valid": false
+            },
+            {
+              "tc_id": 4,
+              "comment": "replaced r by n - r",
+              "message": "313233343030",
+              "signature": "d45c5740946b2a147f59262ee6f5bc90bd01ed280528b62b3aed5fc93f06f739b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db",
+              "valid": false
+            },
+            {
+              "tc_id": 5,
+              "comment": "replaced r by r + 2**256",
+              "message": "313233343030",
+              "signature": "012ba3a8be6b94d5ec80a6d9d1190a436effe50d85a1eee859b8cc6af9bd5c2e1800b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db",
+              "valid": false
+            },
+            {
+              "tc_id": 7,
+              "comment": "replaced s by s + n",
+              "message": "313233343030",
+              "signature": "01b329f478a2bbd0a6c384ee1493b1f518276e0e4a5375928d6fcd160c11cb6d2c00b329f479a2bbd0a5c384ee1493b1f5186a87139cac5df4087c134b49156847db",
+              "valid": false
+            },
+            {
+              "tc_id": 11,
+              "comment": "Signature with special case values r=0 and s=0",
+              "message": "313233343030",
+              "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+              "valid": false
+            },
+            {
+              "tc_id": 12,
+              "comment": "Signature with special case values r=0 and s=1",
+              "message": "313233343030",
+              "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+              "valid": false
+            },
+            {
+              "tc_id": 15,
+              "comment": "Signature with special case values r=0 and s=n + 1",
+              "message": "313233343030",
+              "signature": "0000000000000000000000000000000000000000000000000000000000000000ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632552",
+              "valid": false
+            },
+            {
+              "tc_id": 16,
+              "comment": "Signature with special case values r=0 and s=p",
+              "message": "313233343030",
+              "signature": "0000000000000000000000000000000000000000000000000000000000000000ffffffff00000001000000000000000000000000ffffffffffffffffffffffff",
+              "valid": false
+            },
+            {
+              "tc_id": 20,
+              "comment": "Signature with special case values r=1 and s=n",
+              "message": "313233343030",
+              "signature": "0000000000000000000000000000000000000000000000000000000000000001ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+              "valid": false
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "seam": "C1",
+  "name": "session-create-login-never-echoed",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/sessions_test.go — TestNoAnswerLogLineOrAuditEventCarriesTheSuppliedPassword: every refusal path (422, 404, 403, 502, 503) of a create that carries a login, then the log buffer, the audit file, the bbolt file and the capture, none holding the password"
+    }
+  ],
+  "description": "No message on the create path echoes a value of the request: every message is fixed text (V4). A create that carries a login and is refused for any reason — 422, 404, 403, 409, 502, 503 — answers with a message that holds neither the password nor the user name, and the same goes for every log line, audit event, bbolt value, manifest and capture the core writes (V10). The two steps show the paths a live core can be driven down with no real target: an unknown target (404) and a login on a reuse (422). The core's own test drives the others and then reads the stores.",
+  "corpus": [
+    "Contract §4",
+    "open_decisions §5",
+    "credential §10.1",
+    "conventions V4",
+    "conventions V10"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "fixture-no-such-target",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "password",
+                "password": "FIXTURE-NOT-A-PASSWORD"
+              }
+            }
+          }
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "target_not_found",
+              "message": "no such target"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "invalid_body": true,
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "password",
+                "password": "FIXTURE-NOT-A-PASSWORD"
+              }
+            }
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "a login is allowed on a new connection only"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

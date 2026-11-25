@@ -1,0 +1,75 @@
+{
+  "seam": "C1",
+  "name": "policy-broker-health",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "schema/policy/policy_test.go — policy.yaml grants broker.health per user like the other permissions; a permission name outside the six is refused"
+    }
+  ],
+  "description": "broker.health joins policy.yaml's permission vocabulary (session model §11: the in-surface alerts go only to a principal holding the superadmin-only permission broker.health; seeing TSB's internals is itself a permission, External_Study §1.3). It is a permission like the other five, granted per user (orchestrator DEFAULT, approval page): superadmin-only means only an admin writes policy.yaml, and how roles are defined stays OPEN (open_decisions §3). The deploy's policy template grants it to the seeded superadmin alone.",
+  "corpus": [
+    "session model §11",
+    "Storage §9",
+    "open_decisions §3",
+    "External_Study §1.3"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "fixture-admin": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "session.terminate",
+                "target.discover",
+                "broker.health"
+              ],
+              "targets": [
+                "*"
+              ]
+            },
+            "fixture-user": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "target.discover"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": true
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-admin": {
+              "permissions": [
+                "broker.admin"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "no permission outside the six"
+      }
+    ]
+  }
+}

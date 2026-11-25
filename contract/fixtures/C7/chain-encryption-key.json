@@ -1,0 +1,52 @@
+{
+  "seam": "C7",
+  "name": "chain-encryption-key",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain_test.go — TestEncryptionKeyVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/pylib/tests/test_vaultclient.py — test_chain_encryption_key: independently reproduces the core-only vector using the Python reference client, never the authoring script"
+    }
+  ],
+  "description": "Chain step 7: encryption_key = PBKDF2-HMAC-SHA256(master_hash, salt2, 100,000 iterations, 32 bytes). Core only (S8). contract/tests recomputes it with hashlib.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_encryption_key",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "encryption-key",
+          "implementations": [
+            {
+              "unit": "U6",
+              "what": "the Go core (vault/)"
+            },
+            {
+              "unit": "U11",
+              "what": "the harness's Python reference client (hashlib, cryptography)"
+            }
+          ],
+          "iterations": 100000,
+          "master_hash": "843a368a80a42d307dc14dc5ac76bfcfc30a3d5a772c3f5b5e9ae1cb31ec0237",
+          "salt2": "202122232425262728292a2b2c2d2e2f",
+          "encryption_key": "21d7fbf4e858c59e70b1ea1871aecc211e15ba8e0d0bd5a08248d43644f56b09"
+        }
+      }
+    ]
+  }
+}

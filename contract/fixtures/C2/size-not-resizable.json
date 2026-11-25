@@ -1,0 +1,63 @@
+{
+  "seam": "C2",
+  "name": "size-not-resizable",
+  "mark": {
+    "published": "e2",
+    "required-green": "e3"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 core plan"
+    }
+  ],
+  "description": "A target with no size at all answers `not_resizable` (C2 decision 8; 5.50; D38): the protocol has no size (serial, deferred to a later release), so the session record carries resizable: false and every request is refused with the explicit size answer, never dropped. Marked published e2 so surfaces may build against it, required e3 where a telnet peer that refused NAWS is the first case to grade it against, serial being deferred. The live shape is owed by the E3 core plan (D38, a known gap at v0.3). The live shape is owed by the E3 core plan for both telnet cases: a telnet peer that refused NAWS makes the session not resizable, and the same session after a core restart keeps that value.",
+  "corpus": [
+    "C2 decision 8",
+    "5.50",
+    "D38"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 80,
+          "rows": 24,
+          "reason": "not_resizable"
+        },
+        "note": "serial has no size; the answer carries the size that stands so a surface still renders"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 80,
+          "rows": 24,
+          "reason": "not_typist"
+        },
+        "note": "a non-holder is refused not_typist before resizable is ever consulted"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 80,
+          "rows": 24,
+          "reason": "unavailable"
+        },
+        "note": "not_resizable is the reason the protocol's own vocabulary uses"
+      }
+    ]
+  }
+}

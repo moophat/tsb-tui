@@ -1,0 +1,40 @@
+{
+  "seam": "C1",
+  "name": "target-import-org-forbidden-403",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Unauthorized org save is refused without a personal substitution."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Unauthorized org save is refused without a personal substitution."
+    }
+  ],
+  "description": "Unauthorized org save is refused without a personal substitution.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/error.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused"
+          }
+        },
+        "note": "fixed refusal"
+      }
+    ]
+  }
+}

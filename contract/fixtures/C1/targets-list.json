@@ -1,0 +1,61 @@
+{
+  "seam": "C1",
+  "name": "targets-list",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "GET /targets lists the targets the principal may see, as TargetRecords, and the list carries no credential, no user and no path on the broker host. A target visible with no resolving credential is listed and not connectable (Storage §10.1a): a surface builds its target picker from this list and never takes a target id from its operator alone.",
+  "corpus": [
+    "Storage §9",
+    "Storage §10.1a",
+    "Storage §3.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "${target_id}"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "fixture-target",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "scenario",
+                  "shell"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

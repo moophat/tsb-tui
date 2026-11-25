@@ -1,0 +1,58 @@
+{
+  "seam": "C1",
+  "name": "session-create-serial-502",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "description": "Serial is deferred: a serial target is listed and answered 502 target_connect_failed, the same answer a target that cannot be reached gets, with no worker asked for and no connection opened. The live shape is owed by the E3 core plan; the contract's stub provider answers create at 201 and grades no serial target.",
+  "corpus": [
+    "session-open step 2",
+    "Storage §3.4",
+    "ruling Q4 (b)"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "fixture-serial-target",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 502,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_connect_failed"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "target_connect_failed",
+              "message": "the target could not be reached, or the connection failed before a session opened"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 core plan"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "seam": "C1",
+  "name": "session-ended-unexpectedly",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/worker/manager_test.go — SIGKILL the echo worker mid-stream: the session reads terminated, attached clients are closed 4012, the audit ends it terminated/worker_lost, and its recording ends in a terminated marker"
+    }
+  ],
+  "description": "The end from outside TSB (session model §12–§13). When a session's worker dies the session cannot continue (immortality §1.1, §3): its record reads terminated, attached clients are closed with WebSocket code 4012 session_terminated, the audit's end event says terminated / worker_lost, and the recording is finalized with a terminated end marker. The target closing the session (target_closed) and a lost connection (connection_lost) end it the same way, graded from artefacts (C3 ends-from-outside); killed, the end by TSB or through it, is proved live by session-delete. There is no disconnected state. No REST call can kill a worker, so the core's own test grades this at e0; from e1 the harness's worker-death rig proves the audit and the recording from a real run (C8 worker-death-recorded).",
+  "corpus": [
+    "decision 5.45",
+    "session model §12",
+    "session model §13",
+    "immortality §1.1",
+    "immortality §3",
+    "Storage §6"
+  ],
+  "case": {
+    "schema": "schemas/session-record.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "terminated",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "the worker died: an end from outside TSB"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "disconnected",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "no disconnected state (decision 5.45)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "expired",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "no expiry state: a timer's end is killed"
+      }
+    ]
+  }
+}

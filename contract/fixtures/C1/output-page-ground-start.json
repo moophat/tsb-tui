@@ -1,0 +1,61 @@
+{
+  "seam": "C1",
+  "name": "output-page-ground-start",
+  "mark": {
+    "published": "e2",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U2", "test": "owed by the E2 core plan (pages land at E5)"}
+  ],
+  "description": "A page starts where the core's VT parser was at ground (C1 decision 3; 5.48; C4 decision 8; F15). At most max_bytes, unless no ground start lies within, in which case the page goes back to the nearest one, bounded by the page-cap knob; when no ground start lies within the cap the body is empty, no first/last seq headers are sent, TSB-Page-No-Ground is true and TSB-Page-Next-Before-Seq carries the seq to continue from — an explicit false end-of-history is never sent. Published e2 so the web lane may build against it; required green at e5, where a core ring first exists (no core ring at E2). The live shape is graded by U2, owed by the E2 core plan.",
+  "corpus": [
+    "C1 decision 3",
+    "5.48",
+    "C4 decision 8",
+    "F15"
+  ],
+  "case": {
+    "inputs": ["user", "password", "target_id"],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}
+        },
+        "expect": {"status": 201},
+        "save": {"sid": "/session/id"}
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/${sid}/output",
+          "as": "main"
+        },
+        "expect": {
+          "status": 200,
+          "headers": {"TSB-Page-More": "false"},
+          "binary_body": {"min_bytes": 1}
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/${sid}/output",
+          "as": "main"
+        },
+        "expect": {
+          "status": 200,
+          "headers": {"TSB-Page-No-Ground": "true", "TSB-Page-More": null},
+          "binary_body": {"empty": true}
+        }
+      }
+    ],
+    "cleanup": [
+      {"method": "DELETE", "path": "/sessions/${sid}"}
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "seam": "C3",
+  "name": "device-login-connect-without-login-timeout-refused",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_a_prompt_connect_without_login_timeout_is_bad_request_and_opens_nothing"
+    }
+  ],
+  "description": "A prompt-mode connect carries `login_timeout`, the one clock for the whole device login (10 s to 30 min), so the worker has no value of its own for it and refuses a prompt-mode connect that lacks it: `error` `bad_request`, opening nothing. The field is optional in the schema only so that every earlier connect stays valid (V1), and it is sent only with `auth.kind` prompt and only to a peer at 0.7 or later.",
+  "corpus": [
+    "decision 5.36",
+    "device-login step 10",
+    "ipc-control connect"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "a prompt-mode connect with no login_timeout: shaped as a connect, refused by the worker"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "bad_request",
+          "message": "a prompt-mode connect needs login_timeout"
+        }
+      }
+    ]
+  }
+}

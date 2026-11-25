@@ -1,0 +1,96 @@
+{
+  "seam": "C6",
+  "name": "terminal-close-partial-durable-coverage",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U11 `close_after_extent_before_seal`: fsynced exact prefix retained, notice starts at its frontier, not recording A or highest unvalidated seq; no repeated count."
+    },
+    {
+      "unit": "U11",
+      "test": "owed: U2/U11 `close_after_extent_before_seal`: fsynced exact prefix retained, notice starts at its frontier, not recording A or highest unvalidated seq; no repeated count."
+    }
+  ],
+  "description": "U2/U11 `close_after_extent_before_seal`: fsynced exact prefix retained, notice starts at its frontier, not recording A or highest unvalidated seq; no repeated count.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "extent",
+            "key": "ri1:s1:e:42:44:8192:8200",
+            "from_seq": 42,
+            "through_seq": 44,
+            "from_byte": 8192,
+            "through_byte": 8200,
+            "from_out_ts": 1794708000000000000,
+            "through_out_ts": 1794708000123000000
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unconfirmed",
+            "key": "ri1:s1:u:42:8192",
+            "baseline_seq": 42,
+            "baseline_bytes": 8192,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "sealed",
+            "key": "ri1:s1:s",
+            "final_last_seq": 44,
+            "final_out_bytes": 8200,
+            "final_last_out_ts": 1794708000123000000,
+            "read_outcome": "timeout",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      }
+    ]
+  }
+}

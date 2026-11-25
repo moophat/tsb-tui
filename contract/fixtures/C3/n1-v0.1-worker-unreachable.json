@@ -1,0 +1,94 @@
+{
+  "seam": "C3",
+  "name": "n1-v0.1-worker-unreachable",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/worker/version_test.go — a live v0.1 manifest: no hello, ping, timers, kill request or linger; its sessions are unreachable / protocol and outlive worker_heartbeat; POST /sessions answers 503 worker_unavailable"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/n1-negative.sh — a frozen v0.1 worker under the v0.2 core: its session is unreachable / protocol, never killed, and creation is refused 503 while only v0.1 workers run"
+    }
+  ],
+  "description": "N-1, the negative case (phase-01: a v0.1 worker has no handshake at all, so it cannot demonstrate reattach; immortality §6.4: never silently killed). A restarted v0.2 core finds a live v0.1 worker — its manifest has no proto_version — under a v0.1 supervisor. It dials first, as v0.1 does: the peer is live, so it is not worker_lost. It sends it no hello, ping, timers, kill request or linger; its session is unreachable / protocol, input refused (decision 5.38), alive past worker_heartbeat. The session timers (idle, unattended) and owner and admin ends still apply and reach the worker as a v0.1 close_channel, since session model §14 rejects an unbounded orphan. The supervisor is addressed but never asked for a worker, so no new session lands on a v0.1 worker (O1); the operator drains these. The core neither reads nor records its output (decision 5.38; orchestrator DEFAULT, approval page): it dials each data socket once, to tell live from lost, and closes it unread.",
+  "corpus": [
+    "immortality §6.4",
+    "decision 5.38",
+    "session model §11",
+    "session model §14",
+    "phase-01 (N/N-1)"
+  ],
+  "case": {
+    "transform": "c5-rediscovery-v0.2",
+    "input": {
+      "supervisors": [
+        {
+          "supervisor_id": "fixture-sup-1",
+          "pid": 1,
+          "control_sock": "/tmp/tsb/supervisors/fixture-sup-1/control.sock",
+          "started_at": "2026-09-23T11:59:00Z"
+        }
+      ],
+      "workers": [
+        {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "spool": [],
+      "audited": [],
+      "sockets": {
+        "/tmp/tsb/supervisors/fixture-sup-1/control.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-1/control.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-1/shell.sock": "connectable"
+      }
+    },
+    "output": {
+      "spool_ignored": [],
+      "supervisors": [
+        "/tmp/tsb/supervisors/fixture-sup-1/control.sock"
+      ],
+      "create_through": [],
+      "dead_supervisors": [],
+      "handshake": [],
+      "unreachable": [
+        {
+          "worker_id": "fixture-worker-1",
+          "conn_id": "fixture-conn-1",
+          "control": "/tmp/tsb/conn-fixture-conn-1/control.sock",
+          "sessions": [
+            {
+              "session_id": "fixture-session-a",
+              "socket": "/tmp/tsb/conn-fixture-conn-1/shell.sock"
+            }
+          ]
+        }
+      ],
+      "dead_connections": [],
+      "dead_sessions": [],
+      "spooled_ends": []
+    }
+  }
+}

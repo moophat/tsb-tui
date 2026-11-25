@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Shared definitions",
+  "description": "Value shapes more than one seam uses. Each is defined once here and referenced everywhere else.",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "description": "Identifier of a session, connection, worker, supervisor, attached client or target. Path-safe on purpose: ids become file and directory names under /tmp/tsb (conn-{id}/, workers/{id}.json) and in the artefacts layout, so no slash and no leading dot."
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-9]))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(\\.[0-9]{1,9})?Z$",
+      "description": "RFC 3339 date-time in UTC with the Z suffix. Every field is within its range: month 01-12, a day the month has, hour 00-23, minute 00-59, second 00-60 (60 for a leap second). 29 February passes in any year: a pattern cannot tell a leap year, so a sender must not write one in a common year."
+    },
+    "session_type": {
+      "enum": [
+        "shell",
+        "exec",
+        "sftp",
+        "netconf",
+        "forward"
+      ],
+      "description": "What one session is (Contract §15; session model §2). A session is TSB's record of one thing a user opens on a connection — one channel, opened by either side, or one forward — and this names which. shell: a \"session\" channel with pty-req and shell, opened by open_shell. From proto_version 0.5 a telnet session is shell too: the telnet stream, which has no channel, pty-req or shell request. The continuity record's protocol says which. exec: a \"session\" channel with exec — one command; it ends when the command exits and the target closes the channel. sftp: the sftp subsystem, opened by open_sftp. netconf: the netconf subsystem, opened by open_subsystem (lang-arch §8.2 tags a subsystem session by its name). forward: one forward — a listener TSB holds (-L, -D) or a tcpip-forward request (-R) — which is not a channel at all. exec and forward have no v0.1 producer: lang-arch §4.1 has no verb that opens either, so no v0.1 worker or core writes them. Later tags add values; a receiver treats an unknown value as an opaque type, never as an error."
+    },
+    "term": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$",
+      "description": "TERM value the client declares and the worker sets on the target (lang-arch §7.3)."
+    },
+    "cols": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "Terminal width in columns (a u16, as TIOCSWINSZ carries it)."
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "Terminal height in rows (a u16, as TIOCSWINSZ carries it)."
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^SHA256:[A-Za-z0-9+/]{43}$",
+      "description": "Host-key fingerprint in OpenSSH form: SHA256: and the unpadded base64 of the digest."
+    },
+    "ticket": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{22,256}$",
+      "description": "Opaque one-time WebSocket attach ticket, at least 22 URL-safe characters (128 bits when random). Never placed in a URL."
+    },
+    "username": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$",
+      "description": "A TSB principal's login name. Path-safe on purpose: a user name becomes a directory name (Storage §10.2: ~/.tsb/users/{username}/), so no slash and no leading dot."
+    },
+    "share_entry": {
+      "description": "An entry in a target's share list. Either a username or a reserved kind:name entry. A request carrying a kind entry is refused at this release (422); a reader meeting one matches no principal and shows it as text.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/username"
+        },
+        {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}:[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$"
+        }
+      ]
+    },
+    "timestamp_any_zone": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-9]))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)(\\.[0-9]{1,9})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$",
+      "description": "An RFC 3339 date-time as a durable record may hold it: UTC with the Z suffix, or a numeric offset. Only for a C6 clock read back from a record an earlier core wrote in its local zone; every writer at this tag writes the Z form (timestamp). The field ranges are timestamp's."
+    },
+    "proto_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "The C3 protocol version a worker or a supervisor speaks (immortality §6.4, LOCKED: proto_version in the handshake; the core speaks N and N-1 minimum). This tag writes \"0.8\". A pattern, not a constant, so a core reads a later peer's version as newer, never as malformed. Absent means v0.1, everywhere: no v0.1 peer writes it."
+    },
+    "u64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615,
+      "description": "An unsigned 64-bit seq or byte count (decision 5.14: seq is 64-bit). Values exceed 2^53, so a reader decodes them as 64-bit integers, never as floating point."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "A duration in integer milliseconds, 1 to 2^53-1 (the integers every JSON reader holds exactly). The value is a config.yaml knob (decision 5.36); the contract fixes only the range, never a default."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "A count, 1 to 2^53-1. The value is a config.yaml knob (decision 5.36); the contract fixes only the range, never a default."
+    },
+    "session_state": {
+      "enum": [
+        "live",
+        "detached",
+        "killed",
+        "terminated",
+        "unreachable"
+      ],
+      "description": "A session's state: one list for the northbound record (C1) and the durable record (C6) — session model §10's four, with immortality §7's unreachable beside them. live: at least one client attached. detached: no client attached; the session lives on. killed: ended by TSB or through it. terminated: ended from outside TSB. unreachable: the worker is alive but the core cannot run C3's handshake with it — at this tag only a v0.1 worker under a v0.2 core (unreachable_reason protocol, immortality §6.4). The core shows what it already has — it neither reads nor records that worker's output — and refuses input to it (decision 5.38). orphan-pending is the worker's state while the core is gone: no core can persist it and no message carries it; its outcome arrives as killed / orphan through the spool. Later tags may add values: a consumer treats a state it does not know as not attachable."
+    },
+    "alert_subjects": {
+      "description": "Which of TSB's components an alert names, by its kind — one rule for the audit event and the alert stream: supervisor_unresponsive names its supervisor; worker_unkillable its worker, and the supervisor that could not kill it; vt_unavailable names no component of its own — the VT worker is not a C3 worker — and lists the sessions whose grid it holds, if any, in session_ids; recording_unavailable names exactly one held session in session_ids.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "supervisor_unresponsive"
+            }
+          },
+          "required": [
+            "supervisor_id"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "worker_unkillable"
+            }
+          },
+          "required": [
+            "worker_id",
+            "supervisor_id"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "vt_unavailable"
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {"const": "recording_unavailable"},
+            "session_ids": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/id"}}
+          },
+          "required": ["session_ids"]
+        }
+      ]
+    },
+    "alert_kind": {
+      "enum": [
+        "supervisor_unresponsive",
+        "worker_unkillable",
+        "vt_unavailable",
+        "recording_unavailable"
+      ],
+      "description": "An operator alert (session model §11): TSB's own internal state, never host state (Contract §4). supervisor_unresponsive: a supervisor stopped answering its ping, or a request within that request's timeout (supervisor_heartbeat). worker_unkillable: a worker outlived SIGKILL past the kill's reap_timeout (kill_failed). vt_unavailable: the core could not take a grid snapshot because its VT worker is down or missing heartbeats — raised so the operator knows the commit point is not advancing: the recording keeps every frame meanwhile, but a session that must reattach (a core restart, a lone data-socket loss) waits for a snapshot at most snapshot.wait_sec, then loses its grid (stale flow, cause grid_lost; continuity-state.schema.json top; contract-v0.3). recording_unavailable: a session is held after a recording sync failure. A receiver shows a kind it does not know as TSB's own alert, never as host state."
+    },
+    "credential_ref": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+        {"const": "supplied"}
+      ],
+      "description": "From the vault release: a credential's reference, a name its owner chose (a user for a personal credential, a vault administrator for an org one), unique within that owner and never within the deployment, so a personal and an org credential may share a name and are told apart by credential_layer (credential-protection §8.1, §8.2; Storage §10.3). Path-safe and bounded: 1 to 64 characters, ASCII letters and digits first, then letters, digits, '.', '_' and '-'. `supplied` is reserved (session-open step 4: the constant a connection opened with a supplied login or a device login records), so the oneOf refuses it: it matches both branches. A reference is a name a person reads; a surface renders it as text."
+    },
+    "credential_layer": {
+      "enum": ["personal", "org"],
+      "description": "From the vault release: which owner a credential_ref belongs to. personal: the principal's own vault entry, reaching a target through the principal's Layer 2a mapping (users/<name>/profiles.yaml, Storage §10.1, §10.3). org: an org-vault credential (credential-protection §8.2), reaching a target through a grant (Layer 2b, Storage §10.1a). A reference names one credential only together with its layer. A receiver that meets a layer it does not know treats the candidate as one it cannot offer."
+    },
+    "credential_kind": {
+      "enum": ["key", "password", "none"],
+      "description": "From the vault release: what a vault entry carries, readable without an unlock (the plaintext index). key: an unencrypted private key, as its text (ipc-control auth kind key). password: a password (auth kind password). none: no secret, for a target whose login is typed by the operator in the session (a telnet target): nothing is ever sent for it."
+    },
+    "unlock_class": {
+      "enum": ["user_unlocked", "broker_unlocked"],
+      "description": "From the vault release: an org credential's unlock class (credential-protection §8.2, LOCKED; open_decisions §7). user_unlocked: sealed under the storing administrator's encryption_key, usable for the principals granted it while that administrator holds a vault unlock. broker_unlocked: sealed under the broker's own key, opt-in per deployment. Chosen explicitly by a vault administrator at storage time, never inferred and never derived from what the account may do on a target. A personal credential has no class."
+    },
+    "device_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+      "description": "From the vault release: a trusted device's device_id (credential-protection §4.2: SHA-256 over stable browser and hardware facts, 32 bytes; not a secret) on the wire, written base64url without padding (RFC 4648 §5), 43 characters, because it is a path segment (DELETE /devices/{device_id}) and part of a Redis key. The one byte value the contract writes base64url; every other byte value on the wire is padded base64 (RFC 4648 §4)."
+    },
+    "login_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]+$",
+      "description": "From the vault release: the account name on the target a vault credential logs in as (credential-protection §10.3: the identity on the target is the credential's). 1 to 256 characters, the bound of C3 connect.user, with no C0 or C1 control character and no DEL."
+    },
+    "display_label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]+$",
+      "description": "From the vault release: free text a person reads (a credential's label): 1 to 128 characters, no C0 or C1 control character and no DEL. A surface renders it as plain text, never as markup (conventions, free text)."
+    },
+    "device_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]+$",
+      "description": "From the vault release: the name a user gives a trusted device, free text a person reads: 1 to 64 characters, no C0 or C1 control character and no DEL. Rendered as plain text."
+    },
+    "login_prompt_id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "From the device login (proto_version 0.7; C2 device_login_*, C3 auth_prompt and auth_answer): the worker's per-connection integer that names one outstanding prompt, counted from 1 and relayed as it is. An answer is relayed only when it names the outstanding prompt_id. Present on a password round, and on a keyboard-interactive round that has at least one prompt; a banner and a round with no prompts carry none, because nothing can be answered. Only the one socket that redeemed the device login's ticket can answer, so the number ties an answer to its prompt and is no secret."
+    },
+    "login_attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991,
+      "description": "From the device login: which try at the device's authentication a prompt belongs to, numbered by the worker from 1. The worker raises it by one only when the device refuses (SSH_MSG_USERAUTH_FAILURE with partial success false) a request in which the worker gave an answer, a password or a keyboard-interactive response to a round with prompts. A partial success (RFC 4252 §5.1: one method passed and the device requires another) leaves it as it is, and so does a failure of a request that carried no answer (the opening none, a round with no prompts): the next method then continues the same attempt, so a password followed by a code is one attempt. The pane's \"refused\" line, target.auth_failed's attempts and session.connect's refused_attempts all read it as a count of refused answers. TSB retries and counts nothing of its own: the device counts."
+    },
+    "login_prompt_item": {
+      "type": "object",
+      "required": ["text", "echo"],
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024,
+          "description": "The device's own prompt text, plain text, at most 1024 characters (the worker ends the login error not_supported past it). It may be empty: such a prompt is still a prompt, and its code-6 frame in a recording is the tag alone. The device sent it, so it is never TSB's own words and a surface shows it inside the frame marked \"device login\", never as markup."
+        },
+        "echo": {
+          "type": "boolean",
+          "description": "Whether the device asks that the answer be shown as typed (RFC 4256 echo). A surface masks the answer when it is false."
+        }
+      },
+      "description": "One question of a keyboard-interactive round."
+    },
+    "login_answers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {"type": "string", "minLength": 0, "maxLength": 1024},
+      "description": "From the device login: the answers to one round, one string per prompt (exactly one for a password request), 1 to 16 strings because a round that takes an answer has a prompt. Each string is 0 to 1024 characters here, and the byte bound is the core's, at most 1024 bytes of UTF-8 (a string past it is `request_refused` `invalid` on C2, and nothing crosses C3). An empty string is an answer: a keyboard-interactive \"press Enter\" prompt takes one. Credential-named (every string of the list is a credential, never logged and never stored, V10): a collection holds only the synthetic constant for each."
+    }
+  }
+}

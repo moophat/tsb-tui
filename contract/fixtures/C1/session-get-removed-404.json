@@ -1,0 +1,72 @@
+{
+  "seam": "C1",
+  "name": "session-get-removed-404",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: session history session-get-removed-404 provider test"
+    }
+  ],
+  "description": "After explicit successful retention removal of an eligible fully finalised ended record, GET is word-for-word identical to an unknown id: 404 session_not_found. Also absent from every list view. This fixture has no sweep deadline and never waits a prescribed time for removal. Published e4 so surfaces can build against the shape; required-green e5 so the addition does not retroactively fail the existing e4 provider.",
+  "corpus": [
+    "session-list rules 8\u201310",
+    "conventions V1, V4, V7, V8",
+    "Storage \u00a78.6"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/fixture-history-removed"
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "session_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "session_not_found",
+              "message": "session not found"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/fixture-history-unknown"
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "session_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "session_not_found",
+              "message": "session not found"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,9 +1,9 @@
-"""Puts the pinned contract tree at `program/contract/` on sys.path before any test module
-imports `tsbc` or `tsb_contract_client`. The pin is the program submodule at its release
-(v0.14.1); `program/contract/` and `program/contract/client/` go first on sys.path so an import
+"""Puts the contract tree at `contract/` on sys.path before any test module
+imports `tsbc` or `tsb_contract_client`. The pin is the contract copy at its release;
+`contract/` and `contract/client/` go first on sys.path so an import
 that would otherwise resolve from site-packages, the sibling `../tsb-program`, or a stale
-copy of an older tag fails loudly instead. Nothing is copied, cached or resolved with git: the
-path is valid because it is the program release (`make contract-check` proves it). CI no longer
+copy of an older tag fails loudly instead. Nothing is resolved with git: the
+path is valid because it is the contract release (`make contract-copy-check` proves it). CI no longer
 installs `contract/` into this venv (`-e ./contract` dropped, .github/workflows/test.yml) —
 without this, collecting any test module that imports tsb_tui (which imports tsbc via
 _transport.py) fails outright. pytest imports every conftest.py before collecting the test modules
@@ -12,7 +12,7 @@ in its directory, so this runs first.
 It also yields the vendored libghostty-vt shared object's path to the engine tests (`term_so`).
 That file is vendored at the engine PIN, so the fixture fails loudly when it is
 absent rather than letting the engine tests error with a confusing import — exactly as this file
-already does for `program/contract/`.
+already does for `contract/`.
 
 Every test runs in a pinned environment (`_pinned_environment`): `HOME` and `XDG_CONFIG_HOME` point at
 an empty directory, no `TSB_TUI_*` variable leaks in from the workstation or CI, and the app is given
@@ -35,14 +35,14 @@ import pytest
 
 TUI_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = TUI_DIR
-CONTRACT_DIR = REPO_ROOT / "program" / "contract"
+CONTRACT_DIR = REPO_ROOT / "contract"
 TERM_SO = Path(os.environ["TSB_TUI_TERM_LIBRARY"]) if "TSB_TUI_TERM_LIBRARY" in os.environ else (
     REPO_ROOT / "vendor" / "libghostty-vt" / "libghostty-vt.so")
 
 if not CONTRACT_DIR.is_dir() or not any(CONTRACT_DIR.iterdir()):
     raise RuntimeError(
-        f"{CONTRACT_DIR} is empty or absent — run make contract-init (it populates the program "
-        f"submodule at its pinned release)")
+        f"{CONTRACT_DIR} is empty or absent — run make contract-copy (it populates contract/ "
+        f"from the program submodule)")
 
 for _entry in (CONTRACT_DIR, CONTRACT_DIR / "client"):
     if str(_entry) not in sys.path:

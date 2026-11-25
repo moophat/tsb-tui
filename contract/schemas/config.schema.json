@@ -1,0 +1,367 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "config.yaml knob sections",
+  "description": "The parsed document of config.yaml, knob sections only: timers, worker, size, control, attach, vt, snapshot, inventory and recording. The top level is OPEN: everything else in the file is deployment-local and stays the loader's rule, not contract — listen_addr, the paths, redis_addr, the Redis password file, credentials and capture. V1 forbids freezing the E0 credential stand-in here. Durations are Go duration strings; each key states its own lower bound in prose, as the loader enforces it. `required` lists exactly the knob keys the core refuses to start without: the twelve E1 knobs, the seventeen E2 knobs and the two E3 knobs; it never lists a non-knob key, and a later knob is optional in this schema and graded by fixture. Discovery keys are not in this schema: they arrive with a later item. Cross-key rules are prose, graded by a fixture or a test (R4): keepalive_probe_interval below keepalive_interval when that is above 0; vt.max_message_bytes at least worker.buffer_bytes + 280, so the largest output frame fits; vt.feed_queue_bytes at least vt.max_message_bytes; vt.prefix_ground_wait below attach.prefix_hold; size.floor not exceeding size.ceiling on either side when the ceiling is on. From the vault release (E4) three sections more, vault, locks and auth, optional in this schema like every later knob; the E4 core refuses to start without any of their keys (DEFAULT 36: no code default). Their cross-key rules, prose like the others: locks.vault_idle_after not above locks.vault_hard_cap (config load refuses a longer one, credential-protection §5.5); every locks and auth duration positive. The values each template ships are the deployment's (decision 5.36), never this schema's. The broker key's file (the broker-unlocked org tier, DEFAULT 7) is deployment-local, not a knob, and is not here. The section list also includes vault, locks, auth, sessions and import; the core requires every import key at startup.",
+  "type": "object",
+  "required": ["timers", "worker", "size", "control", "attach", "vt", "snapshot", "inventory"],
+  "properties": {
+    "recording": {
+      "type": "object",
+      "properties": {
+        "input_seq_reservation_size": {
+          "type": "integer", "minimum": 1, "maximum": 9007199254740991,
+          "description": "Positive input sequence reservation block size; required by the implementing core. Deployment templates supply the default, never this schema. terminal-output-accounting.md."
+        }
+      }
+    },
+    "timers": {
+      "type": "object",
+      "required": [
+        "heartbeat_interval", "heartbeat_missed", "keepalive_interval", "keepalive_count_max",
+        "connection_linger", "orphan_timeout", "expiry_notice", "quiet_prompt",
+        "keepalive_probe_interval"
+      ],
+      "properties": {
+        "idle": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "Session model §11: no byte either way. The loader requires a positive whole-millisecond duration: a value under 1 ms truncates to 0 on the wire and a fractional one drops its remainder, so both are refused, never truncated."
+        },
+        "unattended": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "Session model §11: no client byte. The loader requires a positive whole-millisecond duration."
+        },
+        "ws_ping_interval": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The core's own WebSocket ping to a browser client (session model §11). Positive; it never reaches a worker, so no whole-millisecond rule."
+        },
+        "ws_missed_pongs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Missed pongs before the heartbeat notices a client is gone (session model §11). The ceiling 100 is a sanity bound: beyond it a dead client keeps its attachment for 100 ping intervals."
+        },
+        "heartbeat_interval": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The worker's bound on a silent core (core_heartbeat). A positive whole-millisecond duration. Times heartbeat_missed it must fit a duration."
+        },
+        "heartbeat_missed": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Missed core heartbeats. The ceiling 100 is a sanity bound, the same kind as ws_missed_pongs'."
+        },
+        "keepalive_interval": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The keepalive to the target, bounding link_timeout. 0 turns link_timeout off; otherwise a positive whole-millisecond duration. Times keepalive_count_max it must fit a duration."
+        },
+        "keepalive_count_max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Missed keepalives before the link is declared dead. The ceiling 100 is a sanity bound."
+        },
+        "connection_linger": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "How long a connection with no session left lives. 0 closes it immediately; otherwise a positive whole-millisecond duration."
+        },
+        "orphan_timeout": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "What the worker runs while the core is gone (session model §11). A positive whole-millisecond duration."
+        },
+        "expiry_notice": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The session countdown's notice (session model §11). A positive whole-millisecond duration."
+        },
+        "quiet_prompt": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The quiet prompt's window (session model §11). A positive whole-millisecond duration."
+        },
+        "keepalive_probe_interval": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "How often the worker probes a silent link. A positive whole-millisecond duration, and below keepalive_interval when that is above 0."
+        }
+      },
+      "description": "The session model §11 timers. The nine listed in `required` are the E1 and E2 knobs the core refuses to start without; idle, unattended, ws_ping_interval and ws_missed_pongs are the loader's own required keys, not contract-required here."
+    },
+    "worker": {
+      "type": "object",
+      "required": ["buffer_bytes", "input_frame_max", "undialled_timeout", "reap_timeout"],
+      "properties": {
+        "placement": {
+          "enum": ["per_user", "shared"],
+          "description": "Worker placement (session model §4): a worker holds only one TSB user's connections, or shared."
+        },
+        "max_connections": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "N, the connections one worker holds; the core sends it as create_worker.n_max. The loader requires it; it is not a contract-required key here."
+        },
+        "buffer_bytes": {
+          "$ref": "common.schema.json#/$defs/count",
+          "description": "The worker's output buffer, travelling on C3 connect. vt.max_message_bytes must be at least this + 280, so the largest output frame fits."
+        },
+        "input_frame_max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295,
+          "description": "The per-frame input ceiling (ipc-control's own range, narrower than count)."
+        },
+        "undialled_timeout": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "Bounds a connection no core ever dialled. A positive whole-millisecond duration."
+        },
+        "reap_timeout": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "How long the supervisor waits for a killed worker's process to go. A positive whole-millisecond duration."
+        },
+        "open_timeout": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The bound on a shell's open: how long the worker waits for the target to open a shell, sent on C3 open_shell as open_timeout to a worker at proto_version 0.6 or later. The core waits that plus one timers.heartbeat_interval for channel_opened, so the worker's error arrives first. A positive whole-millisecond duration. A target's own value (inventory-target options.open_timeout) overrides it."
+        },
+        "login_timeout": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The bound on a device login (Release B): how long the worker waits, from C3 connect to its terminal answer, the probe and the human's answers included, sent on connect as login_timeout to a worker at proto_version 0.7 or later. The core waits that plus one timers.heartbeat_interval for the terminal answer, so the worker's auth_failed (code login_timeout) arrives first. A positive whole-millisecond duration from 10 s to 30 min, overridden per target (inventory-target options.login_timeout). Optional in this schema; the core refuses to start without it, as it does for open_timeout."
+        },
+        "device_logins_max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "description": "The most device logins one principal may have in progress (Release B), an integer from 1 to 64. A prompt-mode create past it is 429 rate_limited. A device login holds its place from its 202 until it ends. Optional in this schema; the core refuses to start without it, as it does for open_timeout."
+        },
+        "output_drain_timeout": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "Required by the new runtime, optional here for additivity. Positive whole-millisecond Go duration representable in signed Go duration nanoseconds and common.duration_ms on C3; refuse zero, negative, fractional milliseconds or overflow without truncation. Connection-wide, no per-target override; worker terminal drain and core terminal wait each snapshot it per attempt. Reload affects next attempt, worker retains last value while core absent. Sent only to C3 >=0.8. No contract default. C5/config-output-drain-timeout (reference; U5 parser/range/reload tests owed)."
+        }
+      },
+      "description": "How the core drives its workers."
+    },
+    "size": {
+      "type": "object",
+      "required": ["floor", "ceiling", "threshold", "coalesce_window"],
+      "properties": {
+        "floor": {
+          "type": "object",
+          "required": ["cols", "rows"],
+          "properties": {
+            "cols": {"$ref": "common.schema.json#/$defs/cols"},
+            "rows": {"$ref": "common.schema.json#/$defs/rows"}
+          },
+          "description": "The size floor, {cols, rows} (terminal-size §3). Each side 1..65535."
+        },
+        "ceiling": {
+          "type": "object",
+          "required": ["cols", "rows"],
+          "oneOf": [
+            {"properties": {"cols": {"const": 0}, "rows": {"const": 0}}},
+            {
+              "properties": {
+                "cols": {"$ref": "common.schema.json#/$defs/cols"},
+                "rows": {"$ref": "common.schema.json#/$defs/rows"}
+              }
+            }
+          ],
+          "description": "The size ceiling, {cols, rows} (terminal-size §3). {0, 0} turns it off; one side 0 alone is refused. The floor must not exceed the ceiling on either side when the ceiling is on; equal bounds pin the size."
+        },
+        "threshold": {
+          "const": 0,
+          "description": "Only 0 is accepted: the contract names no other behaviour for it (Contract G-4)."
+        },
+        "coalesce_window": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The size request's coalescing window. A positive duration."
+        }
+      },
+      "description": "Terminal size policy (terminal-size §3)."
+    },
+    "control": {
+      "type": "object",
+      "required": ["auto_release"],
+      "properties": {
+        "auto_release": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "How long the typing token is held before it is released automatically (terminal-size §5). 0 means never; otherwise a positive duration."
+        }
+      },
+      "description": "The typing-token policy."
+    },
+    "attach": {
+      "type": "object",
+      "required": ["redraw_wiggle", "prefix_hold"],
+      "properties": {
+        "redraw_wiggle": {
+          "type": "boolean",
+          "description": "The redraw wiggle's switch. A YAML boolean: yes, 1 and \"true\" are refused."
+        },
+        "prefix_hold": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "How long the core holds output before a prefix, then closes 4011. A positive duration, above vt.prefix_ground_wait."
+        }
+      },
+      "description": "The attach prefix."
+    },
+    "vt": {
+      "type": "object",
+      "required": ["max_message_bytes", "feed_queue_bytes", "heartbeat_interval", "heartbeat_missed", "scrollback_bytes"],
+      "properties": {
+        "max_message_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295,
+          "description": "The largest VT message (vt-ipc's own range). At least worker.buffer_bytes + 280, so the largest output frame fits."
+        },
+        "feed_queue_bytes": {
+          "$ref": "common.schema.json#/$defs/count",
+          "description": "The core's bound on frames queued for the VT. At least vt.max_message_bytes, or one message can never be queued."
+        },
+        "heartbeat_interval": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The VT's heartbeat. A positive duration; times vt.heartbeat_missed it must fit a duration."
+        },
+        "heartbeat_missed": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Missed VT heartbeats. The ceiling 100 is a sanity bound."
+        },
+        "scrollback_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "The VT's scrollback (vt-ipc's own range)."
+        },
+        "prefix_ground_wait": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "A positive whole-millisecond duration, below attach.prefix_hold, so an attach landing mid-sequence is answered before it closes. Not read by the core: the deploy layer renders it into the VT worker's launch environment."
+        },
+        "continuation_max_bytes": {
+          "$ref": "common.schema.json#/$defs/count",
+          "description": "Not read by the core: the deploy layer renders it into the VT worker's launch environment."
+        }
+      },
+      "description": "The VT seam."
+    },
+    "snapshot": {
+      "type": "object",
+      "required": ["every_kb", "every_sec", "on_alt_screen", "wait_sec"],
+      "properties": {
+        "every_kb": {
+          "$ref": "common.schema.json#/$defs/count",
+          "description": "One grid snapshot per this many KiB of output (immortality §5.2: the byte-count trigger)."
+        },
+        "every_sec": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "The time-based twin of every_kb. A positive duration."
+        },
+        "on_alt_screen": {
+          "const": true,
+          "description": "Only true is accepted: the core forces a snapshot on every screen_change (grid-snapshot step 2), so there is nothing for false to turn off."
+        },
+        "wait_sec": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 600,
+          "description": "How long a commit that must land now waits for the whole snapshot before giving the grid up (grid-snapshot rule 12), in whole seconds."
+        }
+      },
+      "description": "Grid snapshots (immortality §5.2, grid-snapshot rule 12)."
+    },
+    "inventory": {
+      "type": "object",
+      "required": ["keep_versions", "staging_max_age"],
+      "properties": {
+        "keep_versions": {
+          "$ref": "common.schema.json#/$defs/count",
+          "description": "The core keeps the last this many inventory versions (Storage §2.5: \"keep last N versions … Configurable\"). At start, under the lock, it removes older ones."
+        },
+        "staging_max_age": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "A staging directory younger than this is a deploy in progress, so the core never removes it; older ones are removed at start under the lock. A positive duration."
+        }
+      },
+      "description": "Inventory retention (Storage §2.5). Discovery keys are not here: they arrive with a later item."
+    },
+    "import": {
+      "type": "object",
+      "properties": {
+        "max_bytes": {"type": "integer", "minimum": 1, "maximum": 67108864, "description": "Maximum decoded export bytes, before parser work. Deployment supplies the value; no schema default."},
+        "max_entries": {"$ref": "common.schema.json#/$defs/count", "description": "Maximum source entries, including skipped rows."},
+        "max_yaml_depth": {"type": "integer", "minimum": 1, "maximum": 256, "description": "Maximum YAML nesting depth."},
+        "preview_ttl": {"type": "string", "pattern": "^(([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "A positive Go duration for a preview descriptor."},
+        "receipt_retention": {"type": "string", "pattern": "^(([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "A positive Go duration for retained import receipts."}
+      },
+      "description": "Import limits and lifetimes. The core refuses to start unless all five keys exist; values are deployment knobs, never schema or code defaults."
+    },
+    "sessions": {
+      "type": "object",
+      "properties": {
+        "ended_retention": {
+          "type": "string",
+          "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$",
+          "description": "Core-wide positive Go duration for ended session-store records, not a timer ending sessions; no per-target or test-login exception. Optional in this schema for V1 additivity; required by the implementing core (V7: no code default). The loader refuses zero, negative, malformed or overflowing durations. Deployment templates supply 7 days (168h), never a schema default. A fully finalised end is removed no earlier than this age after ended_at, or persisted activity_at when ended_at is absent. Listed and readable until removed. Removal affects only the session record and grid snapshot, never audit or recordings. Cleanup scheduling belongs to the core; no sweep knob. See session-list rule 10."
+        }
+      },
+      "description": "Ended session metadata retention, separate from recording and audit retention. A later knob section, optional here under V1."
+    },
+    "vault": {
+      "type": "object",
+      "required": ["challenge_ttl", "unlock_attempts", "unlock_window", "part2_ttl"],
+      "properties": {
+        "challenge_ttl": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: how long a device challenge stays valid if unanswered: a whole number of seconds, 1s to 60s, the range of the challenge's expires_in (credential-protection Amendment 2026-09-14: \"seconds, not minutes\"; V7)."},
+        "unlock_attempts": {"type": "integer", "minimum": 1, "maximum": 100, "description": "From the vault release: failed passphrase attempts a principal may make in vault.unlock_window before an unlock or a registration answers 429 rate_limited (credential-protection §11.1, Appendix B: \"5 per hour\"). Counted per principal across all its logins (DEFAULT 45); a correctly signed trusted unlock or regeneration and a part2_missing answer are never counted. The ceiling 100 is a sanity bound."},
+        "unlock_window": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: the window vault.unlock_attempts counts over (corpus: one hour). A positive duration."},
+        "part2_ttl": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: the Redis TTL of a device's Part 2 (vault:part2:{user_id}:{device_id}), set on registration and regeneration and renewed on each successful trusted unlock (DEFAULT 43). A positive whole-second duration. Its expiry costs a regeneration with the passphrase the surface already holds, never a loss (credential-protection §9)."}
+      },
+      "description": "From the vault release: the vault's knobs (DEFAULT 6)."
+    },
+    "locks": {
+      "type": "object",
+      "required": ["screen_after", "vault_on_idle", "vault_idle_after", "vault_hard_cap", "activity_interval"],
+      "properties": {
+        "screen_after": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: the screen-lock time (credential-protection §5.5): a client with no input from its user for this long hides session content and blocks input until the login password is re-checked. Always on: a positive whole-second duration, never 0."},
+        "vault_on_idle": {"type": "boolean", "description": "From the vault release: lock on idle (credential-protection §5.5): whether the vault lock purges every unlock a user holds once the user has been idle for locks.vault_idle_after. A YAML boolean. The hard cap applies either way."},
+        "vault_idle_after": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: the vault idle timer: with locks.vault_on_idle, a user idle across all their surfaces for this long has every unlock purged. A positive whole-second duration (0 never means never: turning idle locking off is vault_on_idle's job), and not above locks.vault_hard_cap: config load refuses a longer one."},
+        "vault_hard_cap": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: the hard cap: the longest one unlock lasts, counted from the passphrase entry that made it, however active the user, whether or not idle locking is on. Always on: a positive whole-second duration."},
+        "activity_interval": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: the activity signal's interval: the core counts at most one POST /auth/activity per login per this interval and ignores the rest, never refusing one (DEFAULT 34); surfaces throttle to it (Principal.locks.activity_interval). A positive whole-second duration."}
+      },
+      "description": "From the vault release: the two locks' global values (credential-protection §5.5). The core reads them only through its per-user resolver, which today returns these values; a surface learns the values that apply to its user from the core (Principal.locks on POST /auth/login and GET /auth/me), never from a local value."
+    },
+    "auth": {
+      "type": "object",
+      "required": ["login_lifetime", "login_idle"],
+      "properties": {
+        "login_lifetime": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: a login session's absolute lifetime, from the login. A positive duration."},
+        "login_idle": {"type": "string", "pattern": "^(0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$", "description": "From the vault release: a login session's idle bound: a login none of whose requests arrived for this long ends. A positive duration; it replaces the built 12-hour constant."},
+        "account_password_min_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "E4b: minimum Unicode character count for a password newly set by create, enable, administrator set-password or own change. Integer 1–1024; deployment DEFAULT 15, never a schema/code default. Existing passwords and the own-change current-password proof are not checked against it. Optional here for old configs; the E4b loader refuses to start without this knob, following V7. This non-timer key takes a restart under config-reload step 2."
+        }
+      },
+      "description": "From the vault release: how long a login session lives (login open item 1, answered: two knobs, DEFAULT 36). A login ends at the first of the two, at logout, at a revocation of its tied device (devices.revocation end_logins) or at a core restart, since logins live in the core's memory (credential-protection §3.2)."
+    }
+  }
+}

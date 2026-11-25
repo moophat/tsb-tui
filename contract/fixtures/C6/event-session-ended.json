@@ -1,0 +1,228 @@
+{
+  "seam": "C6",
+  "name": "event-session-ended",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:audit-end-states",
+  "description": "session.disconnect closes a session's audit record and says how it ended and why (session model §12–§13; Storage §6's table; decision 5.45). end_state killed is an end by TSB or through it: end_reason idle, unattended or orphan (the session model §11 timers, which have no actor, so no user) or owner or admin (the principal who ended it, named in user). end_state terminated is an end from outside TSB: end_reason worker_lost (its worker died, hung, or was not where its manifest said), target_closed (the target closed its SSH channel or the connection) or connection_lost (our end of the connection is gone, or link_timeout fired). A reason from the other state's list is refused, as are the retired reasons grace and lifetime and the retired state disconnected, and there is no expiry event: a timer's end is killed. The session's recording ends in the end marker of the same end_state (C8 end-marker-killed). A collected run must hold at least one end event, and no session may end twice; a worker death's is graded from e1 (C8 worker-death-recorded).",
+  "corpus": [
+    "Storage §6",
+    "session model §11",
+    "session model §12",
+    "session model §13",
+    "decision 5.44",
+    "decision 5.45",
+    "immortality §1.1"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "idle"
+        },
+        "note": "Storage §6's example, verbatim in shape"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "unattended",
+          "duration": 2592000,
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec"
+        },
+        "note": "30 days with no client byte"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "duration": 172800
+        },
+        "note": "the core never came back"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "owner",
+          "user": "alice"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "admin",
+          "user": "admin"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "terminated",
+          "end_reason": "worker_lost"
+        },
+        "note": "the worker died"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "terminated",
+          "end_reason": "target_closed"
+        },
+        "note": "the target closed the channel or the connection"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "terminated",
+          "end_reason": "connection_lost"
+        },
+        "note": "our end of the connection is gone, or link_timeout"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "worker_lost"
+        },
+        "note": "a worker's death is an end from outside TSB"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "terminated",
+          "end_reason": "idle"
+        },
+        "note": "a timer's end is TSB's"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "target_closed"
+        },
+        "note": "the target's end is from outside TSB"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "grace"
+        },
+        "note": "no grace timer (decision 5.45)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "lifetime"
+        },
+        "note": "no lifetime cap: the bound is unattended"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "owner"
+        },
+        "note": "an end by a principal names the principal"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_reason": "idle"
+        },
+        "note": "how it ended is required"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "disconnected",
+          "end_reason": "connection_lost"
+        },
+        "note": "no disconnected state (decision 5.45)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.expired",
+          "session_id": "fixture-session-a",
+          "session_type": "shell"
+        },
+        "note": "no expiry event: a timer's end is killed"
+      }
+    ]
+  }
+}

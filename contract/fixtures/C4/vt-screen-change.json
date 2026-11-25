@@ -1,0 +1,86 @@
+{
+  "seam": "C4",
+  "name": "vt-screen-change",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "The steady-state screen events (C4 decision 9): screen_change names the output seq that caused it, with change one of alt_enter (CSI ?1049h), alt_exit (CSI ?1049l) and clear (ED 2/ED 3) — the input snapshot.on_alt_screen needs (immortality §5.2). They are small events, and steady state carries only them, honouring open_decisions §1's 'ship deltas, not full snapshots'. After hello and the grid's open, the core feeds frames whose seqs the events carry; each screen_change is a small event, not answered. Graded by the U4 worker (owed) and the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 3",
+    "plan.md C4 decision 9",
+    "vt-ipc.schema.json screen_change"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-1",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "screen_change",
+          "session_id": "sess-1",
+          "seq": 2,
+          "change": "alt_enter"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "screen_change",
+          "session_id": "sess-1",
+          "seq": 4,
+          "change": "clear"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "screen_change",
+          "session_id": "sess-1",
+          "seq": 6,
+          "change": "alt_exit"
+        }
+      }
+    ]
+  }
+}

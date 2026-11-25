@@ -1,0 +1,59 @@
+{
+  "seam": "C3",
+  "name": "hello-unsupported-proto",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_reattach.py — a hello whose proto_version the worker cannot speak is answered error unsupported_proto naming the session"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/worker/version_test.go — unsupported_proto or unknown_cmd in answer to hello makes the session unreachable / protocol, never killed"
+    }
+  ],
+  "description": "Version (immortality §6.4, LOCKED: the core speaks N and N-1; a worker too old to speak a supported version is flagged unreachable/protocol, never silently killed). A restarted core reattaches a worker whose manifest names a version it does not know; it sends hello with its own, and the worker, unable to speak it, answers error unsupported_proto naming the session. The core marks the session unreachable / protocol — input refused (decision 5.38), shown with what the core has — and the operator drains it.",
+  "corpus": [
+    "immortality §6.4",
+    "decision 5.38"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "answering",
+          "last_ack_at": "2026-09-29T01:00:00Z"
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 10
+        },
+        "run": "01789000100000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "unsupported_proto",
+          "session_id": "fixture-session-a",
+          "message": "this worker speaks 0.4 and 0.3"
+        },
+        "run": "01789000100000000000"
+      }
+    ]
+  }
+}

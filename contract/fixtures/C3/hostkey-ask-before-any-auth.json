@@ -1,0 +1,85 @@
+{
+  "seam": "C3",
+  "name": "hostkey-ask-before-any-auth",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_the_probe_sends_no_user_name_and_nothing_is_authenticated_before_accept: the test server sees a key exchange and then a close, no USERAUTH_REQUEST, before the answer"
+    }
+  ],
+  "description": "In prompt mode the worker asks about a first-use key before anything is authenticated: `hostkey_ask` comes first, and no `auth_prompt` comes before the core's `hostkey_answer`. The worker's probe runs the SSH key exchange only, offering public-key host-key algorithms and no certificate algorithm, and sends no user name and no SSH_MSG_USERAUTH_REQUEST (asyncssh get_server_host_key waits for key exchange only), so the device sees no login name until the operator has accepted. At most one `hostkey_ask` per connect, and never a `hostkey` event in prompt mode.",
+  "corpus": [
+    "decision 5.18",
+    "open_decisions §5",
+    "device-login steps 11 to 14",
+    "ipc-control rules 2 and 5"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hostkey_ask",
+          "conn_id": "fixture-conn-1",
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "before any auth_prompt; the probe sent no user name"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hostkey_answer",
+          "accept": true
+        },
+        "note": "only after the ask, once"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "password",
+          "attempt": 1,
+          "prompt_id": 1
+        },
+        "note": "the first prompt comes after the answer"
+      }
+    ]
+  }
+}

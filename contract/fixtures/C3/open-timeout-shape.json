@@ -1,0 +1,117 @@
+{
+  "seam": "C3",
+  "name": "open-timeout-shape",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "artifacts:control-open-timeout",
+  "description": "open_shell's open_timeout (from proto_version 0.6): how long the worker waits for the target to open the shell, integer milliseconds, 1 to 2^53-1 (common duration_ms). Optional: an open_shell without it is valid, and absent means no bound — what an older core sends. The value is the config.yaml knob worker.open_timeout, or the target's own options.open_timeout, never a schema default (decision 5.36). A 0, a duration string or a value past 2^53-1 is refused. control-open-timeout grades that a core sends the field to every peer at 0.6 or later and to no older one; control-sequence validates each captured open_shell against this shape.",
+  "corpus": [
+    "immortality §6.4",
+    "decision 5.36",
+    "lang-arch §7.3",
+    "plan.md §3 C3"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json#/$defs/command",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "open_timeout": 20000
+        },
+        "note": "toward a 0.6 worker: the bound in force for this target, 20 s"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24
+        },
+        "note": "absent: no bound — an older core, or any open_shell toward a worker below 0.6"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "open_timeout": 1
+        },
+        "note": "the lower end of duration_ms"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "open_timeout": 9007199254740991
+        },
+        "note": "the upper end of duration_ms, 2^53-1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "open_timeout": 0
+        },
+        "note": "0 is no bound to wait by: duration_ms starts at 1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "open_timeout": "20s"
+        },
+        "note": "integer milliseconds on the wire, never a duration string (that is config.yaml's form)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "open_timeout": 9007199254740992
+        },
+        "note": "past 2^53-1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "open_timeout": 2.5
+        },
+        "note": "not an integer"
+      }
+    ]
+  }
+}

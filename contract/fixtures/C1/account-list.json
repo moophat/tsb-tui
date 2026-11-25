@@ -1,0 +1,55 @@
+{
+  "seam": "C1",
+  "name": "account-list",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: E4b account management provider tests; Seed one enabled and one disabled account; list both with only username, created_at and disabled. No hash or permissions may be returned; read writes no audit."
+    }
+  ],
+  "description": "Seed one enabled and one disabled account; list both with only username, created_at and disabled. No hash or permissions may be returned; read writes no audit.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/accounts"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "accounts": [
+              {
+                "username": "fixture-account",
+                "created_at": "2026-11-13T09:00:00Z",
+                "disabled": false
+              },
+              {
+                "username": "fixture-disabled",
+                "created_at": "2026-11-13T09:00:00Z",
+                "disabled": true
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

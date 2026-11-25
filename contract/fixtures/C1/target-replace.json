@@ -1,0 +1,154 @@
+{
+  "seam": "C1",
+  "name": "target-replace",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Replace name, host and port while keeping id; a mismatched body id is 422.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Storage §10.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "fixture-w-${nonce}",
+            "type": "ssh",
+            "host": "192.0.2.60"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "fixture-w-${nonce}"
+            },
+            {
+              "pointer": "/discovered_by",
+              "eq": "tsb"
+            },
+            {
+              "pointer": "/host",
+              "eq": "192.0.2.60"
+            },
+            {
+              "pointer": "/port",
+              "eq": 22
+            }
+          ],
+          "example": {
+            "id": "fixture-w-01234567",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [],
+            "discovered_by": "tsb",
+            "port": 22
+          }
+        },
+        "save": {
+          "created_record": ""
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/fixture-w-${nonce}",
+          "body": {
+            "id": "fixture-w-${nonce}",
+            "type": "ssh",
+            "host": "192.0.2.61",
+            "name": "changed target",
+            "port": 2222
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "fixture-w-${nonce}"
+            },
+            {
+              "pointer": "/name",
+              "eq": "changed target"
+            },
+            {
+              "pointer": "/host",
+              "eq": "192.0.2.61"
+            },
+            {
+              "pointer": "/port",
+              "eq": 2222
+            }
+          ],
+          "example": {
+            "id": "fixture-w-01234567",
+            "type": "ssh",
+            "host": "192.0.2.61",
+            "name": "changed target",
+            "port": 2222,
+            "tags": [],
+            "discovered_by": "tsb"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/fixture-w-${nonce}",
+          "body": {
+            "id": "fixture-different-id",
+            "type": "ssh",
+            "host": "192.0.2.61",
+            "name": "changed target",
+            "port": 2222
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "target request refused"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/targets/fixture-w-${nonce}"
+        },
+        "expect": {
+          "status": 204
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/targets/fixture-w-${nonce}"
+      }
+    ]
+  }
+}

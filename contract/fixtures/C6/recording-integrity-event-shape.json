@@ -1,0 +1,139 @@
+{
+  "seam": "C6",
+  "name": "recording-integrity-event-shape",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U1",
+      "test": "owed: U1/U5 `integrity_event_variants`: the original five variants and the two continuation variants, keys/enums/required/forbidden fields; examples valid, unknown fails closed. Includes the ruled explicit unrecorded kind with null baselines and no path/finality."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: U1/U5 `integrity_event_variants`: the original five variants and the two continuation variants, keys/enums/required/forbidden fields; examples valid, unknown fails closed. Includes the ruled explicit unrecorded kind with null baselines and no path/finality."
+    }
+  ],
+  "description": "U1/U5 `integrity_event_variants`: the original five variants and the two continuation variants, keys/enums/required/forbidden fields; examples valid, unknown fails closed. Includes the ruled explicit unrecorded kind with null baselines and no path/finality.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "extent",
+            "key": "ri1:s1:e:42:44:8192:8200",
+            "from_seq": 42,
+            "through_seq": 44,
+            "from_byte": 8192,
+            "through_byte": 8200,
+            "from_out_ts": 1794708000000000000,
+            "through_out_ts": 1794708000123000000
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unconfirmed",
+            "key": "ri1:s1:u:42:8192",
+            "baseline_seq": 42,
+            "baseline_bytes": 8192,
+            "reason": "core_wait_timeout",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "sealed",
+            "key": "ri1:s1:s",
+            "final_last_seq": 44,
+            "final_out_bytes": 8200,
+            "final_last_out_ts": 1794708000123000000,
+            "read_outcome": "timeout",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          },
+          "recording_path": "recordings/s1.ttyrec"
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "not_recorded",
+            "key": "ri1:s1:n",
+            "final_last_seq": 44,
+            "final_out_bytes": 8200,
+            "final_last_out_ts": 1794708000123000000,
+            "read_outcome": "timeout",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true,
+            "recording_enabled": false
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": ""
+      }
+    ]
+  }
+}

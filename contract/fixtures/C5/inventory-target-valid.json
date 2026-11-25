@@ -1,0 +1,248 @@
+{
+  "seam": "C5",
+  "name": "inventory-target-valid",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed by the E3 schema plan (the loader reads every instance)"
+    }
+  ],
+  "description": "The target file (Storage §3.1-§3.4): the parsed document of <source>/<id>.yaml. Valid: one ssh; one telnet, Storage §3.3's example, its script and the telnet-only keys loaded and ignored — no script runs at this release; one serial, which loads so a file that exists today stays valid while serial is deferred; one echo, the lab loopback driver; a file with unknown keys (schema drift forgives field changes); Storage §3.1's example in its JSON form under rule 10, last_seen a string. Invalid: no id; an unknown type; a telnet file with no host; a tag holding a comma; an ssh port of 0; options.password; a top-level credential_ref; a name holding ESC (0x1B). The top level and options are open — this is the one contract shape that is not closed, so drift loads — while the secret keys are refused: Tabby exports and CMDB dumps carry them.",
+  "corpus": [
+    "Storage §2.1",
+    "Storage §3.1",
+    "Storage §3.2",
+    "Storage §3.3",
+    "Storage §3.4",
+    "Storage §3.5",
+    "Storage §10.1a",
+    "Contract §4"
+  ],
+  "case": {
+    "schema": "schemas/inventory-target.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "core-rtr-01",
+          "type": "ssh",
+          "name": "Core Router 01",
+          "group": "core-network",
+          "tags": ["prod", "cisco", "core", "site-a"],
+          "discovered_by": "manual",
+          "last_seen": "2026-03-18T10:30:00Z",
+          "options": {
+            "host": "10.0.1.1",
+            "port": 22,
+            "user": "admin",
+            "auth": "keyboardInteractive",
+            "keepaliveInterval": 30,
+            "keepaliveCountMax": 3,
+            "readyTimeout": 10,
+            "x11": false,
+            "skipBanner": false,
+            "jumpHost": null,
+            "agentForward": false,
+            "proxyCommand": null,
+            "reuseSession": true,
+            "algorithms": {
+              "hmac": [],
+              "kex": [],
+              "cipher": [],
+              "serverHostKey": [],
+              "compression": []
+            },
+            "forwardedPorts": []
+          }
+        },
+        "note": "Storage §3.1's example in its JSON form under rule 10: last_seen is the string \"2026-03-18T10:30:00Z\"; Storage §3.2's other keys load and are ignored, reuseSession least of all"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "lab-switch-03",
+          "type": "telnet",
+          "name": "Lab Switch 03",
+          "tags": ["lab"],
+          "options": {
+            "host": "10.0.1.1",
+            "port": 23,
+            "inputMode": "normal",
+            "inputNewlines": "auto",
+            "outputMode": "normal",
+            "outputNewlines": "auto",
+            "scripts": [
+              {
+                "expect": "login:",
+                "send": "admin"
+              }
+            ],
+            "input": {
+              "backspace": "ctrl-h"
+            },
+            "connection_linger": 60
+          }
+        },
+        "note": "Storage §3.3's example: the login script loads and is ignored — no script runs at this release; the telnet-only keys load and are ignored; connection_linger bounds only a connection that never carried a session"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "serial-console-01",
+          "type": "serial",
+          "name": "Serial Console 01",
+          "tags": ["console"],
+          "options": {
+            "port": "/dev/ttyUSB0",
+            "baudrate": 9600,
+            "databits": 8,
+            "stopbits": 1,
+            "parity": "none",
+            "rtscts": false,
+            "xon": false,
+            "xoff": false,
+            "xany": false,
+            "slowSend": false,
+            "scripts": [],
+            "input": {
+              "backspace": "ctrl-h"
+            }
+          }
+        },
+        "note": "serial loads so a file that exists today stays valid; serial is deferred, and its device path stays off every northbound shape"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-echo",
+          "type": "echo"
+        },
+        "note": "the lab loopback test driver: no options"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "core-rtr-02",
+          "type": "ssh",
+          "name": "Core Router 02",
+          "options": {
+            "host": "10.0.1.2",
+            "port": 22,
+            "user": "admin",
+            "keepaliveInterval": 30,
+            "size_floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "size_ceiling": {
+              "cols": 0,
+              "rows": 0
+            },
+            "icon": "router",
+            "color": "blue",
+            "future_key": true
+          }
+        },
+        "note": "schema drift: unknown keys load and are ignored; a ceiling of {0, 0} turns the ceiling off"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "type": "ssh",
+          "options": {
+            "host": "10.0.1.1"
+          }
+        },
+        "note": "no id: a file's id equals its stem, and the reader needs it"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-rtr-03",
+          "type": "ipod",
+          "options": {
+            "host": "10.0.1.3"
+          }
+        },
+        "note": "an unknown type"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "lab-switch-04",
+          "type": "telnet",
+          "options": {
+            "port": 23
+          }
+        },
+        "note": "a telnet file with no host"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-rtr-04",
+          "type": "ssh",
+          "tags": ["prod,cisco"],
+          "options": {
+            "host": "10.0.1.4"
+          }
+        },
+        "note": "a tag holding a comma: the comma is the index's TAG separator"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-rtr-05",
+          "type": "ssh",
+          "options": {
+            "host": "10.0.1.5",
+            "port": 0
+          }
+        },
+        "note": "an ssh port of 0"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-rtr-06",
+          "type": "ssh",
+          "options": {
+            "host": "10.0.1.6",
+            "password": "FIXTURE-NOT-A-PASSWORD"
+          }
+        },
+        "note": "options.password: secrets never live in inventory, and the loader refuses such a file, never ignores the key"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-rtr-07",
+          "type": "ssh",
+          "credential_ref": "vault:core-rtr-07",
+          "options": {
+            "host": "10.0.1.7"
+          }
+        },
+        "note": "a top-level credential_ref: credential resolution is per-principal, not a target field"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-rtr-08",
+          "type": "ssh",
+          "name": "Core\u001bRouter 08",
+          "options": {
+            "host": "10.0.1.8"
+          }
+        },
+        "note": "a name holding ESC (0x1B): text a surface renders is text, never terminal escapes"
+      }
+    ]
+  }
+}

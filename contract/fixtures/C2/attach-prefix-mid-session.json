@@ -1,0 +1,39 @@
+{
+  "seam": "C2",
+  "name": "attach-prefix-mid-session",
+  "mark": {"required-green": "e2"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "The attach prefix is the output so far (C2 decision 3, 5.47): a marker printed before a second attach is in that client's dump; a marker printed after it is in that client's live stream, not its dump; and a later dump carries both. The dump is exactly the output frames up to through_seq, and live output is exactly the frames after it — none repeated, none skipped.",
+  "corpus": ["C2 decision 3", "5.47", "Contract §11"],
+  "case": {
+    "inputs": ["user", "password", "target_id"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"t1": "/ticket"}},
+      {"ws_open": "a", "path": "/ws/attach"},
+      {"ws_send": "a", "frame": {"t": "attach", "v": 1, "ticket": "${t1}", "session_id": "${sid}"}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_a": "/client_id"}}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_send": "a", "bytes": "# marker-before ${nonce}\r"},
+      {"ws_expect": "a", "output_contains": "marker-before ${nonce}"},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"t2": "/ticket"}},
+      {"ws_open": "b", "path": "/ws/attach"},
+      {"ws_send": "b", "frame": {"t": "attach", "v": 1, "ticket": "${t2}", "session_id": "${sid}"}},
+      {"ws_expect": "b", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_b": "/client_id"}}},
+      {"ws_expect": "b", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}], "binary_contains": ["marker-before ${nonce}"], "binary_lacks": ["marker-after"]}},
+      {"ws_send": "a", "bytes": "# marker-after ${nonce}\r"},
+      {"ws_expect": "b", "output_contains": "marker-after ${nonce}"},
+      {"ws_expect": "a", "output_contains": "marker-after ${nonce}"},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"t3": "/ticket"}},
+      {"ws_open": "c", "path": "/ws/attach"},
+      {"ws_send": "c", "frame": {"t": "attach", "v": 1, "ticket": "${t3}", "session_id": "${sid}"}},
+      {"ws_expect": "c", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_c": "/client_id"}}},
+      {"ws_expect": "c", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}], "binary_contains": ["marker-before ${nonce}", "marker-after ${nonce}"]}},
+      {"ws_close": "c"},
+      {"ws_close": "b"},
+      {"ws_close": "a"}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

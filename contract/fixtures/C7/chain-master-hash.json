@@ -1,0 +1,58 @@
+{
+  "seam": "C7",
+  "name": "chain-master-hash",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain2_test.go — TestMasterHashVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "Chain step 2: master_hash = argon2id(passphrase bytes, user_salt), t=3, m=64 MiB, p=4, 32 bytes, version 0x13. argon2-cffi and a browser's WASM argon2id may share the reference C code, so Go's golang.org/x/crypto/argon2 is the independent check of this step (DEFAULT 55).",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_master_hash",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "master-hash",
+          "implementations": [
+            {
+              "unit": "U8c",
+              "what": "the browser vault client (web/src/vault/); U7, the TUI, for the steps it runs"
+            },
+            {
+              "unit": "U6",
+              "what": "Go test code in vault/ (golang.org/x/text/secure/precis; golang.org/x/crypto/argon2)"
+            }
+          ],
+          "params": {
+            "version": 19,
+            "time_cost": 3,
+            "memory_kib": 65536,
+            "parallelism": 4,
+            "tag_length": 32
+          },
+          "passphrase_bytes": "46697874757265207061737370687261736520636166c3a92037",
+          "user_salt": "101112131415161718191a1b1c1d1e1f",
+          "master_hash": "843a368a80a42d307dc14dc5ac76bfcfc30a3d5a772c3f5b5e9ae1cb31ec0237"
+        }
+      }
+    ]
+  }
+}

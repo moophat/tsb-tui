@@ -1,0 +1,80 @@
+{
+  "seam": "C1",
+  "name": "reuse-prompted-connection-by-id",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestTheSamePrincipalReusesAPromptedConnectionByIDWithNoCredential: the reuse is 201 on the prompted connection, no stored credential resolved, no vault touched"
+    }
+  ],
+  "description": "A connection opened by a device login may carry another session for the principal that opened it, named by `connection_id` on a `reuse` create that carries no login (session-open step 4; Contract §15.3: reusing the connection reuses the authentication, so a TACACS+ or one-time-code login is paid once). The core resolves no stored credential for it, touches no vault, and opens the session on that connection. Here `fixture-conn-1` is a connection a device login opened for this principal. The record keeps `credential_ref` `supplied` and carries `login: prompted` (C6/connection-record-login), which is what lets this reuse survive a core restart. A connection opened with a supplied login stays never reusable.",
+  "corpus": [
+    "Contract §15.3",
+    "open_decisions §5",
+    "device-login, reusing a prompted connection",
+    "session-open step 4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "connection_id": "fixture-conn-1",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/session/connection_id",
+              "eq": "fixture-conn-1"
+            },
+            {
+              "pointer": "/login",
+              "absent": true
+            }
+          ],
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-11-01T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

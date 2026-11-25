@@ -1,0 +1,123 @@
+{
+  "seam": "C8",
+  "name": "gap-before-end",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/spool_test.go — a spooled end whose last_seq is past the recording's last output frame, with the session no longer listed: a gap marker from the spool's numbers, then the end marker stamped ended_at"
+    }
+  ],
+  "description": "A loss the spool reports (spool-entry.schema.json). The core recorded output 1 to 3 and was killed; while it was away the target printed 4 to 9 and orphan_timeout ended the session, and by the time the core returned the worker had lingered out and exited, taking its ring with it. The spool says last_seq 9, out_bytes 71 and the stamp of frame 9, so the core writes a gap marker before the end marker — 71 less the 23 bytes it held, from frame 3's stamp to frame 9's — and then the end marker stamped with the worker's ended_at. The recording never reads as complete when it is not (immortality §4.3). This case is graded by the core's own test alone: the spool entry is deleted once the end is written, so no collection holds the numbers an artefact check would need.",
+  "corpus": [
+    "immortality §4.3",
+    "session model §11",
+    "session model §15"
+  ],
+  "case": {
+    "transform": "c3-to-c8",
+    "input": {
+      "frames": [
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 2,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "2420"
+        },
+        {
+          "version": 1,
+          "flags": 1,
+          "direction": "in",
+          "stream": 0,
+          "length": 12,
+          "seq": 1,
+          "timestamp": 1789000001123456789,
+          "payload_hex": "7461696c202d66206c6f670d"
+        },
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 13,
+          "seq": 2,
+          "timestamp": 1789000001123556789,
+          "payload_hex": "7461696c202d66206c6f670d0a"
+        },
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 8,
+          "seq": 3,
+          "timestamp": 1789000002123456789,
+          "payload_hex": "6c696e6520330d0a"
+        }
+      ],
+      "end": {
+        "end_state": "killed",
+        "timestamp": 1789172830123456789,
+        "spool": {
+          "last_seq": 9,
+          "out_bytes": 71,
+          "last_out_ts": 1789000060123456789
+        }
+      }
+    },
+    "output": {
+      "frames": [
+        {
+          "sec": 1789000000,
+          "usec": 123456,
+          "length": 2,
+          "direction": "out",
+          "data_hex": "2420"
+        },
+        {
+          "sec": 1789000001,
+          "usec": 123456,
+          "length": 12,
+          "direction": "in",
+          "data_hex": "7461696c202d66206c6f670d"
+        },
+        {
+          "sec": 1789000001,
+          "usec": 123556,
+          "length": 13,
+          "direction": "out",
+          "data_hex": "7461696c202d66206c6f670d0a"
+        },
+        {
+          "sec": 1789000002,
+          "usec": 123456,
+          "length": 8,
+          "direction": "out",
+          "data_hex": "6c696e6520330d0a"
+        },
+        {
+          "sec": 1789000060,
+          "usec": 123456,
+          "length": 92,
+          "marker": "gap",
+          "data_hex": "0d0a5b545342206761703a203438206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a34322e3132333435365a20746f20323032362d30392d31305430303a32373a34302e3132333435365a5d0d0a"
+        },
+        {
+          "sec": 1789172830,
+          "usec": 123456,
+          "length": 0,
+          "end": "killed",
+          "data_hex": ""
+        }
+      ]
+    }
+  }
+}

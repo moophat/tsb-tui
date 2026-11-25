@@ -1,0 +1,58 @@
+{
+  "seam": "C7",
+  "name": "chain-storage-key",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain2_test.go — TestStorageKeyVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "Chain step 5: storage_key = argon2id(passphrase bytes, salt = device_id's 32 raw bytes), at master_hash's cost. Browser only: it seals Part 1 in localStorage and never leaves the browser.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_storage_key",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "storage-key",
+          "implementations": [
+            {
+              "unit": "U8c",
+              "what": "the browser vault client (web/src/vault/)"
+            },
+            {
+              "unit": "U6",
+              "what": "Go test code in vault/ (5.26: a second implementation of a browser-only step)"
+            }
+          ],
+          "params": {
+            "version": 19,
+            "time_cost": 3,
+            "memory_kib": 65536,
+            "parallelism": 4,
+            "tag_length": 32
+          },
+          "passphrase_bytes": "46697874757265207061737370687261736520636166c3a92037",
+          "device_id": "36582605103cf07de683402644dce9ef79cadfc9fc47e97016e98ade52a168a0",
+          "storage_key": "7b83e3db8d2613fd3b7fa8b888b4de2ef33cfe42c78ab1ded25b3b2742fb9f92"
+        }
+      }
+    ]
+  }
+}

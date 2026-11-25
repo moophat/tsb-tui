@@ -1,0 +1,73 @@
+{
+  "seam": "C4",
+  "name": "vt-ping-pong",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "Liveness on the C4 socket (D17; C4 decision 10): ping is answered by pong, from the VT worker's own loop — a hung CGo call is a dead VT worker. ping carries only its cmd and pong only its event, so there is no id to correlate and the pairing is by order; two pings in flight are answered in that order. After hello and hello_ack, the core probes twice and the VT answers each with a pong. Graded by the U4 worker (owed) and the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 10",
+    "vt-ipc.schema.json ping",
+    "vt-ipc.schema.json pong"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "pong"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "pong"
+        }
+      }
+    ]
+  }
+}

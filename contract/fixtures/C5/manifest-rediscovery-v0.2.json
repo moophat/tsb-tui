@@ -1,0 +1,233 @@
+{
+  "seam": "C5",
+  "name": "manifest-rediscovery-v0.2",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/worker/rediscover_test.go — the v0.2 order: spool, dial, version branch for live peers only; a retained ended session replayed before its spooled end; an audited session's spool entry ignored"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/kill-core.sh — SIGKILL the core while a session ends on the target; on restart the spooled end is replayed and written, once"
+    }
+  ],
+  "description": "What a v0.2 core restarted after kill -9 does, in its order (worker-manifest.schema.json; the v0.1 rule c5-rediscovery keeps its meaning). 1. The spool first: fixture-session-f ended while the core was away and its worker has since exited, so its end is the spooled one — never E10 worker_lost; fixture-session-g's entry is for a session the core already audited, and is ignored, because a session ends once. 2. The dial, as v0.1: fixture-conn-2's control socket refuses, so fixture-session-c is terminated / worker_lost, whatever the manifest's version — but fixture-session-h, whose socket refuses inside a live connection, ended while the core was away and its end is in the spool: it is written from the spool, never read as worker_lost. 3. The version branch, for live peers only: fixture-worker-3 has no proto_version, so fixture-session-d is unreachable / protocol; fixture-worker-1 speaks 0.2, so its sessions get the handshake — fixture-session-e among them, an ended session the worker still retains, which is replayed before the core writes its spooled end. The supervisor carries 0.2, so workers may be created through it.",
+  "corpus": [
+    "immortality §2.1",
+    "immortality §3",
+    "immortality §6.4",
+    "session model §9 E10",
+    "session model §15",
+    "decision 5.38",
+    "decision 5.44"
+  ],
+  "case": {
+    "transform": "c5-rediscovery-v0.2",
+    "input": {
+      "supervisors": [
+        {
+          "supervisor_id": "fixture-sup-1",
+          "pid": 1,
+          "control_sock": "/tmp/tsb/supervisors/fixture-sup-1/control.sock",
+          "started_at": "2026-09-29T00:00:00Z",
+          "proto_version": "0.2"
+        }
+      ],
+      "workers": [
+        {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-29T00:00:00Z",
+          "proto_version": "0.2",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                },
+                {
+                  "session_id": "fixture-session-e",
+                  "session_type": "shell",
+                  "socket": "shell-2.sock"
+                },
+                {
+                  "session_id": "fixture-session-h",
+                  "session_type": "shell",
+                  "socket": "shell-3.sock"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "worker_id": "fixture-worker-2",
+          "pid": 4202,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-2",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-2",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-c",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "worker_id": "fixture-worker-3",
+          "pid": 4203,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-3",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-3",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-d",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "spool": [
+        {
+          "session_id": "fixture-session-e",
+          "conn_id": "fixture-conn-1",
+          "end_state": "terminated",
+          "end_reason": "target_closed",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        },
+        {
+          "session_id": "fixture-session-f",
+          "conn_id": "fixture-conn-4",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        },
+        {
+          "session_id": "fixture-session-h",
+          "conn_id": "fixture-conn-1",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        },
+        {
+          "session_id": "fixture-session-g",
+          "conn_id": "fixture-conn-4",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "ended_at": "2026-10-01T01:00:00.123456789Z",
+          "last_seq": 912,
+          "out_bytes": 88120,
+          "last_out_ts": 1790730000123456789
+        }
+      ],
+      "audited": [
+        "fixture-session-g"
+      ],
+      "sockets": {
+        "/tmp/tsb/supervisors/fixture-sup-1/control.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-1/control.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-1/shell.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-1/shell-2.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-2/control.sock": "refused",
+        "/tmp/tsb/conn-fixture-conn-3/control.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-3/shell.sock": "connectable",
+        "/tmp/tsb/conn-fixture-conn-1/shell-3.sock": "refused"
+      }
+    },
+    "output": {
+      "spool_ignored": [
+        "fixture-session-g"
+      ],
+      "supervisors": [
+        "/tmp/tsb/supervisors/fixture-sup-1/control.sock"
+      ],
+      "create_through": [
+        "/tmp/tsb/supervisors/fixture-sup-1/control.sock"
+      ],
+      "dead_supervisors": [],
+      "handshake": [
+        {
+          "worker_id": "fixture-worker-1",
+          "conn_id": "fixture-conn-1",
+          "control": "/tmp/tsb/conn-fixture-conn-1/control.sock",
+          "sessions": [
+            {
+              "session_id": "fixture-session-a",
+              "socket": "/tmp/tsb/conn-fixture-conn-1/shell.sock"
+            },
+            {
+              "session_id": "fixture-session-e",
+              "socket": "/tmp/tsb/conn-fixture-conn-1/shell-2.sock"
+            }
+          ]
+        }
+      ],
+      "unreachable": [
+        {
+          "worker_id": "fixture-worker-3",
+          "conn_id": "fixture-conn-3",
+          "control": "/tmp/tsb/conn-fixture-conn-3/control.sock",
+          "sessions": [
+            {
+              "session_id": "fixture-session-d",
+              "socket": "/tmp/tsb/conn-fixture-conn-3/shell.sock"
+            }
+          ]
+        }
+      ],
+      "dead_connections": [
+        "fixture-conn-2"
+      ],
+      "dead_sessions": [
+        "fixture-session-c"
+      ],
+      "spooled_ends": [
+        {
+          "session_id": "fixture-session-e",
+          "after_replay": true
+        },
+        {
+          "session_id": "fixture-session-f",
+          "after_replay": false
+        },
+        {
+          "session_id": "fixture-session-h",
+          "after_replay": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,270 @@
+{
+  "seam": "C3",
+  "name": "timer-values-shape",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "artifacts:control-timers",
+  "description": "The timer values' ranges (decision 5.36: the contract fixes each field and its range, never its value). Durations are integer milliseconds from 1 to 2^53-1, except keepalive_interval, whose 0 turns link_timeout off for a target, and connection_linger, whose 0 closes a connection with its last session (E0's value). Counts are integers from 1. The set travels whole: a timers command without one of the eight is refused. buffer_bytes is at least 1 and input_frame_max from 1 to 2^32-1. A connect without any of them stays schema-valid, so a v0.1 connect is valid at v0.2 — a v0.2 worker refuses it on its own rule, not the schema's.",
+  "corpus": [
+    "session model §11",
+    "decision 5.36",
+    "immortality §6.4"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json#/$defs/command",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 0,
+            "keepalive_count_max": 12,
+            "connection_linger": 0,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          }
+        },
+        "note": "link_timeout off; close with the last session"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        },
+        "note": "a v0.1 connect stays valid"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        },
+        "note": "the full v0.2 connect"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 0,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          }
+        },
+        "note": "a zero heartbeat interval"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 0,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          }
+        },
+        "note": "a count of 0"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": -1,
+            "unattended": 2592000000
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 1.5
+          }
+        },
+        "note": "integer milliseconds"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 9007199254740992,
+            "idle": 604800000,
+            "unattended": 2592000000
+          }
+        },
+        "note": "beyond 2^53-1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "unattended": 2592000000
+          }
+        },
+        "note": "the full set, or none"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000,
+            "expiry_notice": 259200000
+          }
+        },
+        "note": "the core's own timers are never sent"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 0,
+          "input_frame_max": 1048576
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 4294967296
+        },
+        "note": "input_frame_max is at most 2^32-1"
+      }
+    ]
+  }
+}
