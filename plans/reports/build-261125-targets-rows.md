@@ -328,6 +328,70 @@ Regenerated only the 19 confirmed entries' baselines using the gallery's own upd
 - `tests/test_sidebar.py`, `tests/test_targets_tab.py`, `tests/test_model_targets.py`: 77 passed (Exit code: 0)
 - Repository lint gate (`make lint`): 110 passed, engine-check OK, import-lint clean, leak-check clean, ruff clean (Exit code: 0)
 
+---
+
+## 9. Round 6: Qodo's Two Findings on PR #124
+
+### 1. Finding 1: Open Segment Identified by Kind
+
+#### Defect
+In `tsb_tui/widgets/sidebar.py`, `_target_facts()` previously identified the open-session segment by string equality (`curr[idx] != open_seg`). If a target belonged to a group named `"open 1"`, the group segment was erroneously protected from being dropped when width was constrained, resulting in rows rendering with duplicated text: `open 1 · open 1`.
+
+#### Fix
+- In `_target_facts()`, fact segments are constructed as kind-tagged tuples `(kind, text)`, where `kind` is `"host"`, `"open"`, `"group"`, `"others"`, or `"type"`.
+- When dropping fact segments from the right end under wide budget, the drop scan skips segments whose kind is `"open"` (`curr[idx][0] != "open"`).
+- Non-open segments are dropped strictly by kind without string comparison.
+
+#### Test Evidence
+- **Red run (`.lane-logs/round6-red.log`):**
+  - Unit test in `tests/test_redesign_lists.py` (`test_wide_target_row_name_protected_facts_drop_from_right_unit`, case 5) with target `service-alpha`, group `"open 1"`, and session 1 open at `inner=30`. On unpatched code, both open segments were preserved.
+  - Screen-level test `check_group()` in `test_wide_target_row_eight_and_nine_open_sessions_and_open_group` asserting that `open 1 · open 1` does not appear.
+- **Green run (`.lane-logs/round6-green.log`):**
+  - Group segment `"open 1"` dropped from the right; open-session count rendered exactly once: `open 1`. Test passed cleanly (Exit code: 0).
+
+---
+
+### 2. Finding 2: Open Segment Outgrowing the Row (Two-Line Wide Rows)
+
+#### Defect & Ruling
+With 8 or 9 open sessions on a target and the wide panel at its narrowest width (`sidebar.width_wide` minimum, 24 outer / 20 inner), the open-session segment (`open 1,2,3,4,5,6,7,8` = 20 cells; `open 1,2,3,4,5,6,7,8,9` = 22 cells) plus the mark (1 cell), minimal 1-cell ellipsis name (1 cell), and space (1 cell) requires 23 or 25 cells, exceeding the inner width. On a single line, the right end of the open segment was clipped.
+**Ruled (DEFAULT):** A Targets row whose name with an ellipsis and its open segment cannot share one line takes the two-line form the narrow panel already uses (the name, then the host and the open numbers per O2 two-line row). Every open session number remains visible and nothing is clipped. A row that fits on one line remains unchanged.
+
+#### Fix
+In `tsb_tui/widgets/sidebar.py`:
+- `_target_facts()`: When `wide` and `inner` are set, if `open_seg` exists and `3 + cell_len(open_seg) > inner`, composes two-line facts for line 2 (`host · open_seg` if fitting in `inner - 1`, else `open_seg`, plus group/others/type as budget allows).
+- `_target_row_lines()`: In wide mode, returns 2 if `numbers` and `3 + cell_len(open_seg) > inner`, else 1.
+- `_build_pairs()`: In wide mode, row line count is determined via `self._target_row_lines(rows[position])`.
+- `_target_spans()`: Increments span offset `at += self._target_row_lines(row)`.
+- `_target_painted()`: When `row_lines == 2`, renders line 0 as mark + name (`_cut_name(label, max(inner - 1, 1))`) and line 1 as facts (`Part(facts, "text")` if `cell_len(facts) >= inner` else `Part(" ", "blank") + facts.ljust(max(inner - 1, 1))`).
+
+#### Test Evidence
+- **Red run (`.lane-logs/round6-red.log`):**
+  - Unit tests for 8 sessions at `inner=20` and 9 sessions at `inner=24` in `test_wide_target_row_name_protected_facts_drop_from_right_unit` (cases 6 and 7).
+  - Screen-level test `test_wide_target_row_eight_and_nine_open_sessions_and_open_group`:
+    - `check_eight()`: target `router-eight` with 8 open sessions at `sidebar.width_wide=24` (inner 20) verified to take 2 lines (`_target_row_lines == 2`), line 0 showing `"router-eight"`, line 1 showing `"open 1,2,3,4,5,6,7,8"`, no line exceeding content area; fitting target `r1` takes 1 line.
+    - `check_nine()`: target `router-nine` with 9 open sessions at `sidebar.width_wide=28` (inner 24) verified to take 2 lines (`_target_row_lines == 2`), line 0 showing `"router-nine"`, line 1 showing `"open 1,2,3,4,5,6,7,8,9"`, no line exceeding content area.
+- **Green run (`.lane-logs/round6-green.log`):**
+  - Both unit and screen tests passed cleanly (Exit code: 0).
+
+---
+
+### 3. Baseline Verification
+- No snapshot baselines were affected by this change: `git diff tests/snapshots/` is empty.
+- Existing baselines in `tests/snapshots/redesign-p3/` and `tests/snapshots/redesign-p6/` passed with zero diffs.
+
+---
+
+### 4. Full Verification Suite Evidence
+- `tests/test_redesign_lists.py`: 68 passed (Exit code: 0)
+- `tests/test_redesign_gallery.py`: 76 passed (Exit code: 0)
+- `tests/test_sidebar.py`: 49 passed (Exit code: 0)
+- `tests/test_redesign_lists_filter.py`: 30 passed (Exit code: 0)
+- `tests/test_targets_tab.py`: 15 passed (Exit code: 0)
+- `tests/test_model_targets.py`: 13 passed (Exit code: 0)
+- Repository lint gate (`make lint`): 110 passed, engine-check OK, import-lint clean, leak-check clean, ruff clean (Exit code: 0)
+
+
 
 
 

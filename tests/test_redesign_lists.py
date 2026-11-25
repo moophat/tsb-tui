@@ -219,6 +219,24 @@ def test_wide_target_row_name_protected_facts_drop_from_right_unit():
     _, facts_no_open = sidebar_module._target_facts(row_no_open, (), "", row_no_open.group, wide=True, inner=38)
     assert facts_no_open == "192.0.2.88", facts_no_open
 
+    # 5. Round 6 finding 1: group whose text is "open 1" with one open session
+    # At a width where host and group must go, open count shows once, never "open 1 · open 1"
+    row_open_grp = make_row({"id": "t5", "name": "service-alpha", "host": "192.0.2.88",
+                             "group": "open 1", "type": "ssh"})
+    # inner = 30: host (10) cannot fit with label (13) + open 1 (6) + open 1 (6) (43 > 30).
+    # Group 'open 1' must drop from the right, not be protected by text equality; open count shows once.
+    _, facts_open_grp = sidebar_module._target_facts(row_open_grp, (1,), "", row_open_grp.group, wide=True, inner=30)
+    assert facts_open_grp == "open 1", facts_open_grp
+
+    # 6. Round 6 finding 2: eight and nine open sessions where name with ellipsis and open segment cannot share one line
+    row_eight = make_row({"id": "t6", "name": "router-eight", "host": "192.0.2.81", "group": "lab", "type": "ssh"})
+    _, facts_eight = sidebar_module._target_facts(row_eight, range(1, 9), "", row_eight.group, wide=True, inner=20)
+    assert facts_eight == "open 1,2,3,4,5,6,7,8", facts_eight
+
+    row_nine = make_row({"id": "t7", "name": "router-nine", "host": "192.0.2.82", "group": "lab", "type": "ssh"})
+    _, facts_nine = sidebar_module._target_facts(row_nine, range(1, 10), "", row_nine.group, wide=True, inner=24)
+    assert facts_nine == "open 1,2,3,4,5,6,7,8,9", facts_nine
+
 
 def test_wide_target_row_yield_order_and_fitting(serve, wait_until):
     """Ruled 2026-11-25: the name is the row's identity, so the facts yield first; open session numbers are never dropped.
@@ -1446,3 +1464,140 @@ def test_painting_a_targets_line_composes_each_target_facts_once(serve, wait_unt
             repeats = [tid for tid, n in counts.items() if n > 1]
             assert not repeats, f"{len(repeats)} targets composed more than once: {counts.most_common(3)}"
     asyncio.run(check())
+
+
+def test_wide_target_row_eight_and_nine_open_sessions_and_open_group(serve, wait_until):
+    """Round 6:
+    1. A target whose group is 'open 1' with one open session, at a width where the host and group must go:
+       the row shows the open count once, never 'open 1 · open 1'.
+    2. A Targets row whose name with an ellipsis and its open segment cannot share one line takes the two-line
+       form the narrow panel already uses (the name, then the host and the open numbers; the redesign's O2 two-line
+       row), so every open number stays shown and nothing is clipped:
+       - eight and nine open sessions at the minimum wide width: two lines, every number visible, no line longer
+         than the content area;
+       - a row that fits on one line is unchanged."""
+
+    async def check_group():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        # Group whose text is "open 1" with 1 open session
+        served.targets["t-open-grp"] = {
+            "id": "t-open-grp", "type": "ssh", "name": "service-alpha",
+            "group": "open 1", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.84", "port": 22
+        }
+        sids_grp = named_sessions(url, served, "t-open-grp")
+        for tid in list(served.targets):
+            if tid != "t-open-grp":
+                served.invisible.add(tid)
+
+        # At sidebar width 34 (inner 30): host (10) must go, group 'open 1' must drop from right
+        # so open count shows once, never 'open 1 · open 1'
+        cfg = config.load(overrides=["sidebar.width_wide=34"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            await open_here(app, pilot, wait_until, *sids_grp)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+            joined = "\n".join(lines)
+            assert "open 1 · open 1" not in joined, joined
+            assert any("service-alpha" in line and "open 1" in line for line in lines), lines
+
+    async def check_eight():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        # 8 open sessions on router-eight
+        served.targets["t-eight"] = {
+            "id": "t-eight", "type": "ssh", "name": "router-eight",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.81", "port": 22
+        }
+        # Fitting target with 0 open sessions
+        served.targets["t-fit"] = {
+            "id": "t-fit", "type": "ssh", "name": "r1",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.83", "port": 22
+        }
+        sids_eight = named_sessions(url, served, *["t-eight"] * 8)
+        for tid in list(served.targets):
+            if tid not in ("t-eight", "t-fit"):
+                served.invisible.add(tid)
+
+        cfg = config.load(overrides=["sidebar.width_wide=24"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            await open_here(app, pilot, wait_until, *sids_eight)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+
+            # Eight sessions at minimum wide width 24 (inner 20):
+            # One line cannot hold mark(1) + cut_name(1) + space(1) + open 1..8(20) = 23 > 20
+            row_eight = next(r for r in screen.sidebar.painted_targets() if r.id == "t-eight")
+            assert screen.sidebar._target_row_lines(row_eight) == 2, "eight open sessions takes two lines"
+            idx_eight = screen.sidebar._target_line_index("t-eight")
+            assert idx_eight is not None
+            eight_lines = lines[1 + idx_eight:1 + idx_eight + 2]
+            assert len(eight_lines) == 2, f"expected 2 lines for router-eight, got: {eight_lines}"
+            assert "router-eight" in eight_lines[0], eight_lines
+            assert "open 1,2,3,4,5,6,7,8" in eight_lines[1], eight_lines
+
+            # Fitting row (0 open sessions): unchanged, takes 1 line
+            row_fit = next(r for r in screen.sidebar.painted_targets() if r.id == "t-fit")
+            assert screen.sidebar._target_row_lines(row_fit) == 1, "fitting row takes 1 line"
+            idx_fit = screen.sidebar._target_line_index("t-fit")
+            assert idx_fit is not None
+            fit_lines = lines[1 + idx_fit:1 + idx_fit + 1]
+            assert len(fit_lines) == 1, fit_lines
+            assert "r1" in fit_lines[0], fit_lines
+
+            # No line longer than the content area
+            for line in _painted(screen):
+                assert len(line) == screen.sidebar.size.width, repr(line)
+
+    async def check_nine():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        # 9 open sessions on router-nine
+        served.targets["t-nine"] = {
+            "id": "t-nine", "type": "ssh", "name": "router-nine",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.82", "port": 22
+        }
+        sids_nine = named_sessions(url, served, *["t-nine"] * 9)
+        for tid in list(served.targets):
+            if tid != "t-nine":
+                served.invisible.add(tid)
+
+        cfg = config.load(overrides=["sidebar.width_wide=28"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            await open_here(app, pilot, wait_until, *sids_nine)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+
+            # Nine sessions at wide width 28 (inner 24):
+            # One line cannot hold mark(1) + cut_name(1) + space(1) + open 1..9(22) = 25 > 24
+            row_nine = next(r for r in screen.sidebar.painted_targets() if r.id == "t-nine")
+            assert screen.sidebar._target_row_lines(row_nine) == 2, "nine open sessions takes two lines"
+            idx_nine = screen.sidebar._target_line_index("t-nine")
+            assert idx_nine is not None
+            nine_lines = lines[1 + idx_nine:1 + idx_nine + 2]
+            assert len(nine_lines) == 2, f"expected 2 lines for router-nine, got: {nine_lines}"
+            assert "router-nine" in nine_lines[0], nine_lines
+            assert "open 1,2,3,4,5,6,7,8,9" in nine_lines[1], nine_lines
+
+            for line in _painted(screen):
+                assert len(line) == screen.sidebar.size.width, repr(line)
+
+    asyncio.run(check_group())
+    asyncio.run(check_eight())
+    asyncio.run(check_nine())
