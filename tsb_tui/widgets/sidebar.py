@@ -303,12 +303,25 @@ def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, group: st
     full = " · ".join(segments)
 
     if wide and inner is not None:
+        open_seg = ("open " + ",".join(str(number) for number in sorted(numbers))) if numbers else None
         curr = list(segments)
         while curr:
             candidate = " · ".join(curr)
             if 2 + cell_len(label) + cell_len(candidate) <= inner:
                 return full, candidate
-            curr.pop()
+            # Ruling O2 / Round 5: open session numbers are never dropped.
+            # Drop whole fact segments from the right, one at a time, skipping the open-session segment.
+            drop_idx = None
+            for idx in range(len(curr) - 1, -1, -1):
+                if curr[idx] != open_seg:
+                    drop_idx = idx
+                    break
+            if drop_idx is not None:
+                curr.pop(drop_idx)
+            else:
+                # When only the open segment is left beside the name and they still do not fit,
+                # the open segment is retained and the name takes its ellipsis in _target_painted.
+                return full, curr[0]
         return full, ""
 
     facts = ""

@@ -192,42 +192,68 @@ def test_target_row_when_label_is_host_facts_do_not_repeat_it(serve, wait_until,
 
 def test_wide_target_row_name_protected_facts_drop_from_right_unit():
     """Unit: on a one-line Targets row that does not fit, fact segments drop from the right end
-    one at a time until the name fits in full."""
+    one at a time skipping open-session numbers, which are never dropped."""
     from tsb_tui.model.targets import make_row
 
-    row = make_row({"id": "t1", "name": "inventory-service-alpha", "host": "192.0.2.88",
-                    "group": "production", "type": "telnet"})
-    full, facts = sidebar_module._target_facts(row, (1, 2), "", row.group, wide=True, inner=38)
-    assert "telnet" in full
-    assert facts == "192.0.2.88", facts
+    # 1. Long name with host, open numbers, and group: keeps full name, host, and open numbers; drops group from right
+    row_med = make_row({"id": "t1", "name": "service-alpha", "host": "192.0.2.88",
+                        "group": "production", "type": "telnet"})
+    _, facts_med = sidebar_module._target_facts(row_med, (1, 2), "", row_med.group, wide=True, inner=38)
+    assert facts_med == "192.0.2.88 · open 1,2", facts_med
+
+    # 2. Longer name where host + open cannot fit: drops host, keeps open numbers
+    row_long = make_row({"id": "t2", "name": "inventory-service-alpha", "host": "192.0.2.88",
+                         "group": "production", "type": "telnet"})
+    _, facts_long = sidebar_module._target_facts(row_long, (1, 2), "", row_long.group, wide=True, inner=38)
+    assert facts_long == "open 1,2", facts_long
+
+    # 3. Name so long that only open segment fits beside it: facts retains open numbers
+    row_extreme = make_row({"id": "t3", "name": "inventory-service-alpha-long-name-exceeding-room",
+                            "host": "192.0.2.88", "group": "production", "type": "telnet"})
+    _, facts_ext = sidebar_module._target_facts(row_extreme, (1, 2), "", row_extreme.group, wide=True, inner=38)
+    assert facts_ext == "open 1,2", facts_ext
+
+    # 4. Target with no open session behaves as round 2
+    row_no_open = make_row({"id": "t4", "name": "inventory-service-alpha", "host": "192.0.2.88",
+                            "group": "production", "type": "telnet"})
+    _, facts_no_open = sidebar_module._target_facts(row_no_open, (), "", row_no_open.group, wide=True, inner=38)
+    assert facts_no_open == "192.0.2.88", facts_no_open
 
 
 def test_wide_target_row_yield_order_and_fitting(serve, wait_until):
-    """Ruled 2026-11-25: the name is the row's identity, so the facts yield first.
-    - a long name with long facts at 160 columns keeps the full name and drops segments from the right;
-    - a name longer than the row alone gets the ellipsis;
+    """Ruled 2026-11-25: the name is the row's identity, so the facts yield first; open session numbers are never dropped.
+    - a long name with host, open numbers and group at 160 columns keeps the full name and the open numbers and drops the others from the right;
+    - a name so long that only the open segment fits beside it gets the ellipsis with the open segment shown;
+    - a target with no open session behaves as round 2;
     - a row that fits is unchanged."""
 
     async def check():
         served, url = serve(InputRecordingApp())
-        sids = named_sessions(url, served, "t-long-facts", "t-long-facts")
+        sids = named_sessions(url, served, "t-long-facts", "t-long-facts", "t-too-long")
         for tid in list(served.targets):
             served.invisible.add(tid)
         seen = "2026-10-17T08:30:00Z"
-        # 1. Long name with long facts (inner = 38: 2 + 23 name = 25 cells; facts budget = 13 cells -> host only fits)
+        # 1. Long name with host, open numbers and group (inner = 38: 2 + 13 name = 15; facts = 10 host + 3 + 8 open = 21 -> 15 + 1 + 21 = 37 <= 38)
+        # Keeps full name, host, and open numbers; drops group ('production') and type ('telnet')
         served.targets["t-long-facts"] = {
-            "id": "t-long-facts", "type": "telnet", "name": "inventory-service-alpha",
+            "id": "t-long-facts", "type": "telnet", "name": "service-alpha",
             "group": "production", "tags": [], "discovered_by": "manual", "last_seen": seen,
             "host": "192.0.2.88", "port": 23
         }
-        # 2. Name longer than row alone (72 chars > 37)
+        # 2. Name so long that only the open segment fits beside it gets the ellipsis with open segment shown
         served.targets["t-too-long"] = {
             "id": "t-too-long", "type": "ssh",
             "name": "core-router-with-an-extremely-long-name-that-cannot-fit-on-a-single-line",
             "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
             "host": "192.0.2.99", "port": 22
         }
-        # 3. Fitting row (unchanged)
+        # 3. Target with no open session behaves as round 2
+        served.targets["t-no-open"] = {
+            "id": "t-no-open", "type": "telnet", "name": "inventory-service-alpha",
+            "group": "production", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.88", "port": 23
+        }
+        # 4. Fitting row (unchanged)
         served.targets["t-fitting"] = {
             "id": "t-fitting", "type": "ssh", "name": "router-1", "group": "lab", "tags": [],
             "discovered_by": "manual", "last_seen": seen, "host": "192.0.2.1", "port": 22
@@ -248,22 +274,32 @@ def test_wide_target_row_yield_order_and_fitting(serve, wait_until):
                 n = screen.sidebar._target_row_lines(row)
                 return " ".join(lines[1 + idx : 1 + idx + n])
 
-            # Case 1: keeps full name, drops segments from the right (telnet, production, open)
+            # Case 1: keeps full name and open numbers, drops others from right (telnet, production)
             text_1 = row_text("t-long-facts")
-            assert "inventory-service-alpha" in text_1, text_1
+            assert "service-alpha" in text_1, text_1
             assert "192.0.2.88" in text_1, text_1
-            assert "open" not in text_1, text_1
+            assert "open" in text_1, text_1
             assert "production" not in text_1, text_1
             assert "telnet" not in text_1, text_1
             assert "…" not in text_1, text_1
 
-            # Case 2: name longer than the row alone gets the ellipsis, all facts dropped
+            # Case 2: name so long that only open segment fits beside it gets ellipsis with open segment shown
             text_2 = row_text("t-too-long")
             assert "…" in text_2, text_2
+            assert "open" in text_2, text_2
             assert "192.0.2.99" not in text_2, text_2
             assert "lab" not in text_2, text_2
 
-            # Case 3: row that fits is unchanged
+            # Case 3: target with no open session behaves as round 2
+            text_no_open = row_text("t-no-open")
+            assert "inventory-service-alpha" in text_no_open, text_no_open
+            assert "192.0.2.88" in text_no_open, text_no_open
+            assert "open" not in text_no_open, text_no_open
+            assert "production" not in text_no_open, text_no_open
+            assert "telnet" not in text_no_open, text_no_open
+            assert "…" not in text_no_open, text_no_open
+
+            # Case 4: row that fits is unchanged
             text_3 = row_text("t-fitting")
             assert "router-1 192.0.2.1 · lab" in text_3, text_3
             assert "…" not in text_3, text_3
@@ -1239,7 +1275,8 @@ def test_a_wide_target_row_never_paints_past_the_inner_width(serve, wait_until):
             await pilot.pause()
             joined = "\n".join(_target_lines(screen))
             assert "…" in joined, joined
-            assert "open 1,2" not in joined, joined
+            # Ruling O2 / Round 5: name takes ellipsis, open segment is shown
+            assert "open 1,2" in joined, joined
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, repr(line)
     asyncio.run(check())
@@ -1363,11 +1400,9 @@ def test_a_wide_target_row_never_paints_past_the_inner_width_at_the_facts_edge(s
             await pilot.pause()
             rows = [line for line in _target_lines(screen) if "sw-edge" in line or "192.0.2.10" in line]
             joined = "\n".join(rows)
-            assert "192.0.2.10.example" in joined, rows
-            # The open numbers are the last segment: shown whole when they fit the wide budget, dropped whole when
-            # they do not — never cut mid-segment, and never past the inner width.
-            if "open" in joined:
-                assert "open 1,2,3,4,5,6" in joined, rows
+            # Ruling O2 / Round 5: open session numbers are never dropped; host yields and open numbers
+            # are shown whole, never cut mid-segment, and never past the inner width.
+            assert "open 1,2,3,4,5,6" in joined, rows
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, repr(line)
     asyncio.run(check())
