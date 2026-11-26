@@ -7,6 +7,24 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
+from tsb_tui.widgets.canvas import Canvas
+
+
+def _pending_canvas_paints(app) -> list[tuple[Canvas, float]]:
+    """Return attached canvases on the screen stack that have a paint pending on their timer."""
+    screens = getattr(app, "screen_stack", None)
+    if not screens:
+        screen = getattr(app, "screen", None)
+        screens = [screen] if screen is not None else []
+    pending = []
+    for screen in screens:
+        if hasattr(screen, "walk_children"):
+            for c in screen.walk_children(Canvas):
+                if c.is_attached and not c._released and (c.in_front or c._paint_background) and not c.painted:
+                    interval = (1.0 / c._max_fps) if getattr(c, "_max_fps", None) else 0.02
+                    pending.append((c, interval))
+    return pending
+
 
 async def settle_snapshot(
     app,
@@ -36,18 +54,29 @@ async def settle_snapshot(
     prev_norm = norm(prev)
     settled = None
     for _ in range(timeout_refreshes):
-        await pilot.pause()
+        pending = _pending_canvas_paints(app)
+        if pending:
+            delay = max(interval for _, interval in pending) + 0.005
+            await pilot.pause(delay)
+        else:
+            await pilot.pause()
         curr = capture()
         curr_norm = norm(curr)
-        if curr_norm == prev_norm:
+        pending_after = _pending_canvas_paints(app)
+        if curr_norm == prev_norm and not pending_after:
             settled = curr
             break
         prev = curr
         prev_norm = curr_norm
 
     if settled is None:
+        waited_for = (
+            "pending canvas paint"
+            if _pending_canvas_paints(app)
+            else "consecutive captures differed"
+        )
         raise AssertionError(
-            f"Screen never settled: consecutive captures differed after {timeout_refreshes} refreshes waiting for {path.name}"
+            f"Screen never settled: {waited_for} after {timeout_refreshes} refreshes waiting for {path.name}"
         )
 
     assert settled.lstrip().startswith("<svg"), f"export_screenshot returned non-SVG for {path.name}"
