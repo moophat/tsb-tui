@@ -12,6 +12,7 @@ import sys
 import tarfile
 import threading
 import tomllib
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -142,14 +143,126 @@ def test_literal_token_requires_base(release):
     assert not release[5]
 
 
-def test_macos_is_pending(release):
-    bins = Path(release[2]['BINS'])
-    (bins / 'uname').write_text('#!/bin/sh\necho Darwin\n')
-    (bins / 'uname').chmod(0o755)
-    result = run(release, '--base', release[0])
+@pytest.fixture
+def macos(release):
+    """The release site plus both macOS zips and a faked Darwin: uname and xattr are stubs."""
+    tag, env = release[1], release[2]
+    site = tag.parent
+    manifest = json.loads((site / 'latest.json').read_text())
+    for target in ('macos-arm64', 'macos-x64'):
+        folder = f'tsb-tui-1.2.3-{target}'
+        name = f'{folder}.zip'
+        with zipfile.ZipFile(tag / name, 'w') as archive:
+            for member, data in {'tsb-tui': (ROOT / 'packaging/launchers/tsb-tui').read_bytes(),
+                                 'tsb-tui-check': (ROOT / 'packaging/launchers/tsb-tui-check').read_bytes(),
+                                 # The bundle's Python is the test interpreter: it writes the first-run config.
+                                 'python/bin/python3': f'#!/bin/sh\nexec {sys.executable} "$@"\n'.encode()}.items():
+                info = zipfile.ZipInfo(f'{folder}/{member}')
+                info.external_attr = 0o755 << 16
+                archive.writestr(info, data)
+        manifest['assets'][name] = {'sha256': hashlib.sha256((tag / name).read_bytes()).hexdigest(),
+                                    'size': (tag / name).stat().st_size}
+    (site / 'latest.json').write_text(json.dumps(manifest))
+    bins = Path(env['BINS'])
+    (bins / 'uname').write_text('#!/bin/sh\ncase "$1" in -s) echo Darwin;; -m) echo "${FAKE_ARCH:-arm64}";; esac\n')
+    xattr_log = bins.parent / 'xattr-calls'
+    (bins / 'xattr').write_text(f'#!/bin/sh\necho "xattr $*" >> "{xattr_log}"\n')
+    for stub in ('uname', 'xattr'):
+        (bins / stub).chmod(0o755)
+    env['FAKE_ARCH'] = 'arm64'
+    home = Path(env['HOME'])
+    return release, home / '.local/share/tsb-tui', home / '.local/bin', xattr_log
+
+
+@pytest.mark.parametrize('chip,target', [('arm64', 'macos-arm64'), ('x86_64', 'macos-x64')])
+def test_macos_installs_the_zip_for_the_chip(macos, chip, target):
+    rel, install, bindir, xattr_log = macos
+    rel[2]['FAKE_ARCH'] = chip
+    result = run(rel, '--base', rel[0])
+    assert result.returncode == 0, result.stdout + result.stderr
+    other = 'macos-x64' if target == 'macos-arm64' else 'macos-arm64'
+    assert f'/v1.2.3/tsb-tui-1.2.3-{target}.zip' in rel[5]
+    assert f'/v1.2.3/tsb-tui-1.2.3-{other}.zip' not in rel[5]
+    assert not rel[4].exists(), 'macOS install never runs pipx'
+    assert (install / 'tsb-tui').is_file() and (install / 'python/bin/python3').is_file()
+    for program in ('tsb-tui', 'tsb-tui-check'):
+        assert (bindir / program).is_symlink()
+        assert (bindir / program).resolve() == (install / program).resolve()
+    assert not (install / 'config.toml').exists()
+    assert not (install / 'config.toml').exists()
+    config = Path(rel[2]['XDG_CONFIG_HOME']) / 'tsb-tui/config.toml'
+    assert config.read_text() == f'[broker]\nurl = "{rel[0]}"\n'
+    assert 'No config written' not in result.stdout
+    # The installer clears the flag on the installed folder before the first launch.
+    assert xattr_log.read_text().splitlines()[0] == f'xattr -dr com.apple.quarantine {install}'
+    assert 'is not on PATH' in result.stdout
+
+
+def test_macos_bad_checksum_installs_nothing(macos):
+    rel, install, bindir, xattr_log = macos
+    zip_path = rel[1] / 'tsb-tui-1.2.3-macos-arm64.zip'
+    data = bytearray(zip_path.read_bytes())
+    data[-1] ^= 0xFF
+    zip_path.write_bytes(bytes(data))
+    result = run(rel, '--base', rel[0])
     assert result.returncode != 0
-    assert 'macOS has no release artifact yet' in result.stderr
-    assert not release[4].exists()
+    assert 'mismatch' in result.stderr
+    assert not install.exists() and not bindir.exists() and not xattr_log.exists()
+
+
+def test_macos_update_keeps_config_beside_the_program(macos):
+    rel, install, _, _ = macos
+    install.mkdir(parents=True)
+    (install / 'config.toml').write_bytes(b'# hand edited\n')
+    (install / 'stale-file').write_text('from the old install')
+    result = run(rel, '--base', rel[0])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (install / 'config.toml').read_bytes() == b'# hand edited\n'
+    assert not (install / 'stale-file').exists()
+    assert (install / 'tsb-tui').is_file()
+    assert not list(install.parent.glob('tsb-tui.*')), 'no temporary sibling is left behind'
+
+
+def test_macos_existing_user_config_is_left_byte_identical(macos):
+    rel = macos[0]
+    config = Path(rel[2]['XDG_CONFIG_HOME']) / 'tsb-tui/config.toml'
+    config.parent.mkdir(parents=True)
+    config.write_bytes(b'# hand edited\r\n[broker]\nurl = "https://elsewhere"\n')
+    before = config.read_bytes()
+    result = run(rel, '--base', rel[0], '--broker', 'https://other')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert config.read_bytes() == before
+    assert f'Keeping existing config: {config}' in result.stdout
+
+
+def test_macos_broker_flag_overrides_the_origin(macos):
+    rel = macos[0]
+    result = run(rel, '--base', rel[0], '--broker', 'https://broker.example')
+    assert result.returncode == 0, result.stdout + result.stderr
+    config = Path(rel[2]['XDG_CONFIG_HOME']) / 'tsb-tui/config.toml'
+    assert config.read_text() == '[broker]\nurl = "https://broker.example"\n'
+
+
+def test_macos_chip_without_an_asset_is_refused_by_name(macos):
+    rel, install, _, _ = macos
+    site = rel[1].parent
+    manifest = json.loads((site / 'latest.json').read_text())
+    del manifest['assets']['tsb-tui-1.2.3-macos-arm64.zip']
+    (site / 'latest.json').write_text(json.dumps(manifest, indent=2))
+    result = run(rel, '--base', rel[0])
+    assert result.returncode != 0
+    assert 'tsb-tui-1.2.3-macos-arm64.zip' in result.stderr
+    assert not install.exists()
+
+
+def test_macos_does_not_overwrite_a_foreign_file_on_the_path(macos):
+    rel, install, bindir, _ = macos
+    bindir.mkdir(parents=True)
+    (bindir / 'tsb-tui').write_text('not ours')
+    result = run(rel, '--base', rel[0])
+    assert result.returncode != 0
+    assert (bindir / 'tsb-tui').read_text() == 'not ours'
+    assert not install.exists()
 
 
 def test_release_checksums_cover_uploads(tmp_path):

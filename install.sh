@@ -18,9 +18,183 @@ while (( $# )); do
 done
 # These installer controls are not application configuration knobs.
 unset TSB_TUI_BASE TSB_TUI_VERSION TSB_TUI_BROKER
+fetch() {
+  if command -v curl >/dev/null 2>&1; then
+    local status
+    status="$(curl -fsS "$1" -o "$2" -w '%{http_code}')" || return 1
+    if [[ "$status" == 3?? ]]; then
+      echo "Redirect refused for '$1' (HTTP $status)." >&2; return 1
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    local error
+    error="$(wget --max-redirect=0 -O "$2" "$1" 2>&1)" || {
+      echo "Fetch failed for '$1' (redirects refused): $error" >&2; return 1;
+    }
+  else
+    echo 'Fetching requires curl or wget.' >&2; return 1
+  fi
+}
+
+# First-run broker config, shared by Linux and macOS: written only when absent, never overwritten.
+# $1 is the Python that writes it; $broker is the --broker / TSB_TUI_BROKER / origin value.
+write_first_config() {
+  local config="${XDG_CONFIG_HOME:-$HOME/.config}/tsb-tui/config.toml"
+  if [[ -e "$config" ]]; then
+    printf 'Keeping existing config: %s\n' "$config"
+  elif [[ -z "$broker" ]]; then
+    printf 'No broker known; no config written at %s. Pass --broker <url> to the installer.\n' "$config"
+  else
+"$1" - "$config" "$broker" <<'PYTHON'
+import json
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+broker = sys.argv[2]
+if p.exists():
+    print(f'Keeping existing config: {p}')
+elif not broker:
+    print(f'No broker known; no config written at {p}. Pass --broker <url> to the installer.')
+else:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with p.open('x', encoding='utf-8') as f:
+            f.write('[broker]\nurl = ' + json.dumps(broker, ensure_ascii=False) + '\n')
+    except FileExistsError:
+        print(f'Keeping existing config: {p}')
+    else:
+        print(f'Config: {p}; broker: {broker}')
+PYTHON
+  fi
+}
+
+# macOS installs the release zip for the machine's chip: per user, no admin, no pipx.
+# latest.json is read with sed (not Python) so a clean Mac needs only curl, shasum and unzip.
+# Same trust as install.ps1: hashes detect corruption, not a hostile server. Signing comes later.
+install_macos() {
+  local tool
+  for tool in curl shasum unzip; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "The macOS install needs $tool." >&2; exit 1; }
+  done
+  if [[ -n "$version" ]]; then
+    echo 'TSB_TUI_VERSION is not supported on macOS; the installer installs the latest release.' >&2
+    exit 1
+  fi
+  if [[ "$base" == *'@@TSB_''ORIGIN@@'* ]]; then
+    echo 'No download base: pass --base <url> or set TSB_TUI_BASE.' >&2
+    exit 1
+  fi
+  base="${base%/}"
+  if [[ ! "$base" =~ ^(https://[^/?#@[:space:]]+|http://(127\.0\.0\.1|localhost|\[::1\])(:[0-9]+)?)(/[^?#[:space:]]*)?$ ]]; then
+    echo 'Invalid download base URL; it requires HTTPS except for loopback hosts.' >&2
+    exit 1
+  fi
+  local origin chip target
+  origin="$(printf '%s' "$base" | sed -E 's#^([a-z]+://[^/]+).*#\1#')"
+  broker="${broker:-$origin}"
+  chip="$(uname -m)"
+  case "$chip" in
+    arm64) target=macos-arm64 ;;
+    x86_64) target=macos-x64 ;;
+    *) echo "tsb-tui's macOS release covers arm64 and x86_64 only, not $chip." >&2; exit 1 ;;
+  esac
+
+  # Globals, not locals: the EXIT trap runs after this function has returned.
+  work="$(mktemp -d)"
+  extract=""
+  trap 'rm -rf -- "$work" ${extract:+"$extract"}' EXIT
+  fetch "$base/latest.json" "$work/latest.json"
+  local manifest ver
+  manifest="$(tr -d '\r\n' < "$work/latest.json")"
+  ver="$(printf '%s' "$manifest" | sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p')"
+  if [[ -z "$ver" ]] ||
+     [[ ! "$manifest" =~ \"schema\"[[:space:]]*:[[:space:]]*1[^0-9] ]] ||
+     [[ ! "$manifest" =~ \"tag\"[[:space:]]*:[[:space:]]*\"v$ver\" ]] ||
+     [[ ! "$manifest" =~ \"dir\"[[:space:]]*:[[:space:]]*\"v$ver/\" ]]; then
+    echo 'Invalid latest.json; schema 1 with a matching version, tag and directory is required.' >&2
+    exit 1
+  fi
+  local name entry sha size
+  name="tsb-tui-$ver-$target.zip"
+  entry="$(printf '%s' "$manifest" | sed -nE "s/.*\"$name\"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p")"
+  if [[ -z "$entry" ]]; then
+    echo "latest.json lists no $name; this release has no macOS build for this chip." >&2
+    exit 1
+  fi
+  sha="$(printf '%s' "$entry" | sed -nE 's/.*"sha256"[[:space:]]*:[[:space:]]*"([0-9a-fA-F]{64})".*/\1/p')"
+  size="$(printf '%s' "$entry" | sed -nE 's/.*"size"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p')"
+  if [[ -z "$sha" || -z "$size" ]]; then
+    echo "Missing or invalid manifest asset: $name" >&2
+    exit 1
+  fi
+  fetch "$base/v$ver/$name" "$work/$name"
+  if [[ "$(wc -c < "$work/$name" | tr -d ' ')" != "$size" ]] ||
+     ! (cd "$work" && printf '%s  %s\n' "$sha" "$name" | shasum -a 256 -c - >/dev/null 2>&1); then
+    echo 'Downloaded zip SHA-256 or size mismatch; nothing installed.' >&2
+    exit 1
+  fi
+
+  local install parent bindir
+  parent="$HOME/.local/share"
+  install="$parent/tsb-tui"
+  bindir="$HOME/.local/bin"
+  mkdir -p "$parent" "$bindir"
+  local program
+  for program in tsb-tui tsb-tui-check; do
+    if [[ -e "$bindir/$program" && ! -L "$bindir/$program" ]]; then
+      echo "$bindir/$program exists and is not a link; move it aside and run again." >&2
+      exit 1
+    fi
+  done
+
+  # Unpack beside the install folder, check the layout, then swap the folders.
+  local tree
+  extract="$(mktemp -d "$parent/tsb-tui.extract-XXXXXX")"
+  unzip -q "$work/$name" -d "$extract"
+  tree="$extract/tsb-tui-$ver-$target"
+  local required
+  if [[ "$(find "$extract" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" != 1 ]]; then
+    echo "Zip must contain exactly one tsb-tui-$ver-$target folder." >&2
+    exit 1
+  fi
+  for required in tsb-tui tsb-tui-check python/bin/python3; do
+    if [[ ! -f "$tree/$required" ]]; then
+      echo "Zip is missing $required." >&2
+      exit 1
+    fi
+  done
+  if [[ -f "$install/config.toml" ]]; then
+    cp "$install/config.toml" "$tree/config.toml"
+    echo "Keeping existing config: $install/config.toml"
+  fi
+  rm -rf -- "$install.old"
+  if [[ -e "$install" ]]; then mv "$install" "$install.old"; fi
+  if ! mv "$tree" "$install"; then
+    if [[ -e "$install.old" ]]; then mv "$install.old" "$install"; fi
+    echo "Moving the new folder to $install failed; the previous install was restored." >&2
+    exit 1
+  fi
+  rm -rf -- "$install.old"
+
+  # A browser-style unzip would leave macOS's quarantine flag on every file; clear it.
+  if command -v xattr >/dev/null 2>&1; then
+    xattr -dr com.apple.quarantine "$install" >/dev/null 2>&1 || true
+  fi
+  for program in tsb-tui tsb-tui-check; do
+    ln -sfn "$install/$program" "$bindir/$program"
+  done
+  "$install/tsb-tui-check" || echo 'tsb-tui-check failed; the install has been kept. See its output above.' >&2
+  printf '\nInstalled at: %s\nLinks: %s/tsb-tui, %s/tsb-tui-check\n' "$install" "$bindir" "$bindir"
+  # The same first-run config step as Linux, run with the installed bundle's own Python.
+  write_first_config "$install/python/bin/python3"
+  case ":$PATH:" in
+    *":$bindir:"*) ;;
+    *) printf '%s is not on PATH; add it to your shell profile yourself.\n' "$bindir" ;;
+  esac
+}
+
 if [[ "$(uname -s)" == Darwin ]]; then
-  echo 'macOS has no release artifact yet; macOS support is pending.' >&2
-  exit 1
+  install_macos
+  exit 0
 fi
 
 if [[ "$(uname -m)" != x86_64 ]]; then
@@ -48,23 +222,6 @@ if [[ -z "$py" ]]; then
   echo "tsb-tui needs Python 3.12 or newer." >&2
   exit 1
 fi
-
-fetch() {
-  if command -v curl >/dev/null 2>&1; then
-    local status
-    status="$(curl -fsS "$1" -o "$2" -w '%{http_code}')" || return 1
-    if [[ "$status" == 3?? ]]; then
-      echo "Redirect refused for '$1' (HTTP $status)." >&2; return 1
-    fi
-  elif command -v wget >/dev/null 2>&1; then
-    local error
-    error="$(wget --max-redirect=0 -O "$2" "$1" 2>&1)" || {
-      echo "Fetch failed for '$1' (redirects refused): $error" >&2; return 1;
-    }
-  else
-    echo 'Fetching requires curl or wget.' >&2; return 1
-  fi
-}
 
 shopt -s nullglob
 tui_wheels=(tsb_tui-*.whl)
@@ -184,33 +341,7 @@ fi
 pipx_bin="$(pipx environment --value PIPX_BIN_DIR)"
 tui_binary="$pipx_bin/tsb-tui"
 "$tui_binary" drive --help
-config="${XDG_CONFIG_HOME:-$HOME/.config}/tsb-tui/config.toml"
-if [[ -e "$config" ]]; then
-  printf 'Keeping existing config: %s\n' "$config"
-elif [[ -z "$broker" ]]; then
-  printf 'No broker known; no config written at %s. Pass --broker <url> to the installer.\n' "$config"
-else
-"$py" - "$config" "$broker" <<'PYTHON'
-import json
-import sys
-from pathlib import Path
-p = Path(sys.argv[1])
-broker = sys.argv[2]
-if p.exists():
-    print(f'Keeping existing config: {p}')
-elif not broker:
-    print(f'No broker known; no config written at {p}. Pass --broker <url> to the installer.')
-else:
-    p.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with p.open('x', encoding='utf-8') as f:
-            f.write('[broker]\nurl = ' + json.dumps(broker, ensure_ascii=False) + '\n')
-    except FileExistsError:
-        print(f'Keeping existing config: {p}')
-    else:
-        print(f'Config: {p}; broker: {broker}')
-PYTHON
-fi
+write_first_config "$py"
 printf '\ntsb-tui: %s\nType tsb-tui (or supply --broker <url> if no broker is configured).\n' "$tui_binary"
 case ":$PATH:" in
   *":$pipx_bin:"*) ;;

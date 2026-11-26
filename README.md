@@ -62,7 +62,9 @@ On Linux, `TSB_TUI_BASE` supplies the base and `--base` overrides it; `TSB_TUI_V
 the default broker is the download base's origin. These three installer environment variables are removed before
 the application is run; use `TSB_TUI_BROKER_URL` for the application's broker knob.
 
-**macOS:** no release artifact yet; support is pending. `install.sh` refuses on macOS.
+**macOS:** `install.sh` installs the macOS zip for the chip (`latest.json` names it; `TSB_TUI_VERSION` is not supported),
+checks its SHA-256 and size, unpacks it into `~/.local/share/tsb-tui`, links `tsb-tui` and `tsb-tui-check` into
+`~/.local/bin`, and writes the broker config like Linux. See `docs/install-macos.md`.
 
 The manifest and checksum files detect corruption, not a hostile download server: they come from the same origin.
 Release signing is deferred. GitHub releases remain a backup for people with access to this private repository.
