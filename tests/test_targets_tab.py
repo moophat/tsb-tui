@@ -241,7 +241,7 @@ def test_every_page_is_loaded_after_the_view_opens(serve, wait_until) -> None:
 
 
 class _InventoryDown(ServeApp):
-    def _list_targets(self, query):
+    def _list_targets(self, query, *rest):
         return self._err(503, "inventory_unavailable", "the inventory is not answering")
 
 
@@ -410,11 +410,11 @@ def _gated_pages(served):
     original = served._list_targets
     asked: list[dict] = []
 
-    def gated(query):
+    def gated(query, *rest):
         asked.append(dict(query))
         if query.get("cursor") and not gate.is_set():
             gate.wait(timeout=10)
-        return original(query)
+        return original(query, *rest)
 
     served._list_targets = gated
     return gate, asked

@@ -199,8 +199,23 @@ def test_an_attach_that_fails_answers_attach_failed_with_the_cores_words_and_lea
     from tsbc._serve import ServeApp
 
     class Refusing(ServeApp):
+        """Refuses the ticket mint only. The contract copy's fixture app applies `_may_attach` to the session list too,
+        so the session would vanish from the list and drive would answer `no_such_session` before reaching the mint:
+        the list keeps the unrefused rule, as a core that lists a session its login may see but may not attach to."""
+
+        _in_list = threading.local()
+
+        def _list_sessions(self, user, query):
+            self._in_list.on = True
+            try:
+                return super()._list_sessions(user, query)
+            finally:
+                self._in_list.on = False
+
         def _may_attach(self, user, sid):
-            return None if user == _serve.PEER else super()._may_attach(user, sid)
+            if user == _serve.PEER and not getattr(self._in_list, "on", False):
+                return None
+            return super()._may_attach(user, sid)
 
     async def check() -> None:
         _app, url = serve(Refusing())

@@ -216,7 +216,7 @@ def test_a_stale_page_reply_never_overwrites_a_newer_one(serve, wait_until):
         real = served._list_targets
         lock = threading.Lock()
 
-        def gated(query):
+        def gated(query, *rest):
             with lock:
                 index = len(calls)
                 calls.append(index)
@@ -228,7 +228,7 @@ def test_a_stale_page_reply_never_overwrites_a_newer_one(serve, wait_until):
                     assert release.wait(40), "a held page was never released"
                 finally:
                     served.lock.acquire()
-            return real(query)
+            return real(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -265,11 +265,11 @@ def test_no_no_match_before_the_last_page(serve, wait_until):
         _bulk(served, 600)
         original = served._list_targets
 
-        def gated(query):
+        def gated(query, *rest):
             cursor = query.get("cursor")
             if cursor and not gate.is_set():
                 gate.wait(timeout=10)
-            return original(query)
+            return original(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -343,7 +343,7 @@ def test_loading_title_at_8000_targets(serve, wait_until):
         _bulk(served, 8000)
         original = served._list_targets
 
-        def gated(query):
+        def gated(query, *rest):
             cursor = query.get("cursor")
             if cursor and not gate.is_set():
                 served.lock.release()
@@ -351,7 +351,7 @@ def test_loading_title_at_8000_targets(serve, wait_until):
                     gate.wait(timeout=40)
                 finally:
                     served.lock.acquire()
-            return original(query)
+            return original(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -739,10 +739,10 @@ def test_selection_follows_the_entity_across_pages_and_filter(serve, wait_until)
         gate = threading.Event()
         original = served._list_targets
 
-        def gated(query):
+        def gated(query, *rest):
             if query.get("cursor") and not gate.is_set():
                 gate.wait(timeout=15)
-            return original(query)
+            return original(query, *rest)
 
         served._list_targets = gated
         for tid in ("bulk-0123", "bulk-0456", "bulk-0512"):
@@ -890,11 +890,11 @@ def test_two_size_galleries_part2(serve, wait_until, size, case):
             gate = threading.Event()
             original = served._list_targets
 
-            def gated(query):
+            def gated(query, *rest):
                 cursor = query.get("cursor")
                 if cursor and not gate.is_set():
                     gate.wait(timeout=20)
-                return original(query)
+                return original(query, *rest)
 
             served._list_targets = gated
         if case == "recent-three":

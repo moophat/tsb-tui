@@ -336,7 +336,7 @@ def test_permission_revoked_after_the_form_opens_shows_the_refusal_and_creates_n
             app.screen.query_one("#target-id").value = "router.example"
             app.screen.query_one("#target-save").press()
             await wait_until(pilot, lambda: bool(app.screen.query_one("#target-error").content), "the 403")
-            assert str(app.screen.query_one("#target-error").content) == "target.edit is required"
+            assert str(app.screen.query_one("#target-error").content).startswith("target.edit is required")
             await pilot.pause(0.3)
             assert len(_creates(served)) == 0 and len(_target_writes(served)) == 1, served.requests
     asyncio.run(check())

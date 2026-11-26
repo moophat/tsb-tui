@@ -23,12 +23,12 @@ class PromptApp(InputRecordingApp):
         self.target_read_error = target_read_error
         self.target_reads = 0
 
-    def _get_target(self, target_id):
+    def _get_target(self, target_id, *rest):
         self.target_reads += 1
         if self.target_read_error:
             status, code, message = self.target_read_error
             return status, [], {"error": {"code": code, "message": message}}
-        status, headers, record = super()._get_target(target_id)
+        status, headers, record = super()._get_target(target_id, *rest)
         if status == 200 and self.prompt_pattern is not None:
             record = dict(record, prompt_pattern=self.prompt_pattern)
         return status, headers, record
@@ -219,8 +219,8 @@ def test_bad_pattern_fails_closed_without_refetch(serve, tmp_path, monkeypatch, 
         sid = make_session(url)
         original = app._get_target
 
-        def record(target):
-            status, headers, body = original(target)
+        def record(target, *rest):
+            status, headers, body = original(target, *rest)
             return status, headers, dict(body, prompt_pattern=pattern)
 
         monkeypatch.setattr(app, "_get_target", record)

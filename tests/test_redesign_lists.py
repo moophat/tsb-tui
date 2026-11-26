@@ -623,7 +623,7 @@ def test_targets_empty_without_target_edit(serve, wait_until):
 
 
 class _InventoryDown(ServeApp):
-    def _list_targets(self, query):
+    def _list_targets(self, query, *rest):
         return self._err(503, "inventory_unavailable", "the inventory is not answering")
 
 
@@ -965,7 +965,7 @@ class _TargetsDownApp(_InventoryDown):
         super().__init__()
         self.list_calls = 0
 
-    def _list_targets(self, query):
+    def _list_targets(self, query, *rest):
         self.list_calls += 1
         return self._err(503, "inventory_unavailable", "the inventory is not answering")
 
