@@ -596,11 +596,13 @@ class Canvas(Widget):
         waiting = time.perf_counter()
         with backend.lock():
             self.lock_wait_ms += (time.perf_counter() - waiting) * 1000.0
+            # Cleared under the lock, before the read: a feed that finishes after this paint leaves the lock sets
+            # it again, so the rows it dirtied are never marked clean unseen.
+            self._pending = False
             rows = backend.dirty_rows()
             cursor = backend.cursor()
             origin = backend.scrollback_position().offset if self._highlights or self._selection else 0
             backend.mark_clean()
-        self._pending = False
         self.paint_count += 1
         if len(self._strips) != backend.rows:
             self._reset_rows(keep_pattern=True)  # row-cache reallocation at the new geometry; marks survive.
@@ -807,6 +809,10 @@ class Canvas(Widget):
         self._strips = [None] * rows
         self._rows = [None] * rows
         self._cursor = None
+        # The caches above are gone, and a paint that already ran has marked the engine's rows clean: ask the engine
+        # for every row again, or nothing repaints them until the session happens to write.
+        self._backend.mark_all_dirty()
+        self._pending = True
         self._set_view(self._view_x, self._view_y)
         self.refresh()
 

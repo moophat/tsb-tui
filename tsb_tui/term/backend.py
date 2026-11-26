@@ -520,6 +520,16 @@ class VTBackend:
         with self._lock:
             self._libc.ghostty_render_state_clean(self._render_state)
 
+    def mark_all_dirty(self) -> None:
+        """Make the render state report every row dirty (render.h's `ghostty_render_state_set` with the dirty option
+        at full), under the lock (DT20): the next `dirty_rows` returns the whole grid. A caller that threw away what
+        it had painted uses this to read it all again."""
+        with self._lock:
+            full = ctypes.c_int(G.RS_DIRTY_FULL)
+            rc = self._libc.ghostty_render_state_set(self._render_state, G.RS_OPTION_DIRTY, ctypes.byref(full))
+            if rc != G.GHOSTTY_SUCCESS:
+                raise RuntimeError(f"ghostty_render_state_set(dirty) failed: {rc}")
+
     def dirty(self) -> int:
         """The render state's dirty state: 0 clean, 1 partial, 2 full, under the lock (DT20)."""
         with self._lock:
