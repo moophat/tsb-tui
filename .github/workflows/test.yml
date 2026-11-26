@@ -98,6 +98,8 @@ jobs:
             ci-tui-py make test 2>&1 | tee "$RUNNER_TEMP/tsb-tui-test.log"
 
       - name: Packaging tests
+        env:
+          TSB_LEAK_PATTERN: ${{ secrets.TSB_LEAK_PATTERN }}
         run: |
           set -euo pipefail
           # PR CI fetches no packaging inputs; the release job builds the zips from the pinned inputs
@@ -105,7 +107,7 @@ jobs:
           docker run --rm \
             --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-packaging \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
-            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -v "$GITHUB_WORKSPACE:/work" -w /work -e TSB_LEAK_PATTERN \
             -e PYTEST_ADDOPTS='-rsx --runxfail' \
             ci-tui-py python -m pytest packaging/tests -p no:cacheprovider \
               --deselect packaging/tests/test_packaging.py::test_built_zip \

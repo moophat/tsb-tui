@@ -31,8 +31,8 @@ if [ -f "../tsb-program/ops/publish/leak-pattern" ]; then
   fi
 fi
 
-# Every tracked file is scanned, including this guard.
-EXCLUDES=()
+# Every tracked file is scanned, including this guard. (No exclusion list: an empty bash array
+# expanded under set -u fails on macOS's bash 3.2.)
 
 usage="usage: leak-check.sh [--staged] [--warn] | leak-check.sh --push <remote-url> <branch>"
 warn=0; staged=0; push=0; remote=""; branch=""
@@ -146,7 +146,7 @@ if [ "$push" = 1 ]; then
     # --text forces a textual diff, --no-textconv/--no-ext-diff disable external converters and diff
     # drivers, so a file marked -diff (or binary) in .gitattributes still shows its added lines to
     # the line scan; the blob scan by object id stays as it is for real binaries.
-    git show -p -r --no-color --format='' --text --no-textconv --no-ext-diff "$c" -- . "${EXCLUDES[@]}" > "$tmp" \
+    git show -p -r --no-color --format='' --text --no-textconv --no-ext-diff "$c" -- . > "$tmp" \
       || { echo "::error::git show for $short failed — the scan did not run" >&2; rm -f "$tmp"; exit 2; }
     curfile=""; in_header=0
     while IFS= read -r line; do
@@ -180,7 +180,7 @@ if [ "$push" = 1 ]; then
     # ':<oldmode> <newmode> <oldsha> <newsha> <status>' then the path(s); R/C records carry source
     # then destination. Skip deletions (status D, new id all zeros). Read a binary's content by its
     # new blob id, never by a displayed path; the destination path is the one the name scan reads.
-    git diff-tree -r -z --raw -M --root "$c" -- . "${EXCLUDES[@]}" > "$tmp2" \
+    git diff-tree -r -z --raw -M --root "$c" -- . > "$tmp2" \
       || { echo "::error::git diff-tree for $short failed — the scan did not run" >&2; rm -f "$tmp" "$tmp2" "$tmp3"; exit 2; }
     {
       IFS= read -r -d '' _sha   # first token is the commit id; skip it
@@ -236,11 +236,11 @@ fi
 
 if [ "$staged" = 1 ]; then
   # Only lines being added by the commit in progress. -U0 so context lines do not trip it.
-  hits="$(git diff --cached -U0 -- . "${EXCLUDES[@]}" | grep -E '^\+[^+]' | grep -niE "$PATTERN" || true)"
+  hits="$(git diff --cached -U0 -- . | grep -E '^\+[^+]' | grep -niE "$PATTERN" || true)"
 else
   # Every tracked file. No -I: an address inside a tracked binary is still published.
   status=0
-  raw_hits="$(git grep --no-recurse-submodules -niE "$PATTERN" -- . "${EXCLUDES[@]}")" || status=$?
+  raw_hits="$(git grep --no-recurse-submodules -niE "$PATTERN" -- .)" || status=$?
   # git grep: 0 = matches, 1 = none, >1 = the search itself failed. Treating every nonzero
   # exit as clean is how a broken guard reports success forever.
   if [ "$status" -gt 1 ]; then
