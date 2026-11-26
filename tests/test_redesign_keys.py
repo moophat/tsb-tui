@@ -2,11 +2,10 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import re
 from pathlib import Path
 
 import pytest
+from snapshot_support import settle_snapshot
 from textual.command import CommandList, SearchIcon
 from textual.widgets import Input
 from tsbc import _serve
@@ -28,14 +27,11 @@ async def login(pilot, app, wait_until):
     return app.screen
 
 
-def snapshot(app, name):
-    svg = app.export_screenshot(title="P1", simplify=True)
-    svg = re.sub(r"terminal-\d+", "terminal-p1", svg)
+async def snapshot(app, pilot, name):
     path = Path(__file__).parent / "snapshots" / "redesign-p1" / f"{name}.svg"
-    if os.environ.get("UPDATE_P1_SNAPSHOTS") == "1":
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(svg)
-    assert path.read_text() == svg
+    await settle_snapshot(
+        app, pilot, path, title="P1", terminal_tag="terminal-p1", update_env="UPDATE_P1_SNAPSHOTS"
+    )
 
 
 @pytest.mark.parametrize("size", SIZES)
@@ -78,7 +74,7 @@ def test_f1_menu_search_focus_and_hints(serve, wait_until, size):
                 icon = palette.query_one(SearchIcon).region
                 assert rows[icon.y][icon.x] == "/"
                 context = "workspace" if not keys else "list" if keys[-1] == "F" else "new-session"
-                snapshot(app, f"menu-{context}-{size[0]}x{size[1]}")
+                await snapshot(app, pilot, f"menu-{context}-{size[0]}x{size[1]}")
                 await pilot.press("escape")
                 await pilot.pause()
                 assert app.screen is caller

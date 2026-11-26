@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import asyncio
-import re
+from pathlib import Path
 
 import pytest
+from snapshot_support import settle_snapshot
 from textual.app import App, ComposeResult
 
 from tsb_tui import glyphs
@@ -351,16 +352,11 @@ def test_worded_alerts_row_follows_broker_health(serve, wait_until, size):
     asyncio.run(not_holder())
 
 
-def _snapshot(app, name):
-    import os
-    from pathlib import Path
-
-    svg = re.sub(r'terminal-\d+', 'terminal-p2a', app.export_screenshot(title='P2a', simplify=True))
+async def _snapshot(app, pilot, name):
     path = Path(__file__).parent / 'snapshots' / 'redesign-p2a' / f'{name}.svg'
-    if os.environ.get('UPDATE_P2A_SNAPSHOTS') == '1':
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(svg)
-    assert path.read_text() == svg
+    await settle_snapshot(
+        app, pilot, path, title='P2a', terminal_tag='terminal-p2a', update_env='UPDATE_P2A_SNAPSHOTS'
+    )
 
 
 @pytest.mark.parametrize('size', [(80, 24), (160, 45)])
@@ -409,7 +405,7 @@ def test_two_size_baselines(serve, wait_until, size, state):
                 row = next(r for r in screen.rail.rows if r.action == ACT_ALERTS)
                 return row.text.strip() in ('! Alerts 0', '!0')
             await wait_until(pilot, quiet, 'a moment with no alert raised')
-            _snapshot(app, f'{state}-{size[0]}x{size[1]}')
+            await _snapshot(app, pilot, f'{state}-{size[0]}x{size[1]}')
     asyncio.run(check())
 
 

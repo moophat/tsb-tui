@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from input_server import InputRecordingApp, flushed, other_client
+from snapshot_support import settle_snapshot
 from stub_server import emit_live_output
 from test_redesign_keys import login as key_login
 from textual.command import CommandList
@@ -48,7 +49,10 @@ def snapshot(app, name):
 async def snap(pilot, wait_until, screen, app, name):
     """A baseline taken at a moment the fixture's alert stream has raised nothing (its `!n` would change the picture)."""
     await settle(pilot, wait_until, screen, alerts_quiet=True)
-    snapshot(app, name)
+    path = Path(__file__).parent / "snapshots" / "redesign-p2b" / f"{name}.svg"
+    await settle_snapshot(
+        app, pilot, path, title="P2b", terminal_tag="terminal-p2b", update_env="UPDATE_P2B_SNAPSHOTS"
+    )
 
 
 def heavy_panes(app, screen, screen_text):
