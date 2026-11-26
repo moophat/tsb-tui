@@ -106,6 +106,26 @@ class ContractBumpSequenceTest(unittest.TestCase):
                        env={**os.environ, "CONTRACT_COMMITTED": "1"})
         return work
 
+    def test_offline_copy_check_rejects_fabricated_commit(self):
+        work = self._setup_consumer_repo()
+        shutil.rmtree(work / "program")
+        pin = work / "contract.pin"
+        lines = pin.read_text().splitlines()
+        pin.write_text("\n".join("commit: " + "0" * 40 if line.startswith("commit:") else line
+                                 for line in lines) + "\n")
+        _git(["add", "contract.pin"], cwd=work)
+        result = subprocess.run(["bash", "tools/contract-pin.sh", "copy-check"],
+                                cwd=work, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match gitlink", result.stderr)
+
+    def test_offline_copy_check_without_submodule_succeeds(self):
+        work = self._setup_consumer_repo()
+        shutil.rmtree(work / "program")
+        result = subprocess.run(["bash", "tools/contract-pin.sh", "copy-check"],
+                                cwd=work, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_documented_seven_step_bump_succeeds(self):
         work = self._setup_consumer_repo()
 

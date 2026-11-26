@@ -54,7 +54,7 @@ async def click_laid_out(pilot, wait_until: Callable, selector: str) -> None:
     await pilot.click(selector)
 
 
-_CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
+_CONTRACT = Path(__file__).resolve().parents[1] / "contract"
 
 
 def validated(frame: dict) -> dict:

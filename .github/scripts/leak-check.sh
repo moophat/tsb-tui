@@ -11,7 +11,7 @@
 # Why one script: the earlier pattern lived only in the workflow, so the hook did not exist and
 # reviewers found leaks by hand (2026-09-18).
 #
-# What every mode checks: PATTERN below defines the dev-subnet and CGNAT addresses, dev
+# What every mode checks: PATTERN defines the dev-subnet and CGNAT addresses, dev
 # domain, secret paths, checkout and vault paths, and shared-mount name checked in this repo.
 # Only --push also checks WORKSTATION_PATTERN: lane paths, the toolkit checkout, agent scratch
 # paths, and workstation file URLs. What it cannot catch: node shorthand like ".14 to .10"
@@ -22,31 +22,17 @@ set -uo pipefail
 PATTERN="${TSB_LEAK_PATTERN:-}"
 WORKSTATION_PATTERN="${TSB_LEAK_PUSH_PATTERN:-}"
 
-if [ -z "$PATTERN" ] && [ -f "../tsb-program/ops/publish/leak-pattern" ]; then
-  PATTERN="$(head -n 1 "../tsb-program/ops/publish/leak-pattern" | tr -d '\r\n')"
+if [ -f "../tsb-program/ops/publish/leak-pattern" ]; then
+  if [ -z "$PATTERN" ]; then
+    PATTERN="$(head -n 1 "../tsb-program/ops/publish/leak-pattern" | tr -d '\r\n')"
+  fi
   if [ -z "$WORKSTATION_PATTERN" ]; then
     WORKSTATION_PATTERN="$(sed -n '2p' "../tsb-program/ops/publish/leak-pattern" | tr -d '\r\n')"
   fi
 fi
-if [ -z "$WORKSTATION_PATTERN" ] && [ -f "../tsb-program/ops/publish/leak-push-pattern" ]; then
-  WORKSTATION_PATTERN="$(head -n 1 "../tsb-program/ops/publish/leak-push-pattern" | tr -d '\r\n')"
-fi
 
-if [ -z "$PATTERN" ]; then
-  if [ -n "${CI:-}" ]; then
-    echo "::error::leak-check: TSB_LEAK_PATTERN secret is missing in CI" >&2
-    exit 1
-  else
-    echo "SKIP: the environment check runs on the maintainers' side"
-    exit 0
-  fi
-fi
-
-# Paths the scan skips, each with a reason. Keep this list short and every entry justified:
-# an exclusion is a place to park a leak.
-EXCLUDES=(
-  ':!.github/scripts/leak-check.sh'   # declares the pattern, so it matches itself
-)
+# Every tracked file is scanned, including this guard.
+EXCLUDES=()
 
 usage="usage: leak-check.sh [--staged] [--warn] | leak-check.sh --push <remote-url> <branch>"
 warn=0; staged=0; push=0; remote=""; branch=""
@@ -67,6 +53,19 @@ done
 if [ "$push" = 1 ] && [ "$warn" = 1 ]; then
   echo "::error::--warn does not apply to --push" >&2
   exit 2
+fi
+
+if [ -z "$PATTERN" ]; then
+  if [ -n "${CI:-}" ] || [ "$push" = 1 ]; then
+    echo "::error::leak-check: TSB_LEAK_PATTERN or private leak-pattern line 1 is missing" >&2
+    exit 1
+  fi
+  echo "SKIP: the environment check runs on the maintainers' side"
+  exit 0
+fi
+if [ "$push" = 1 ] && [ -z "$WORKSTATION_PATTERN" ]; then
+  echo "::error::leak-check: TSB_LEAK_PUSH_PATTERN or private leak-pattern line 2 is missing" >&2
+  exit 1
 fi
 
 if [ "$push" = 1 ]; then

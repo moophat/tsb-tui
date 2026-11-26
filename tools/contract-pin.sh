@@ -107,6 +107,12 @@ if [ "$mode" = copy-check ]; then
   [ -n "$pin_commit" ] || fail "contract.pin: missing commit"
   [ -n "$pin_tree" ] || fail "contract.pin: missing tree"
 
+  link="$(git ls-files -s -- "$SUB")"
+  [ "${link:0:6}" = 160000 ] || fail "no gitlink at $SUB in the index"
+  gitlink_sha="$(git rev-parse ":$SUB")"
+  [ "$pin_commit" = "$gitlink_sha" ] ||
+    fail "contract.pin commit ($pin_commit) does not match gitlink ($gitlink_sha)"
+
   version="$(tr -d '[:space:]' < contract/CONTRACT_VERSION)"
   [ "$version" = "$pin_tag" ] ||
     fail "contract/CONTRACT_VERSION ($version) does not match contract.pin tag ($pin_tag)"
