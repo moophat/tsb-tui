@@ -379,7 +379,11 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                                 and (
                                     getattr(app.screen, "fleet_view", None) is None
                                     or not getattr(app.screen, "view_open", False)
-                                    or getattr(app.screen.fleet_view, "tab", None) == "targets"
+                                    or (
+                                        getattr(app.screen.fleet_view, "tab", None) == "targets"
+                                        and getattr(app.screen, "status", None) is not None
+                                        and "keys → targets" in getattr(app.screen.status, "text", "")
+                                    )
                                 )
                             ),
                             "targets rows to load",
@@ -401,6 +405,16 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                     pilot,
                     lambda: getattr(app.screen, "view_open", False) and getattr(app.screen.fleet_view, "tab", "") == "alerts",
                     "Alerts tab open",
+                    timeout_s=10.0,
+                )
+            elif entry_id == "confirm-delete-target":
+                await wait_until(
+                    pilot,
+                    lambda: (
+                        type(app.screen).__name__ == screen_class
+                        and "keys → targets" in screen_text(app)
+                    ),
+                    f"screen {screen_class} with settled targets status for entry {entry_id}",
                     timeout_s=10.0,
                 )
             else:

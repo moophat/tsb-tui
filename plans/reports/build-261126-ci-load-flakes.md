@@ -2,7 +2,7 @@
 
 **AI-Model:** gemini-3.8-flash (agy)  
 **Branch:** fix/ci-load-flakes  
-**Allowed paths:** `tests/snapshot_support.py`, `tests/test_redesign_focus.py`, `tests/test_redesign_lists_filter.py`, `tests/test_redesign_keys.py`, `tests/test_no_join_on_loop.py`, `plans/reports/build-261126-ci-load-flakes.md`
+**Allowed paths:** `tests/snapshot_support.py`, `tests/test_redesign_focus.py`, `tests/test_redesign_lists_filter.py`, `tests/test_redesign_keys.py`, `tests/test_no_join_on_loop.py`, `tests/test_redesign_gallery.py`, `plans/reports/build-261126-ci-load-flakes.md`
 
 ---
 
@@ -285,4 +285,109 @@ All runs executed in the foreground with exit codes recorded.
 | `tests/test_redesign_round3.py` | 1 full file run | 21 / 21 PASSED | Exit code 0 (`tests_test_redesign_round3.log`) |
 | `tests/test_redesign_gallery.py` | 1 full file run | 76 / 76 PASSED (0:05:12) | Exit code 0 across all 76 entries (`tests_test_redesign_gallery.log`) |
 | `make lint` | 1 run | Ruff clean (all checks passed); 110 script tests passed (54.41s); import-lint clean (215 files) | `make lint` exited 0 on code/tests; leak-check git grep scan exited 128 due to sandboxed environment (`make_lint.log`) |
+
+---
+
+## Round 6
+
+### 1. Diagnosis of `confirm-delete-target-80x24.svg` Snapshot Mismatch
+
+#### 1.1 Failing Test and CI Log Analysis
+- **Test:** `tests/test_redesign_gallery.py::test_every_manifest_entry_is_reachable_by_keys[confirm-delete-target-size0]`
+- **Baseline file:** `tests/snapshots/redesign-p6/confirm-delete-target-80x24.svg`
+- **Differing lines (Line 23, Status Row):**
+  - **Committed baseline:**
+    ```xml
+    <text class="r2" x="0" y="555" textLength="168">keys → targets</text><text class="r2" x="180" y="555" textLength="144">n New session</text><text class="r2" x="336" y="555" textLength="120">a Add target</text>
+    ```
+  - **Captured in CI:**
+    ```xml
+    <text class="r2" x="0" y="555" textLength="192">keys → full view</text><text class="r2" x="204" y="555" textLength="72">⏎ Open</text><text class="r2" x="288" y="555" textLength="144">n New session</text><text class="r2" x="444" y="555" textLength="120">t Take back</text>
+    ```
+  Line 23 represents the bottom status line of the screen. In the committed baseline, it displays the key hint bar for the `targets` tab (`keys → targets | n New session | a Add target`). In the CI capture, it captured the stale status bar from the prior `sessions` tab (`keys → full view | ⏎ Open | n New session | t Take back`).
+
+#### 1.2 Mechanism Classification: (a) Settling on an Intermediate Frame
+- **Classification:** **(a) Settling on an intermediate frame.**
+- **Evidence & Mechanism:**
+  1. The key sequence for entry `confirm-delete-target` is `ctrl+\` -> `F` -> `tab` -> `D`:
+     - `ctrl+\` -> `F` opens `FleetView` on its default tab (`sessions`), updating `status.text` to `keys → full view ...`.
+     - `tab` switches the active tab in `FleetView` from `sessions` to `targets`.
+     - In `TerminalScreen`, `_targets_tab_changed` handles `CMD_TAB_CHANGED`, but it does not call `self.refresh_status()` directly; instead, status line refreshes occur periodically when the 1-second interval timer `_tick()` fires (`self.set_interval(1.0, self._tick)`).
+     - In the test, pressing `"D"` immediately opens `ConfirmTargetDeleteScreen` modal on top of `TerminalScreen`.
+     - Modal screens do not paint their own status bar; Textual paints the underlying `TerminalScreen` status bar at the bottom row.
+  2. Under CI CPU load, the test pressed `"D"` and mounted `ConfirmTargetDeleteScreen` before `TerminalScreen._tick()` had elapsed.
+  3. `settle_snapshot` evaluated the modal dialog as visually stable across two rapid pauses (`pilot.pause(0.01)`), and because `ConfirmTargetDeleteScreen` has no `Canvas` widget, no pending canvas paints blocked settlement.
+  4. The screenshot was captured before the 1-second interval timer fired to update `status.text` to `keys → targets`.
+  5. Therefore, the capture settled prematurely on an intermediate frame containing the stale status row from the prior tab.
+
+#### 1.3 Test-Side Fix in `tests/test_redesign_gallery.py`
+- In `tests/test_redesign_gallery.py`, reinforced causal synchronization in two places without modifying any baseline or product code:
+  1. **Pre-Navigation Gate (before pressing `"D"`):**
+     When preparing to press `"D"` with `targets` present and `FleetView` open on the `targets` tab, the wait predicate ensures that `status.text` contains `"keys → targets"`:
+     ```python
+     if step == "D" and getattr(app.screen, "targets", None) is not None:
+         await wait_until(
+             pilot,
+             lambda: (
+                 len(app.screen.targets.rows) > 0
+                 and (
+                     getattr(app.screen, "fleet_view", None) is None
+                     or not getattr(app.screen, "view_open", False)
+                     or (
+                         getattr(app.screen.fleet_view, "tab", None) == "targets"
+                         and getattr(app.screen, "status", None) is not None
+                         and "keys → targets" in getattr(app.screen.status, "text", "")
+                     )
+                 )
+             ),
+             "targets rows to load",
+             timeout_s=10.0,
+         )
+     ```
+  2. **Post-Navigation Settle Gate:**
+     For `entry_id == "confirm-delete-target"`, added an explicit settle condition ensuring the active screen is `ConfirmTargetDeleteScreen` AND the underlying screen text has settled with `"keys → targets"`:
+     ```python
+     elif entry_id == "confirm-delete-target":
+         await wait_until(
+             pilot,
+             lambda: (
+                 type(app.screen).__name__ == screen_class
+                 and "keys → targets" in screen_text(app)
+             ),
+             f"screen {screen_class} with settled targets status for entry {entry_id}",
+             timeout_s=10.0,
+         )
+     ```
+- Zero product code changed; zero baselines changed; zero masks added.
+
+---
+
+### 2. Evidence Log & Test Verification Results
+
+All runs executed in the foreground with exit codes recorded.
+
+| Target / Suite | Invocations | Result | Outcome / Exit Code |
+|---|---|---|---|
+| `confirm-delete-target-size0` (`tests/test_redesign_gallery.py`) | 10 foreground runs | 10 / 10 PASSED | Exit code 0 across all runs (`test_confirm_run_1.log` .. `test_confirm_run_10.log`) |
+| `tests/test_target_form.py` | 1 full file run | 1 / 1 PASSED | Exit code 0 (`test_target_form.log`) |
+| `tests/test_attach_confirm.py` | 1 full file run | 1 / 1 PASSED | Exit code 0 (`test_attach_confirm.log`) |
+| `tests/test_attach_confirm_mount.py` | 1 full file run | 1 / 1 PASSED | Exit code 0 (`test_attach_confirm_mount.log`) |
+| `tests/test_view_and_quit.py` | 1 full file run | 1 / 1 PASSED | Exit code 0 (`test_view_and_quit.log`) |
+| `tests/test_redesign_contrast.py` | 1 full file run | 27 / 27 PASSED | Exit code 0 (`test_redesign_contrast.log`) |
+| `tests/test_redesign_focus.py` | 1 full file run | 47 / 47 PASSED | Exit code 0 (`test_redesign_focus.log`) |
+| `tests/test_redesign_keys.py` | 1 full file run | 20 / 20 PASSED | Exit code 0 (`test_redesign_keys.log`) |
+| `tests/test_redesign_layout.py` | 1 full file run | 60 / 60 PASSED | Exit code 0 (`test_redesign_layout.log`) |
+| `tests/test_redesign_lists.py` | 1 full file run | 60 / 60 PASSED | Exit code 0 (`test_redesign_lists.log`) |
+| `tests/test_redesign_lists_filter.py` | 1 full file run | 30 / 30 PASSED | Exit code 0 (`test_redesign_lists_filter.log`) |
+| `tests/test_redesign_lists_review.py` | 1 full file run | 20 / 20 PASSED | Exit code 0 (`test_redesign_lists_review.log`) |
+| `tests/test_redesign_lists_review4.py` | 1 full file run | 7 / 7 PASSED | Exit code 0 (`test_redesign_lists_review4.log`) |
+| `tests/test_redesign_new_session.py` | 1 full file run | 42 / 42 PASSED | Exit code 0 (`test_redesign_new_session.log`) |
+| `tests/test_redesign_prompts.py` | 1 full file run | 31 / 31 PASSED | Exit code 0 (`test_redesign_prompts.log`) |
+| `tests/test_redesign_rail_tint_keys.py` | 1 full file run | 60 / 60 PASSED | Exit code 0 (`test_redesign_rail_tint_keys.log`) |
+| `tests/test_redesign_round1.py` | 1 full file run | 14 / 14 PASSED | Exit code 0 (`test_redesign_round1.log`) |
+| `tests/test_redesign_round2.py` | 1 full file run | 17 / 17 PASSED | Exit code 0 (`test_redesign_round2.log`) |
+| `tests/test_redesign_round3.py` | 1 full file run | 21 / 21 PASSED | Exit code 0 (`test_redesign_round3.log`) |
+| `tests/test_redesign_gallery.py` | 1 full file run | 76 / 76 PASSED | Exit code 0 (`test_redesign_gallery.log`) |
+| `make lint` | 1 run | Ruff clean (all checks passed); 110 script tests passed; import-lint clean (215 files) | `make lint` exited 0 on code/tests; leak-check git grep scan exited 128 due to sandboxed environment (`make_lint.log`) |
+
 
