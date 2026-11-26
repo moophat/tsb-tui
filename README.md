@@ -607,8 +607,7 @@ takes the scheme's cursor).
 
 ## Licence
 
-The licence is decided as Apache-2.0 for this repository. The `LICENSE` file is added when the repository is published;
-until then the repository is private.
+tsb-tui is licensed under the Apache License 2.0 (`LICENSE`); the copyright is Doan Minh Tu's (`NOTICE`). Bundled components keep their own licences, listed beside them.
 
 ## Repository history
 

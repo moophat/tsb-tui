@@ -359,5 +359,5 @@ a private tmux socket, killed afterwards.
 Conventional message; add files by explicit path; trailer `AI-Model: <model-id>`; no co-authored-by. PRs required on
 `main`, merged one at a time. Qodo reviews every PR but docs-only ones (`.pr_agent.toml`: `plan/…`, `chore/ledger…`,
 `docs/…`, `research/…` branches carry plans, ledgers or notes only, and merge on green CI; the docs-branch guard fails
-one that touches anything else). Licensing is undecided (`../tsb-program/spine/plan.md` §5.3): no LICENSE file, and
-the repo stays private until it is.
+one that touches anything else). The licence is Apache-2.0 (`LICENSE`, `NOTICE`; `open_decisions` §6, LOCKED); no
+per-file licence headers.
