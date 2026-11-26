@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1"]
+test = ["pytest==9.1.1", "PyYAML==6.0.2"]
 
 [project.scripts]
 tsb-tui = "tsb_tui.__main__:main"

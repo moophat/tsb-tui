@@ -1,8 +1,22 @@
 # Shared by CI (gitleaks 8.24.3) and the local pre-commit hook (8.30.0).
-# No allowlist: no extracted TUI finding needs an exception. If one ever does, add a single [allowlist] table
-# (never [[allowlists]], which 8.24.3 ignores) pinning the exact secret fragment in `regexes`, never a path; gitleaks
-# 8.30.0 refuses an [allowlist] with no check in it, so the table exists only with a pin.
+# One [allowlist] table (never [[allowlists]], which 8.24.3 ignores), each entry pinning one exact value in
+# `regexes`, never a path. The only entries are the contract copy's synthetic test vectors, pinned exactly as the
+# contract's own repository pins them.
 title = "tsb-tui"
 
 [extend]
 useDefault = true
+
+[allowlist]
+description = "synthetic crypto test vectors in the contract copy's fixtures"
+regexes = [
+  # contract/fixtures/C6/vault-user-record.json (encrypted_credentials): the base64 of the ASCII placeholder
+  # "FIXTURE-SEALED-CREDENTIAL-SET-" and zeros.
+  '''^RklYVFVSRS1TRUFMRUQtQ1JFREVOVElBTC1TRVQtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAw$''',
+  # contract/fixtures/C7 chain files: the chain's encryption key, derived from the synthetic passphrase and salts.
+  '''^21d7fbf4e858c59e70b1ea1871aecc211e15ba8e0d0bd5a08248d43644f56b09$''',
+  # contract/fixtures/C7 chain files: the chain's storage key, derived from the synthetic passphrase and salts.
+  '''^7b83e3db8d2613fd3b7fa8b888b4de2ef33cfe42c78ab1ded25b3b2742fb9f92$''',
+  # contract/fixtures/C7/kat-aes256gcm.json: the AES-256 key of McGrew and Viega's GCM test cases 13 to 16.
+  '''^feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308$''',
+]
