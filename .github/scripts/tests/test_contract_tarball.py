@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SHIPPED = {"openapi", "schemas", "fixtures", "protocols", "tsbc", "client", "README.md", "CONTRACT_VERSION", "pyproject.toml"}
+SHIPPED = {"openapi", "schemas", "fixtures", "protocols", "tsbc", "client", "README.md", "CONTRACT_VERSION", "pyproject.toml", "LICENSE"}
 
 
 class ContractTarballAndWheelTest(unittest.TestCase):

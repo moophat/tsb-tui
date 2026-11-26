@@ -16,7 +16,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 TUI = "tsb_tui-1.2.3-py3-none-any.whl"
 CONTRACT = "tsb_contract-0.12.1-py3-none-any.whl"
-TARBALL = "tsb-v0.18.0.tar.gz"
+# The release builds the contract tarball from the copy, so its name follows the pinned contract.
+TARBALL = f"tsb-{(ROOT / 'contract' / 'CONTRACT_VERSION').read_text().strip()}.tar.gz"
 ENGINE = "libghostty-vt-linux-x86_64.tar.gz"
 WINDOWS_ZIP = "tsb-tui-1.2.3-windows-x64.zip"
 MACOS_ZIPS = ["tsb-tui-1.2.3-macos-arm64.zip", "tsb-tui-1.2.3-macos-x64.zip"]
