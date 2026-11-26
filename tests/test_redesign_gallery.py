@@ -325,6 +325,9 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
         if entry_id == "text-screen-about":
             app.cfg.set_runtime("term.library", "vendor/libghostty-vt/libghostty-vt.so")
         monkeypatch.setattr("tsb_tui.app.library_path", lambda cfg: Path("vendor/libghostty-vt/libghostty-vt.so"))
+        # About names the installed package's version: a checkout that was never pip-installed says "not installed
+        # as a package", an installed one its version. The pictures pin it so they read the same on any machine.
+        monkeypatch.setattr("tsb_tui.screens.chrome_dialogs._package_version", lambda: "0.0.0")
         async with app.run_test(size=size) as pilot:
             # Drive the route steps
             route = list(entry["keys_route"])

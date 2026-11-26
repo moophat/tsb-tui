@@ -68,6 +68,11 @@ def scenario(test):
                 await rig.attach(sid)
                 clock = [time.monotonic()]
                 rig.app.idle_clock = lambda: clock[0]
+                # Both locks stamped their last input from the real clock while login and attach ran. However
+                # long those took (seconds, on a loaded runner), the test's idle time starts now, so the
+                # fake clock's steps are the only idle time either lock sees.
+                rig.app.screen_lock._last_input = clock[0]
+                rig.driver.screen_lock.last_command = clock[0]
                 await test(rig, server, sid, clock, path, record, monkeypatch)
                 captured = capsys.readouterr()
                 assert CANARY not in json.dumps(rig.lines) + record.getvalue() + captured.out + captured.err + caplog.text
