@@ -265,7 +265,7 @@ def test_contract_pin_failure_precedes_inputs(tmp_path, monkeypatch, capsys):
 
     def fail_check(command, **kwargs):
         calls.append(command)
-        assert command == ['bash', 'tools/contract-pin.sh', 'check']
+        assert command == ['bash', 'tools/contract-pin.sh', 'copy-check']
         assert kwargs['cwd'] == assemble.ROOT
         assert kwargs['check'] is True
         print('contract-check: deliberate failure', file=sys.stderr)
@@ -296,7 +296,7 @@ def test_dirty_source_precedes_inputs(tmp_path, monkeypatch, tracked, untracked,
     calls = []
 
     def run(*args, **kwargs):
-        assert args == ('bash', 'tools/contract-pin.sh', 'check')
+        assert args == ('bash', 'tools/contract-pin.sh', 'copy-check')
         assert kwargs['cwd'] == root
         calls.append('contract')
 

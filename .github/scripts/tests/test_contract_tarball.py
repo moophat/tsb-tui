@@ -64,6 +64,30 @@ class ContractTarballAndWheelTest(unittest.TestCase):
             )
             self.assertEqual(verify_proc.returncode, 0, f"self-check failed: {verify_proc.stdout}\n{verify_proc.stderr}")
 
+    def test_contract_wheel_builds_from_the_copy_alone(self):
+        """Needs nothing but `contract/`, so it runs on a clone that has no `program/`."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dist = Path(tmp_dir) / "dist"
+            dist.mkdir()
+            copy = Path(tmp_dir) / "contract_copy"
+            shutil.copytree(REPO_ROOT / "contract", copy)
+            subprocess.run(
+                ["pip", "wheel", "--no-deps", "--no-build-isolation", "-w", str(dist), str(copy)],
+                check=True,
+                capture_output=True,
+            )
+            wheels = list(dist.glob("tsb_contract-*.whl"))
+            self.assertEqual(len(wheels), 1)
+            with zipfile.ZipFile(wheels[0]) as z:
+                names = z.namelist()
+            self.assertTrue(any(n.startswith("tsbc/") for n in names), "the wheel carries no tsbc package")
+            self.assertTrue(any(n.startswith("tsb_contract_client/") for n in names),
+                            "the wheel carries no tsb_contract_client package")
+
+    @unittest.skipUnless(
+        (REPO_ROOT / "program/contract/CONTRACT_VERSION").is_file(),
+        "program/contract is not populated (the private program checkout is absent; run make contract-init)",
+    )
     def test_contract_wheel_matches_program_contract_wheel(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             dist1 = Path(tmp_dir) / "dist1"

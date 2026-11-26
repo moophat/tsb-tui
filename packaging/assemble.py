@@ -68,7 +68,9 @@ def notices(site, engine):
 
 
 def assemble(engine=None, target='windows-x64'):
-    run('bash', 'tools/contract-pin.sh', 'check', cwd=ROOT)
+    # The offline check: `contract/` is unchanged since its recorded release. It needs no `program/` checkout, so an
+    # outsider's clone assembles; the comparison with the release tree is CI's separate contract-check gate.
+    run('bash', 'tools/contract-pin.sh', 'copy-check', cwd=ROOT)
     tracked = subprocess.check_output(
         ['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, text=True)
     if tracked:
