@@ -231,3 +231,58 @@ All runs executed in the foreground with exit codes recorded.
 | `tests/test_redesign_gallery.py` | 1 full file run | 76 / 76 PASSED (0:05:11) | Exit code 0 across all 76 entries (`test_redesign_gallery.log`) |
 | `make lint` | 1 run | Ruff clean (all checks passed); 110 script tests passed (53.84s); import-lint clean (215 files) | `make lint` exited 0 on code/tests; leak-check git grep scan exited 128 due to sandboxed environment |
 
+---
+
+## Round 5
+
+### 1. Summary of Round 5 Changes
+
+#### 1.1 Canvas Paint Timer Settlement in `settle_snapshot` (`tests/snapshot_support.py`)
+- **Mechanism:** Textual's `Canvas` widget (`tsb_tui/widgets/canvas.py`) renders terminal dirty rows on a periodic timer (`self.set_interval(1.0 / self._max_fps, self._tick)`). A standard `await pilot.pause()` without a delay pauses for CPU idle/events (`asyncio.sleep(0)`), which can permit two consecutive frame captures to evaluate as identical before an outstanding interval paint timer ticks.
+- **Test-Side Solution:**
+  - Added helper `_pending_canvas_paints(app)` to inspect `Canvas` instances across `app.screen_stack`.
+  - Canvases attached to the screen, not released, and in front or painting in background are inspected for outstanding paint state via `not canvas.painted` (backed by `self._pending`).
+  - When pending canvas paints exist, `settle_snapshot` pauses with `delay = max(interval for _, interval in pending) + 0.005`, giving Textual's timer wheel time to fire `_tick()`, trigger `repaint_now()`, and clear `self._pending`.
+  - The settle loop treats a capture as settled only once consecutive captures match AND no canvas paint is pending.
+  - If iterations expire, the failure assertion explicitly names what it waited for: `Screen never settled: pending canvas paint after {timeout_refreshes} refreshes waiting for {path.name}` (or `consecutive captures differed` if frames did not match).
+  - Exact baseline comparisons are preserved with zero modifications to baselines or normalizers.
+
+#### 1.2 Instrumented Poller Join Assertion (`tests/test_no_join_on_loop.py`)
+- **Mechanism:** In `test_a_held_poll_reply_does_not_hold_the_unmount`, asserting event ordering proved the unmount completed while the reply was still held, but an implementation of unmount that joined the held poller thread with a bounded timeout (shorter than the test's unmount wait) would still pass.
+- **Solution:**
+  - Spied on `thread.join` during unmount: wrapped the held poller thread's `join` method with `instrumented_join` to record any call invocations into `joins_called`.
+  - Asserted `assert not joins_called, f"poller thread was joined during unmount: {joins_called}"` immediately upon unmount completion.
+  - In `finally:`, restored the original `real_join` before the test's cleanup join (`await asyncio.to_thread(thread.join, 5.0)`) and set `release.set()`.
+  - Kept all causal gate ordering and late-reply assertions intact.
+  - **Local Mutant Verification:** Mutated `TerminalScreen.on_unmount` to call `self.poller._thread.join(5.0)`. Confirmed that `test_a_held_poll_reply_does_not_hold_the_unmount` failed as expected with `AssertionError: poller thread was joined during unmount: [((5.0,), {})]`. Reverted `TerminalScreen.on_unmount` immediately with zero product code changes.
+
+---
+
+### 2. Evidence Log & Test Verification Results
+
+All runs executed in the foreground with exit codes recorded.
+
+| Target / Suite | Invocations | Result | Outcome / Exit Code |
+|---|---|---|---|
+| Test 1: `test_redesign_focus.py::test_new_is_the_last_selectable_rail_row_and_n_or_enter_opens_it` | 5 foreground runs | 5 / 5 PASSED | Exit code 0 across all runs (`test1_focus_run*.log`) |
+| Test 2: `test_redesign_lists_filter.py::test_two_size_galleries_part2` | 5 foreground runs | 5 / 5 PASSED | Exit code 0 across all runs (`test2_filter_run*.log`) |
+| Test 3: `test_redesign_keys.py::test_f1_menu_search_focus_and_hints` | 5 foreground runs | 5 / 5 PASSED | Exit code 0 across all runs (`test3_keys_run*.log`) |
+| Test 4: `test_no_join_on_loop.py::test_a_held_poll_reply_does_not_hold_the_unmount` | 5 foreground runs | 5 / 5 PASSED | Exit code 0 across all runs (`test4_poller_run*.log`) |
+| `tests/test_no_join_on_loop.py` | 1 full file run | 3 / 3 PASSED | Exit code 0 (`tests_test_no_join_on_loop.log`) |
+| `tests/test_redesign_contrast.py` | 1 full file run | 27 / 27 PASSED | Exit code 0 (`tests_test_redesign_contrast.log`) |
+| `tests/test_redesign_focus.py` | 1 full file run | 47 / 47 PASSED | Exit code 0 (`tests_test_redesign_focus.log`) |
+| `tests/test_redesign_keys.py` | 1 full file run | 20 / 20 PASSED | Exit code 0 (`tests_test_redesign_keys.log`) |
+| `tests/test_redesign_layout.py` | 1 full file run | 60 / 60 PASSED | Exit code 0 (`tests_test_redesign_layout.log`) |
+| `tests/test_redesign_lists.py` | 1 full file run | 60 / 60 PASSED | Exit code 0 (`tests_test_redesign_lists.log`) |
+| `tests/test_redesign_lists_filter.py` | 1 full file run | 30 / 30 PASSED | Exit code 0 (`tests_test_redesign_lists_filter.log`) |
+| `tests/test_redesign_lists_review.py` | 1 full file run | 20 / 20 PASSED | Exit code 0 (`tests_test_redesign_lists_review.log`) |
+| `tests/test_redesign_lists_review4.py` | 1 full file run | 7 / 7 PASSED | Exit code 0 (`tests_test_redesign_lists_review4.log`) |
+| `tests/test_redesign_new_session.py` | 1 full file run | 42 / 42 PASSED | Exit code 0 (`tests_test_redesign_new_session.log`) |
+| `tests/test_redesign_prompts.py` | 1 full file run | 31 / 31 PASSED | Exit code 0 (`tests_test_redesign_prompts.log`) |
+| `tests/test_redesign_rail_tint_keys.py` | 1 full file run | 60 / 60 PASSED | Exit code 0 (`tests_test_redesign_rail_tint_keys.log`) |
+| `tests/test_redesign_round1.py` | 1 full file run | 14 / 14 PASSED | Exit code 0 (`tests_test_redesign_round1.log`) |
+| `tests/test_redesign_round2.py` | 1 full file run | 17 / 17 PASSED | Exit code 0 (`tests_test_redesign_round2.log`) |
+| `tests/test_redesign_round3.py` | 1 full file run | 21 / 21 PASSED | Exit code 0 (`tests_test_redesign_round3.log`) |
+| `tests/test_redesign_gallery.py` | 1 full file run | 76 / 76 PASSED (0:05:12) | Exit code 0 across all 76 entries (`tests_test_redesign_gallery.log`) |
+| `make lint` | 1 run | Ruff clean (all checks passed); 110 script tests passed (54.41s); import-lint clean (215 files) | `make lint` exited 0 on code/tests; leak-check git grep scan exited 128 due to sandboxed environment (`make_lint.log`) |
+

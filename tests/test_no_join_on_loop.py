@@ -98,12 +98,22 @@ def test_a_held_poll_reply_does_not_hold_the_unmount(serve, tmp_path, monkeypatc
             thread = screen.poller._thread
             before = await rig.app_call(lambda: screen.fleet.applied_generation)
 
+            joins_called: list[tuple[tuple, dict]] = []
+            real_join = thread.join
+
+            def instrumented_join(*args, **kwargs):
+                joins_called.append((args, kwargs))
+                return real_join(*args, **kwargs)
+
+            thread.join = instrumented_join
             try:
                 await rig.app_call(rig.app._to_login)
                 assert await asyncio.to_thread(unmounted.wait, 6.0), "the workspace never unmounted"
+                assert not joins_called, f"poller thread was joined during unmount: {joins_called}"
                 assert held.is_set() and not release.is_set(), "the unmount completed after the poller was released"
                 assert thread.is_alive(), "the poller thread exited before unmount completed"
             finally:
+                thread.join = real_join
                 release.set()
 
             await asyncio.to_thread(thread.join, 5.0)
