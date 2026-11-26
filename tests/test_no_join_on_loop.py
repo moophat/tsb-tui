@@ -98,14 +98,13 @@ def test_a_held_poll_reply_does_not_hold_the_unmount(serve, tmp_path, monkeypatc
             thread = screen.poller._thread
             before = await rig.app_call(lambda: screen.fleet.applied_generation)
 
-            started = time.monotonic()
             try:
                 await rig.app_call(rig.app._to_login)
                 assert await asyncio.to_thread(unmounted.wait, 6.0), "the workspace never unmounted"
+                assert held.is_set() and not release.is_set(), "the unmount completed after the poller was released"
+                assert thread.is_alive(), "the poller thread exited before unmount completed"
             finally:
-                elapsed = time.monotonic() - started
                 release.set()
-            assert elapsed < 0.2, f"the unmount waited {elapsed:.2f}s for the poller"
 
             await asyncio.to_thread(thread.join, 5.0)
             assert not thread.is_alive(), "the poller thread did not end after its stop"

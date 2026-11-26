@@ -14,12 +14,12 @@ canvas painted no prompt emphasis, and the interactive pane never read a target'
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 from pathlib import Path
 
 import pytest
 from input_server import InputRecordingApp
+from snapshot_support import settle_snapshot
 from stub_server import emit_live_output
 from test_redesign_keys import login as key_login
 from textual.app import App
@@ -499,14 +499,11 @@ def test_the_decoration_is_attachment_local(serve, wait_until, size):
 SNAP_DIR = Path(__file__).parent / "snapshots" / "redesign-p5"
 
 
-def _snapshot(app, name):
-    svg = re.sub(r"terminal-\d+", "terminal-p5", app.export_screenshot(title="P5", simplify=True))
+async def _snapshot(app, pilot, name):
     path = SNAP_DIR / f"{name}.svg"
-    if os.environ.get("UPDATE_P5_SNAPSHOTS") == "1":
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(svg)
-    assert path.read_text() == svg
-    return svg
+    return await settle_snapshot(
+        app, pilot, path, title="P5", terminal_tag="terminal-p5", update_env="UPDATE_P5_SNAPSHOTS"
+    )
 
 
 def _svg_runs(svg: str) -> list[tuple[str, str]]:
@@ -560,7 +557,7 @@ def test_prompt_decoration_meets_contrast_and_the_snapshots_hold(serve, wait_unt
                     assert contrast_ratio(fg, bg) >= 4.5, (fg, bg)
             region = slot.canvas.region
             assert region.right <= size[0] and region.bottom <= size[1], "the canvas geometry overflowed the size"
-            marked_svg = _snapshot(app, f"prompt-marked-{size[0]}x{size[1]}")
+            marked_svg = await _snapshot(app, pilot, f"prompt-marked-{size[0]}x{size[1]}")
             # The marked baseline shows the decoration, measured in the SVG: the prompt run carries bold + underline,
             # the input run carries neither.
             assert _decorated(marked_svg, "prompt$") == (True, True), \
@@ -573,7 +570,7 @@ def test_prompt_decoration_meets_contrast_and_the_snapshots_hold(serve, wait_unt
             emit_live_output(serve_app, serve_app.sessions[second], b"prompt$ ls\r\nout\r\n")
             await pilot.pause()
             assert _mark_rows(screen.slot_for(second).canvas) == set(), "the unmarked device got a decoration"
-            unmarked_svg = _snapshot(app, f"prompt-unmarked-{size[0]}x{size[1]}")
+            unmarked_svg = await _snapshot(app, pilot, f"prompt-unmarked-{size[0]}x{size[1]}")
             assert _decorated(unmarked_svg, "prompt$") == (False, False), \
                 "the unmarked baseline's prompt run carries a decoration"
     asyncio.run(check())
