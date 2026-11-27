@@ -1601,3 +1601,52 @@ def test_wide_target_row_eight_and_nine_open_sessions_and_open_group(serve, wait
     asyncio.run(check_group())
     asyncio.run(check_eight())
     asyncio.run(check_nine())
+
+
+def test_a_wide_targets_layout_pass_builds_the_open_session_map_once(tmp_path):
+    """One layout pass over hundreds of targets reads the open sessions once: the row heights and the row pairs
+    take the map the pass built, never rebuilding it per row."""
+    from textual.app import App
+
+    from tsb_tui.model.fleet import GROUP_OPEN_HERE
+    from tsb_tui.model.targets import make_row
+    from tsb_tui.widgets.sidebar import SidebarEntry, SidebarModel
+
+    cfg = config.load(config_file=tmp_path / "absent", environ={})
+    sidebar = Sidebar(cfg, leader="Ctrl+\\")
+    sidebar.styles.display = "block"
+    rows = tuple(make_row({"id": f"t{n}", "name": f"router-{n}", "host": f"192.0.2.{n % 250}",
+                           "group": "lab", "type": "ssh"}) for n in range(300))
+
+    def entry(sid, target, number):
+        return SidebarEntry(sid, GROUP_OPEN_HERE, number, "●", target, None, "you", False, False, None, None,
+                            None, None, target)
+
+    opens = tuple(entry(f"s{n}", f"t{n * 7}", n + 1) for n in range(1, 12))
+
+    class PanelApp(App):
+        def compose(self):
+            yield sidebar
+
+    async def check():
+        async with PanelApp().run_test(size=(160, 45)) as pilot:
+            sidebar.set_width(28)
+            sidebar.set_window_width(160)
+            sidebar.set_model(SidebarModel(((GROUP_OPEN_HERE, opens),), "mine", None, "Ctrl+\\ f", targets=rows))
+            await pilot.pause()
+            assert sidebar.wide
+            built = []
+            real = Sidebar._open_numbers
+
+            def counting(self):
+                built.append(1)
+                return real(self)
+
+            Sidebar._open_numbers = counting
+            try:
+                sidebar._target_spans_cache = None
+                sidebar._target_spans()
+            finally:
+                Sidebar._open_numbers = real
+            assert len(built) == 1, f"the open-session map was built {len(built)} times in one pass"
+    asyncio.run(check())

@@ -1511,7 +1511,8 @@ class Sidebar(Widget):
         rows = self.painted_targets()
         if not rows:
             return head + len(self._targets_empty_lines(max(self.sidebar_width - 4, 1)))
-        lines = head + sum(self._target_row_lines(row) for row in rows)
+        open_numbers = self._open_numbers()
+        lines = head + sum(self._target_row_lines(row, open_numbers) for row in rows)
         if self._model.targets_more_failed or self._model.targets_unavailable:
             # One trailing copy line below the last row: `Could not load targets · r retry` when the inventory is
             # down (rule 2, 2026-11-23), else `Could not load more · r retry` (rule 9, 2026-11-22). It is a pair in
@@ -1519,12 +1520,15 @@ class Sidebar(Widget):
             lines += 1
         return lines
 
-    def _target_row_lines(self, row: TargetRow) -> int:
+    def _target_row_lines(self, row: TargetRow, open_numbers: dict[str, list[int]] | None = None) -> int:
         """The lines one target's row takes: two at the narrow budget when its second line has words;
         at wide budget, one line unless its name with an ellipsis and its open segment cannot share
-        one line (Round 6 ruling), where it takes two lines."""
+        one line (Round 6 ruling), where it takes two lines. A layout pass hands in the open numbers it built
+        once; a lone call builds them itself."""
         inner = max(self.sidebar_width - 4, 1)
-        numbers = self._open_numbers().get(row.id, ())
+        if open_numbers is None:
+            open_numbers = self._open_numbers()
+        numbers = open_numbers.get(row.id, ())
         if self.wide:
             if numbers:
                 open_seg = "open " + ",".join(str(n) for n in sorted(numbers))
@@ -1553,11 +1557,15 @@ class Sidebar(Widget):
 
     def _build_pairs(self, rows: tuple[TargetRow, ...], spans: tuple[int, ...],
                      facts: tuple[tuple[str, str], ...], filter_line: bool,
-                     recent: tuple[TargetRow, ...], wide: bool) -> tuple[tuple[tuple[int, int], ...], list[int]]:
+                     recent: tuple[TargetRow, ...], wide: bool,
+                     open_numbers: dict[str, list[int]] | None = None
+                     ) -> tuple[tuple[tuple[int, int], ...], list[int]]:
         """(start, lines) of every painted row, built once with the spans cache: the filter line, the `Recent`
         title and its rows, then the main list's. The list paints whole rows and scrolls by them (ruled
         2026-11-20 20:1x), so its scroll positions are row starts. The line count follows the window's budget,
         not the row's own width (rule 11): a thin sidebar inside a wide window paints one-line rows."""
+        if wide and open_numbers is None:
+            open_numbers = self._open_numbers()
         pairs: list[tuple[int, int]] = []
         offset = 0
         if filter_line:
@@ -1569,7 +1577,7 @@ class Sidebar(Widget):
             offset += 1
         for position, span in enumerate(spans):
             if wide:
-                count = self._target_row_lines(rows[position])
+                count = self._target_row_lines(rows[position], open_numbers)
             else:
                 count = 2 if (position < len(facts) and facts[position][1]) else 1
             pairs.append((offset + span, count))
@@ -1579,7 +1587,7 @@ class Sidebar(Widget):
             # (rule 9, 2026-11-22). It is a real pair, so `_target_painted_end()` counts it and scrolling to the
             # end shows it inside the painted range.
             last = spans[-1]
-            last_count = self._target_row_lines(rows[len(spans) - 1]) if wide else (
+            last_count = self._target_row_lines(rows[len(spans) - 1], open_numbers) if wide else (
                 2 if (len(spans) - 1 < len(facts) and facts[len(spans) - 1][1]) else 1)
             pairs.append((offset + last + last_count, 1))
         result = tuple(pairs)
@@ -1618,16 +1626,16 @@ class Sidebar(Widget):
             limit = min(len(rows), max(self.targets_height, 1) + 1)
             for row in rows[:limit]:
                 spans.append(at)
-                at += self._target_row_lines(row)
+                at += self._target_row_lines(row, numbers)
                 full, budgeted = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""),
                                                row.group, wide=True, inner=inner)
                 facts.append((full, budgeted))
             for row in rows[limit:]:
                 spans.append(at)
-                at += self._target_row_lines(row)
+                at += self._target_row_lines(row, numbers)
             result = tuple(spans)
             pairs, starts = self._build_pairs(rows, result, tuple(facts), self._has_filter_line(),
-                                         self._recent_targets(), True)
+                                         self._recent_targets(), True, numbers)
             self._target_spans_cache = (rows, key, self._model, (numbers, others), result, tuple(facts),
                                         pairs, starts)
             return result
