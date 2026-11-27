@@ -116,3 +116,37 @@ guards the per-key rebuild on an unchanged model, which is the regression the 8,
 
 Status: DONE_WITH_CONCERNS
 Summary: The key's row work is now counted only on the model it was pressed against, so a late poll reply (forced in every run) cannot be mistaken for it; shown red before, green after, and still red on a disabled cache.
+
+## Round 4: no poller in the 8,000-row test
+
+Finding: the model-identity filter of round 3 excludes the key's work if an in-flight poll replaces the model before the key handler
+runs, so a full-list walk could pass. Attributing around a live poller keeps leaking.
+
+Change (test only): the poller is removed from the test. `FleetPoller.start` and `FleetPoller.refresh_async` are replaced from the start
+(monkeypatch, before the app is created) by stubs that start no thread and record each ask, so no poll reply can ever be in flight. The targets load
+through their own paged read (`_fetch_targets`), not the poller, so the test still builds its 8,008 rows itself. The model-identity filter and the forced
+late reply are gone: every row computation counted while the key is handled is the key's. After the key the test asserts the signals that no poll ran:
+`poller.calls == 0` and no ask was recorded during the key (opening the sidebar asks for a read once, before the key; the stub drops it, and the test
+records it as the baseline).
+
+The poller was not the only live source. Removing it alone still failed under load (the first loop: 7 of 12 in one copy, 16,214 and 48,486 row
+computations). A stack taken at the 2,000th counted call showed `_flush_fleet_widgets` -> `_sync_fleet_widgets` -> `sidebar.set_model` -> spans rebuilt,
+and a recorder on `_mark_fleet_dirty` showed who marked it during the key: the app's alert stream (`_apply_alerts` -> `alerts_changed` ->
+`TerminalScreen._alerts_changed`), three events per failing run. So the test also replaces `TsbTuiApp.watch_alerts` with a stub that registers no
+listener (asserted: `app._alert_listeners` is empty after the key), and before the key it waits until the screen has no flush pending (`_fleet_dirty` and
+`_fleet_flush` both false), builds the spans once and lets the queued paint use them, so the model's first build is not counted either.
+
+No product change was needed; the app starts without its live polling and alert listening through the stubs.
+
+Red, then green:
+- The spans cache disabled in `_target_spans` (temporary, reverted): "a key did 1,943,096 row computations", fails.
+- Under five parallel copies (12 loops each) the poller-only version failed 6 of 60 (the alert events above); the final version passed 60 of 60.
+- Without the baseline of the open-time ask, the first version of the poll assertion failed on `['start', 'refresh_async']`; it now compares against the asks recorded before the key.
+
+Runs: the scale test, 12 loops x 5 parallel copies under `capped --`: 60 of 60 passed. Whole `tests/test_redesign_lists_filter.py`: exit 0, 30 passed. `make lint`: exit 0.
+
+Unverified in round 4: other sources of a model swap during the key that this machine did not show (the stack and mark recorder found the alert stream and nothing else
+in 60 runs); the flush wait covers any source that lands before the key. No CI-runner run.
+
+Status: DONE_WITH_CONCERNS
+Summary: The 8,000-row test now runs with the poller replaced by a recording stub that never starts, so no reply can rebuild the spans during the key, and counts all row work in it; a disabled cache still fails it.
