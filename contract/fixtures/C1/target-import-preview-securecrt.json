@@ -1,0 +1,107 @@
+{
+  "seam": "C1",
+  "name": "target-import-preview-securecrt",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Synthetic credential-free securecrt export: verify the native reference and sanitized SSH preview. Broader mapping and loss cases remain owed.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "preview",
+            "format": "securecrt",
+            "export_bytes": "PFZhbkR5a2UgdmVyc2lvbj0iMy4wIj48a2V5IG5hbWU9IlNlc3Npb25zIj48a2V5IG5hbWU9ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIj48ZHdvcmQgbmFtZT0iSXMgU2Vzc2lvbiI+MTwvZHdvcmQ+PHN0cmluZyBuYW1lPSJQcm90b2NvbCBOYW1lIj5TU0gyPC9zdHJpbmc+PHN0cmluZyBuYW1lPSJIb3N0bmFtZSI+YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE8L3N0cmluZz48L2tleT48L2tleT48L1ZhbkR5a2U+"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "preview_token": "fixture_token",
+            "format": "securecrt",
+            "targets": [
+              {
+                "entry": {
+                  "index": 1,
+                  "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "source_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "target": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "tags": [],
+                  "discovered_by": "tsb",
+                  "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "port": 22
+                },
+                "change": "create",
+                "n": 0,
+                "has_credentials": false,
+                "key_file_referenced": false,
+                "definition": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "discovered_by": "tsb",
+                  "options": {
+                    "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  }
+                },
+                "mapping": null
+              }
+            ],
+            "not_carried": [],
+            "credentials": []
+          },
+          "match": [
+            {
+              "pointer": "/format",
+              "eq": "securecrt"
+            },
+            {
+              "pointer": "/targets/0/source_ref",
+              "eq": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            {
+              "pointer": "/targets/0/change",
+              "eq": "create"
+            },
+            {
+              "pointer": "/targets/0/definition/options/host",
+              "eq": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            {
+              "pointer": "",
+              "not_contains": [
+                "FIXTURE-NOT-A-PASSWORD"
+              ]
+            },
+            {
+              "pointer": "/targets/0/target/id",
+              "ne": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ],
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      }
+    ]
+  }
+}

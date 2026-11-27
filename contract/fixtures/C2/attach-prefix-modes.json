@@ -1,0 +1,32 @@
+{
+  "seam": "C2",
+  "name": "attach-prefix-modes",
+  "mark": {"required-green": "e2"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "The dump carries the terminal modes the target set (C2 decision 3; 5.47; F7): after the target emits each mode sequence, a later attach's dump carries each as its own sequence, so a fresh surface renders the state the target is in. The target emits each mode through `printf`: the fixture sends a printf command line as input, and the echoed line holds the backslash text, never ESC, so the graded bytes prove the target printed the sequence — a real shell never echoes typed escape sequences. The stub has no VT, so it grades the modes as bytes the target emitted and the dump reproduced them; the reset case — a client holding stale modes is sent a reset for each, `CSI ?1049l` first when primary is active, then home + ED 2 — is a VT concern the stub cannot exercise. The target must be a POSIX shell (README Inputs).",
+  "corpus": ["C2 decision 3", "5.47", "Contract §11", "F7"],
+  "case": {
+    "inputs": ["user", "password", "target_id"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"t1": "/ticket"}},
+      {"ws_open": "a", "path": "/ws/attach"},
+      {"ws_send": "a", "frame": {"t": "attach", "v": 1, "ticket": "${t1}", "session_id": "${sid}"}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_a": "/client_id"}}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_send": "a", "bytes": "printf '\\033[?1049h'\r"},
+      {"ws_expect": "a", "output_contains": "\u001b[?1049h"},
+      {"ws_send": "a", "bytes": "printf '\\033[?1h\\033[?2004h\\033[?1000h\\033[?1006h\\033[?1004h\\033='\r"},
+      {"ws_expect": "a", "output_contains": "\u001b[?1004h"},
+      {"ws_close": "a"},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"t2": "/ticket"}},
+      {"ws_open": "b", "path": "/ws/attach"},
+      {"ws_send": "b", "frame": {"t": "attach", "v": 1, "ticket": "${t2}", "session_id": "${sid}"}},
+      {"ws_expect": "b", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_b": "/client_id"}}},
+      {"ws_expect": "b", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}], "binary_contains": ["\u001b[?1049h", "\u001b[?1h", "\u001b[?2004h", "\u001b[?1000h", "\u001b[?1006h", "\u001b[?1004h", "\u001b="]}},
+      {"ws_close": "b"}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

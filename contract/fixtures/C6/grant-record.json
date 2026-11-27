@@ -1,0 +1,60 @@
+{
+  "seam": "C6",
+  "name": "grant-record",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5's tests in schema/; E4 phase 4 (U5: the vault schema, policy.yaml and config.yaml E4 keys); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "grants: Layer 2b (Storage §10.1a), a principal × Storage §9 selectors → an org reference, who granted it and when.",
+  "corpus": [
+    "Storage §10.1a",
+    "credential-protection §8.3",
+    "credential-protection §8.4",
+    "E4 DEFAULT 8",
+    "E4 DEFAULT 9"
+  ],
+  "case": {
+    "schema": "schemas/vault.schema.json#/$defs/grant",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "grant_id": "g-0001",
+          "user": "fixture-peer",
+          "selectors": [
+            "tag:core"
+          ],
+          "credential_ref": "fleet-backup",
+          "granted_by": "fixture-user",
+          "granted_at": "2026-10-29T08:00:00Z"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "grant_id": "g-0001",
+          "user": "fixture-peer",
+          "selectors": [
+            "role:noc"
+          ],
+          "credential_ref": "fleet-backup",
+          "granted_by": "fixture-user",
+          "granted_at": "2026-10-29T08:00:00Z"
+        },
+        "note": "Storage §9's filters only"
+      }
+    ]
+  }
+}

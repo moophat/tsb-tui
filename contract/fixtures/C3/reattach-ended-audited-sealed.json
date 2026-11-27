@@ -1,0 +1,196 @@
+{
+  "seam": "C3",
+  "name": "reattach-ended-audited-sealed",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U3 `audited_closed_hello_seal_replay`: hello first, no close/live, two replay barriers, durable accounting before release; empty ring still needs seal."
+    },
+    {
+      "unit": "U3",
+      "test": "owed: U2/U3 `audited_closed_hello_seal_replay`: hello first, no close/live, two replay barriers, durable accounting before release; empty ring still needs seal."
+    }
+  ],
+  "description": "U2/U3 `audited_closed_hello_seal_replay`: hello first, no close/live, two replay barriers, durable accounting before release; empty ring still needs seal.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000,
+            "output_drain_timeout": 5000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "no prompt kind and no login_timeout toward the 0.8 worker"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hostkey",
+          "conn_id": "fixture-conn-1",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+          "first_use": true
+        },
+        "note": "0.8's way: accept, warn, record"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "open_timeout": 20000
+        },
+        "note": "open_timeout is 0.6's"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.8",
+          "last_committed_seq": 0
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.8",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": true
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "seal_output",
+          "session_id": "fixture-session-a"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "output_sealed",
+          "session_id": "fixture-session-a",
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "eof",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": false
+          }
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.8",
+          "last_committed_seq": 0
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.8",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": true,
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "eof",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": false
+          }
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 1
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 0
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "release_accounted",
+          "session_id": "fixture-session-a"
+        }
+      }
+    ]
+  }
+}

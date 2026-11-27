@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Session record (northbound)",
+  "description": "What the core tells a surface about one session: in the POST /sessions response, GET /sessions, GET /sessions/{id}, and the C2 `attached` frame. Closed on purpose: a field that is not here does not reach a consumer, so a broker filesystem path such as the recording's cannot leak northbound (Contract §4; the path is audit data, Storage §6). Consumers must ignore fields a later tag adds.",
+  "type": "object",
+  "required": ["id", "target_id", "connection_id", "session_type", "state", "tier", "owner", "control_holder", "created_at", "term", "cols", "rows", "recording"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"$ref": "common.schema.json#/$defs/id"},
+    "target_id": {"$ref": "common.schema.json#/$defs/id"},
+    "connection_id": {
+      "$ref": "common.schema.json#/$defs/id",
+      "description": "The connection this session rides (Contract §15). Two sessions with the same connection_id share one authenticated transport and one worker process."
+    },
+    "session_type": {"$ref": "common.schema.json#/$defs/session_type"},
+    "state": {
+      "$ref": "common.schema.json#/$defs/session_state",
+      "description": "live: at least one client attached. detached: no client attached — closing the laptop lands here; the session lives on, and a client going away never ends a session by itself: that is what immortal means (immortality §1.1). While keepalives are missed but link_timeout has not fired, a session stays live or detached. There is no disconnected state: with the connection gone there is nothing to keep, and a reconnect is a new session (session model §10; decision 5.45). Two end states, neither attachable (session model §12): killed — ended by TSB or through it: the idle, unattended or orphan timer, its owner, or an admin holding session.terminate; terminated — ended from outside TSB: its worker was lost (worker_lost), the target closed the session's SSH channel or its whole connection (target_closed), or our end of the connection is gone or link_timeout fired (connection_lost). No exit status is ever acted on: at this release the contract does not carry one, and carrying it to the clients as data is E5's, with exec. From contract-v0.2, unreachable (immortality §6.4, §7; decision 5.38): the worker is alive but the core cannot run C3's handshake with it — at this tag only a v0.1 worker under a v0.2 core, unreachable_reason protocol. Such a session is attachable and shows what the core already has — the core neither reads nor records its output; input to it is refused (the C2 input_refused frame, reason unreachable); the operator drains it. A v0.1 consumer treats the unknown state as not attachable, which is safe. The set is extensible: a consumer treats a state it does not know as not attachable."
+    },
+    "unreachable_reason": {
+      "enum": ["protocol"],
+      "description": "Why the session is unreachable, present exactly when state is unreachable. protocol: its worker speaks no C3 version this core supports (immortality §6.4: flagged unreachable/protocol, never silently killed). A dead local worker path is never unreachable: it is terminated / worker_lost (decision 5.38)."
+    },
+    "ends_at": {
+      "$ref": "common.schema.json#/$defs/timestamp",
+      "description": "The countdown (session model §11 expiry_notice): when the soonest timer that will end this session fires, if nothing resets it. Computed by the core only; a surface only renders it, so a user who logs in sees each session and when it will be killed. With ends_by and ending, optional in the schema only so a v0.1 record stays valid: a v0.2 core puts all three on every record not yet ended, and none on an ended one."
+    },
+    "ends_by": {
+      "enum": ["link_timeout", "idle", "unattended"],
+      "description": "Which timer ends_at is: link_timeout (the link stopped answering keepalives), idle (no byte either way) or unattended (no client byte). A receiver that meets a value it does not know shows ends_at."
+    },
+    "ending": {
+      "type": "boolean",
+      "description": "true inside a warning window — within the expiry_notice window (a config.yaml knob) before idle or unattended fires, and from the first missed keepalive for link_timeout — when the core also sends attached clients the C2 notice frame; false outside one. A link that stops answering shows \"target not answering — ends in 4 min\" before link_timeout fires; a warning that clears (a flapping link recovers) goes back to false."
+    },
+    "tier": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "description": "Attachment tier (PTY §4). Every session a v0.1 core creates is Tier 1. The field exists so the record is not hard-coded single-tier; its name and shape may move when PTY §8 closes."
+    },
+    "owner": {
+      "$ref": "common.schema.json#/$defs/username",
+      "description": "The principal holding the owner token: session lifecycle authority, never auto-transferred (Contract §10, PTY §7.1)."
+    },
+    "control_holder": {
+      "type": ["object", "null"],
+      "required": ["client_id", "user"],
+      "additionalProperties": false,
+      "properties": {
+        "client_id": {"$ref": "common.schema.json#/$defs/id"},
+        "user": {"$ref": "common.schema.json#/$defs/username"}
+      },
+      "description": "The attached client holding the control token (input and resize authority), or null when the token is in broker escrow because no attached client may hold it — none is attached, or only view-only ones are (PTY §7.1). A client of a principal that holds only session.join.ro never holds the control token: it is view-only (PTY §7.1)."
+    },
+    "clients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["client_id", "user", "may_control"],
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {"$ref": "common.schema.json#/$defs/id"},
+          "user": {"$ref": "common.schema.json#/$defs/username"},
+          "may_control": {"type": "boolean"}
+        }
+      },
+      "description": "The clients attached now (C2 decision 5; PTY §7.1 hand-off \"to any other attached client\", Frontend §3.4, §9). may_control: the client's principal holds session.join.rw, so it may be given the control token. Optional in the schema only so a v0.2 record stays valid; a v0.3 core puts it on every record not ended. Never restored from disk. The C2 `clients` frame carries this same shape."
+    },
+    "resizable": {
+      "type": "boolean",
+      "description": "Whether this session's target has a size at all (terminal-size-and-control.md §3; 5.50). false: the protocol has no size (serial, when a later release connects it), so every size request is answered `not_resizable`. From proto_version 0.5, false also for a telnet session whose peer refused NAWS (channel_opened resizable). The core keeps the value it was told for the session's life, so a core restart does not change it. Optional in the schema so a v0.2 record stays valid; a v0.3 core puts it on every record not ended."
+    },
+    "pinned": {
+      "type": "boolean",
+      "description": "Whether the target's size is fixed because its floor equals its ceiling (terminal-size-and-control.md §3; 5.50). true: every size request is answered `pinned`. Optional in the schema so a v0.2 record stays valid; a v0.3 core puts it on every record not ended."
+    },
+    "created_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "term": {"$ref": "common.schema.json#/$defs/term"},
+    "cols": {"$ref": "common.schema.json#/$defs/cols", "description": "The terminal size in effect. At this tag the control-token holder changes it with the C2 resize frame (now a target size request, C2 decision 8); there is no REST resize."},
+    "rows": {"$ref": "common.schema.json#/$defs/rows"},
+    "recording": {
+      "description": "Whether this session is recorded. When it is, every surface shows warning_text before it attaches or sends input (open_decisions §5, LOCKED: users are warned at session open). The text is fixed by the contract so no surface can soften it; warning_code names the warning, so a surface can later show a translation keyed on it without a contract break.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["active", "warning_code", "warning_text"],
+          "additionalProperties": false,
+          "properties": {
+            "active": {"const": true},
+            "warning_code": {"const": "recording.active"},
+            "warning_text": {"const": "This session is recorded byte-perfect. Anything typed will be stored as-is."}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["active"],
+          "additionalProperties": false,
+          "properties": {"active": {"const": false}}
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    {"properties": {"state": {"enum": ["live", "detached"]}, "unreachable_reason": false}},
+    {"properties": {"state": {"const": "unreachable"}}, "required": ["unreachable_reason"]},
+    {"properties": {"state": {"enum": ["killed", "terminated"]}, "unreachable_reason": false, "ends_at": false, "ends_by": false, "ending": false}}
+  ],
+  "anyOf": [
+    {"properties": {"ends_at": false, "ends_by": false, "ending": false}},
+    {"required": ["ends_at", "ends_by", "ending"]}
+  ]
+}

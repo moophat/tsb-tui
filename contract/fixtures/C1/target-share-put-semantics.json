@@ -1,0 +1,192 @@
+{
+  "seam": "C1",
+  "name": "target-share-put-semantics",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: TestAReorderedShareListIsAnAuditedNoOp"
+    }
+  ],
+  "description": "PUT on an own target preserves omitted share, refuses null share and owner omission, refuses share on a shared target, and sorts a reordered list.",
+  "corpus": [
+    "Storage §7.4",
+    "Storage §10.1b",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "fixture-user",
+              "peer"
+            ]
+          }
+        },
+        "expect": {
+          "status": 201
+        },
+        "save": {
+          "target_id": "/id"
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/${target_id}",
+          "body": {
+            "id": "${target_id}",
+            "type": "ssh",
+            "host": "fixture.invalid"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/share",
+              "eq": [
+                "fixture-user",
+                "peer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/${target_id}/definition"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/share",
+              "eq": [
+                "fixture-user",
+                "peer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/${target_id}",
+          "body": {
+            "id": "${target_id}",
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": null
+          },
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/${target_id}",
+          "body": {
+            "id": "${target_id}",
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "peer"
+            ]
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/core-router-01",
+          "body": {
+            "id": "core-router-01",
+            "type": "ssh",
+            "host": "192.0.2.10",
+            "share": [
+              "fixture-user"
+            ]
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/${target_id}",
+          "body": {
+            "id": "${target_id}",
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "peer",
+              "fixture-user"
+            ]
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/share",
+              "eq": [
+                "fixture-user",
+                "peer"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/targets/${target_id}"
+      }
+    ]
+  }
+}

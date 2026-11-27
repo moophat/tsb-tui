@@ -1,0 +1,54 @@
+{
+  "seam": "C1",
+  "name": "target-write-record-shape",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "with:target-create",
+  "description": "The write answer record returned by target create and replace is closed and carries no caller-relative annotations; login_hint is refused by the schema.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Contract §4",
+    "V5"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetWriteRecord",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "write-router-01",
+          "type": "ssh",
+          "name": "write router 01",
+          "group": "lab",
+          "tags": [
+            "router"
+          ],
+          "discovered_by": "tsb",
+          "last_seen": "2026-10-17T08:30:00Z",
+          "host": "192.0.2.10",
+          "port": 22
+        },
+        "note": "valid write record with no caller-relative annotations"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "write-router-01",
+          "type": "ssh",
+          "tags": [
+            "router"
+          ],
+          "discovered_by": "tsb",
+          "host": "192.0.2.10",
+          "port": 22,
+          "login_hint": "none"
+        },
+        "note": "write answers carry no hint: login_hint is forbidden on TargetWriteRecord"
+      }
+    ]
+  }
+}

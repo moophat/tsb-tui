@@ -1,0 +1,68 @@
+{
+  "seam": "C1",
+  "name": "session-retention-safety",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: session history session-retention-safety provider test"
+    }
+  ],
+  "description": "With the provider clock controlled, exercise removal directly, never a sweep deadline. No record is removed before ended_at + retention; equality is eligible, not a removal deadline. A missing ended_at ages from persisted activity_at, not client_touch_at or created_at. An expired record remains listed and GET-readable until successfully removed, including deletion failure and restart. Only fully finalised killed/terminated ends qualify: durable end marker and audit complete, worker release/reconciliation complete, no unreleased worker obligation. Live, detached, orphan-pending, unreachable and unfinished ends survive regardless of age. Recheck eligibility atomically and prevent pending writers resurrecting a removed record. No shared connection or sibling session is deleted. Audit and recording bytes remain identical, and no recording-retention policy is introduced. Published e4 so surfaces can build against the shape; required-green e5 so the addition does not retroactively fail the existing e4 provider.",
+  "corpus": [
+    "session-list rules 8\u201310",
+    "conventions V1, V4, V7, V8",
+    "Storage \u00a78.6"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/fixture-history-z"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "fixture-history-z"
+            },
+            {
+              "pointer": "/state",
+              "eq": "killed"
+            }
+          ],
+          "example": {
+            "id": "fixture-history-z",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "killed",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-11-16T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "seam": "C5",
+  "name": "worker-manifest-valid",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:worker-manifests",
+  "description": "A worker's manifest: its id, its pid (informational: meaningful only in the worker's own container), its supervisor, and every connection it holds — N of them, each with its directory and its sessions' sockets. It is how a core restarted after kill -9 finds a worker it did not spawn; whether the worker is alive is answered by dialling those sockets. Every manifest collected from a run must validate.",
+  "corpus": [
+    "immortality §2.1",
+    "immortality §2.2",
+    "Contract §8",
+    "phase-00 (kill -9 the core: rediscovery)"
+  ],
+  "case": {
+    "schema": "schemas/worker-manifest.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                },
+                {
+                  "session_id": "fixture-session-b",
+                  "session_type": "shell",
+                  "socket": "shell-2.sock"
+                }
+              ]
+            },
+            {
+              "conn_id": "fixture-conn-2",
+              "target_id": "fixture-echo",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-2",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-c",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        },
+        "note": "two connections in one worker, two sessions on the first"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": []
+        },
+        "note": "a worker holding nothing yet"
+      }
+    ]
+  }
+}

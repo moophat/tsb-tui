@@ -1,0 +1,6 @@
+tsb-tui
+Copyright 2026 Doan Minh Tu
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+Bundled third-party components keep their own licences, listed beside them under
+vendor/libghostty-vt/licenses/ and packaging/engine/*/licenses/.

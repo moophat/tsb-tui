@@ -1,0 +1,107 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-none",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    }
+  ],
+  "description": "Successful zero stored metadata candidates, not a resolution fault; no saved login is claimed. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-none"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-none",
+                "/login_hint": "none"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-none",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-none"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "none"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-none"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-none"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "none"
+            }
+          ],
+          "example": {
+            "id": "hint-none",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-none"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "none"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      }
+    ]
+  }
+}

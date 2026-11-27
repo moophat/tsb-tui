@@ -1,0 +1,71 @@
+{
+  "seam": "C2",
+  "name": "size-pinned",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U2", "test": "owed by the E2 core plan"}
+  ],
+  "description": "A pinned target answers every size request `pinned` (C2 decision 8; 5.50; D36): the target's floor equals its ceiling, so its size is fixed. The session record advertises pinned: true and resizable: still true — the protocol has a size, it just cannot change. The answer carries the size that stands. The live shape is graded by U2 (owed by the E2 core plan).",
+  "corpus": [
+    "C2 decision 8",
+    "5.50",
+    "D36",
+    "terminal-size-and-control.md §3"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 120,
+          "rows": 40,
+          "reason": "pinned"
+        },
+        "note": "floor = ceiling: the request is answered with the fixed size"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 120,
+          "rows": 40,
+          "reason": "applied"
+        },
+        "note": "an unpinned in-bounds request"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 120,
+          "rows": 40,
+          "reason": "fixed"
+        },
+        "note": "reason is one of the six; a pinned target says pinned"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 120,
+          "reason": "applied"
+        },
+        "note": "cols and rows are both required"
+      }
+    ]
+  }
+}

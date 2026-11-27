@@ -1,0 +1,38 @@
+{
+  "seam": "C2",
+  "name": "token-move-no-resize",
+  "mark": {"required-green": "e2"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "Getting the token never sends a resize, and the core never resizes on a token move (C2 decision 6, 5.50 §4). A hand-off and an owner take-over each move the token but leave the session record's cols/rows as they were, and no `size` frame is sent to any client. Needs a peer login with session.join.rw (inputs peer_user, peer_password).",
+  "corpus": ["C2 decision 6", "C2 decision 8", "5.50", "terminal-size-and-control.md §4"],
+  "case": {
+    "inputs": ["user", "password", "target_id", "peer_user", "peer_password"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"ta": "/ticket"}},
+      {"ws_open": "o", "path": "/ws/attach"},
+      {"ws_send": "o", "frame": {"t": "attach", "v": 1, "ticket": "${ta}", "session_id": "${sid}"}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "attached"}, {"pointer": "/session/cols", "eq": 120}, {"pointer": "/session/rows", "eq": 40}], "save": {"client_o": "/client_id"}}},
+      {"ws_expect": "o", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}, "as": "peer"}, "expect": {"status": 200}, "save": {"tp": "/ticket"}},
+      {"ws_open": "p", "path": "/ws/attach"},
+      {"ws_send": "p", "frame": {"t": "attach", "v": 1, "ticket": "${tp}", "session_id": "${sid}"}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "attached"}, {"pointer": "/session/cols", "eq": 120}, {"pointer": "/session/rows", "eq": 40}], "save": {"client_p": "/client_id"}}},
+      {"ws_expect": "p", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_send": "o", "frame": {"t": "handoff", "v": 1, "to": "${client_p}"}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "token"}, {"pointer": "/reason", "eq": "handoff"}, {"pointer": "/holder/client_id", "eq": "${client_p}"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "token"}, {"pointer": "/holder/client_id", "eq": "${client_p}"}]}},
+      {"ws_send": "o", "frame": {"t": "handoff", "v": 1, "to": "${client_o}"}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "token"}, {"pointer": "/reason", "eq": "takeover"}, {"pointer": "/holder/client_id", "eq": "${client_o}"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "token"}, {"pointer": "/holder/client_id", "eq": "${client_o}"}]}},
+      {"http": {"method": "GET", "path": "/sessions/${sid}"}, "expect": {"status": 200, "match": [{"pointer": "/cols", "eq": 120}, {"pointer": "/rows", "eq": 40}]}},
+      {"ws_close": "p"},
+      {"ws_close": "o"}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

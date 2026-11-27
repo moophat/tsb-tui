@@ -1,0 +1,83 @@
+{
+  "seam": "C5",
+  "name": "config-import-knobs",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks each of the five import keys is required at core startup, with invalid values refused. The additive schema deliberately accepts a partial object; the loader must still refuse it. No deployment value is a schema or code default."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Provider checks each of the five import keys is required at core startup, with invalid values refused. The additive schema deliberately accepts a partial object; the loader must still refuse it. No deployment value is a schema or code default."
+    }
+  ],
+  "description": "Provider checks each of the five import keys is required at core startup, with invalid values refused. The additive schema deliberately accepts a partial object; the loader must still refuse it. No deployment value is a schema or code default.",
+  "corpus": [
+    "Storage §7.4",
+    "Contract §12"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json#/properties/import",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "max_bytes": 4194304,
+          "max_entries": 5000,
+          "max_yaml_depth": 32,
+          "preview_ttl": "5m",
+          "receipt_retention": "24h"
+        },
+        "note": "all five deployment values"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "max_bytes": 4194304
+        },
+        "note": "schema is additive; runtime must refuse missing keys"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "max_bytes": 67108865
+        },
+        "note": "decoded byte limit exceeds bound"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "max_yaml_depth": 257
+        },
+        "note": "depth exceeds bound"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "preview_ttl": true
+        },
+        "note": "duration must be text"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "preview_ttl": "0"
+        },
+        "note": "preview_ttl must be positive"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "receipt_retention": "0"
+        },
+        "note": "receipt_retention must be positive"
+      }
+    ]
+  }
+}

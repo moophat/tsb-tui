@@ -1,0 +1,88 @@
+{
+  "seam": "C5",
+  "name": "inventory-write-then-observe",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 U2 plan (a file change reaches the index with no request)"
+    },
+    {
+      "unit": "U11",
+      "test": "owed by the E3 U11 plan (rig-discovery: the real driver, fed a synthetic source)"
+    }
+  ],
+  "description": "The spine's C5 grade, quoted: \"a file written by a discovery worker appears in the index without anyone asking it to\". One write cycle of one source: the writer puts the target at a name a reader ignores (.lab-sw-07.yaml.tmp) in the same directory, then renames it over the target (x-layout rule 3), and writes only inside its own source directory (rule 4). The next read takes the renamed file — the temp name is not a target — and the entry appears in the index with no request from anyone. The rule is executable in tsbc (_inventory.inventory_read); this case is its record. `alerts` is the reader's report of what it refused; the core writes each as a log line (x-layout identity-and-refusals, missing-current). The file may be written by any writer (at E3 a rig); its mark, input and expected output stay.",
+  "corpus": [
+    "Storage §2.1",
+    "Storage §2.2",
+    "Storage §3.1",
+    "Storage §10.6",
+    "Contract §8"
+  ],
+  "case": {
+    "transform": "inventory-write-then-observe",
+    "input": {
+      "reads": [
+        {
+          "current": "v17",
+          "files": [
+            {
+              "source": "tailscale-lab",
+              "name": ".lab-sw-07.yaml.tmp",
+              "doc": {
+                "id": "lab-sw-07",
+                "type": "telnet",
+                "tags": ["lab"],
+                "discovered_by": "tailscale-lab",
+                "last_seen": "2026-10-18T09:00:00Z",
+                "options": {"host": "10.0.2.7"}
+              }
+            },
+            {
+              "source": "tailscale-lab",
+              "name": "lab-sw-07.yaml",
+              "doc": {
+                "id": "lab-sw-07",
+                "type": "telnet",
+                "tags": ["lab"],
+                "discovered_by": "tailscale-lab",
+                "last_seen": "2026-10-18T09:00:00Z",
+                "options": {"host": "10.0.2.7"}
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "results": [
+        {
+          "index": [
+            {"id": "lab-sw-07", "source": "tailscale-lab", "tags": ["lab"]}
+          ],
+          "alerts": [],
+          "docs": [
+            {
+              "stem": "lab-sw-07",
+              "source": "tailscale-lab",
+              "doc": {
+                "id": "lab-sw-07",
+                "type": "telnet",
+                "tags": ["lab"],
+                "discovered_by": "tailscale-lab",
+                "last_seen": "2026-10-18T09:00:00Z",
+                "options": {"host": "10.0.2.7"}
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

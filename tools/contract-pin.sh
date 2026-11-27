@@ -16,7 +16,7 @@
 set -euo pipefail
 
 mode="${1:-}"
-case "$mode" in init | check) ;; *) echo "usage: $0 init|check" >&2; exit 2 ;; esac
+case "$mode" in init | check | copy | copy-check) ;; *) echo "usage: $0 init|check|copy|copy-check" >&2; exit 2 ;; esac
 
 cd "$(dirname "$0")/.."
 
@@ -72,6 +72,66 @@ shape_ok() {
   [ "$(cfg remote.origin.partialclonefilter)" = blob:none ] || "$want" "$SUB/ is not a blob:none partial clone (remote.origin.partialclonefilter)"
 }
 
+if [ "$mode" = copy ]; then
+  gitmodules_ok
+  shape_ok
+  tags="$(git -C "$SUB" for-each-ref --points-at HEAD --format='%(refname:short) %(objecttype) %(taggername)' 'refs/tags/v*')"
+  grep -Eq "$RELEASE_LINE" <<<"$tags" ||
+    fail "no release tag at the pinned commit $(git -C "$SUB" rev-parse --short=12 HEAD): need an annotated vX.Y.Z tag by tsb-release; found: ${tags:-none}"
+  tag="$(grep -Eo '^v[0-9.]+' <<<"$tags" | head -n1)"
+  commit="$(git -C "$SUB" rev-parse HEAD)"
+  tree="$(git -C "$SUB" rev-parse HEAD:contract)"
+
+  rm -rf contract
+  git -C "$SUB" archive --prefix=contract/ HEAD:contract | tar -x
+
+  cat > contract.pin <<EOF
+tag: $tag
+commit: $commit
+tree: $tree
+EOF
+
+  echo "contract-copy: copied contract/ at $tag ($tree)"
+  exit 0
+fi
+
+if [ "$mode" = copy-check ]; then
+  [ -f contract.pin ] || fail "contract.pin is missing"
+  [ -d contract ] || fail "contract/ is missing"
+  [ -f contract/CONTRACT_VERSION ] || fail "contract/CONTRACT_VERSION is missing"
+
+  pin_tag="$(grep -E '^tag:[[:space:]]+' contract.pin | awk '{print $2}')"
+  pin_commit="$(grep -E '^commit:[[:space:]]+' contract.pin | awk '{print $2}')"
+  pin_tree="$(grep -E '^tree:[[:space:]]+' contract.pin | awk '{print $2}')"
+  [ -n "$pin_tag" ] || fail "contract.pin: missing tag"
+  [ -n "$pin_commit" ] || fail "contract.pin: missing commit"
+  [ -n "$pin_tree" ] || fail "contract.pin: missing tree"
+
+  link="$(git ls-files -s -- "$SUB")"
+  [ "${link:0:6}" = 160000 ] || fail "no gitlink at $SUB in the index"
+  gitlink_sha="$(git rev-parse ":$SUB")"
+  [ "$pin_commit" = "$gitlink_sha" ] ||
+    fail "contract.pin commit ($pin_commit) does not match gitlink ($gitlink_sha)"
+
+  version="$(tr -d '[:space:]' < contract/CONTRACT_VERSION)"
+  [ "$version" = "$pin_tag" ] ||
+    fail "contract/CONTRACT_VERSION ($version) does not match contract.pin tag ($pin_tag)"
+
+  git diff --quiet -- contract contract.pin ||
+    fail "working tree differs from index for contract/ or contract.pin"
+  untracked="$(git ls-files --others --exclude-standard -- contract contract.pin)"
+  [ -z "$untracked" ] ||
+    fail "untracked files in contract/ or contract.pin: $untracked"
+
+  index_tree="$(git write-tree --prefix=contract 2>/dev/null || true)"
+  [ -n "$index_tree" ] || fail "contract/ is not in the index"
+  [ "$index_tree" = "$pin_tree" ] ||
+    fail "index contract tree ($index_tree) does not match contract.pin tree ($pin_tree)"
+
+  echo "contract-copy-check: contract/ matches contract.pin at $pin_tag ($pin_tree)"
+  exit 0
+fi
+
 if [ "$mode" = check ]; then
   gitmodules_ok
 
@@ -111,7 +171,46 @@ if [ "$mode" = check ]; then
   [ "$(git config --get diff.submodule 2>/dev/null || true)" != diff ] ||
     fail "diff.submodule=diff makes git diff run inside $SUB/; unset it (git config --unset diff.submodule)"
 
-  echo "contract-check: $SUB/ is clean at $(git -C "$SUB" rev-parse --short=12 HEAD), $(grep -Eo '^v[0-9.]+' <<<"$tags" | head -n1)"
+  [ -f contract.pin ] || fail "contract.pin is missing"
+  [ -d contract ] || fail "contract/ is missing"
+  [ -f contract/CONTRACT_VERSION ] || fail "contract/CONTRACT_VERSION is missing"
+
+  pin_tag="$(grep -E '^tag:[[:space:]]+' contract.pin | awk '{print $2}')"
+  pin_commit="$(grep -E '^commit:[[:space:]]+' contract.pin | awk '{print $2}')"
+  pin_tree="$(grep -E '^tree:[[:space:]]+' contract.pin | awk '{print $2}')"
+  [ -n "$pin_tag" ] || fail "contract.pin: missing tag"
+  [ -n "$pin_commit" ] || fail "contract.pin: missing commit"
+  [ -n "$pin_tree" ] || fail "contract.pin: missing tree"
+
+  gitlink_sha="$(git rev-parse ":$SUB")"
+  [ "$pin_commit" = "$gitlink_sha" ] ||
+    fail "contract.pin commit ($pin_commit) does not match gitlink ($gitlink_sha)"
+
+  prog_tag="$(grep -Eo '^v[0-9.]+' <<<"$tags" | head -n1)"
+  [ "$pin_tag" = "$prog_tag" ] ||
+    fail "contract.pin tag ($pin_tag) does not match release tag ($prog_tag)"
+
+  program_tree="$(git -C "$SUB" rev-parse HEAD:contract)"
+  [ "$pin_tree" = "$program_tree" ] ||
+    fail "contract.pin tree ($pin_tree) does not match program/contract ($program_tree)"
+
+  git diff --quiet -- contract contract.pin ||
+    fail "working tree differs from index for contract/ or contract.pin"
+  untracked="$(git ls-files --others --exclude-standard -- contract contract.pin)"
+  [ -z "$untracked" ] ||
+    fail "untracked files in contract/ or contract.pin: $untracked"
+
+  index_tree="$(git write-tree --prefix=contract 2>/dev/null || true)"
+  [ -n "$index_tree" ] || fail "contract/ is not in the index"
+  [ "$index_tree" = "$program_tree" ] ||
+    fail "index contract tree ($index_tree) does not match program/contract ($program_tree)"
+
+  if [ "${CONTRACT_COMMITTED:-0}" = 1 ]; then
+    git diff --quiet HEAD -- contract contract.pin ||
+      fail "committed state differs from index for contract/ or contract.pin (CONTRACT_COMMITTED=1)"
+  fi
+
+  echo "contract-check: $SUB/ and contract/ clean at $(git -C "$SUB" rev-parse --short=12 HEAD), $prog_tag"
   exit 0
 fi
 

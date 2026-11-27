@@ -1,0 +1,121 @@
+{
+  "seam": "C2",
+  "name": "token-escrow-after-restart",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/restart_test.go — after a restart every session's control_holder is null (escrow), a core never restores a holder from disk, and the first client of a session.join.rw principal to attach takes the token"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/kill-core.sh — kill -9 the core with two clients attached; after the restart the first to reattach holds the control token and a view-only client already attached is sent token reason attach"
+    }
+  ],
+  "description": "With no clients attached the control token is held in escrow and granted on the next attach (phase-01; PTY §7.1; immortality §7). A core restart disconnects every client, so after it the token is in escrow for every session: the record's control_holder is null, and a core never restores a holder from disk (C6 carries no escrow state). The first client of a principal that may type takes it: its attached frame names it as holder, and a view-only client already attached is told with a token frame, reason attach. A session.join.ro principal never takes it.",
+  "corpus": [
+    "PTY §7.1",
+    "immortality §7",
+    "Contract §10",
+    "phase-01 (the control token in escrow across a restart)"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "attached",
+          "v": 1,
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "live",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": {
+              "client_id": "fixture-client-7",
+              "user": "fixture-user"
+            },
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "client_id": "fixture-client-7"
+        },
+        "note": "the first to reattach takes the token from escrow"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "attached",
+          "v": 1,
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "live",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "client_id": "fixture-client-6"
+        },
+        "note": "a view-only client first: the token stays in escrow"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": {
+            "client_id": "fixture-client-7",
+            "user": "fixture-user"
+          },
+          "reason": "attach"
+        },
+        "note": "to the view-only client already attached"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": null,
+          "reason": "restart"
+        },
+        "note": "the cause is attach or detach: a restart is every client detaching"
+      }
+    ]
+  }
+}

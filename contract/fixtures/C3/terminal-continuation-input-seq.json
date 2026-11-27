@@ -1,0 +1,46 @@
+{
+  "seam": "C3",
+  "name": "terminal-continuation-input-seq",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed: recording_continuation_terminal_continuation_input_seq_u3: worker accepts the input sequence jump across a continuation switch"
+    },
+    {
+      "unit": "U2",
+      "test": "owed: recording_continuation_terminal_continuation_input_seq_u2: reserve the input high-water before use and jump only on continuation switch"
+    }
+  ],
+  "description": "A successor may jump input sequence above its durable reservation once at continuation switch; ordinary restart retains the existing walk. The worker accepts the input and echoes its seq on any refusal.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3",
+    "ipc-data-frame.schema.json"
+  ],
+  "case": {
+    "schema": "schemas/recording-continuation-scenario.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "worker accepts a continuation input sequence jump",
+          "steps": [
+            "send input seq 5 under a reservation through 1024",
+            "switch to the continuation",
+            "send input seq 1025"
+          ],
+          "expect": [
+            "worker accepts the jumped input",
+            "no prior input sequence is reused",
+            "ordinary restart keeps the ordinary input walk"
+          ]
+        }
+      }
+    ]
+  }
+}

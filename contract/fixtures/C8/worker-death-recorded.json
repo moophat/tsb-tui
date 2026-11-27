@@ -1,0 +1,94 @@
+{
+  "seam": "C8",
+  "name": "worker-death-recorded",
+  "mark": {
+    "published": "e0",
+    "required-green": "e1"
+  },
+  "kind": "transform",
+  "grade": "artifacts:recordings-worker-death",
+  "description": "The tap end to end when a worker dies: the session's C3 frames become its recording frame for frame, and when the core finds the worker dead it finalizes the recording with one terminated end marker, stamped with the time it observed the death — the core is the component that sees a worker die — and derived exactly as frames are; the audit ends the same session terminated / worker_lost (immortality §1.1, §3; decision 5.44). In a collected run, every session the audit says ended terminated / worker_lost has a recording that ends in a terminated marker, and at least one is collected. Published at e0, required green at e1, when the harness's worker-death rig kills a worker while collecting; at e0 the core's own test proves it (C1 session-ended-unexpectedly).",
+  "corpus": [
+    "immortality §1.1",
+    "immortality §3",
+    "decision 5.44",
+    "decision 5.45",
+    "Storage §6",
+    "session model §13",
+    "lang-arch §8.1",
+    "lang-arch §8.3"
+  ],
+  "case": {
+    "transform": "c3-to-c8",
+    "input": {
+      "frames": [
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 2,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "2420"
+        },
+        {
+          "version": 1,
+          "flags": 1,
+          "direction": "in",
+          "stream": 0,
+          "length": 4,
+          "seq": 1,
+          "timestamp": 1789000001123456789,
+          "payload_hex": "746f700d"
+        },
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 7,
+          "seq": 2,
+          "timestamp": 1789000001123756789,
+          "payload_hex": "1b5b481b5b324a"
+        }
+      ],
+      "end": {
+        "end_state": "terminated",
+        "timestamp": 1789000001623456912
+      }
+    },
+    "output": {
+      "frames": [
+        {
+          "sec": 1789000000,
+          "usec": 123456,
+          "length": 2,
+          "direction": "out",
+          "data_hex": "2420"
+        },
+        {
+          "sec": 1789000001,
+          "usec": 123456,
+          "length": 4,
+          "direction": "in",
+          "data_hex": "746f700d"
+        },
+        {
+          "sec": 1789000001,
+          "usec": 123756,
+          "length": 7,
+          "direction": "out",
+          "data_hex": "1b5b481b5b324a"
+        },
+        {
+          "sec": 1789000001,
+          "usec": 623456,
+          "length": 0,
+          "end": "terminated",
+          "data_hex": ""
+        }
+      ]
+    }
+  }
+}

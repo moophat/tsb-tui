@@ -1,0 +1,88 @@
+{
+  "seam": "C2",
+  "name": "quiet-prompt-owner-only",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/quiet_test.go — the prompt goes to the sender when the sender is the owner, else to every attached client of the owner, else nobody; an answer is accepted only from a client sent that prompt_id and only while outstanding; yes ends the session killed / owner, no leaves it"
+    }
+  ],
+  "description": "quiet_prompt (session model §11; Tu, 2026-09-26; orchestrator DEFAULT for the audience and the answer rule, approval page): input unanswered for quiet_prompt, the link alive and the sender attached, and TSB asks the owner \"Kill the session?\" — the text fixed like the recording warning. The sender's client is asked when the sender is the owner; otherwise every attached client of the owner, the first valid answer winning; nobody when the owner has none attached. Other attached clients never get the question: lifecycle authority is the owner token's (Contract §10). The core accepts quiet_prompt_answer only from a client it sent that prompt_id to, and only while that prompt is outstanding; prompt_id is unguessable, so a C2 frame can never end a session without the owner's authority. Yes → killed / owner; no → nothing. It is an answer, not an ack: no delivered position (decision 5.15).",
+  "corpus": [
+    "session model §11",
+    "Contract §10",
+    "decision 5.15",
+    "open_decisions §5"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "quiet_prompt",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "code": "quiet_prompt.kill",
+          "text": "Kill the session?"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "quiet_prompt_answer",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "kill": true
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "quiet_prompt_answer",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "kill": false
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "quiet_prompt",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "code": "quiet_prompt.kill",
+          "text": "Session idle — kill?"
+        },
+        "note": "the text is the contract's"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "quiet_prompt",
+          "v": 1,
+          "prompt_id": "1",
+          "code": "quiet_prompt.kill",
+          "text": "Kill the session?"
+        },
+        "note": "unguessable: the ticket's shape"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "quiet_prompt_answer",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "kill": true,
+          "seq": 12
+        },
+        "note": "an answer, not an ack: no delivered position"
+      }
+    ]
+  }
+}

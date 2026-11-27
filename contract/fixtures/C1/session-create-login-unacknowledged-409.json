@@ -1,0 +1,71 @@
+{
+  "seam": "C1",
+  "name": "session-create-login-unacknowledged-409",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/sessions_test.go — TestALoginThatWouldBeRecordedIsRefused409UntilAcknowledged: with recording enabled and login_input on, a create with a login that does not set recording_acknowledged is 409 login_recording_not_acknowledged, no connect reaches a worker and nothing is recorded; the same request with it true is 201; and with the knob off the request is accepted either way"
+    }
+  ],
+  "description": "A login that would be recorded needs the request's explicit consent. While the deployment's effective value is true (recording.enabled and recording.login_input both on, as GET /auth/me says), a create whose login does not set recording_acknowledged true is refused 409 login_recording_not_acknowledged: the core sends nothing to a worker, opens no connection and records nothing, and the answer echoes no field of the login. The surface re-reads /auth/me, warns the operator that the login will be recorded and repeats the request with recording_acknowledged true, which is accepted. With the knob off, or recording disabled, the same request is accepted with or without the field. The fixture grades the refusal, so it needs a deployment with the knob on, which a live run does not control (the contract's own served app has it off unless a test turns it on): it is graded by the core's own test, as the not-ssh refusal is.",
+  "corpus": [
+    "Contract §12",
+    "open_decisions §5",
+    "session-open steps 2b, 17 and 22",
+    "conventions V14"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "password",
+                "password": "FIXTURE-NOT-A-PASSWORD"
+              }
+            }
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "login_recording_not_acknowledged"
+            },
+            {
+              "pointer": "/error/connection_ids",
+              "absent": true
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "login_recording_not_acknowledged",
+              "message": "the login would be recorded; acknowledge the recording and repeat the request"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

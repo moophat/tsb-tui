@@ -1,0 +1,140 @@
+{
+  "seam": "C8",
+  "name": "ttyrec-shape",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:recordings-parse",
+  "description": "A recording frame is a data frame or the end marker, never both. A data frame: a usec below one second, a direction, at least one byte, a sec a u32 holds (until 2106). The end marker: no data, and an end state — killed or terminated, never a reason, which is the audit's. Every frame of every collected recording is held to these rules.",
+  "corpus": [
+    "lang-arch §8.3",
+    "decision 5.22",
+    "decision 5.44",
+    "Storage §6"
+  ],
+  "case": {
+    "schema": "schemas/ttyrec.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "sec": 1789000000,
+          "usec": 123456,
+          "length": 2,
+          "direction": "out",
+          "data_hex": "2420"
+        },
+        "note": "an output frame"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "sec": 1789000005,
+          "usec": 123456,
+          "length": 0,
+          "end": "killed",
+          "data_hex": ""
+        },
+        "note": "the end marker of a killed session"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "sec": 1789000005,
+          "usec": 123456,
+          "length": 0,
+          "end": "terminated",
+          "data_hex": ""
+        },
+        "note": "the end marker of a terminated session"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1789000000,
+          "usec": 1000000,
+          "length": 2,
+          "direction": "out",
+          "data_hex": "2420"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1789000000,
+          "usec": 123456,
+          "length": 2,
+          "direction": "sideways",
+          "data_hex": "2420"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1789000000,
+          "usec": 123456,
+          "length": 0,
+          "direction": "out",
+          "data_hex": ""
+        },
+        "note": "an empty data frame"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 4294967296,
+          "usec": 123456,
+          "length": 2,
+          "direction": "out",
+          "data_hex": "2420"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1789000005,
+          "usec": 123456,
+          "length": 1,
+          "end": "killed",
+          "data_hex": "78"
+        },
+        "note": "the marker carries no data"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1789000005,
+          "usec": 123456,
+          "length": 0,
+          "end": "worker_lost",
+          "data_hex": ""
+        },
+        "note": "the reason stays on the audit event"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1789000005,
+          "usec": 123456,
+          "length": 0,
+          "end": "disconnected",
+          "data_hex": ""
+        },
+        "note": "no disconnected state (decision 5.45)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "sec": 1789000005,
+          "usec": 123456,
+          "length": 0,
+          "end": "killed",
+          "data_hex": "",
+          "direction": "out"
+        },
+        "note": "data frame or marker, never both"
+      }
+    ]
+  }
+}

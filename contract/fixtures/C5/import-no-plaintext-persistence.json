@@ -1,0 +1,149 @@
+{
+  "seam": "C5",
+  "name": "import-no-plaintext-persistence",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Providers check raw bytes and secrets are absent from persistence, Redis, logs and upload spill."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Providers check raw bytes and secrets are absent from persistence, Redis, logs and upload spill."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Providers check raw bytes and secrets are absent from persistence, Redis, logs and upload spill."
+    },
+    {
+      "unit": "U11",
+      "test": "owed: Providers check raw bytes and secrets are absent from persistence, Redis, logs and upload spill."
+    },
+    {
+      "unit": "U10",
+      "test": "owed: proxy never buffers target-import request bodies to disk, including HTTP/2."
+    }
+  ],
+  "description": "Providers check raw bytes and secrets are absent from persistence, Redis, logs and upload spill. U10 checks the proxy body-buffering boundary including HTTP/2.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "schema": "schemas/import-receipt.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "version": 1,
+          "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "user": "fixture-user",
+          "format": "tabby",
+          "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan": [
+            {
+              "locator": {
+                "index": 1
+              },
+              "source_ref": "fixture-native",
+              "change": "create",
+              "target_id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "n": 0,
+              "definition": {
+                "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "type": "ssh",
+                "options": {
+                  "host": "fixture.invalid"
+                },
+                "import_ref": {
+                  "format": "tabby",
+                  "source_ref": "fixture-native"
+                }
+              },
+              "credentials": [
+                {
+                  "reference": "import-aaaaaaaa-1",
+                  "kind": "password"
+                }
+              ],
+              "mapping": {
+                "reference": "import-aaaaaaaa-1",
+                "state": "map"
+              }
+            }
+          ],
+          "not_carried": [],
+          "choice": {
+            "choice": "save",
+            "destination": "personal"
+          },
+          "stage": "committed",
+          "audit": "unknown",
+          "index": "pending",
+          "created_at": "2026-11-23T00:00:00Z",
+          "updated_at": "2026-11-23T00:00:00Z"
+        },
+        "note": "sanitized receipt"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "version": 1,
+          "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "user": "fixture-user",
+          "format": "tabby",
+          "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan": [
+            {
+              "locator": {
+                "index": 1
+              },
+              "source_ref": "fixture-native",
+              "change": "create",
+              "target_id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "n": 0,
+              "definition": {
+                "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "type": "ssh",
+                "options": {
+                  "host": "fixture.invalid"
+                },
+                "import_ref": {
+                  "format": "tabby",
+                  "source_ref": "fixture-native"
+                }
+              },
+              "credentials": [
+                {
+                  "reference": "import-aaaaaaaa-1",
+                  "kind": "password"
+                }
+              ],
+              "mapping": {
+                "reference": "import-aaaaaaaa-1",
+                "state": "map"
+              }
+            }
+          ],
+          "not_carried": [],
+          "choice": {
+            "choice": "save",
+            "destination": "personal"
+          },
+          "stage": "committed",
+          "audit": "unknown",
+          "index": "pending",
+          "created_at": "2026-11-23T00:00:00Z",
+          "updated_at": "2026-11-23T00:00:00Z",
+          "export_bytes": "FIXTURE-NOT-A-PASSWORD"
+        },
+        "note": "receipt cannot carry export"
+      }
+    ]
+  }
+}

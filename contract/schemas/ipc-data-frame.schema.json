@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C3 data-socket frame",
+  "description": "Every chunk on a session's data socket (conn-{conn_id}/{socket}, both directions) is a 24-byte envelope followed by its payload (lang-arch §4.1 amendment 2026-09-14; decision 5.14). The payload is unframed terminal data: strip every envelope and what remains is the byte stream lang-arch §4.1 describes. The binary layout below is normative and the fixtures' .bin files are its ground truth; this schema describes the decoded form the fixtures use. seq on an output frame is immortality §4.1's per-session monotonic sequence number (LOCKED): worker-assigned, from 1, the number the core's last_committed_seq will refer to. seq on an input frame is the core's own per-session counter, from 1 — explicitly not the §4.1 number; the corpus numbers only output, and decision 5.24's rule (per session) applies to both. Each is strictly increasing; a jump (frames dropped while no core was attached) is allowed, a repeat or a decrease is not. timestamp is nanoseconds since the Unix epoch: for output, the worker's clock when it read the bytes from the target, always (immortality §4.2, LOCKED); for input, the core's clock when it sends the frame. The two directions are stamped by two clocks, so a reader never assumes timestamps increase across directions. Trust is SO_PEERCRED, as on every C3 socket: a data socket accepts a peer only when its uid is the TSB service uid (immortality §6.1, LOCKED). The gap frame (decision 5.14: the gap marker is a flagged empty frame, not an out-of-band message; immortality §4.3): a worker loses output the core has not received only while no core peer holds the session's data socket — with a peer attached a slow core is backpressure, and from hello to live the worker does not read that channel (ipc-control.schema.json) — so every loss is known when hello_ack is sent, and a gap frame appears only in a handshake's replay, before its first replayed frame. It is an output frame with flags bit 1 set and no payload: seq is first_buffered_seq - 1, the last lost seq, so it never shares a number with a frame the ring still holds; timestamp is hello_ack's last_dropped_ts. length is 0 exactly when bit 1 is set, and bit 1 is never set on an input frame. Only PTY sessions have a ring, so only they ever carry one. The data frame's version stays 1: the gap bit is additive, and only a v0.2 core, which asked for the replay, ever receives a gap frame. Sizes: an output frame's payload is at most the connection's buffer_bytes, an input frame's at most its input_frame_max (both on connect); a worker refuses a longer input frame from its header alone (input_refused too_large). A recording hold closes this session's data peer, suppresses redial until restart and refuses input recording_unavailable (terminal-output-accounting §5.3; owed). The ordinary data path (Tu, 2026-09-27): a session's data socket that ends alone is not an end. The core waits a moment for a control-side end; when none comes it re-dials the socket — once for each such loss — through the same trusted dial, the worker takes the newer core peer, and the handshake replays what the dead socket lost. A re-dial that fails, the socket refusing or missing, is E10 once the core has re-read the spool for the session and found no end there: terminated / worker_lost (session model §9, §13), so no session is left with no data path and no end. When the connection's control socket still answers, the core then sends close_channel for that session, so the worker does not keep a channel no core records. Outside a recording hold, from the loss until its handshake reaches live the core forwards no client input and answers it on C2 with input_refused replaying. When a session ends, the worker writes its last output frame and then closes that data peer: that EOF after the end, not the end event alone, tells the core its recording holds the session's output (ipc-control.schema.json release). The core tells attached clients about an interrupted data path with the C2 data_path frame.",
+  "type": "object",
+  "required": ["version", "flags", "direction", "stream", "length", "seq", "timestamp", "payload_hex"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 1},
+    "flags": {"enum": [0, 1, 2], "description": "Bit 0 is the direction, bit 1 the gap marker (output only, so 3 never occurs). Every other bit is 0 at this tag."},
+    "direction": {"enum": ["out", "in"], "description": "Bit 0 of flags, spelled out: out = target → core (0), in = core → target (1)."},
+    "stream": {"const": 0},
+    "length": {"type": "integer", "minimum": 0, "maximum": 4294967295, "description": "Payload bytes: at least 1 on a data frame, 0 exactly on a gap frame."},
+    "seq": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1},
+    "timestamp": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1},
+    "payload_hex": {"type": "string", "pattern": "^([0-9a-f]{2})*$"}
+  },
+  "oneOf": [
+    {
+      "description": "A data frame: output or input, with a payload.",
+      "properties": {"flags": {"enum": [0, 1]}, "length": {"minimum": 1}, "payload_hex": {"minLength": 2}}
+    },
+    {
+      "description": "The gap frame: output, bit 1 set, no payload.",
+      "properties": {"flags": {"const": 2}, "direction": {"const": "out"}, "length": {"const": 0}, "payload_hex": {"const": ""}}
+    }
+  ],
+  "x-binary-layout": {
+    "byte_order": "big-endian (network order)",
+    "header_bytes": 24,
+    "fields": [
+      {"name": "version", "offset": 0, "type": "u8", "note": "1 at this tag. A receiver refuses a version it does not speak."},
+      {"name": "flags", "offset": 1, "type": "u8", "note": "bit 0 direction: 0 = target → core (output), 1 = core → target (input). bit 1 gap: the frame declares that output before it was lost; set only on output, and only with length 0. bits 2-7 are 0."},
+      {"name": "stream", "offset": 2, "type": "u16", "note": "Reserved, 0."},
+      {"name": "length", "offset": 4, "type": "u32", "note": "Payload bytes that follow the header; 0 exactly on a gap frame."},
+      {"name": "seq", "offset": 8, "type": "u64", "note": "Per session, per direction, from 1. A gap frame's is the last lost seq."},
+      {"name": "timestamp", "offset": 16, "type": "u64", "note": "Nanoseconds since the Unix epoch, UTC. A gap frame's is the stamp of the last frame the ring dropped."}
+    ],
+    "payload": "`length` bytes of terminal data, unframed, immediately after the header; none on a gap frame."
+  }
+}

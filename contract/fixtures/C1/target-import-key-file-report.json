@@ -1,0 +1,53 @@
+{
+  "seam": "C1",
+  "name": "target-import-key-file-report",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Key-file paths are never read or returned; provider verifies report and imported targets."
+    },
+    {
+      "unit": "U7",
+      "test": "owed: Key-file paths are never read or returned; provider verifies report and imported targets."
+    }
+  ],
+  "description": "Key-file paths are never read or returned; provider verifies report and imported targets.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/import-receipt.schema.json#/$defs/issue",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "locator": {
+            "index": 1
+          },
+          "kind": "credential",
+          "reason": "key_file_reference"
+        },
+        "note": "key path reported by locator"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "locator": {
+            "index": 1
+          },
+          "kind": "credential",
+          "reason": "key_file_reference",
+          "path": "fixture.invalid"
+        },
+        "note": "path is never returned"
+      }
+    ]
+  }
+}

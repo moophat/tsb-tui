@@ -1,0 +1,121 @@
+{
+  "seam": "C1",
+  "name": "targets-list-paged",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 U2 plan"
+    }
+  ],
+  "description": "More targets than one page, and more than 10 (the RediSearch default), are all returned by following `next_cursor`: each answer carries the cursor of the last id it returned, the next request continues after it, and the whole set arrives in `id` order. A page can be short, because the visibility filters run after the search. Pages are not a snapshot — a target added or removed between two pages may be missed, or seen once — so a surface that needs the whole fleet follows the cursor to the end, never one page. Graded against a real RediSearch by the U2 plan's test, which is owed.",
+  "corpus": [
+    "Storage §9",
+    "Storage §2.2",
+    "Storage §10.1a"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?limit=1"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/next_cursor",
+              "present": true
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "core-router-01",
+                "type": "ssh",
+                "tags": [
+                  "router"
+                ],
+                "discovered_by": "tabby",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ],
+            "next_cursor": "core-router-01"
+          }
+        },
+        "save": {
+          "cursor": "/next_cursor"
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?limit=1&cursor=${cursor}"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "core-router-02"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "core-router-02",
+                "type": "ssh",
+                "tags": [
+                  "router"
+                ],
+                "discovered_by": "tabby",
+                "host": "192.0.2.11",
+                "port": 22
+              }
+            ],
+            "next_cursor": "core-router-02"
+          }
+        },
+        "save": {
+          "cursor2": "/next_cursor"
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?limit=1&cursor=${cursor2}"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "targets": [
+              {
+                "id": "core-router-03",
+                "type": "ssh",
+                "tags": [
+                  "router"
+                ],
+                "discovered_by": "tabby",
+                "host": "192.0.2.12",
+                "port": 22
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

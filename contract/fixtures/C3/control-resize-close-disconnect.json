@@ -1,0 +1,125 @@
+{
+  "seam": "C3",
+  "name": "control-resize-close-disconnect",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-channels",
+  "description": "Two sessions on one connection, each with its own socket. resize and close_channel name their session, because a connection carries N; closing session A closes that channel only and B lives on (Contract §15.2); disconnect then ends the connection, and connection_lost lists exactly the sessions still open — B, not A. A collected run must show each of resize, close_channel (answered by channel_closed for that session) and disconnect (answered by connection_lost).",
+  "corpus": [
+    "Contract §15.2",
+    "decision 5.21",
+    "lang-arch §4.1",
+    "lang-arch §6.4"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-b",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-b",
+          "session_type": "shell",
+          "socket": "shell-2.sock"
+        },
+        "note": "a second shell needs its own socket name"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "resize",
+          "session_id": "fixture-session-a",
+          "cols": 100,
+          "rows": 30
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "close_channel",
+          "session_id": "fixture-session-a"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "core",
+          "reason": "closed by the core"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "disconnect"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [
+            "fixture-session-b"
+          ],
+          "cause": "disconnect",
+          "reason": "disconnect requested"
+        }
+      }
+    ]
+  }
+}

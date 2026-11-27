@@ -1,0 +1,40 @@
+{
+  "seam": "C3",
+  "name": "supervisor-unknown-cmd",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_supervisor.py — a command the supervisor does not know is answered error unknown_cmd and the socket is kept"
+    }
+  ],
+  "description": "A command the supervisor does not know is answered error unknown_cmd — kept apart from a malformed line (bad_request), as the connection control socket keeps it — so a later core probing an older supervisor learns it is older, not broken, and the socket is kept.",
+  "corpus": [
+    "immortality §6.4",
+    "decision 5.13"
+  ],
+  "case": {
+    "socket": "supervisor-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "x-later-command"
+        },
+        "unknown": true
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "error",
+          "reason": "unknown_cmd",
+          "message": "unknown cmd 'x-later-command'"
+        }
+      }
+    ]
+  }
+}

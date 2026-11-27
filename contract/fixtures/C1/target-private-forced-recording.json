@@ -1,0 +1,53 @@
+{
+  "seam": "C1",
+  "name": "target-private-forced-recording",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks force recording applies to private targets and cannot be opted out."
+    },
+    {
+      "unit": "U11",
+      "test": "owed: Provider checks force recording applies to private targets and cannot be opted out."
+    }
+  ],
+  "description": "Provider checks force recording applies to private targets and cannot be opted out.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "target.private",
+                "session.create"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": false,
+            "force": [
+              "*"
+            ]
+          }
+        },
+        "note": "forced recording selector"
+      }
+    ]
+  }
+}

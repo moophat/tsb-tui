@@ -1,0 +1,105 @@
+{
+  "seam": "C7",
+  "name": "device-register",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "Register a trusted device (credential-protection §5.2, §5.3 as N1 item 6 amends them): the surface derives the hash and storage_key first, asks a device.register challenge naming its device_id, makes its key pair, seals Part 1 and sends both halves, the SPKI public key, the signature and a name. The core needs an initialised vault, verifies and consumes the challenge, checks that part1 ‖ part2 opens the set (a failure is counted), writes the device.register line, the device record and Part 2, ties an untied login to the device and holds an unlock (DEFAULTs 39, 48, 49, 69). A key that is not an uncompressed P-256 SubjectPublicKeyInfo is 422.",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection §5.2",
+    "credential-protection §5.3",
+    "credential-protection §7.2",
+    "device-trust",
+    "E4 DEFAULT 39",
+    "E4 DEFAULT 58",
+    "E4 DEFAULT 69"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/devices/challenges",
+          "body": {
+            "operation": "device.register",
+            "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "challenge_id": "ch-0001",
+            "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+            "login_handle": "lh-fixture-0001",
+            "expires_in": 30
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/devices",
+          "body": {
+            "challenge_id": "ch-0001",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMi0wMA==",
+            "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+            "signature": "RklYVFVSRS1TSUdOQVRVUkUtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA==",
+            "device_name": "Work laptop"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+            "device_name": "Work laptop",
+            "registered_at": "2026-10-29T08:00:00Z",
+            "last_used_at": "2026-10-29T08:00:00Z"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/devices",
+          "body": {
+            "challenge_id": "ch-0001",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMi0wMA==",
+            "public_key": "MCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            "signature": "RklYVFVSRS1TSUdOQVRVUkUtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA==",
+            "device_name": "Work laptop"
+          },
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "the key is not a P-256 public key"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

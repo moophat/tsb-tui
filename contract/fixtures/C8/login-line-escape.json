@@ -1,0 +1,35 @@
+{
+  "seam": "C8",
+  "name": "login-line-escape",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "bytes",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/recording/ (the file is the recording lane's to name) — a login value holding controls, a C1 character, DEL and a backslash is written escaped, in exactly these bytes: owed by the Release A recording plan"
+    }
+  ],
+  "description": "The escape rule of the login line, shown on one frame: a code-6 frame whose text holds an ESC sequence, a CR LF, a C1 character (U+0085), DEL, a backslash and non-ASCII text. The line stays one printable row: ESC is written \\x1b, CR and LF \\x0d and \\x0a, U+0085 \\x85, DEL \\x7f, the backslash two backslashes, and the non-ASCII characters stay as UTF-8. A classic player that replays the recording prints the row and acts on no control in it. A supplied login asks nothing, so a recording of one holds no code-6 frame; the frame is here because the line format is fixed once for both codes, and the text of a prompt may come from the device, which is not trusted.",
+  "corpus": [
+    "open_decisions §5",
+    "ttyrec.schema.json x-login-line"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "login-line-escape.ttyrec.bin",
+    "sidecar": "login-line-escape.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 100000,
+        "length": 65,
+        "marker": "login_prompt",
+        "data_hex": "0d0a5b5453423a206c6f67696e2070726f6d70745d20506173735c7831625b33316d776f72645c7830645c7830615c7838355c7837665c5c20c3a9e4b8ad3a0d0a"
+      }
+    ]
+  }
+}

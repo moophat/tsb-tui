@@ -1,0 +1,64 @@
+{
+  "seam": "C6",
+  "name": "event-session-connect",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:audit-session-connect",
+  "description": "Storage §6's session.connect lines verbatim in shape: a shell and an SFTP session are both sessions, told apart by session_type, and each names the target it reached. In a collected run, every session with a recording must have a session.connect line.",
+  "corpus": [
+    "Storage §6",
+    "Contract §15"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "xxx",
+          "session_type": "shell"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "yyy",
+          "session_type": "sftp"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "zzz",
+          "session_type": "forward"
+        },
+        "note": "Storage §6's third line: a port forward is a session too — no v0.1 producer (lang-arch §4.1 has no forward verb yet)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "session_id": "xxx",
+          "session_type": "shell"
+        },
+        "note": "a session's audit record names what it reached"
+      }
+    ]
+  }
+}

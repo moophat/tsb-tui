@@ -1,0 +1,104 @@
+{
+  "seam": "C3",
+  "name": "open-timeout-expired",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed by the worker plan for the open-shell bound — the bound expires with the target holding the open, and a completion racing the bound gets exactly one answer (design 261024-1525 §5 T10, T11)"
+    },
+    {
+      "unit": "U2",
+      "test": "owed by the core plan for the open-shell bound — the core's wait is open_timeout plus one heartbeat_interval, and an error after it gave up drops the open (design 261024-1525 §5 T13)"
+    }
+  ],
+  "description": "The bound on a shell's open expires (ipc-control open_shell; session-open steps 12–14). Toward a 0.6 worker the core's open_shell carries open_timeout; the target does not open the shell within it, so the worker gives the open up and answers error naming the session with no code — the shape it already uses for an open the target refuses — and never sends channel_opened for that session afterwards; a channel the target already confirmed is closed on the target, which this socket does not show. The connection carries on: the next ping is answered. The core waited open_timeout plus one heartbeat_interval for channel_opened, so the worker's error reached it first; an error that arrives after the core gave up only drops the open. The worker's bound and the race at it are graded by U3's tests, the core's wait by U2's.",
+  "corpus": [
+    "immortality §6.4",
+    "decision 5.36",
+    "lang-arch §7.3",
+    "plan.md §3 C3",
+    "Contract §6"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000,
+            "keepalive_probe_interval": 15000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "open_timeout": 20000
+        },
+        "note": "toward a 0.6 worker: the target's bound, 20 s"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "session_id": "fixture-session-a",
+          "message": "the target did not open the shell within open_timeout"
+        },
+        "note": "past the bound: error naming the session, no code; no channel_opened for fixture-session-a follows, ever"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping",
+          "n": 1
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "pong",
+          "n": 1
+        },
+        "note": "the connection carries on"
+      }
+    ]
+  }
+}

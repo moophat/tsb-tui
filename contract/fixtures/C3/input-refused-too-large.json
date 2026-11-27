@@ -1,0 +1,185 @@
+{
+  "seam": "C3",
+  "name": "input-refused-too-large",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_worker.py — an input frame whose header declares more than input_frame_max is refused from the header alone, and the data peer is closed"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/handshake_test.go — TestInputIsSplitAtTheConnectionsFrameMax: the core splits client input into frames no longer than the input_frame_max it sent"
+    }
+  ],
+  "description": "The input-frame ceiling is a config.yaml knob the core sends on connect (input_frame_max; decision 5.36). A worker refuses a longer frame from its header alone — input_refused too_large — and then closes that data peer, because skipping the payload would mean reading it. The session lives: the core re-dials and runs the handshake. A correct core splits client input at the connection's value — the one it sent on connect and keeps in the connection's C6 record, never a value its configuration holds after a restart — so too_large marks a core defect, and the re-dial it costs is a data-path loss like any other.",
+  "corpus": [
+    "decision 5.36",
+    "immortality §6.1"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 0
+        },
+        "note": "the core dialled the data socket first; nothing is committed yet"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": false
+        },
+        "note": "nothing buffered and no output yet: first_buffered_seq is current_seq + 1"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 1
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 0
+        },
+        "note": "through_seq 0 < from_seq 1: complete with no frame"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-a"
+        },
+        "note": "only now is the session offered northbound (the 201)"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "input_refused",
+          "session_id": "fixture-session-a",
+          "seq": 9,
+          "reason": "too_large"
+        },
+        "note": "the header declared more than input_frame_max"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "last_committed_seq": 14
+        },
+        "note": "the worker closed the data peer; the core re-dialled"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.2",
+          "first_buffered_seq": 2,
+          "first_buffered_offset": 40,
+          "current_seq": 14,
+          "ended": false
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-a",
+          "from_seq": 15
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-a",
+          "through_seq": 14
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-a"
+        }
+      }
+    ]
+  }
+}

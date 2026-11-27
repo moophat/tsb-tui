@@ -1,0 +1,118 @@
+{
+  "seam": "C8",
+  "name": "gap-after-overflow",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "transform",
+  "grade": "artifacts:recordings-gap",
+  "description": "How the core writes the gap marker from what it already has (DEFAULT, approval page: no separate message; from contract-v0.3 the core appends nothing after the marker until the write that commits it lands, continuity-state top): the tap's gap frame (C3 gap-frame) and the handshake's numbers. Lost bytes are first_buffered_offset minus the output bytes the recording holds so far — declared losses included: C6's out_bytes_committed, plus a gap marker the recording holds past the commit point — and the span runs from the stamp of its last output frame or gap marker to last_dropped_ts, the gap frame's own stamp. Frames the ring dropped that the recording holds are not a loss. The derivation is executable in tsbc (_binfmt.derive_recording); this case is its record.",
+  "corpus": [
+    "immortality §4.3",
+    "immortality §4.2",
+    "decision 5.14"
+  ],
+  "case": {
+    "transform": "c3-to-c8",
+    "input": {
+      "frames": [
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 2,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "2420"
+        },
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 13,
+          "seq": 2,
+          "timestamp": 1789000000124456789,
+          "payload_hex": "7461696c202d66206c6f670d0a"
+        },
+        {
+          "version": 1,
+          "flags": 2,
+          "direction": "out",
+          "stream": 0,
+          "length": 0,
+          "seq": 6,
+          "timestamp": 1789000009123456789,
+          "payload_hex": ""
+        },
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 8,
+          "seq": 7,
+          "timestamp": 1789000009223456789,
+          "payload_hex": "6c696e6520370d0a"
+        },
+        {
+          "version": 1,
+          "flags": 0,
+          "direction": "out",
+          "stream": 0,
+          "length": 8,
+          "seq": 8,
+          "timestamp": 1789000009323456789,
+          "payload_hex": "6c696e6520380d0a"
+        }
+      ],
+      "handshakes": [
+        {
+          "first_buffered_seq": 7,
+          "first_buffered_offset": 47,
+          "last_dropped_ts": 1789000009123456789
+        }
+      ]
+    },
+    "output": {
+      "frames": [
+        {
+          "sec": 1789000000,
+          "usec": 123456,
+          "length": 2,
+          "direction": "out",
+          "data_hex": "2420"
+        },
+        {
+          "sec": 1789000000,
+          "usec": 124456,
+          "length": 13,
+          "direction": "out",
+          "data_hex": "7461696c202d66206c6f670d0a"
+        },
+        {
+          "sec": 1789000009,
+          "usec": 123456,
+          "length": 92,
+          "marker": "gap",
+          "data_hex": "0d0a5b545342206761703a203332206279746573206c6f73742066726f6d20323032362d30392d31305430303a32363a34302e3132343435365a20746f20323032362d30392d31305430303a32363a34392e3132333435365a5d0d0a"
+        },
+        {
+          "sec": 1789000009,
+          "usec": 223456,
+          "length": 8,
+          "direction": "out",
+          "data_hex": "6c696e6520370d0a"
+        },
+        {
+          "sec": 1789000009,
+          "usec": 323456,
+          "length": 8,
+          "direction": "out",
+          "data_hex": "6c696e6520380d0a"
+        }
+      ]
+    }
+  }
+}

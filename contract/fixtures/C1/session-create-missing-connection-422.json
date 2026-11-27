@@ -1,0 +1,51 @@
+{
+  "seam": "C1",
+  "name": "session-create-missing-connection-422",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "connection is required: a create request without it is refused with 422, so no surface can leave the reuse-or-new choice to a broker default (Contract §15.3; the broker presents choices and does not pick, §12).",
+  "corpus": [
+    "Contract §15.3",
+    "Contract §12"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "invalid_body": true,
+          "body": {
+            "target_id": "${target_id}",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "connection is required: reuse or new"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

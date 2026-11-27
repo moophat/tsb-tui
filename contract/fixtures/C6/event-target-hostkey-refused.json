@@ -1,0 +1,84 @@
+{
+  "seam": "C6",
+  "name": "event-target-hostkey-refused",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/audit/audit_test.go — TestARefusedHostKeyIsAuditedWithItsFingerprint"
+    }
+  ],
+  "description": "`target.hostkey_refused`: the operator refused a first-use host key in a device login. The core writes it before it relays the refusal to the worker, so the line records the operator's decision (L3); a refusal whose line cannot be written is logged and the refusal goes on, since a refusal records nothing. `user` is the TSB principal who refused, `detail` the fingerprint and the connection. No session exists, so no session_id. The matching acceptance is `target.hostkey_accepted`, which on a prompt-mode connect records the operator's decision, whether or not the worker then records the key.",
+  "corpus": [
+    "decision 5.18",
+    "Storage §6",
+    "device-login step 13",
+    "open_decisions §5"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.hostkey_refused",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "the operator refused the key"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.hostkey_refused",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "the fingerprint is the point"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.hostkey_refused",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "detail": {
+            "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "never a session"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-01T12:00:00Z",
+          "action": "target.hostkey_refused",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "detail": {
+            "fingerprint": "md5:aa:bb",
+            "conn_id": "fixture-conn-1"
+          }
+        },
+        "note": "OpenSSH SHA256 form only"
+      }
+    ]
+  }
+}

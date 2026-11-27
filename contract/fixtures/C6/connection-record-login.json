@@ -1,0 +1,157 @@
+{
+  "seam": "C6",
+  "name": "connection-record-login",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "schema/session/connection_test.go — TestEveryConnectionRecordLoginInstanceValidatesOrIsRefusedAsTheFixtureSays"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestAPromptedConnectionKeepsItsMarkerAcrossARestart: the record keeps login prompted across a restart, and a lingering prompted connection with no session comes back with no owner"
+    }
+  ],
+  "description": "`connection_record.login` (OPEN-R2 (a)): where the connection's login came from, the value `session.connect`'s `detail.login` takes for it. `credential_ref` stays the constant `supplied` for a supplied or a prompted login and `login` tells them apart, so a prompted connection stays reusable by its principal across a restart and a rebuilt `session.connect` says `prompted`. Placement: `supplied` and `prompted` only beside `credential_ref` `supplied`; `stored` only beside another reference. A core of this release writes it on every SSH connection record and never on a telnet or echo one; an absent value reads as `credential_ref` says (`supplied` for the constant, otherwise `stored` on an SSH connection), so every older record keeps its meaning. Valid: the three values in their places; absent. Invalid: each out of place.",
+  "corpus": [
+    "Contract §15.3",
+    "open_decisions §5",
+    "device-login, reusing a prompted connection",
+    "session-open step 18"
+  ],
+  "case": {
+    "schema": "schemas/continuity-state.schema.json#/$defs/connection_record",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "supplied",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "login": "supplied"
+        },
+        "note": "a supplied login: never reusable"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "supplied",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "login": "prompted"
+        },
+        "note": "a device login: reusable by id, by its principal"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "fixture-credential-1",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "credential_layer": "personal",
+          "login": "stored"
+        },
+        "note": "a stored credential"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "fixture-credential-1",
+          "session_ids": [
+            "fixture-session-a"
+          ]
+        },
+        "note": "an older core's record: no login, and credential_ref says stored"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "supplied",
+          "session_ids": [
+            "fixture-session-a"
+          ]
+        },
+        "note": "an older core's supplied record: no login, and credential_ref says supplied"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "fixture-credential-1",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "login": "prompted"
+        },
+        "note": "prompted beside a stored reference"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "fixture-credential-1",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "login": "supplied"
+        },
+        "note": "supplied beside a stored reference"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "supplied",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "login": "stored"
+        },
+        "note": "stored beside the constant"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "supplied",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "login": "typed"
+        },
+        "note": "stored, supplied or prompted"
+      }
+    ]
+  }
+}

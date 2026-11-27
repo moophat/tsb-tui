@@ -1,0 +1,512 @@
+{
+  "seam": "C2",
+  "name": "ws-frames-shape-device-login",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "the existing C2 shape tests (core/internal/ws/ frame tests read every instance of this fixture)"
+    },
+    {
+      "unit": "U7",
+      "test": "tui/tests/test_model_attachment.py — test_every_server_frame_type_has_an_applied_instance: every server frame type of this fixture has an applied instance in the model"
+    }
+  ],
+  "description": "Every frame the device login adds to the session stream: four from the client (`device_login_attach`, `device_login_hostkey_answer`, `device_login_answer`, `device_login_cancel`) and three from the server (`device_login_hostkey`, `device_login_prompt` in its three methods, `device_login_result`), each with a valid instance and an invalid one. Each is additive: every frame keeps v 1, and a peer that predates the device login ignores a `t` it does not know (V1). `device_login_prompt` is a closed `oneOf` over `method`: `banner` carries only `text`; `password` carries `attempt` and `prompt_id` and no device text; `keyboard-interactive` carries `attempt`, `name`, `instruction` and `prompts`, and `prompt_id` exactly when `prompts` is not empty. A consumer that meets a `method` or a hostkey `kind` it does not know sends `device_login_cancel` and says it is too old for this device login, and never offers Accept for an unknown `kind`; an unknown `outcome` is a failed device login (V5). `answers` holds 1 to 16 strings of 0 to 1024 characters, and an empty string is an answer. A fixture holds no empty answer, because every string under `answers` must be the synthetic constant; the contract's tests hold it.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "Contract §6",
+    "device-login steps 8 to 21",
+    "conventions V1, V5, V10",
+    "frontend §10.4"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_attach",
+          "v": 1,
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "device_login_id": "fixture-device-login-1"
+        },
+        "note": "the first frame of a device-login socket: the ticket the 202 carried, and the device login it is bound to"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_attach",
+          "v": 1,
+          "ticket": "FIXTURE-TICKET-000000000000000000"
+        },
+        "note": "the device login is named: a ticket alone is not this frame"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_attach",
+          "v": 1,
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "device_login_id": "../x"
+        },
+        "note": "an id is path-safe: no slash and no leading dot"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey_answer",
+          "v": 1,
+          "accept": true
+        },
+        "note": "Accept the first-use key"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey_answer",
+          "v": 1,
+          "accept": false
+        },
+        "note": "Refuse it"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_hostkey_answer",
+          "v": 1,
+          "accept": "yes"
+        },
+        "note": "accept is a boolean"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_answer",
+          "v": 1,
+          "prompt_id": 1,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "one string per prompt: two prompts, two answers"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_answer",
+          "v": 1,
+          "prompt_id": 2,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "a password round: one answer"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_answer",
+          "v": 1,
+          "prompt_id": 1,
+          "answers": []
+        },
+        "note": "a round that takes an answer has a prompt, so at least one string"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_answer",
+          "v": 1,
+          "prompt_id": 1,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "at most 16 strings, as a round has at most 16 prompts"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_answer",
+          "v": 1,
+          "prompt_id": 0,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "prompt_id counts from 1"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_cancel",
+          "v": 1
+        },
+        "note": "the pane gives up"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_cancel",
+          "v": 1,
+          "reason": "bored"
+        },
+        "note": "closed: no field of its own"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey",
+          "v": 1,
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "the key a probe fetched, shown in TSB's own words with Accept and Refuse"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_hostkey",
+          "v": 1,
+          "kind": "changed",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "one kind at this release: the changed-key acceptance is a later release's value, never a message"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_hostkey",
+          "v": 1,
+          "kind": "first_use",
+          "fingerprint": "md5:aa:bb"
+        },
+        "note": "OpenSSH SHA256 form only"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "banner",
+          "text": "Authorized use only. Activity is logged."
+        },
+        "note": "the SSH pre-login banner: display-only, no prompt_id, no attempt"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Password: ",
+              "echo": false
+            },
+            {
+              "text": "Verification code: ",
+              "echo": true
+            }
+          ],
+          "prompt_id": 1
+        },
+        "note": "a keyboard-interactive round with two prompts, one with echo off"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "Welcome",
+          "instruction": "No answer is needed.",
+          "prompts": []
+        },
+        "note": "a round with no prompts is display-only: no prompt_id, and the worker answers it itself"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "",
+              "echo": false
+            }
+          ],
+          "prompt_id": 3
+        },
+        "note": "a prompt may have empty text"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "password",
+          "attempt": 2,
+          "prompt_id": 4
+        },
+        "note": "a password request carries no device text; attempt 2 follows a refusal"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Password: ",
+              "echo": false
+            },
+            {
+              "text": "Verification code: ",
+              "echo": true
+            }
+          ]
+        },
+        "note": "prompts without a prompt_id: there would be nothing to answer"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [],
+          "prompt_id": 1
+        },
+        "note": "a prompt_id for a round with no prompts"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "banner",
+          "text": "Authorized use only. Activity is logged.",
+          "prompt_id": 1
+        },
+        "note": "a banner is never answered"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "banner",
+          "text": "Authorized use only. Activity is logged.",
+          "attempt": 1
+        },
+        "note": "a banner carries no attempt"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "password",
+          "attempt": 1,
+          "prompt_id": 1,
+          "text": "Password:"
+        },
+        "note": "a password request carries no device text"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "password",
+          "attempt": 0,
+          "prompt_id": 1
+        },
+        "note": "attempt counts from 1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            },
+            {
+              "text": "x",
+              "echo": false
+            }
+          ],
+          "prompt_id": 1
+        },
+        "note": "at most 16 prompts a round"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_prompt",
+          "v": 1,
+          "method": "voice",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Password: ",
+              "echo": false
+            },
+            {
+              "text": "Verification code: ",
+              "echo": true
+            }
+          ],
+          "prompt_id": 1
+        },
+        "note": "a method this release does not define"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "connected"
+        },
+        "note": "the device accepted: the same socket goes on as an attach"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "password_change_requested"
+        },
+        "note": "the password method's change request ends the login"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "forbidden"
+        },
+        "note": "the principal lost view of the target, session.create or a join permission meanwhile"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "ok"
+        },
+        "note": "the eleven outcomes are closed at this release; a consumer reads one it does not know as a failed device login"
+      }
+    ]
+  }
+}

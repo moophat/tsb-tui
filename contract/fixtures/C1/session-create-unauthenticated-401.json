@@ -1,0 +1,48 @@
+{
+  "seam": "C1",
+  "name": "session-create-unauthenticated-401",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Session endpoints require the login cookie: without one, a create is refused with 401 unauthenticated and nothing is opened.",
+  "corpus": [
+    "decision 5.34",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "as": "none",
+          "body": {
+            "target_id": "fixture-target",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 401,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "unauthenticated"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "unauthenticated",
+              "message": "log in first"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

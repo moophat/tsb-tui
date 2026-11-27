@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TSB contract fixture file",
+  "description": "The format of every file under fixtures/C1..C8/. A fixture is the record of one contract clause: consumers read it, providers prove it. `grade` says how `tsbc verify` grades it against a provider: `live` runs it against a URL; `artifacts:<check>` runs the named check over a `--artifacts` directory; `with:<fixture>` takes the result of that fixture, whose run validates real instances of this fixture's shape; `reference` means only a provider's own test can grade it, and `graded_by` names that test in prose; the index `fixtures/graded-by.json` (graded-by.schema.json) names it again, in the form a run can check, and a run grades such a fixture only when that test passed in the results it was given.",
+  "type": "object",
+  "required": ["seam", "name", "mark", "kind", "grade", "description", "corpus", "case"],
+  "additionalProperties": false,
+  "properties": {
+    "seam": {"enum": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]},
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "description": "Equals the file name without .json."},
+    "mark": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required-green": {"$ref": "#/$defs/epoch"},
+        "published": {"$ref": "#/$defs/epoch"}
+      },
+      "description": "At least one key. required-green: the provider must pass it from this epoch on. published: surfaces may build against it from this epoch."
+    },
+    "kind": {"enum": ["rest", "ws", "instance", "sequence", "bytes", "transform"]},
+    "grade": {"type": "string", "pattern": "^(reference|live|artifacts:[a-z0-9-]+|with:[a-z0-9][a-z0-9.-]*)$"},
+    "graded_by": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["unit", "test"],
+        "additionalProperties": false,
+        "properties": {
+          "unit": {"type": "string", "pattern": "^U[0-9]{1,2}[a-c]?$"},
+          "test": {"type": "string", "minLength": 1}
+        }
+      },
+      "description": "For a reference fixture that is required green: the provider tests that grade it, by unit and path, in prose. The form a run checks is fixtures/graded-by.json; this key stays the fixture's own description of who grades it."
+    },
+    "description": {"type": "string", "minLength": 1, "description": "What the fixture proves and why it matters."},
+    "corpus": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "description": "The clauses this fixture encodes, cited by document and section."},
+    "case": {"type": "object"}
+  },
+  "oneOf": [
+    {"properties": {"kind": {"const": "rest"}, "grade": {"const": "live"}, "case": {"$ref": "#/$defs/exchange"}}},
+    {"properties": {"kind": {"const": "rest"}, "grade": {"const": "reference"}, "case": {"$ref": "#/$defs/exchange"}}},
+    {"properties": {"kind": {"const": "ws"}, "grade": {"const": "live"}, "case": {"$ref": "#/$defs/exchange"}}},
+    {"properties": {"kind": {"const": "instance"}, "case": {"$ref": "#/$defs/instance"}}},
+    {"properties": {"kind": {"const": "sequence"}, "case": {"$ref": "#/$defs/sequence"}}},
+    {"properties": {"kind": {"const": "bytes"}, "case": {"$ref": "#/$defs/bytes"}}},
+    {"properties": {"kind": {"const": "transform"}, "case": {"$ref": "#/$defs/transform"}}}
+  ],
+  "$defs": {
+    "epoch": {"enum": ["e0", "e1", "e2", "e3", "e4", "e4b", "e3b", "e5", "e6"]},
+    "input": {
+      "enum": ["user", "password", "target_id", "target_no_cred_id", "peer_user", "peer_password", "viewer_user", "viewer_password"],
+      "description": "Run-time inputs a live fixture needs; README 'Inputs' names the environment variable for each. Credentials are never written into a fixture."
+    },
+    "pointer": {"type": "string", "pattern": "^(/[^/]*)*$", "description": "RFC 6901 JSON pointer into a response body or frame."},
+    "var": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "wsid": {"type": "string", "pattern": "^[a-z][a-z0-9]*$"},
+    "saves": {"type": "object", "additionalProperties": {"$ref": "#/$defs/pointer"}, "description": "Variable name → pointer; the value is saved for later steps as ${name}."},
+    "match": {
+      "oneOf": [
+        {"type": "object", "required": ["pointer", "eq"], "additionalProperties": false, "properties": {"pointer": {"$ref": "#/$defs/pointer"}, "eq": true, "ignore": {"type": "array", "minItems": 1, "items": {"const": "login_hint"}, "description": "Opt-in exclusion of this top-level response field from both objects before equality comparison."}}},
+        {"type": "object", "required": ["pointer", "ne"], "additionalProperties": false, "properties": {"pointer": {"$ref": "#/$defs/pointer"}, "ne": true}},
+        {"type": "object", "required": ["pointer", "absent"], "additionalProperties": false, "properties": {"pointer": {"$ref": "#/$defs/pointer"}, "absent": {"const": true}}},
+        {"type": "object", "required": ["pointer", "present"], "additionalProperties": false, "properties": {"pointer": {"$ref": "#/$defs/pointer"}, "present": {"const": true}}},
+        {"type": "object", "required": ["pointer", "some"], "additionalProperties": false, "properties": {"pointer": {"$ref": "#/$defs/pointer"}, "some": {"type": "object", "additionalProperties": true}}, "description": "The array at pointer has an element where every sub-pointer in `some` equals its value."},
+        {"type": "object", "required": ["pointer", "none"], "additionalProperties": false, "properties": {"pointer": {"$ref": "#/$defs/pointer"}, "none": {"type": "object", "additionalProperties": true}}, "description": "The array at pointer has no element where every sub-pointer in `none` equals its value."},
+        {"type": "object", "required": ["pointer", "not_contains"], "additionalProperties": false, "properties": {"pointer": {"const": ""}, "not_contains": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}}, "description": "No listed string may appear anywhere in the JSON serialization of the whole response, including keys and nested values (Unicode is not ASCII-escaped)."}
+      ]
+    },
+    "exchange": {
+      "type": "object",
+      "required": ["inputs", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {"type": "array", "items": {"$ref": "#/$defs/input"}},
+        "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+        "cleanup": {"type": "array", "items": {"$ref": "#/$defs/request"}, "description": "Requests run after the steps whatever their outcome, so a fixture leaves no session behind."}
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {"enum": ["GET", "POST", "DELETE", "PUT"]},
+        "path": {"type": "string", "pattern": "^/"},
+        "as": {"enum": ["main", "peer", "fresh", "none"], "description": "Whose cookie: main (the run's login, the default), peer (a second principal), fresh (this fixture's own jar, empty at its first step), none."},
+        "body": true,
+        "invalid_body": {"type": "boolean", "description": "The body breaks the request schema on purpose (a 422 case). Self-check then requires that it does NOT validate."},
+        "keep_cookies": {"type": "boolean", "description": "Ignore Set-Cookie on this response, so the next request still presents the cookie held before it. Proves logout invalidates the session on the server, not only in the client."}
+      }
+    },
+    "step": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["http", "expect"],
+          "additionalProperties": false,
+          "properties": {
+            "http": {"$ref": "#/$defs/request"},
+            "expect": {
+              "type": "object",
+              "required": ["status"],
+              "additionalProperties": false,
+              "properties": {
+                "status": {"type": "integer", "minimum": 100, "maximum": 599},
+                "match": {"type": "array", "items": {"$ref": "#/$defs/match"}, "description": "Each pointer reads the response body. For GET /alerts' 200, whose body is an event stream, it reads the list of the alert events' data, in the order they arrived (index 0 first)."},
+                "cookie": {
+                  "type": "object",
+                  "required": ["set"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "set": {"type": "boolean"},
+                    "attributes": {"type": "array", "items": {"enum": ["HttpOnly", "Secure", "SameSite=Strict"]}}
+                  }
+                },
+                "example": {"description": "A concrete body of the kind this step expects. Self-check validates it against the operation's response schema; consumer tests may decode it strictly."},
+                "headers": {
+                  "type": "object",
+                  "additionalProperties": {"type": ["string", "null"]},
+                  "description": "Named response headers whose values must match exactly. For GET /sessions/{id}/output's 200 this names TSB-Page-* headers. A null value means the response MUST NOT carry that header."
+                },
+                "binary_body": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "For a response whose body is application/octet-stream: the body's length and content, rather than a JSON shape.",
+                  "properties": {
+                    "empty": {"type": "boolean", "description": "The body must be byte-empty."},
+                    "min_bytes": {"type": "integer", "minimum": 0},
+                    "contains": {"type": "array", "items": {"type": "string", "minLength": 1}},
+                    "lacks": {"type": "array", "items": {"type": "string", "minLength": 1}}
+                  }
+                }
+              }
+            },
+            "save": {"$ref": "#/$defs/saves"},
+            "poll": {"type": "boolean", "description": "Repeat the request until the expectation holds or the run's timeout expires."}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["ws_open", "path"],
+          "additionalProperties": false,
+          "properties": {"ws_open": {"$ref": "#/$defs/wsid"}, "path": {"type": "string", "pattern": "^/"}}
+        },
+        {
+          "type": "object",
+          "required": ["ws_send", "frame"],
+          "additionalProperties": false,
+          "properties": {
+            "ws_send": {"$ref": "#/$defs/wsid"},
+            "frame": {"type": "object"},
+            "unknown": {"type": "boolean", "description": "The frame's `t` is deliberately not in the schema (the receiver must ignore it)."},
+            "invalid": {"type": "boolean", "description": "The frame deliberately breaks the schema."}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["ws_send", "bytes"],
+          "additionalProperties": false,
+          "properties": {"ws_send": {"$ref": "#/$defs/wsid"}, "bytes": {"type": "string", "description": "Sent as one binary frame: the UTF-8 encoding of this string after ${} substitution."}}
+        },
+        {
+          "type": "object",
+          "required": ["ws_expect", "frame"],
+          "additionalProperties": false,
+          "properties": {
+            "ws_expect": {"$ref": "#/$defs/wsid"},
+            "frame": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "match": {"type": "array", "items": {"$ref": "#/$defs/match"}},
+                "save": {"$ref": "#/$defs/saves"},
+                "example": {"type": "object"}
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["ws_expect", "output_contains"],
+          "additionalProperties": false,
+          "properties": {"ws_expect": {"$ref": "#/$defs/wsid"}, "output_contains": {"type": "string", "minLength": 1}}
+        },
+        {
+          "type": "object",
+          "required": ["ws_expect", "prefix"],
+          "additionalProperties": false,
+          "description": "The attach prefix: the text frame, then one binary message that contains or lacks given strings. The text frame is matched first; the binary message is the dump.",
+          "properties": {
+            "ws_expect": {"$ref": "#/$defs/wsid"},
+            "prefix": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "match": {"type": "array", "items": {"$ref": "#/$defs/match"}, "description": "Each pointer reads the prefix text frame."},
+                "save": {"$ref": "#/$defs/saves"},
+                "example": {"type": "object"},
+                "binary_contains": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Each string must appear in the binary dump message."},
+                "binary_lacks": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Each string must not appear in the binary dump message."}
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["ws_expect", "close"],
+          "additionalProperties": false,
+          "properties": {"ws_expect": {"$ref": "#/$defs/wsid"}, "close": {"type": "integer", "minimum": 1000, "maximum": 4999}}
+        },
+        {
+          "type": "object",
+          "required": ["ws_close"],
+          "additionalProperties": false,
+          "properties": {"ws_close": {"$ref": "#/$defs/wsid"}}
+        },
+        {
+          "type": "object",
+          "required": ["wait"],
+          "additionalProperties": false,
+          "properties": {
+            "wait": {
+              "anyOf": [{"type": "number", "minimum": 0, "maximum": 120}, {"type": "string", "pattern": "^\\$\\{[a-z][a-z0-9_]*\\}$"}],
+              "description": "Seconds to sleep before the next step, or a ${placeholder} saved from a response (a ticket's expires_in, say). The runner refuses more than 120."
+            },
+            "extra": {"type": "number", "minimum": 0, "maximum": 10, "description": "Seconds added to wait."}
+          }
+        }
+      ]
+    },
+    "instance": {
+      "type": "object",
+      "required": ["schema", "instances"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": {"type": "string", "pattern": "^(schemas|openapi)/[a-z0-9.-]+\\.json(#(/[^/]*)*)?$"},
+        "instances": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["valid", "doc"],
+            "additionalProperties": false,
+            "properties": {"valid": {"type": "boolean"}, "doc": true, "note": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "sequence": {
+      "type": "object",
+      "required": ["socket", "messages"],
+      "additionalProperties": false,
+      "properties": {
+        "socket": {"enum": ["conn-control", "supervisor-control", "vt-control"]},
+        "messages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["from", "msg"],
+            "additionalProperties": false,
+            "properties": {
+              "from": {"enum": ["core", "worker", "supervisor", "vt"]},
+              "msg": {"type": "object"},
+              "unknown": {"type": "boolean", "description": "The message names a cmd or event this tag does not define, on purpose (the receiver's rule for unknown messages is under test)."},
+              "run": {"type": "string", "pattern": "^[0-9]{20}$", "description": "The core run the message belongs to, as a capture line carries it (artifacts-collected.schema.json run): a sequence that spans a core restart marks each message's run."},
+              "invalid": {"type": "boolean", "description": "The message breaks its sender's schema on purpose (a receiver's rule for a malformed line is under test). Self-check then requires that it does NOT validate."},
+              "note": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "bytes": {
+      "type": "object",
+      "required": ["format"],
+      "additionalProperties": false,
+      "properties": {
+        "format": {"enum": ["c3-frames", "c8-recording", "c4-vt-frames"]},
+        "file": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*\\.bin$", "description": "A sibling file holding the exact bytes; it is the ground truth."},
+        "sidecar": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*\\.bin$", "description": "For a C8 recording: the sibling file holding its sidecar."},
+        "frames": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+        "max_message_bytes": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "For C4 frames: the maximum message size (a contract range, R7) the .bin was encoded under, so a chunked blob is graded against the same value the codec chunks at."},
+        "messages": {"type": "array", "minItems": 1, "items": {"type": "object"}, "description": "For C4 frames: the decoded messages, in stream order."},
+        "invalid": {
+          "type": "array",
+          "minItems": 1,
+          "description": "For a C8 recording: recordings a reader must refuse, as the exact bytes of both files, each with the problem it must be refused for.",
+          "items": {
+            "type": "object",
+            "required": ["ttyrec_hex", "sidecar_hex", "problem"],
+            "additionalProperties": false,
+            "properties": {
+              "ttyrec_hex": {"type": "string", "pattern": "^([0-9a-f]{2})*$"},
+              "sidecar_hex": {"type": "string", "pattern": "^([0-9a-f]{2})*$"},
+              "problem": {"type": "string", "minLength": 1, "description": "Words the refusal names."},
+              "note": {"type": "string"}
+            }
+          }
+        },
+        "runs": {
+          "type": "array",
+          "minItems": 2,
+          "description": "For C3 frames across core restarts: one tap per run, in run order, as a run-bounded collection holds them (artifacts-collected.schema.json run-frames).",
+          "items": {
+            "type": "object",
+            "required": ["run", "file", "frames"],
+            "additionalProperties": false,
+            "properties": {
+              "run": {"type": "string", "pattern": "^[0-9]{20}$"},
+              "file": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*\\.bin$"},
+              "frames": {"type": "array", "minItems": 1, "items": {"type": "object"}}
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {"required": ["file", "frames"], "properties": {"runs": false}},
+        {"required": ["runs"], "properties": {"format": {"const": "c3-frames"}, "file": false, "frames": false, "sidecar": false, "invalid": false}},
+        {"required": ["file", "messages"], "properties": {"format": {"const": "c4-vt-frames"}, "runs": false, "frames": false, "sidecar": false, "invalid": false}}
+      ]
+    },
+    "transform": {
+      "type": "object",
+      "required": ["transform", "input", "output"],
+      "additionalProperties": false,
+      "properties": {
+        "transform": {"enum": ["c3-to-c8", "c5-rediscovery", "c5-rediscovery-v0.2", "c8-compare", "inventory-layout", "inventory-yaml-mapping", "inventory-write-then-observe", "inventory-bulk-swap"]},
+        "input": {"type": "object", "description": "c3-to-c8: the tapped frames (`file` or `frames`), and `end` {end_state, timestamp} when the session ended; from contract-v0.2 also `handshakes` (the hello_ack numbers each gap frame's marker is computed from), `committed` {out_bytes, last_out_ts, last_seq, created_at} (what the recording held before these frames, and where a span starts when it held no output yet) and `end.spool` {last_seq, out_bytes, last_out_ts} (a spooled end's numbers). c5-rediscovery: supervisors, workers and sockets. c5-rediscovery-v0.2: the same, plus `spool` (spool entries) and `audited` (session ids the core has already audited). c8-compare: two recordings of one session, `a` and `b`, each as `frames`. The four inventory transforms: `reads`, a list of inventory-tree states, each {current: the link's target or null, index_before: the entries the reader keeps when current is missing, root_files: names in the inventory root, files: {source, name} with the file's parsed `doc` (the JSON form) or its `yaml` tree — a scalar as {text: the scalar's text, yaml11: string|int|float|bool|null|timestamp}, which is what a YAML 1.1 reader sees}; the output is `results`, one {index, alerts, docs} per read, as the reader rule gives them."},
+        "output": {"type": "object"}
+      }
+    }
+  }
+}

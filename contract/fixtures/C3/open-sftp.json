@@ -1,0 +1,59 @@
+{
+  "seam": "C3",
+  "name": "open-sftp",
+  "mark": {
+    "published": "e0"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "description": "An SFTP session is a channel on the same connection as the shell, with its own session id and socket (lang-arch §4.1 sftp.sock; Contract §15: a session). Published at this tag so N channels per connection is expressible from the start (decision 5.21). Not required green: the file surface is a later release's (decision 5.43), and until then a worker may answer error not_supported.",
+  "corpus": [
+    "lang-arch §4.1",
+    "Contract §15",
+    "decision 5.21",
+    "decision 5.43"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_sftp",
+          "session_id": "fixture-session-b"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-b",
+          "session_type": "sftp",
+          "socket": "sftp.sock"
+        }
+      }
+    ]
+  }
+}

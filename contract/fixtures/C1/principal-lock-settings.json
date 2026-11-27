@@ -1,0 +1,81 @@
+{
+  "seam": "C1",
+  "name": "principal-lock-settings",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "The resolved lock settings ride Principal on the login answer and Me on GET /auth/me (H5 (b); no new endpoint): the screen-lock time, lock on idle, the vault idle timer, the hard cap and the activity interval, in seconds, as the core's per-user resolver gives them now. A surface takes them from here, never from a local value (V7). The example carries the corpus defaults (15 minutes; on, 30 minutes; 8 hours) and a one-minute interval.",
+  "corpus": [
+    "credential-protection §5.5",
+    "Frontend §10.4",
+    "E4 D9",
+    "E4 D14",
+    "E4 H5 (b)",
+    "E4 DEFAULT 6",
+    "E4 DEFAULT 34"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/login",
+          "as": "fresh",
+          "body": {
+            "username": "${user}",
+            "password": "${password}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "username": "fixture-user",
+            "locks": {
+              "screen_lock_after": 900,
+              "vault_lock_on_idle": true,
+              "vault_idle_after": 1800,
+              "vault_hard_cap": 28800,
+              "activity_interval": 60
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/auth/me",
+          "as": "fresh"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "username": "fixture-user",
+            "recording": {
+              "login_input": false
+            },
+            "locks": {
+              "screen_lock_after": 900,
+              "vault_lock_on_idle": true,
+              "vault_idle_after": 1800,
+              "vault_hard_cap": 28800,
+              "activity_interval": 60
+            }
+          }
+        }
+      }
+    ]
+  }
+}

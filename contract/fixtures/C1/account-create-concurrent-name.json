@@ -1,0 +1,51 @@
+{
+  "seam": "C1",
+  "name": "account-create-concurrent-name",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Pause two creates of the same previously unused name before check-and-set. Resume both; one creates, second gets 409 user_exists. Check-and-set and audit-before-commit occur in one bbolt write transaction; exactly one account and create audit event result."
+    }
+  ],
+  "description": "Pause two creates of the same previously unused name before check-and-set. Resume both; one creates, second gets 409 user_exists. Check-and-set and audit-before-commit occur in one bbolt write transaction; exactly one account and create audit event result.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/accounts",
+          "body": {
+            "username": "fixture-account",
+            "password": "FIXTURE-NOT-A-PASSWORD"
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "user_exists"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,494 @@
+{
+  "seam": "C6",
+  "name": "terminal-continuation-failures",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: recording_continuation_terminal_continuation_failures_u2: fault-injection tests for every listed continuation scenario"
+    }
+  ],
+  "description": "Provider failure cuts and expected durable state for recording continuations.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3"
+  ],
+  "case": {
+    "schema": "schemas/recording-continuation-scenario.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "allocation before creation",
+          "steps": [
+            "reserve generation 1 in bbolt",
+            "crash before pair creation",
+            "restart"
+          ],
+          "expect": [
+            "generation 1 is spent",
+            "reserve a later generation",
+            "no unlinked pair is activated"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "partial creation",
+          "steps": [
+            "reserve generation 1",
+            "create one pair member",
+            "file or directory sync fails",
+            "restart"
+          ],
+          "expect": [
+            "halt the episode",
+            "keep and report any orphan found",
+            "never adopt or delete it"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "audit tail crash",
+          "steps": [
+            "sync a new pair",
+            "interrupt the link append before LF",
+            "restart"
+          ],
+          "expect": [
+            "repair only the unterminated audit tail",
+            "pair without a link is an orphan",
+            "allocate a new generation"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "complete surviving link",
+          "steps": [
+            "sync a new pair",
+            "append complete link and crash before active switch",
+            "restart"
+          ],
+          "expect": [
+            "validate and sync the surviving link",
+            "activate its pair once",
+            "do not allocate another successor"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "malformed complete link",
+          "steps": [
+            "sync a new pair",
+            "leave an LF-complete malformed or conflicting link",
+            "restart"
+          ],
+          "expect": [
+            "preserve the malformed line",
+            "hold and report",
+            "do not classify the pair as orphan or activate it"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "audit before active switch",
+          "steps": [
+            "create and sync a new pair",
+            "append and fsync its link",
+            "switch the active bbolt point"
+          ],
+          "expect": [
+            "link durability precedes active switch",
+            "empty successor offset is zero",
+            "session counters are inherited"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "end between link and switch",
+          "steps": [
+            "quarantine a live session",
+            "make its link durable",
+            "worker ends the session",
+            "crash before active switch",
+            "restart"
+          ],
+          "expect": [
+            "record end and lifecycle event once",
+            "reconcile the surviving link",
+            "write one effective original end in successor"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "gap hold sync failure",
+          "steps": [
+            "quarantine at output seq 40 and committed bytes 8000",
+            "restart with ring first buffered seq 45",
+            "fail sync of the successor gap before commit",
+            "restart after additional ring overflow"
+          ],
+          "expect": [
+            "quarantine successor at its own last P",
+            "halt until next start",
+            "rederive the gap using inherited session-wide counters and the new hello"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "directory sync failure",
+          "steps": [
+            "create a new pair",
+            "fail the containing directory sync"
+          ],
+          "expect": [
+            "halt the episode",
+            "do not use the successor",
+            "preserve any orphan found on restart"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "file sync failure",
+          "steps": [
+            "append to the active successor",
+            "fail either pair file sync"
+          ],
+          "expect": [
+            "quarantine the successor at its last P",
+            "never cut or append its suffix",
+            "halt without another pair in the episode"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "input reservation",
+          "steps": [
+            "commit input seq 2",
+            "reserve through 1024",
+            "send input seq 5",
+            "quarantine before the next commit",
+            "restart and switch to a continuation"
+          ],
+          "expect": [
+            "do not read the old suffix for a sequence floor",
+            "first assigned continuation input seq exceeds 1024",
+            "do not reuse an input sequence"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "reservation failure",
+          "steps": [
+            "exhaust the current input sequence reservation",
+            "fail the bbolt write for the next reservation"
+          ],
+          "expect": [
+            "refuse input before assigning above the durable high-water",
+            "do not forward the refused input"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "missing reservation",
+          "steps": [
+            "recover a quarantined pair with no durable input sequence reservation"
+          ],
+          "expect": [
+            "hold and report",
+            "do not infer a floor from the suffix"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "simultaneous sibling failures",
+          "steps": [
+            "fail recording syncs for two sessions sharing a connection"
+          ],
+          "expect": [
+            "hold each session independently",
+            "keep shared control and heartbeats",
+            "do not apply a connection-level end"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "held attach",
+          "steps": [
+            "quarantine a live session",
+            "attach a client during the hold",
+            "send input"
+          ],
+          "expect": [
+            "send retained-grid prefix then one data_path lost",
+            "refuse input recording_unavailable",
+            "send no held output"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "alert persistence",
+          "steps": [
+            "hold a session",
+            "fail the audit write for the alert raise",
+            "restart"
+          ],
+          "expect": [
+            "keep the in-process alert and log the failure",
+            "rebuild the alert from the bbolt held state"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "ended marker in durable prefix",
+          "steps": [
+            "establish the end marker within the durable prefix",
+            "quarantine the pair",
+            "replay worker output"
+          ],
+          "expect": [
+            "do not create a continuation",
+            "do not write a second end",
+            "replay is validation only"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "missing end placement",
+          "steps": [
+            "recover a quarantined record that lacks end placement"
+          ],
+          "expect": [
+            "hold and report",
+            "never inspect the suffix to decide the end"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "connection closure",
+          "steps": [
+            "retain a session with a quarantined predecessor",
+            "the worker connection closes before complete accounting"
+          ],
+          "expect": [
+            "apply the existing closure notice",
+            "do not send release_accounted",
+            "keep the unknown suffix explicit"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "short replay",
+          "steps": [
+            "quarantine a pair at P",
+            "worker replay ends before the preserved suffix would",
+            "complete both replay barriers"
+          ],
+          "expect": [
+            "record only replayed output",
+            "do not compare the unconfirmed suffix",
+            "do not infer a loss from old physical length"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "empty replay",
+          "steps": [
+            "quarantine a pair at P",
+            "the next hello says there is nothing to replay"
+          ],
+          "expect": [
+            "the successor stays empty until later output",
+            "do not count or compare suffix bytes",
+            "P remains the initial successor baseline"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "audit sync failure",
+          "steps": [
+            "create and sync an empty successor",
+            "fail fsync of its audit link"
+          ],
+          "expect": [
+            "do not activate or write the successor",
+            "halt until the next start",
+            "classify only after audit repair"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "hold bbolt failure",
+          "steps": [
+            "fail recording sync",
+            "apply the in-process input and write barrier",
+            "fail the bbolt hold write"
+          ],
+          "expect": [
+            "keep the in-process hold",
+            "log the failed persistence",
+            "state the residual that a later process may not see the hold"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "input at failure barrier",
+          "steps": [
+            "accept input before the failure barrier",
+            "forward one recorded input and leave another queued",
+            "observe the sync failure"
+          ],
+          "expect": [
+            "keep the forwarded input in the unconfirmed predecessor evidence",
+            "refuse the unforwarded input",
+            "never claim refused input was delivered"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "replay barrier order",
+          "steps": [
+            "begin a continuation replay",
+            "receive replay_done before the final data frame"
+          ],
+          "expect": [
+            "do not send live before both replay barriers",
+            "record each replayed frame exactly once"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "grid restore unavailable",
+          "steps": [
+            "quarantine a pair at P",
+            "fail to restore a compatible snapshot at P",
+            "start the successor replay"
+          ],
+          "expect": [
+            "raise the existing grid_lost stale path",
+            "do not feed the old suffix to reconstruct a grid",
+            "preserve any already pending stale choice"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "grid replay once",
+          "steps": [
+            "quarantine a pair at P",
+            "retain a VT grid that applied output above P",
+            "restore a trusted P snapshot",
+            "replay the worker suffix"
+          ],
+          "expect": [
+            "replace the retained grid",
+            "feed each replay frame once",
+            "do not apply old unconfirmed output"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "same P across failures",
+          "steps": [
+            "quarantine a pair at P",
+            "create a successor that commits no frames",
+            "fail the successor sync",
+            "restart"
+          ],
+          "expect": [
+            "the successor has its own generation-specific quarantine fact",
+            "the next successor inherits the same session-wide P",
+            "do not collide with the predecessor notice"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "notice write failure",
+          "steps": [
+            "observe recording sync failure",
+            "enter the in-process hold",
+            "fail the quarantine notice audit append"
+          ],
+          "expect": [
+            "keep the in-process hold",
+            "report the failure",
+            "do not claim another process can reconstruct a missing notice"
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "held cadence and graceful stop",
+          "steps": [
+            "quarantine at P",
+            "trigger snapshot cadence",
+            "stop core gracefully"
+          ],
+          "expect": [
+            "no commit write moves the held pair above P",
+            "bbolt remains at P until active switch"
+          ]
+        }
+      }
+    ]
+  }
+}

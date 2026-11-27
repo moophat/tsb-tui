@@ -1,0 +1,115 @@
+{
+  "seam": "C1",
+  "name": "target-import-securecrt-port-conflict",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Inconsistent SecureCRT port aliases have no winner: the session is reported as an invalid row, never silently resolved by document order; the agreeing session keeps its preview.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "preview",
+            "format": "securecrt",
+            "export_bytes": "PFZhbkR5a2UgdmVyc2lvbj0iMy4wIj48a2V5IG5hbWU9IlNlc3Npb25zIj48a2V5IG5hbWU9ImFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIj48ZHdvcmQgbmFtZT0iSXMgU2Vzc2lvbiI+MTwvZHdvcmQ+PHN0cmluZyBuYW1lPSJQcm90b2NvbCBOYW1lIj5TU0gyPC9zdHJpbmc+PHN0cmluZyBuYW1lPSJIb3N0bmFtZSI+YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE8L3N0cmluZz48ZHdvcmQgbmFtZT0iW1NTSDJdIFBvcnQiPjIyPC9kd29yZD48ZHdvcmQgbmFtZT0iUG9ydCI+MjIyMjwvZHdvcmQ+PC9rZXk+PGtleSBuYW1lPSJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYiI+PGR3b3JkIG5hbWU9IklzIFNlc3Npb24iPjE8L2R3b3JkPjxzdHJpbmcgbmFtZT0iUHJvdG9jb2wgTmFtZSI+U1NIMjwvc3RyaW5nPjxzdHJpbmcgbmFtZT0iSG9zdG5hbWUiPmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiPC9zdHJpbmc+PGR3b3JkIG5hbWU9IltTU0gyXSBQb3J0Ij40NDwvZHdvcmQ+PGR3b3JkIG5hbWU9IlBvcnQiPjQ0PC9kd29yZD48L2tleT48L2tleT48L1ZhbkR5a2U+"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "preview_token": "fixture_token",
+            "format": "securecrt",
+            "targets": [
+              {
+                "entry": {
+                  "index": 2,
+                  "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                "source_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "target": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "tags": [],
+                  "discovered_by": "tsb",
+                  "host": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "port": 44
+                },
+                "change": "create",
+                "n": 0,
+                "has_credentials": false,
+                "key_file_referenced": false,
+                "definition": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "discovered_by": "tsb",
+                  "options": {
+                    "host": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "port": 44
+                  },
+                  "import_ref": {
+                    "format": "securecrt",
+                    "source_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                  }
+                },
+                "mapping": null
+              }
+            ],
+            "not_carried": [
+              {
+                "locator": {
+                  "index": 1,
+                  "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "kind": "row",
+                "reason": "invalid_entry"
+              }
+            ],
+            "credentials": []
+          },
+          "match": [
+            {
+              "pointer": "/targets/0/source_ref",
+              "eq": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            {
+              "pointer": "/targets/0/definition/options/port",
+              "eq": 44
+            },
+            {
+              "pointer": "/not_carried/0/kind",
+              "eq": "row"
+            },
+            {
+              "pointer": "/not_carried/0/reason",
+              "eq": "invalid_entry"
+            },
+            {
+              "pointer": "/not_carried/0/locator/index",
+              "eq": 1
+            }
+          ],
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      }
+    ]
+  }
+}

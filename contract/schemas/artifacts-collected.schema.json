@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Artefacts collected for tsbc verify --artifacts",
+  "description": "`<dir>/collected.json`: what a harness collected from a running node for the seams a stranger's machine cannot reach over the network (C3, C5, C6, C8). The runner grades exactly the files listed here, and every listed file must exist at its kind's path (x-layout). The directory holds regular files only: a symbolic link anywhere in it fails the whole collection, so no link can make the runner grade or scan a file outside it. For an ordinary unquarantined pair, collect a recording only after its session has ended, or cut both its files by the reopen rule (ttyrec.schema.json x-sidecar): the runner reads both to the last byte and fails a torn or uncoded tail. Credentials never leave the node: before collecting, the harness replaces every credential value in a capture — connect.auth.key, connect.auth.password, and login.auth.password of a SessionCreateRequest wherever one was captured, and every string of an answers list, on C2 device_login_answer or C3 auth_answer, wherever one was captured — with the synthetic constant FIXTURE-NOT-A-KEY or FIXTURE-NOT-A-PASSWORD. The runner fails the whole collection if any value under a credential-named key (password, key, passphrase, ticket, private_key, secret) is anything else, and scans every file in the directory — text, JSON strings, hex, raw bytes — for PEM headers, OpenSSH key markers and high-entropy base64, so the sessions recorded for a collection must not display key material. The rule reaches a recording's login frames too: a collected recording must not hold a code-7 login answer frame (the username and password of a login supplied on session create, which a deployment's recording.login_input knob writes at the head of a recording; ttyrec.schema.json x-login-line), and a collector leaves such a recording out. The runner fails the whole collection, naming the file, if the sidecar of any recording in the directory holds a code 7. A code-6 frame (the device's login prompt) is not refused. A code-8 frame (TSB's own prompt line) is not refused either: it carries no secret. A core restart inside a collection is a run boundary: a run is one core process, named by its start time as a zero-padded 20-digit decimal count of nanoseconds since the Unix epoch, so runs order and the previous run is defined. A control line may carry its run; a run-bounded collection taps each session's data socket once per run (run-frames). v0.1's frames kind stays for a collection with no boundary, which is graded exactly as at v0.1. A torn last line or frame at the end of a run whose core was killed is cut, as the recording's reopen rule cuts a torn tail; the capture writer cuts its own torn tail before it appends again.",
+  "type": "object",
+  "required": ["collected_at", "node_role", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "collected_at": {"$ref": "common.schema.json#/$defs/timestamp"},
+    "node_role": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$", "description": "A role name (for example 'standing' or 'lab'), never a host name or an address."},
+    "recording_chains": {
+      "type": "array",
+      "description": "Complete chain snapshots: the captured session record, pair paths in generation order and linked session audit facts. The chain is the walk along its links from generation 0, not the range zero to recording_next_generation minus one. A collection is complete when it holds generation 0's pair, every pair the link walk names (each linked generation unique, strictly increasing, below recording_next_generation, at its recordings/<session_id>.chain/continuation-<generation> path), each of those links and each quarantine notice the walk needs. A gap is not incompleteness; a pair present with no link to it is an orphan, reported and never used. Anything the link walk names that is missing fails closed. A chain collection requires the complete collected audit log; its session integrity events must equal the supplied audit facts including timestamps. Legacy recording graders refuse chain collections.",
+      "items": {
+        "type": "object", "required": ["session_record", "pairs", "audit"], "additionalProperties": false,
+        "properties": {
+          "session_record": {"$ref": "continuity-state.schema.json#/$defs/session_record"},
+          "pairs": {"type": "array", "minItems": 1, "items": {
+            "type": "object", "required": ["ttyrec", "sidecar"], "additionalProperties": false,
+            "properties": {"ttyrec": {"type": "string", "minLength": 1}, "sidecar": {"type": "string", "minLength": 1}}
+          }},
+          "audit": {"type": "array", "items": {"$ref": "audit-event.schema.json#/$defs/recording_integrity_event"}}
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["seam", "kind", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "seam": {"enum": ["C3", "C5", "C6", "C8"]},
+          "kind": {"enum": ["worker-manifest", "supervisor-manifest", "recording", "recording-direction", "audit", "frames", "run-frames", "control", "supervisor-control"]},
+          "path": {"type": "string", "pattern": "^[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$", "description": "Relative to the directory; no segment starts with a dot."}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "control_line": {
+      "description": "One line of a control/*.jsonl capture: who sent the message, and the message as it crossed the socket. `probe: true` marks a message the harness injected to test a receiver's rule (an unknown command, say); it did not come from the core, and it is exempt from the sender's schema.",
+      "type": "object",
+      "required": ["from", "msg"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {"enum": ["core", "worker", "supervisor"]},
+        "msg": {"type": "object"},
+        "probe": {"type": "boolean"},
+        "run": {"$ref": "#/$defs/run"}
+      }
+    },
+    "run": {
+      "type": "string",
+      "pattern": "^[0-9]{20}$",
+      "description": "One core process: its start time as a zero-padded 20-digit decimal count of nanoseconds since the Unix epoch. Ordered as a string and as a number, and within the id shape (common.schema.json), so it can name a directory."
+    }
+  },
+  "x-layout": {
+    "worker-manifest": "manifests/workers/<worker_id>.json — a copy of /tmp/tsb/workers/<worker_id>.json (C5)",
+    "supervisor-manifest": "manifests/supervisors/<supervisor_id>/manifest.json — a copy of /tmp/tsb/supervisors/<supervisor_id>/manifest.json (C5)",
+    "recording": "recordings/<session_id>.ttyrec — the session's classic ttyrec (C8); an ended session's ends in its end marker, a live session's has none",
+    "recording-direction": "recordings/<session_id>.dir — its sidecar, one byte per ttyrec frame (C8); required for every collected recording",
+    "audit": "audit.jsonl — the audit log (C6)",
+    "frames": "frames/<session_id>.bin — a tap of that session's data socket, both directions, the C3 frames exactly as they crossed it (C3); for a collection with no run boundary",
+    "run-frames": "frames/<run>/<session_id>.bin — the same tap for one run of the core (a run-bounded collection); no id holds a slash, so the two kinds never collide (C3)",
+    "control": "control/<conn_id>.jsonl — a connection's control socket; one control_line per message, both directions, in order (C3)",
+    "supervisor-control": "control/supervisors/<supervisor_id>.jsonl — a supervisor's control socket, in its own directory so no connection id can be read as a supervisor's; one control_line per message, both directions, in order (C3)"
+  }
+}

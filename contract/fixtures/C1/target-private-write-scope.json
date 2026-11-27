@@ -1,0 +1,59 @@
+{
+  "seam": "C1",
+  "name": "target-private-write-scope",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Own-target supplied IDs are refused; providers verify owner-only writes and the \u00a74 order."
+    }
+  ],
+  "description": "Own-target supplied IDs are refused; providers verify owner-only writes and the \u00a74 order.",
+  "corpus": [
+    "Storage \u00a73.5",
+    "Storage \u00a79",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "fixture-private-id",
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "share": [
+              "fixture-user"
+            ]
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "target request refused"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

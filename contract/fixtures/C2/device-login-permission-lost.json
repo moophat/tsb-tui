@@ -1,0 +1,46 @@
+{
+  "seam": "C2",
+  "name": "device-login-permission-lost",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/ws/device_login_test.go — TestAPolicyReloadEndsADeviceLogin4003AtAttachAndForbiddenAtConnected: 4003 at device_login_attach after the reload, result forbidden and close 4016 at connected, nothing audited"
+    }
+  ],
+  "description": "Permission is checked again across a long login (OQ5 (a)): at `device_login_attach` the principal must still see the target and hold `session.create` and a join permission, else the socket is closed 4003 (the attach order's code for a principal who may no longer join) and nothing is sent first; at `connected` the core sends C3 `disconnect` and `device_login_result {outcome: forbidden}`, then closes 4016. Neither is audited, as no refused create is.",
+  "corpus": [
+    "open_decisions §5",
+    "Frontend §10.4",
+    "device-login steps 8, 20",
+    "session-attach R3"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "forbidden"
+        },
+        "note": "at connected: the permission went with a policy reload"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "denied"
+        },
+        "note": "the outcome is `forbidden`, the word the 403 uses"
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "seam": "C6",
+  "name": "event-recording-state",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:audit-recording-state",
+  "description": "When the core starts it writes whether recording is enabled, so a deployment that disabled its recorder (a single-user choice open_decisions §5 allows) is on the record rather than silently unrecorded. A collected audit log must contain one.",
+  "corpus": [
+    "open_decisions §5",
+    "decision 5.40a"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "config.recording_state",
+          "detail": {
+            "enabled": true
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "config.recording_state",
+          "detail": {
+            "enabled": false
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "config.recording_state",
+          "detail": {}
+        },
+        "note": "enabled is the record"
+      }
+    ]
+  }
+}

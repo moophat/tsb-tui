@@ -1,0 +1,40 @@
+{
+  "seam": "C1",
+  "name": "output-page-501",
+  "mark": {"published": "e2", "required-green": "e5"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "A core that does not serve pages yet answers 501 not_implemented (C1 decision 3; 5.48; F15); a core that does (e5) answers 200 with the page. This stub is an e5 provider, so it grades the 200 branch: the same request output-page makes is answered with octet-stream and the TSB-Page-* headers. The 501 branch is not gradeable by a provider that serves pages — a core that does not must answer 501 not_implemented instead, and no fixture here forces that branch.",
+  "corpus": ["C1 decision 3", "5.48", "F15"],
+  "case": {
+    "inputs": ["user", "password", "target_id"],
+    "steps": [
+      {
+        "http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}},
+        "expect": {"status": 201},
+        "save": {"sid": "/session/id"}
+      },
+      {
+        "http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}},
+        "expect": {"status": 200},
+        "save": {"ta": "/ticket"}
+      },
+      {"ws_open": "a", "path": "/ws/attach"},
+      {"ws_send": "a", "frame": {"t": "attach", "v": 1, "ticket": "${ta}", "session_id": "${sid}"}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "attached"}]}},
+      {"ws_expect": "a", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_send": "a", "bytes": "# page me ${nonce}\r"},
+      {"ws_expect": "a", "output_contains": "page me ${nonce}"},
+      {"ws_close": "a"},
+      {
+        "http": {"method": "GET", "path": "/sessions/${sid}/output?before_seq=1000&max_bytes=4096"},
+        "expect": {
+          "status": 200,
+          "headers": {"TSB-Page-More": "false"},
+          "binary_body": {"contains": ["page me ${nonce}"]}
+        }
+      }
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

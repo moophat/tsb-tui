@@ -1,0 +1,126 @@
+{
+  "seam": "C1",
+  "name": "session-create-reuse",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "connection: reuse opens the second session on a connection the principal already holds to the target, sharing its authentication: same connection_id, different session id. The fixture names the connection with connection_id, so another live session of the same principal cannot make the choice ambiguous. Contract §15.3 makes the choice a create parameter from the first tag because adding it later breaks every pinned surface. Neither choice is isolation.",
+  "corpus": [
+    "Contract §15",
+    "Contract §15.3",
+    "immortality §2.2"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_a": "/session/id",
+          "conn_a": "/session/connection_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "connection_id": "${conn_a}"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/session/connection_id",
+              "eq": "${conn_a}"
+            },
+            {
+              "pointer": "/session/id",
+              "ne": "${sid_a}"
+            }
+          ],
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_b": "/session/id"
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_a}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_b}"
+      }
+    ]
+  }
+}

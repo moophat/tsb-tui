@@ -1,0 +1,70 @@
+{
+  "seam": "C8",
+  "name": "broker-marker",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "bytes",
+  "grade": "with:recordings-broker-marker",
+  "description": "The broker marker on disk, sidecar code 5 (5.46: whatever is chosen is recorded as broker-originated, in the recording and in the audit). When the core acts on the target on the session's behalf — sending Ctrl-L for a stale-grid ctrl_l answer, say — the recording holds one frame coded 5 whose data is the fixed pure-ASCII line x-broker-line, stamped on the core's input clock: CR LF [TSB: stale screen after lost output - <choice> chosen] CR LF. The choice is spelled wiggle, ctrl_l, continue or fresh_session, underscores and all, one spelling everywhere; the separator is a plain ASCII hyphen-minus, never an em dash. A classic ttyrec player prints the line, so the recording tells the truth on its own; a TSB reader knows the marker by its code and parses the choice. Refused: an empty code-5 frame, data that is not the line, a choice with another spelling. Who chose is on the session.stale_choice audit event only.",
+  "corpus": [
+    "5.46",
+    "plan.md §3 C8",
+    "immortality §5.3"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "broker-marker.ttyrec.bin",
+    "sidecar": "broker-marker.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 123456,
+        "length": 2,
+        "direction": "out",
+        "data_hex": "2420"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 0,
+        "length": 57,
+        "marker": "broker",
+        "data_hex": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d20776967676c652063686f73656e5d0d0a"
+      },
+      {
+        "sec": 1789000002,
+        "usec": 0,
+        "length": 59,
+        "marker": "broker",
+        "data_hex": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d20636f6e74696e75652063686f73656e5d0d0a"
+      },
+      {
+        "sec": 1789000003,
+        "usec": 0,
+        "length": 64,
+        "marker": "broker",
+        "data_hex": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d2066726573685f73657373696f6e2063686f73656e5d0d0a"
+      }
+    ],
+    "invalid": [
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242041f9a16a0000000000000000",
+        "sidecar_hex": "0005",
+        "problem": "a broker marker carries its readable line",
+        "note": "an empty code-5 frame"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242041f9a16a000000000c00000062726f6b6572206576656e74",
+        "sidecar_hex": "0005",
+        "problem": "is not the broker marker's line",
+        "note": "free text, not the fixed format"
+      },
+      {
+        "ttyrec_hex": "40f9a16a40e2010002000000242041f9a16a00000000390000000d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d206374726c2d4c2063686f73656e5d0d0a",
+        "sidecar_hex": "0005",
+        "problem": "is not the broker marker's line",
+        "note": "ctrl-L with a hyphen: one spelling ctrl_l"
+      }
+    ]
+  }
+}

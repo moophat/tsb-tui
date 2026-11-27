@@ -1,0 +1,86 @@
+{
+  "seam": "C2",
+  "name": "attach-bad-ticket-close-4001",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "A ticket the core never minted is refused with close 4001. The ticket is checked first in the attach order, so the answer does not depend on which session the frame names.",
+  "corpus": [
+    "decision 5.34",
+    "Contract §2"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      },
+      {
+        "ws_open": "w",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "w",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "FIXTURE-NOT-A-TICKET-0000000000",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "w",
+        "close": 4001
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

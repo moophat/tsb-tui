@@ -1,0 +1,75 @@
+{
+  "seam": "C1",
+  "name": "target-get-invisible-404",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 U2 plan"
+    }
+  ],
+  "description": "A target outside the principal's filters is answered 404 target_not_found with the same body as a target no file has: the visibility gate never confirms that a target exists, so a probe of ids cannot map the fleet a principal is not allowed to see. No live input names such a target, so this is graded by the U2 plan's test, which is owed.",
+  "corpus": [
+    "Storage §10.1a",
+    "Storage §9",
+    "session-open step 2"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/fixture-secret-target",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "target_not_found",
+              "message": "no such target"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/fixture-no-such-target"
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "target_not_found",
+              "message": "no such target"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "seam": "C6",
+  "name": "event-vault-wipe",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "vault.wipe: a vault administrator wiped a user's vault, written before anything is deleted (D16; DEFAULT 46).",
+  "corpus": [
+    "credential-protection §8.4",
+    "E4 DEFAULT 10",
+    "E4 DEFAULT 49",
+    "E4 DEFAULT 51",
+    "E4 D16",
+    "E4 DEFAULT 46"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-peer",
+          "action": "vault.wipe",
+          "actor": "fixture-user",
+          "cleared_targets": [
+            "core-rtr-01"
+          ]
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-peer",
+          "action": "vault.wipe",
+          "cleared_targets": [
+            "core-rtr-01"
+          ]
+        },
+        "note": "a wipe names its administrator"
+      }
+    ]
+  }
+}

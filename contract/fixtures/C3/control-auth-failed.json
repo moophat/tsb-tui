@@ -1,0 +1,42 @@
+{
+  "seam": "C3",
+  "name": "control-auth-failed",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-auth-failed",
+  "description": "The target refuses the credential: auth_failed names the connection and the reason, and no connection exists. A password credential travels the same way a key does, inside connect.auth only. A collected run must show one, between connect and any connected; its capture carries the synthetic constant, never the credential the harness used.",
+  "corpus": [
+    "lang-arch §4.1",
+    "open_decisions §5"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "password",
+            "password": "FIXTURE-NOT-A-PASSWORD"
+          }
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "keyboard-interactive: bad password"
+        }
+      }
+    ]
+  }
+}

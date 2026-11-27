@@ -1,0 +1,101 @@
+{
+  "seam": "C1",
+  "name": "target-delete",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Delete removes the target file and its index entry before answering 204, so a later GET answers 404 target_not_found and a client cannot open a new session on that deleted target.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Storage §10.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "fixture-w-${nonce}",
+            "type": "ssh",
+            "host": "192.0.2.60"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "fixture-w-${nonce}"
+            },
+            {
+              "pointer": "/discovered_by",
+              "eq": "tsb"
+            },
+            {
+              "pointer": "/host",
+              "eq": "192.0.2.60"
+            },
+            {
+              "pointer": "/port",
+              "eq": 22
+            }
+          ],
+          "example": {
+            "id": "fixture-w-01234567",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [],
+            "discovered_by": "tsb",
+            "port": 22
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/targets/fixture-w-${nonce}"
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/fixture-w-${nonce}"
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "target_not_found",
+              "message": "target request refused"
+            }
+          }
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/targets/fixture-w-${nonce}"
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "seam": "C1",
+  "name": "target-import-surface-memory",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U7",
+      "test": "owed: Surface provider checks a freshly supplied file per request and no file, conversion or key lookup cache."
+    }
+  ],
+  "description": "Surface provider checks a freshly supplied file per request and no file, conversion or key lookup cache.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetImportCredentialPreview",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "reference": "import-aaaaaaaa-1",
+          "kind": "password",
+          "login_name": "fixture-user",
+          "target_ids": [
+            "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ]
+        },
+        "note": "metadata only"
+      }
+    ]
+  }
+}

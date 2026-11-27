@@ -1,0 +1,169 @@
+{
+  "seam": "C3",
+  "name": "terminal-seal-output-states-version",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U3 `seal_output_states_version`: a running capable core sends seal_output on its control connection without any hello and receives output_sealed; the worker records that command as the control peer stating 0.8; a replacement control peer starts with no statement and receives neither output_sealed nor terminal_busy until it states 0.8 itself by seal_output or a parsed hello, refused hellos included."
+    },
+    {
+      "unit": "U3",
+      "test": "owed: U2/U3 `seal_output_states_version`: a running capable core sends seal_output on its control connection without any hello and receives output_sealed; the worker records that command as the control peer stating 0.8; a replacement control peer starts with no statement and receives neither output_sealed nor terminal_busy until it states 0.8 itself by seal_output or a parsed hello, refused hellos included."
+    }
+  ],
+  "description": "U2/U3 `seal_output_states_version`: a running capable core sends seal_output on its control connection without any hello and receives output_sealed; the worker records that command as the control peer stating 0.8; a replacement control peer starts with no statement and receives neither output_sealed nor terminal_busy until it states 0.8 itself by seal_output or a parsed hello, refused hellos included.",
+  "corpus": [
+    "immortality \u00a74.1\u20134.3, \u00a76.4",
+    "session model \u00a712\u201315",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000,
+            "output_drain_timeout": 5000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "no prompt kind and no login_timeout toward the 0.8 worker",
+        "run": "00000000000000000001"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hostkey",
+          "conn_id": "fixture-conn-1",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+          "first_use": true
+        },
+        "note": "0.8's way: accept, warn, record",
+        "run": "00000000000000000001"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        },
+        "run": "00000000000000000001"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "open_timeout": 20000
+        },
+        "note": "open_timeout is 0.6's",
+        "run": "00000000000000000001"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        },
+        "run": "00000000000000000001"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "target",
+          "reason": "target closed channel"
+        },
+        "run": "00000000000000000001"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "seal_output",
+          "session_id": "fixture-session-a"
+        },
+        "note": "No hello has been sent on this control connection; seal_output states 0.8 for this peer.",
+        "run": "00000000000000000001"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "output_sealed",
+          "session_id": "fixture-session-a",
+          "output_seal": {
+            "sealed": true,
+            "read_outcome": "eof",
+            "final_last_seq": 0,
+            "final_out_bytes": 0,
+            "final_last_out_ts": 0,
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": false
+          }
+        },
+        "note": "The worker MUST send the sealed result to this peer despite receiving no hello.",
+        "run": "00000000000000000001"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "state": "answering",
+          "conn_id": "fixture-conn-1",
+          "last_ack_at": "2026-11-23T00:00:00Z"
+        },
+        "run": "00000000000000000002",
+        "note": "Replacement control peer: no version statement is inherited from the previous peer."
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping",
+          "n": 1
+        },
+        "run": "00000000000000000002"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "pong",
+          "n": 1
+        },
+        "run": "00000000000000000002",
+        "note": "This peer has sent neither hello nor seal_output: the worker MUST send it neither output_sealed nor terminal_busy, including a seal result carried from the previous peer."
+      }
+    ]
+  }
+}

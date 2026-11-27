@@ -1,0 +1,47 @@
+{
+  "seam": "C3",
+  "name": "terminal-continuation-hold",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed: recording_continuation_terminal_continuation_hold_u3: held-session ring proof with control and heartbeats connected"
+    },
+    {
+      "unit": "U2",
+      "test": "owed: recording_continuation_terminal_continuation_hold_u2: suppress redial and isolate the held session"
+    }
+  ],
+  "description": "A held session closes only its data peer while control and heartbeats remain connected. The worker continues reading into the bounded drop-oldest ring; on restart hello_ack exposes its replay boundary. U3 must prove this before reliance.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3"
+  ],
+  "case": {
+    "schema": "schemas/recording-continuation-scenario.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "scenario": "held session ring under live control",
+          "steps": [
+            "for every supported recorded PTY worker version open a session",
+            "keep the control peer and heartbeats connected",
+            "close only its data peer and write output exceeding the ring capacity",
+            "reattach and replay"
+          ],
+          "expect": [
+            "control and heartbeats remain connected",
+            "the ring retains the newest bytes using drop-oldest",
+            "hello reports the correct first buffered seq and offset",
+            "sibling sessions continue"
+          ]
+        }
+      }
+    ]
+  }
+}

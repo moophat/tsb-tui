@@ -1,0 +1,49 @@
+{
+  "seam": "C1",
+  "name": "target-private-policy-gates",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks visibility, private management, session right and target filters independently."
+    }
+  ],
+  "description": "Provider checks visibility, private management, session right and target filters independently.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "target.private",
+                "session.create"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": false,
+            "force": [
+              "*"
+            ]
+          }
+        },
+        "note": "private and session rights remain independent"
+      }
+    ]
+  }
+}

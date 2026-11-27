@@ -1,0 +1,60 @@
+{
+  "seam": "C1",
+  "name": "target-create-generated-id",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Reserved generated IDs cannot be supplied to shared creation; provider tests verify both generated scopes, uniqueness and legacy IDs."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Reserved generated IDs cannot be supplied to shared creation; provider tests verify both generated scopes, uniqueness and legacy IDs."
+    }
+  ],
+  "description": "Reserved generated IDs cannot be supplied to shared creation; provider tests verify both generated scopes, uniqueness and legacy IDs.",
+  "corpus": [
+    "Storage \u00a73.5",
+    "Storage \u00a79",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "type": "ssh",
+            "host": "fixture.invalid"
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "target request refused"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

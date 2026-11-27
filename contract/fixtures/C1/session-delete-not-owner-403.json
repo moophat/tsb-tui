@@ -1,0 +1,110 @@
+{
+  "seam": "C1",
+  "name": "session-delete-not-owner-403",
+  "mark": {
+    "published": "e0",
+    "required-green": "e1"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "Only the owner, or a holder of session.terminate, may end a session: the owner token is lifecycle authority and never auto-transfers. A second principal that can see the session but is neither is refused 403 forbidden, and the session lives on. Needs a second principal whose policy.yaml entry can see the target but lacks session.terminate (inputs peer_user, peer_password). Published at e0, required green at e1: the lab seeds this input with the E1 harness, since phase-00 seeds one superadmin.",
+  "corpus": [
+    "Contract §10",
+    "PTY §7.1",
+    "Storage §9"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/sessions/${sid}",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "forbidden",
+              "message": "only the owner or session.terminate may end this session"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/${sid}"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/state",
+              "eq": "detached"
+            }
+          ]
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

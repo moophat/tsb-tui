@@ -1,0 +1,72 @@
+{
+  "seam": "C2",
+  "name": "frame-versioning",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U2", "test": "owed by the E2 core plan"}
+  ],
+  "description": "How C2 extends without breaking: every frame keeps v 1; a later tag adds a t or an optional field, never a breaking change inside a frame. An unknown t is ignored, an unknown field on a known frame is ignored, and a known t with an unknown v is ignored exactly as an unknown t is (C2 decision 1, D1). The attach first-frame rule is the exception and wins: the first frame is attach, and its v must be 1 or the server closes 4000. Graded live by running the v0.2.1 client (from the contract-v0.2.1 tag) against tsbc serve.",
+  "corpus": [
+    "decision 5.15",
+    "C2 decision 1",
+    "D1"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 132,
+          "rows": 40,
+          "reason": "applied"
+        },
+        "note": "a known frame at v 1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "size",
+          "v": 2,
+          "session_id": "fixture-session-a",
+          "cols": 132,
+          "rows": 40,
+          "reason": "applied"
+        },
+        "note": "a known t with an unknown v is not a shape the sender emits; the receiver ignores it like an unknown t"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 132,
+          "rows": 40,
+          "reason": "applied",
+          "future_field": true
+        },
+        "note": "an unknown field on a known frame breaks this sender's closed shape; a receiver ignores it (additive, R1)"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 132,
+          "rows": 40,
+          "reason": "applied"
+        },
+        "note": "the same frame without the later tag's optional field is valid"
+      }
+    ]
+  }
+}

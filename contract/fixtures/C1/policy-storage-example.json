@@ -1,0 +1,119 @@
+{
+  "seam": "C1",
+  "name": "policy-storage-example",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "schema/policy/policy_test.go — loads the Storage §9 example verbatim, refuses an unknown permission"
+    }
+  ],
+  "description": "policy.yaml in parsed form: Storage §9's alice and bob verbatim, plus recording.enabled, which decision 5.40a puts in this file from E0. The five permissions are the whole set, and the four filter forms the whole grammar; anything else is refused. There is no roles key: how roles are defined and assigned is OPEN (open_decisions §3).",
+  "corpus": [
+    "Storage §9",
+    "decision 5.40a",
+    "open_decisions §3",
+    "open_decisions §5"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "alice": {
+              "permissions": [
+                "session.create",
+                "session.join.rw",
+                "session.terminate",
+                "target.discover"
+              ],
+              "targets": [
+                "*"
+              ]
+            },
+            "bob": {
+              "permissions": [
+                "session.join.ro",
+                "target.discover"
+              ],
+              "targets": [
+                "tag:dev",
+                "host:staging-*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": true
+          }
+        },
+        "note": "Storage §9 verbatim, recording on"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "carol": {
+              "permissions": [
+                "session.create"
+              ],
+              "targets": [
+                "id:core-rtr-01"
+              ]
+            }
+          }
+        },
+        "note": "recording absent: the core's default applies"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "dave": {
+              "permissions": [
+                "session.admin"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "not one of the five permissions"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "erin": {
+              "permissions": [
+                "target.discover"
+              ],
+              "targets": [
+                "group:core"
+              ]
+            }
+          }
+        },
+        "note": "not one of the four filter forms"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {},
+          "roles": {
+            "operator": [
+              "session.create"
+            ]
+          }
+        },
+        "note": "role assignment is OPEN in the corpus"
+      }
+    ]
+  }
+}

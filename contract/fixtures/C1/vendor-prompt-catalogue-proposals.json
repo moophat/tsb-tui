@@ -1,0 +1,154 @@
+{
+  "seam": "C1",
+  "name": "vendor-prompt-catalogue-proposals",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: The release serves the proposed patterns verbatim and does not compile them."
+    }
+  ],
+  "description": "The ten release catalogue proposals are served verbatim. Provider tests cover exact catalogue and non-compiling bounded patterns.",
+  "corpus": [
+    "Storage \u00a73.6",
+    "Contract \u00a76"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/vendor-prompt-templates"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "cisco-ios",
+                "/prompt_pattern": "[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?[>#]"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "cisco-ios-xr",
+                "/prompt_pattern": "[A-Za-z0-9]+/[0-9A-Za-z]+/[0-9A-Za-z]+/[0-9A-Za-z]+:[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?#"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "cisco-nxos",
+                "/prompt_pattern": "[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?[>#]"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "juniper-junos",
+                "/prompt_pattern": "[A-Za-z0-9._-]+@[A-Za-z0-9._-]+[>#]"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "arista-eos",
+                "/prompt_pattern": "[A-Za-z0-9._-]+(\\([A-Za-z0-9._,:+-]+\\))?[>#]"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "huawei-vrp",
+                "/prompt_pattern": "(HRP_[MS])?(<[A-Za-z0-9._-]+>|\\[[~*]?[A-Za-z0-9._/-]+\\])"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "mikrotik-routeros",
+                "/prompt_pattern": "\\[[A-Za-z0-9._-]+@[A-Za-z0-9._-]+\\]( /[A-Za-z0-9._/-]+)? >"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "fortinet-fortios",
+                "/prompt_pattern": "[A-Za-z0-9._-]+( \\([A-Za-z0-9._-]+\\))? [#$]"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "paloalto-panos",
+                "/prompt_pattern": "[A-Za-z0-9._-]+@[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?[>#]"
+              }
+            },
+            {
+              "pointer": "/templates",
+              "some": {
+                "/vendor": "posix-shell",
+                "/prompt_pattern": "([^ \\t]+ )?[$#]"
+              }
+            }
+          ],
+          "example": {
+            "templates": [
+              {
+                "vendor": "cisco-ios",
+                "prompt_pattern": "[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?[>#]"
+              },
+              {
+                "vendor": "cisco-ios-xr",
+                "prompt_pattern": "[A-Za-z0-9]+/[0-9A-Za-z]+/[0-9A-Za-z]+/[0-9A-Za-z]+:[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?#"
+              },
+              {
+                "vendor": "cisco-nxos",
+                "prompt_pattern": "[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?[>#]"
+              },
+              {
+                "vendor": "juniper-junos",
+                "prompt_pattern": "[A-Za-z0-9._-]+@[A-Za-z0-9._-]+[>#]"
+              },
+              {
+                "vendor": "arista-eos",
+                "prompt_pattern": "[A-Za-z0-9._-]+(\\([A-Za-z0-9._,:+-]+\\))?[>#]"
+              },
+              {
+                "vendor": "huawei-vrp",
+                "prompt_pattern": "(HRP_[MS])?(<[A-Za-z0-9._-]+>|\\[[~*]?[A-Za-z0-9._/-]+\\])"
+              },
+              {
+                "vendor": "mikrotik-routeros",
+                "prompt_pattern": "\\[[A-Za-z0-9._-]+@[A-Za-z0-9._-]+\\]( /[A-Za-z0-9._/-]+)? >"
+              },
+              {
+                "vendor": "fortinet-fortios",
+                "prompt_pattern": "[A-Za-z0-9._-]+( \\([A-Za-z0-9._-]+\\))? [#$]"
+              },
+              {
+                "vendor": "paloalto-panos",
+                "prompt_pattern": "[A-Za-z0-9._-]+@[A-Za-z0-9._-]+(\\([A-Za-z0-9._-]+\\))?[>#]"
+              },
+              {
+                "vendor": "posix-shell",
+                "prompt_pattern": "([^ \\t]+ )?[$#]"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

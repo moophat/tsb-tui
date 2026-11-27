@@ -1,0 +1,53 @@
+{
+  "seam": "C6",
+  "name": "event-device-register",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "device.register: a device put on the allowlist, its principal, device_id and who acted (DEFAULT 10).",
+  "corpus": [
+    "credential-protection §8.4",
+    "E4 DEFAULT 10",
+    "E4 DEFAULT 49",
+    "E4 DEFAULT 51",
+    "credential-protection §5.2"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "device.register",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "actor": "fixture-user",
+          "device_name": "Work laptop"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "device.register",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "actor": "fixture-user",
+          "device_name": "Work laptop",
+          "device_pubkey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        },
+        "note": "never a key"
+      }
+    ]
+  }
+}

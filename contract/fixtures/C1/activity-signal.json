@@ -1,0 +1,67 @@
+{
+  "seam": "C1",
+  "name": "activity-signal",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "The user-activity signal: 204, always. The core counts at most one per login per locks.activity_interval and ignores the rest, never refusing one (DEFAULT 34); each counted signal moves the user's last-active time. Without a login, 401.",
+  "corpus": [
+    "credential-protection §5.5",
+    "Frontend §10.4",
+    "E4 D9",
+    "E4 D14",
+    "E4 H5 (b)",
+    "E4 DEFAULT 34"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/activity"
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/activity"
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/activity",
+          "as": "none"
+        },
+        "expect": {
+          "status": 401,
+          "example": {
+            "error": {
+              "code": "unauthenticated",
+              "message": "log in first"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

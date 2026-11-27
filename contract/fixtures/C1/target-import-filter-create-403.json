@@ -1,0 +1,47 @@
+{
+  "seam": "C1",
+  "name": "target-import-filter-create-403",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider sets target.edit filters, submits a batch containing an out-of-filter create, and checks preview and commit each return the fixed 403 without any definition or mutation; the answer is indistinguishable from an out-of-filter matched update. For commit, first preview under a permitting filter and then change the filter before commit."
+    }
+  ],
+  "description": "Provider sets target.edit filters, submits a batch containing an out-of-filter create, and checks preview and commit each return the fixed 403 without any definition or mutation; the answer is indistinguishable from an out-of-filter matched update. For commit, first preview under a permitting filter and then change the filter before commit.",
+  "corpus": [
+    "Storage §7.4",
+    "Contract §12"
+  ],
+  "case": {
+    "schema": "schemas/error.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused"
+          }
+        },
+        "note": "fixed refusal without row details"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused",
+            "details": "row"
+          }
+        },
+        "note": "row details are forbidden"
+      }
+    ]
+  }
+}

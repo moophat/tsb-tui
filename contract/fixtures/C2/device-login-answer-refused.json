@@ -1,0 +1,68 @@
+{
+  "seam": "C2",
+  "name": "device-login-answer-refused",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/ws/device_login_test.go — TestAStaleWrongCountOrLongAnswerIsRequestRefusedAndNothingCrossesC3: each refusal comes back as request_refused and nothing crosses C3, with a good answer crossing in the same test as the positive control"
+    }
+  ],
+  "description": "A device-login answer the core will not relay is answered, never dropped silently. `request_refused` with `request: device_login_answer` and reason `not_pending` (another prompt_id, or none outstanding) or `invalid` (a wrong count of strings, or a string past 1024 bytes of UTF-8); the same request with `device_login_hostkey_answer` and `not_pending` when no key question is outstanding. Either way the prompt stays outstanding and nothing crosses C3. The core checks before it relays, so a refused answer never reaches the worker.",
+  "corpus": [
+    "open_decisions §5",
+    "device-login step 16",
+    "conventions V4",
+    "ws-frames request_refused"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "request_refused",
+          "v": 1,
+          "request": "device_login_answer",
+          "reason": "not_pending"
+        },
+        "note": "another prompt_id, or none outstanding"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "request_refused",
+          "v": 1,
+          "request": "device_login_answer",
+          "reason": "invalid"
+        },
+        "note": "a wrong count of strings, or an over-long one"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "request_refused",
+          "v": 1,
+          "request": "device_login_hostkey_answer",
+          "reason": "not_pending"
+        },
+        "note": "an answer to a key question nobody asked"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "request_refused",
+          "v": 1,
+          "request": "device_login_prompt",
+          "reason": "invalid"
+        },
+        "note": "only a client request is refused"
+      }
+    ]
+  }
+}

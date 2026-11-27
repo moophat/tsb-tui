@@ -1,0 +1,94 @@
+{
+  "seam": "C1",
+  "name": "target-import-partial-failure",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider tests every durable boundary and distinguishes known from unknown effects."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Provider tests every durable boundary and distinguishes known from unknown effects."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Provider tests every durable boundary and distinguishes known from unknown effects."
+    }
+  ],
+  "description": "Provider tests every durable boundary and distinguishes known from unknown effects.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/error.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "internal_error",
+            "message": "request failed",
+            "import_progress": {
+              "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "credentials_stored": [
+                {
+                  "reference": "import-aaaaaaaa-1",
+                  "layer": "personal",
+                  "kind": "password",
+                  "target_ids": [
+                    "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  ]
+                }
+              ],
+              "targets_written": [
+                "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ],
+              "mapping": "pending",
+              "audit": "unknown",
+              "index": "pending",
+              "effects_known": true
+            }
+          }
+        },
+        "note": "known effects"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "inventory_unavailable",
+            "message": "request failed",
+            "import_progress": {
+              "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "credentials_stored": [
+                {
+                  "reference": "import-aaaaaaaa-1",
+                  "layer": "personal",
+                  "kind": "password",
+                  "target_ids": [
+                    "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  ]
+                }
+              ],
+              "targets_written": [
+                "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ],
+              "mapping": "pending",
+              "audit": "unknown",
+              "index": "pending",
+              "effects_known": true
+            }
+          }
+        },
+        "note": "index pending"
+      }
+    ]
+  }
+}

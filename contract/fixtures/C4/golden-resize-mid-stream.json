@@ -1,0 +1,58 @@
+{
+  "seam": "C4",
+  "name": "golden-resize-mid-stream",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "bytes",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "A golden C4 screen case, graded by the U4 libghostty-vt round trip: the sibling .bin is raw output fed to a fresh parser (resize events \u2014 kind-1 `resize` control messages \u2014 between output chunks, F14d); the dump the worker then produces is fed to a second parser and must show the same screen and modes. **No expected screen is stored** (F14: expected screens are never hand-written, they come from the round trip at a pinned engine); the fixture asserts the grid is 100x30 for the output after the resize event, the earlier lines from before it.",
+  "corpus": [
+    "plan.md C4 decision 6",
+    "plan.md C4 decision 9",
+    "vt-screen.schema.json",
+    "plan.md C4 6 (F14d)"
+  ],
+  "case": {
+    "format": "c4-vt-frames",
+    "file": "golden-resize-mid-stream.bin",
+    "max_message_bytes": 200,
+    "messages": [
+      {
+        "kind": 2,
+        "session_id": "sess-1",
+        "frame": {
+          "flags": 0,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "6f6e652074776f20746872656520666f75720d0a"
+        }
+      },
+      {
+        "kind": 1,
+        "msg": {
+          "cmd": "resize",
+          "session_id": "sess-1",
+          "cols": 100,
+          "rows": 30
+        }
+      },
+      {
+        "kind": 2,
+        "session_id": "sess-1",
+        "frame": {
+          "flags": 0,
+          "seq": 2,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "666976652073697820736576656e2065696768740d0a"
+        }
+      }
+    ]
+  }
+}

@@ -34,6 +34,10 @@ WORKSTATION_ALTS = (
     # probe must be a file URL into a workstation path; a bare file:// is no longer a hit.
     "file:///" + "opt/",
 )
+SYNTHETIC_WORKSTATION_PATTERN = (
+    "|".join(WORKSTATION_ALTS[:4]).replace(".claude", r"\.claude")
+    + "|file://(localhost)?/(opt|root|tmp)/"
+)
 
 
 def _git(*args: str, cwd: Path) -> None:
@@ -79,6 +83,9 @@ class PushMode(unittest.TestCase):
 
     def _push(self, branch: str = "main", *extra: str, remote: str | None = None, env: dict | None = None) -> subprocess.CompletedProcess[str]:
         url = str(self.remote if remote is None else remote)
+        env = dict(env or os.environ)
+        env.setdefault("TSB_LEAK_PATTERN", PATTERN_CONTROL)
+        env.setdefault("TSB_LEAK_PUSH_PATTERN", SYNTHETIC_WORKSTATION_PATTERN)
         return subprocess.run(
             ["bash", str(self.script), "--push", url, branch, *extra],
             cwd=self.work, capture_output=True, text=True, env=env,

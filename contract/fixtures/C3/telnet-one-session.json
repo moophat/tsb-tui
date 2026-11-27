@@ -1,0 +1,133 @@
+{
+  "seam": "C3",
+  "name": "telnet-one-session",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed by the E3 worker plan"
+    },
+    {
+      "unit": "U2",
+      "test": "owed by the E3 core plan"
+    }
+  ],
+  "description": "One session, ever. The first open_shell opens the connection's one session; every later open_shell on that connection is answered error not_supported naming that open_shell's session, and nothing follows it — the connection and its session go on. That holds while the session is live, while it is ending, and once it has ended but the close is not yet reported. The worker closes the TCP connection when the session ends (channel_closed by: core answering close_channel, by: worker for a timer it runs) or its open fails, and sends connection_lost cause single_session only once that end has reached a peer that knows the session — its channel_closed, the error answering the first open_shell, or the core's release for the session; never on hello_ack alone. It sends it before it reads another command, and emits nothing between. A worker-timer end no attached peer knows: the connection's control socket stays up until a peer says hello for that session; the end reaches it through the handshake, and single_session follows the release. Past heartbeat_interval × heartbeat_missed from the end with no such peer, the connection closes at the bound: with a control peer attached, single_session lists the session, so the core reads its spool first and records the worker's end. U3 tests, owed. U2 tests, owed: the unchanged core ends nothing on single_session; a core restarted while a telnet session's worker-timer end was in flight records that end, never terminated / connection_lost.",
+  "corpus": [
+    "Contract §15.2",
+    "Contract §15.3",
+    "session model §5",
+    "session model §11",
+    "connection-linger step 4"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-telnet",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        },
+        "note": "the first open_shell opens the connection's one session"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-b",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        },
+        "note": "a reuse while the connection is up"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "not_supported",
+          "message": "this connection carries one session; fixture-session-b is refused",
+          "session_id": "fixture-session-b"
+        },
+        "note": "nothing follows it: the connection and its session go on"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "close_channel",
+          "session_id": "fixture-session-a"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "core",
+          "reason": "closed by the core"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [],
+          "cause": "single_session",
+          "reason": "the connection's one session ended"
+        },
+        "note": "the end reached this peer, so single_session follows the channel_closed with nothing between"
+      }
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C5 worker manifest",
+  "description": "/tmp/tsb/workers/{worker_id}.json. Written by the worker, atomically (a temporary file renamed over the old one), on every change; left in place if the worker crashes. It is how a restarted core rediscovers a worker it did not spawn, through the filesystem interface (immortality §2.1, Contract §8): for each connection, dial {conn_dir}/control.sock, and {conn_dir}/{socket} for each session. Liveness is that dial: a socket that is missing or refuses the connection belongs to a dead worker. pid is informational only — meaningful inside the writer's PID namespace, and the worker runs in its own container. It carries no credential. Closed: a worker writes exactly the fields of its tag. proto_version is absent from every v0.1 manifest, and that absence is how a v0.2 core recognises a v0.1 worker. A retained ended session (ipc-control.schema.json release) stays listed, with its socket, until the core releases it or its connection closes. A restarted v0.2 core rediscovers in this order (c5-rediscovery-v0.2): it reads the spool first (spool-entry.schema.json), because a worker that ended a session while the core was away may since have exited; it dials as v0.1 does — a socket that is missing or refuses is a dead worker, terminated / worker_lost, whatever the manifest's version, unless the spool holds that session's end (a worker the core cannot reach is a dead worker, decision 5.38); then, for a live peer only, it branches on proto_version: none → the sessions are unreachable / protocol (immortality §6.4: never silently killed); any version → the handshake (ipc-control.schema.json hello), with the core's own version when it does not know the worker's. A listed retained ended session is replayed by that handshake before the core writes its spooled end. The v0.1 rule (c5-rediscovery: liveness is the dial) is unchanged.",
+  "type": "object",
+  "required": [
+    "worker_id",
+    "pid",
+    "supervisor_id",
+    "started_at",
+    "connections"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "worker_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "pid": {
+      "$ref": "supervisor.schema.json#/$defs/pid"
+    },
+    "supervisor_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "started_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "proto_version": {
+      "$ref": "common.schema.json#/$defs/proto_version",
+      "description": "The C3 version this worker speaks; \"0.8\" at this tag. Optional so a v0.1 manifest stays valid, and its absence is how a core recognises one."
+    },
+    "connections": {
+      "type": "array",
+      "description": "N connections per worker (immortality §2.2, LOCKED): a pool, even when N is configured to 1.",
+      "items": {
+        "type": "object",
+        "required": [
+          "conn_id",
+          "target_id",
+          "conn_dir",
+          "sessions"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "conn_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "target_id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "conn_dir": {
+            "$ref": "supervisor.schema.json#/$defs/conn_dir"
+          },
+          "sessions": {
+            "type": "array",
+            "description": "N sessions per connection (decision 5.21).",
+            "items": {
+              "type": "object",
+              "required": [
+                "session_id",
+                "session_type",
+                "socket"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "session_id": {
+                  "$ref": "common.schema.json#/$defs/id"
+                },
+                "session_type": {
+                  "$ref": "common.schema.json#/$defs/session_type"
+                },
+                "socket": {
+                  "$ref": "ipc-control.schema.json#/$defs/socket"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

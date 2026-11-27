@@ -1,0 +1,89 @@
+{
+  "seam": "C3",
+  "name": "link-state-telnet",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed by the E3 worker plan"
+    }
+  ],
+  "description": "The telnet liveness probe is IAC DO TIMING-MARK (RFC 860), sent when now − max(last E3, last probe) ≥ keepalive_probe_interval. A WILL, a WONT, an answer to any earlier probe, a second answer to one probe, and payload each count as E3. Each probe is sent whether or not an earlier one was answered: two probes in a row to a silent peer are both sent. A silent peer reaches missing, then link_timeout (now − last(E3) ≥ keepalive_interval × keepalive_count_max). With keepaliveInterval 0 no probe is sent and nothing fires; a target file sets it per target. When the target's socket closes with the session, the worker stops that connection's link timers and sends no further link_state for it. While the worker has stopped reading at buffer_bytes before open_shell, link_timeout is disarmed for that connection until open_shell: a reply the worker is deliberately not reading never counts as a dead link. U3 test, owed.",
+  "corpus": [
+    "session model §9 E3",
+    "session model §11",
+    "link-liveness steps 5 and 7",
+    "Storage §3.2"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-telnet",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "answering",
+          "last_ack_at": "2026-10-18T12:00:00Z"
+        },
+        "note": "the first event to a new control peer of a connected connection is link_state, so the core has the countdown at once"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      }
+    ]
+  }
+}

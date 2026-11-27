@@ -1,0 +1,38 @@
+{
+  "seam": "C1",
+  "name": "healthz",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "GET /healthz answers without authentication and says only that the core is up. Its response is closed, so a version string, a host name or an uptime would fail it: a consumer never learns what else runs on the broker host.",
+  "corpus": [
+    "Contract §4",
+    "Contract §3"
+  ],
+  "case": {
+    "inputs": [],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/healthz",
+          "as": "none"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/status",
+              "eq": "ok"
+            }
+          ],
+          "example": {
+            "status": "ok"
+          }
+        }
+      }
+    ]
+  }
+}

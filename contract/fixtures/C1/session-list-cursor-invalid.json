@@ -1,0 +1,55 @@
+{
+  "seam": "C1",
+  "name": "session-list-cursor-invalid",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: session history session-list-cursor-invalid provider test"
+    }
+  ],
+  "description": "A malformed cursor is 422 invalid_request with exactly cursor is invalid. Check empty, overlong and invalid encodings; never echo any supplied cursor, including text containing a host path. Published e4 so surfaces can build against the shape; required-green e5 so the addition does not retroactively fail the existing e4 provider.",
+  "corpus": [
+    "session-list rules 8\u201310",
+    "conventions V1, V4, V7, V8",
+    "Storage \u00a78.6"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions?limit=2&cursor=fixture-invalid-cursor"
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            },
+            {
+              "pointer": "/error/message",
+              "eq": "cursor is invalid"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "cursor is invalid"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

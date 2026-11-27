@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 from input_server import InputRecordingApp
+from snapshot_support import settle_snapshot
 from tsbc import _serve
 from tsbc._serve import ServeApp
 from workspace_support import fixture_login, named_sessions, open_here, sidebar_offset
@@ -623,7 +624,7 @@ def test_targets_empty_without_target_edit(serve, wait_until):
 
 
 class _InventoryDown(ServeApp):
-    def _list_targets(self, query):
+    def _list_targets(self, query, *rest):
         return self._err(503, "inventory_unavailable", "the inventory is not answering")
 
 
@@ -710,17 +711,11 @@ def test_sessions_error_and_r_retry(serve, wait_until):
     asyncio.run(check())
 
 
-def _p3_snapshot(app, name):
-    import os
-    import re
-    from pathlib import Path
-
-    svg = re.sub(r"terminal-\d+", "terminal-p3a", app.export_screenshot(title="P3a", simplify=True))
+async def _p3_snapshot(app, pilot, name):
     path = Path(__file__).parent / "snapshots" / "redesign-p3" / f"{name}.svg"
-    if os.environ.get("UPDATE_P3_SNAPSHOTS") == "1":
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(svg)
-    assert path.read_text() == svg
+    await settle_snapshot(
+        app, pilot, path, title="P3a", terminal_tag="terminal-p3a", update_env="UPDATE_P3_SNAPSHOTS"
+    )
 
 
 async def _nothing(url, served, pilot, screen, app, wait_until, count=0):
@@ -816,7 +811,7 @@ def test_two_size_galleries(serve, wait_until, size, case):
             await wait_until(pilot, quiet, "a moment with no alert raised")
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, (case, line)
-            _p3_snapshot(app, f"{case}-{size[0]}x{size[1]}")
+            await _p3_snapshot(app, pilot, f"{case}-{size[0]}x{size[1]}")
     asyncio.run(check())
 
 
@@ -965,7 +960,7 @@ class _TargetsDownApp(_InventoryDown):
         super().__init__()
         self.list_calls = 0
 
-    def _list_targets(self, query):
+    def _list_targets(self, query, *rest):
         self.list_calls += 1
         return self._err(503, "inventory_unavailable", "the inventory is not answering")
 

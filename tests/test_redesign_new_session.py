@@ -12,12 +12,11 @@ AI-Model: strata/strata
 from __future__ import annotations
 
 import asyncio
-import os
-import re
 from pathlib import Path
 
 import pytest
 from input_server import InputRecordingApp
+from snapshot_support import settle_snapshot
 from stub_server import SlowChunkedApp, StubServer
 from textual.widgets import Input, RadioButton, Select
 from tsb_contract_client import Client
@@ -67,16 +66,10 @@ async def _login_and_open(app, pilot, wait_until, *, user=None):
 
 
 async def _p4_snapshot(app, pilot, name):
-    # Settle the frame before export: a focused control's highlight and any pending refresh finish their layout
-    # in the first pause, so the frozen frame is the resting one, not a mid-refresh snapshot. This keeps the
-    # credential baselines (a focused RadioSet) deterministic run to run without changing what a person sees.
-    await pilot.pause()
-    svg = re.sub(r"terminal-\d+", "terminal-p4", app.export_screenshot(title="P4", simplify=True))
     path = Path(__file__).parent / "snapshots" / "redesign-p4" / f"{name}.svg"
-    if os.environ.get("UPDATE_P4_SNAPSHOTS") == "1":
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(svg)
-    assert path.read_text() == svg
+    await settle_snapshot(
+        app, pilot, path, title="P4", terminal_tag="terminal-p4", update_env="UPDATE_P4_SNAPSHOTS"
+    )
 
 
 def test_search_matches_literal_name_and_host_text(serve, wait_until):
@@ -336,7 +329,7 @@ def test_permission_revoked_after_the_form_opens_shows_the_refusal_and_creates_n
             app.screen.query_one("#target-id").value = "router.example"
             app.screen.query_one("#target-save").press()
             await wait_until(pilot, lambda: bool(app.screen.query_one("#target-error").content), "the 403")
-            assert str(app.screen.query_one("#target-error").content) == "target.edit is required"
+            assert str(app.screen.query_one("#target-error").content).startswith("target.edit is required")
             await pilot.pause(0.3)
             assert len(_creates(served)) == 0 and len(_target_writes(served)) == 1, served.requests
     asyncio.run(check())

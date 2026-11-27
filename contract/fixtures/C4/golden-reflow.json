@@ -1,0 +1,48 @@
+{
+  "seam": "C4",
+  "name": "golden-reflow",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "bytes",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "A golden C4 screen case, graded by the U4 libghostty-vt round trip: the sibling .bin is raw output fed to a fresh parser (resize events \u2014 kind-1 `resize` control messages \u2014 between output chunks, F14d); the dump the worker then produces is fed to a second parser and must show the same screen and modes. **No expected screen is stored** (F14: expected screens are never hand-written, they come from the round trip at a pinned engine); the fixture asserts the same logical text reflows at 40x12 after the resize event.",
+  "corpus": [
+    "plan.md C4 decision 6",
+    "plan.md C4 decision 9",
+    "vt-screen.schema.json",
+    "plan.md C4 6 (F14d)"
+  ],
+  "case": {
+    "format": "c4-vt-frames",
+    "file": "golden-reflow.bin",
+    "max_message_bytes": 200,
+    "messages": [
+      {
+        "kind": 2,
+        "session_id": "sess-1",
+        "frame": {
+          "flags": 0,
+          "seq": 1,
+          "timestamp": 1789000000123456789,
+          "payload_hex": "74686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f6720616e64206b65657073206f6e2072756e6e696e6720706173742074686520656467650d0a"
+        }
+      },
+      {
+        "kind": 1,
+        "msg": {
+          "cmd": "resize",
+          "session_id": "sess-1",
+          "cols": 40,
+          "rows": 12
+        }
+      }
+    ]
+  }
+}

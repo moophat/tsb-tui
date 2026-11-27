@@ -1,0 +1,81 @@
+{
+  "seam": "C3",
+  "name": "device-login-disconnect-cancels",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_disconnect_mid_login_answers_connection_lost_disconnect_with_no_sessions"
+    }
+  ],
+  "description": "A `disconnect` before a prompt-mode connect's terminal answer ends the attempt (C3 rule 3): the worker closes the transport, probe or real, and answers `connection_lost` with cause `disconnect` naming no session, as an unconnected connection's `disconnect` is answered today. The attempt then has no terminal answer of its own, and `auth_failed` gains no code for it. A `connected` that crosses the `disconnect` is dropped by the core as an abandoned connection's is.",
+  "corpus": [
+    "device-login, how a device login ends",
+    "ipc-control rule 3"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hostkey_ask",
+          "conn_id": "fixture-conn-1",
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "disconnect"
+        },
+        "note": "the pane cancelled before the terminal answer"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [],
+          "cause": "disconnect",
+          "reason": "the core asked to disconnect"
+        },
+        "note": "no session exists to list"
+      }
+    ]
+  }
+}

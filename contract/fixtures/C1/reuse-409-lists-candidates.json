@@ -1,0 +1,154 @@
+{
+  "seam": "C1",
+  "name": "reuse-409-lists-candidates",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "A lingering connection is real from E1 (session model §11 connection_linger), and the 409 connection_choice_required is the one moment a surface needs the ids: its body lists the candidate connections in error.connection_ids, so the surface can ask the operator to pick one — the broker never picks (Contract §12). Only the requesting principal's own: users are tenants (Contract §4), and a candidate is by definition the principal's. Here the principal opens two connections to the target and the peer principal, which holds session.create, opens one; the 409 lists the principal's two and not the peer's. Earlier fixtures may leave the principal more lingering connections, so the check is contains, never equals.",
+  "corpus": [
+    "Contract §12",
+    "Contract §15.3",
+    "Contract §4",
+    "session model §5",
+    "session model §11"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201
+        },
+        "save": {
+          "sa": "/session/id",
+          "ca": "/session/connection_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201
+        },
+        "save": {
+          "sb": "/session/id",
+          "cb": "/session/connection_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "as": "peer",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201
+        },
+        "save": {
+          "sp": "/session/id",
+          "cp": "/session/connection_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "connection_choice_required"
+            },
+            {
+              "pointer": "/error/connection_ids",
+              "some": {
+                "": "${ca}"
+              }
+            },
+            {
+              "pointer": "/error/connection_ids",
+              "some": {
+                "": "${cb}"
+              }
+            },
+            {
+              "pointer": "/error/connection_ids",
+              "none": {
+                "": "${cp}"
+              }
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "connection_choice_required",
+              "message": "several connections could be reused; name one",
+              "connection_ids": [
+                "fixture-conn-1",
+                "fixture-conn-2"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sa}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sb}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sp}",
+        "as": "peer"
+      }
+    ]
+  }
+}

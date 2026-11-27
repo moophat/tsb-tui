@@ -1,0 +1,129 @@
+{
+  "seam": "C7",
+  "name": "init",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "Initialisation's second call: after the mint answered the salt, the surface derives master_hash = argon2id(passphrase, user_salt), splits it and sends both halves to POST /vault/init. The core derives encryption_key with the minted salt2, seals a set with no entry, and this login holds an unlock (DEFAULT 35); the salt read then answers initialized true. Init needs only the login (DEFAULT 46) and writes no audit line. A body missing a half is 422; init on a sealed vault is 409 vault_exists.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection §4.2",
+    "E4 DEFAULT 2",
+    "E4 DEFAULT 35",
+    "E4 DEFAULT 46",
+    "E4 phase 1 OPEN-1.3 (c)",
+    "orchestrator ruling 2026-10-29 21:07 (G1)",
+    "vault-unlock"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/salt",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "initialized": false,
+            "user_salt": "RklYVFVSRS1TQUxULTAwMA=="
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/init",
+          "as": "peer",
+          "body": {
+            "part1": "RklYVFVSRS1QQVJUMS0wMA=="
+          },
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "the body is not an init request"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/init",
+          "as": "peer",
+          "body": {
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMi0wMA=="
+          }
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/vault/salt",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/initialized",
+              "eq": true
+            }
+          ],
+          "example": {
+            "initialized": true,
+            "user_salt": "RklYVFVSRS1TQUxULTAwMA=="
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/init",
+          "as": "peer",
+          "body": {
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMi0wMA=="
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "vault_exists",
+              "message": "the vault is set up already"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

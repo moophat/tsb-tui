@@ -1,0 +1,74 @@
+{
+  "seam": "C7",
+  "name": "kat-opaquestring",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain2_test.go — TestOpaqueStringKnownAnswers: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "The passphrase's bytes: UTF-8 after RFC 8265's OpaqueString profile (credential-protection §4.1): a non-ASCII space becomes the ASCII space, NFC composes a decomposed character, and the profile's disallowed code points (a control character) and the empty string are refused. The corpus asks for a vector with a non-ASCII space and a decomposed character; the fifth case has both. Published e4: reference, graded by U7 and U8c (first) and U6's Go test code (second), tests owed (phase 16).",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "RFC 8265 §4.2"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/kat_opaquestring",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "primitive": "rfc8265-opaquestring-utf8",
+          "source": "RFC 8265 §4.2 (the OpaqueString profile); RFC 8265 prints no vectors, so these cases were computed with precis-i18n 1.1.2 and checked by hand against §4.2's rules",
+          "cases": [
+            {
+              "name": "ASCII, unchanged",
+              "passphrase": "Tr0ub4dor&3",
+              "bytes": "547230756234646f722633"
+            },
+            {
+              "name": "a non-ASCII space (U+00A0) mapped to the ASCII space",
+              "passphrase": "correct horse",
+              "bytes": "636f727265637420686f727365"
+            },
+            {
+              "name": "an ideographic space (U+3000) mapped to the ASCII space",
+              "passphrase": "correct　horse",
+              "bytes": "636f727265637420686f727365"
+            },
+            {
+              "name": "a decomposed character (e + U+0301) composed by NFC",
+              "passphrase": "café",
+              "bytes": "636166c3a9"
+            },
+            {
+              "name": "both, as the chain's passphrase",
+              "passphrase": "Fixture passphrase café 7",
+              "bytes": "46697874757265207061737370687261736520636166c3a92037"
+            },
+            {
+              "name": "the empty string is refused",
+              "passphrase": "",
+              "refused": true
+            },
+            {
+              "name": "a control character (U+0007) is refused",
+              "passphrase": "bell\u0007",
+              "refused": true
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,266 @@
+{
+  "seam": "C6",
+  "name": "event-vocabulary-v0.3",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    }
+  ],
+  "description": "The three audit events contract-v0.3 adds (C6 decision 4): session.control — on every control-token move, reason attach, detach, handoff, owner, takeover or release, with from and to in the control-holder shape (null for escrow), so who could type when is on the record (5.53); session.kick — the owner or a session.terminate holder removed one attached client, naming that client and its principal; session.stale_choice — the holder answered the stale-grid prompt, with choice wiggle, ctrl_l, continue or fresh_session, cause gap or grid_lost, client_id the answering client, and gap_seq present exactly when cause is gap (a oneOf + const on cause, graded here). One spelling ctrl_l/fresh_session everywhere. user is the principal who acted: the departing holder for detach, the chooser for session.stale_choice. An action outside the vocabulary is refused.",
+  "corpus": [
+    "Storage §6",
+    "5.46",
+    "5.52",
+    "5.53",
+    "plan.md §3 C6"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "session.control",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "target": "fixture-target-1",
+          "from": null,
+          "to": {
+            "client_id": "fixture-client-1",
+            "user": "alice"
+          },
+          "reason": "attach"
+        },
+        "note": "escrow → the first client, attach"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:01Z",
+          "user": "alice",
+          "action": "session.control",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "from": {
+            "client_id": "fixture-client-1",
+            "user": "alice"
+          },
+          "to": null,
+          "reason": "detach"
+        },
+        "note": "the departing holder → escrow, detach; user is the departing holder"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:02Z",
+          "user": "alice",
+          "action": "session.control",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "from": {
+            "client_id": "fixture-client-1",
+            "user": "alice"
+          },
+          "to": {
+            "client_id": "fixture-client-2",
+            "user": "bob"
+          },
+          "reason": "handoff"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:03Z",
+          "user": "alice",
+          "action": "session.control",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "from": {
+            "client_id": "fixture-client-2",
+            "user": "bob"
+          },
+          "to": null,
+          "reason": "owner"
+        },
+        "note": "the owner revoked to escrow"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:04Z",
+          "user": "alice",
+          "action": "session.control",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "from": {
+            "client_id": "fixture-client-2",
+            "user": "bob"
+          },
+          "to": {
+            "client_id": "fixture-client-1",
+            "user": "alice"
+          },
+          "reason": "takeover"
+        },
+        "note": "the owner took the keyboard back (5.53)"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:05Z",
+          "user": "alice",
+          "action": "session.control",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "from": {
+            "client_id": "fixture-client-1",
+            "user": "alice"
+          },
+          "to": {
+            "client_id": "fixture-client-2",
+            "user": "bob"
+          },
+          "reason": "release"
+        },
+        "note": "auto-release returned it to the previous holder"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:06Z",
+          "user": "alice",
+          "action": "session.kick",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "target": "fixture-target-1",
+          "client_id": "fixture-client-2",
+          "client_user": "bob"
+        },
+        "note": "the owner removed bob's client"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:07Z",
+          "user": "alice",
+          "action": "session.stale_choice",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "choice": "ctrl_l",
+          "cause": "gap",
+          "gap_seq": 57,
+          "client_id": "fixture-client-1"
+        },
+        "note": "a declared gap: gap_seq is present"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:08Z",
+          "user": "alice",
+          "action": "session.stale_choice",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "choice": "fresh_session",
+          "cause": "grid_lost",
+          "client_id": "fixture-client-1"
+        },
+        "note": "a grid that could not be rebuilt: no gap_seq"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:07Z",
+          "user": "alice",
+          "action": "session.stale_choice",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "choice": "ctrl_l",
+          "cause": "gap",
+          "client_id": "fixture-client-1"
+        },
+        "note": "cause gap without gap_seq"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:08Z",
+          "user": "alice",
+          "action": "session.stale_choice",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "choice": "fresh_session",
+          "cause": "grid_lost",
+          "gap_seq": 57,
+          "client_id": "fixture-client-1"
+        },
+        "note": "grid_lost with a gap_seq: there is no lost seq to name"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:07Z",
+          "user": "alice",
+          "action": "session.stale_choice",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "choice": "ctrl-L",
+          "cause": "gap",
+          "gap_seq": 57,
+          "client_id": "fixture-client-1"
+        },
+        "note": "one spelling: ctrl_l, never a hyphen"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:06Z",
+          "user": "alice",
+          "action": "session.kick",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "client_id": "fixture-client-2"
+        },
+        "note": "kick names the removed client's principal too"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "session.control",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "from": null,
+          "to": {
+            "client_id": "fixture-client-1",
+            "user": "alice"
+          },
+          "reason": "grant"
+        },
+        "note": "a reason outside the vocabulary"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "session.frobnicate",
+          "session_id": "fixture-session-a",
+          "session_type": "shell"
+        },
+        "note": "not in the vocabulary"
+      }
+    ]
+  }
+}

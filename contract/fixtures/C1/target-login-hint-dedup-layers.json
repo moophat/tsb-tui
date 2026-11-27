@@ -1,0 +1,186 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-dedup-layers",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Deduplicate by (reference, layer), never by reference alone; no layer precedence."
+    }
+  ],
+  "description": "Two matching grants of one org reference at hint-org-dedup count once. The same reference name in personal and org layers at hint-layer-pair counts twice, never personal/org precedence. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-org-dedup"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-org-dedup",
+                "/login_hint": "saved"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-org-dedup",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-org-dedup"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "saved"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-org-dedup"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-org-dedup"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "saved"
+            }
+          ],
+          "example": {
+            "id": "hint-org-dedup",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-org-dedup"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "saved"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-layer-pair"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-layer-pair",
+                "/login_hint": "choice_required"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-layer-pair",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-layer-pair"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "choice_required"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-layer-pair"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-layer-pair"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "choice_required"
+            }
+          ],
+          "example": {
+            "id": "hint-layer-pair",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-layer-pair"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "choice_required"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      }
+    ]
+  }
+}

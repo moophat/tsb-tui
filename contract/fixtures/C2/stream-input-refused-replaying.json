@@ -1,0 +1,40 @@
+{
+  "seam": "C2",
+  "name": "stream-input-refused-replaying",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/reattach_test.go — client input from hello until live is not forwarded, not held, and is answered input_refused replaying"
+    }
+  ],
+  "description": "Input authority must not activate before the replay is complete (immortality §6.3): client input that arrives while the session's data path is being restored — from the loss of its data socket, or its hello, until live — is refused on C2 with reason replaying — never forwarded, and never held for later, because keystrokes typed while the screen still replays are how you type into the wrong prompt on a production router.",
+  "corpus": [
+    "immortality §6.3",
+    "decision 5.38"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "input_refused",
+          "v": 1,
+          "reason": "replaying"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "input_refused",
+          "v": 1
+        }
+      }
+    ]
+  }
+}

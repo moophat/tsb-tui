@@ -1,0 +1,49 @@
+{
+  "seam": "C3",
+  "name": "connect-without-timers-refused",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_control.py — a connect without timers, buffer_bytes or input_frame_max is answered error bad_request and opens nothing"
+    }
+  ],
+  "description": "A v0.2 worker has no value of its own for the timers, buffer_bytes or input_frame_max, and a default in its code is what decision 5.36 forbids: it refuses a connect that lacks them with error bad_request and opens no transport. The fields are optional in the schema only so that a v0.1 connect stays valid (immortality §6.4: additive).",
+  "corpus": [
+    "decision 5.36",
+    "immortality §6.4"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        },
+        "note": "a v0.1-shaped connect"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "bad_request",
+          "message": "connect lacks timers, buffer_bytes and input_frame_max"
+        }
+      }
+    ]
+  }
+}

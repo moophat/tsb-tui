@@ -1,0 +1,48 @@
+{
+  "seam": "C1",
+  "name": "core-restart-ends-logins",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "Login sessions live in the core's memory, so a core restart ends every one: a cookie from before the restart is 401 afterwards, and every vault unlock is gone (login open item 2, settled; credential-protection §3.2).",
+  "corpus": [
+    "credential-protection §3.2",
+    "login open item 2"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/auth/me"
+        },
+        "expect": {
+          "status": 401,
+          "example": {
+            "error": {
+              "code": "unauthenticated",
+              "message": "log in first"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "seam": "C1",
+  "name": "session-list-ended-invalid",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: sessions ended-filter provider test"
+    }
+  ],
+  "description": "An invalid ended value is refused with 422 invalid_request; the provider test asserts the response contains no echo of the supplied value. Published e4, required green e5; U2 provider test owed.",
+  "corpus": [
+    "session-list rule 8",
+    "conventions V1",
+    "conventions V4",
+    "conventions V8"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions?ended=bogus"
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "ended must be include or exclude"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

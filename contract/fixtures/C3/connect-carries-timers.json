@@ -1,0 +1,83 @@
+{
+  "seam": "C3",
+  "name": "connect-carries-timers",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-timers",
+  "description": "Timer values travel on connect and on every change (session model §15; Storage §8.1): connect carries the full set with buffer_bytes and input_frame_max, and a timers command sends a full new set after a config.yaml reload. The worker keeps the last set it received, so its timers keep running while the core is away. The values are examples: each is a config.yaml knob with a per-target override (decision 5.36), and the contract fixes only the field and its range. Every connect a collection captures to a v0.2 worker must carry all three.",
+  "corpus": [
+    "session model §11",
+    "session model §15",
+    "Storage §8.1",
+    "decision 5.36",
+    "immortality §4.3"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        },
+        "note": "the values in force for this target"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hostkey",
+          "conn_id": "fixture-conn-1",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+          "first_use": true
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "timers",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 432000000,
+            "unattended": 2592000000
+          }
+        },
+        "note": "a reload moved idle to 5 d: the full set again"
+      }
+    ]
+  }
+}

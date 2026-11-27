@@ -1,0 +1,133 @@
+{
+  "seam": "C6",
+  "name": "session-record-protocol-telnet",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 core plan"
+    }
+  ],
+  "description": "A continuity session record for a telnet connection: its protocol is telnet, and the resizable the worker reported on channel_opened is kept in the record's session, so a restarted core reads back the value it was told and never changes it. A protocol this tag does not define is refused. U2 test (the core's telnet record validates), owed.",
+  "corpus": [
+    "Storage §8.6",
+    "terminal-size-and-control §3",
+    "session model §1"
+  ],
+  "case": {
+    "schema": "schemas/continuity-state.schema.json#/$defs/session_record",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-telnet",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-10-18T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "resizable": false
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 1200,
+          "recording_last_seq_out": 3,
+          "recording_last_seq_in": 1,
+          "client_touch_at": "2026-10-18T12:04:11.482913201Z",
+          "activity_at": "2026-10-18T12:05:02.1Z",
+          "protocol": "telnet",
+          "out_bytes_committed": 40
+        },
+        "note": "the telnet session's record: protocol telnet, and the NAWS refusal is kept in the session"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session": {
+            "id": "fixture-session-b",
+            "target_id": "fixture-telnet",
+            "connection_id": "fixture-conn-2",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-10-18T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "resizable": true
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-b.ttyrec",
+          "recording_committed_offset": 800,
+          "recording_last_seq_out": 2,
+          "recording_last_seq_in": 1,
+          "client_touch_at": "2026-10-18T12:04:11.482913201Z",
+          "activity_at": "2026-10-18T12:05:02.1Z",
+          "protocol": "telnet",
+          "out_bytes_committed": 20
+        },
+        "note": "the peer agreed to NAWS: resizable true is kept across a restart"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session": {
+            "id": "fixture-session-c",
+            "target_id": "fixture-telnet",
+            "connection_id": "fixture-conn-3",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-10-18T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-c.ttyrec",
+          "recording_committed_offset": 100,
+          "recording_last_seq_out": 1,
+          "recording_last_seq_in": 0,
+          "client_touch_at": "2026-10-18T12:04:11.482913201Z",
+          "activity_at": "2026-10-18T12:05:02.1Z",
+          "protocol": "telnetx",
+          "out_bytes_committed": 5
+        },
+        "note": "a protocol this release does not define"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "seam": "C8",
+  "name": "mixed-direction",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "transform",
+  "grade": "artifacts:recordings-both-directions",
+  "description": "The tap end to end: a session's C3 frames in both directions, as they crossed its data socket, become that session's one recording, frame for frame, in order, each frame's sidecar code its direction. Typed input is recorded as typed — no masking, even of a password (open_decisions §5, LOCKED). The session is still live, so there is no end marker. A collected run must hold at least one recording with both directions in it.",
+  "corpus": [
+    "open_decisions §5",
+    "lang-arch §8.1",
+    "lang-arch §8.3",
+    "spine plan.md §3 C8",
+    "phase-00 (bytes flow both ways; a ttyrec exists)"
+  ],
+  "case": {
+    "transform": "c3-to-c8",
+    "input": {
+      "file": "mixed-direction.frames.bin"
+    },
+    "output": {
+      "file": "mixed-direction.ttyrec.bin",
+      "sidecar": "mixed-direction.dir.bin"
+    }
+  }
+}

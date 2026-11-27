@@ -1,0 +1,182 @@
+{
+  "seam": "C1",
+  "name": "targets-list-filtered",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 U2 plan"
+    }
+  ],
+  "description": "Each filter alone, and `tag` named twice, narrow the list to the targets that carry them: `type`, `tag`, `group` and `discovered_by` are exact matches on the index, and every tag named must be on the target. A parameter the operation does not declare, and `limit` 0, are 422 invalid_request, so a surface cannot widen its view with a parameter the contract does not define, and no page is unbounded. Graded against the core by the U2 plan's test, which is owed.",
+  "corpus": [
+    "Storage §9",
+    "Storage §3.5",
+    "Storage §10.1a"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?type=ssh"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "targets": [
+              {
+                "id": "fixture-target",
+                "type": "ssh",
+                "tags": [
+                  "scenario",
+                  "shell"
+                ],
+                "discovered_by": "manual",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=scenario&tag=shell"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "targets": [
+              {
+                "id": "fixture-target",
+                "type": "ssh",
+                "tags": [
+                  "scenario",
+                  "shell"
+                ],
+                "discovered_by": "manual",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=shell&tag=telnet"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "targets": []
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?group=lab"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "targets": [
+              {
+                "id": "fixture-target",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "scenario",
+                  "shell"
+                ],
+                "discovered_by": "manual",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?discovered_by=manual"
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "targets": [
+              {
+                "id": "fixture-target",
+                "type": "ssh",
+                "tags": [
+                  "scenario",
+                  "shell"
+                ],
+                "discovered_by": "manual",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?colour=red"
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "colour is not a parameter of GET /targets"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?limit=0"
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "limit is an integer from 1 to 500"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

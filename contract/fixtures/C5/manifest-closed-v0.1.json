@@ -1,0 +1,135 @@
+{
+  "seam": "C5",
+  "name": "manifest-closed-v0.1",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:worker-manifests",
+  "description": "A manifest carries exactly the fields of its tag, and a field no tag defines is refused. A v0.1 manifest has no proto_version, which contract-v0.2 adds, and that absence is how a v0.2 core recognises a v0.1 worker. A manifest never carries a credential. Every manifest collected from a run is held to the same closed shape.",
+  "corpus": [
+    "immortality §6.4",
+    "development-plan.md §2 v0.2",
+    "open_decisions §5"
+  ],
+  "case": {
+    "schema": "schemas/worker-manifest.schema.json",
+    "instances": [
+      {
+        "valid": false,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                },
+                {
+                  "session_id": "fixture-session-b",
+                  "session_type": "shell",
+                  "socket": "shell-2.sock"
+                }
+              ]
+            },
+            {
+              "conn_id": "fixture-conn-2",
+              "target_id": "fixture-echo",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-2",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-c",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ],
+          "x_later_field": "0.2"
+        },
+        "note": "a field this tag does not define"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                },
+                {
+                  "session_id": "fixture-session-b",
+                  "session_type": "shell",
+                  "socket": "shell-2.sock"
+                }
+              ],
+              "auth": {
+                "kind": "key",
+                "key": "FIXTURE-NOT-A-KEY"
+              }
+            }
+          ]
+        },
+        "note": "no credential in a manifest"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-23T12:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                },
+                {
+                  "session_id": "fixture-session-b",
+                  "session_type": "shell",
+                  "socket": "shell-2.sock"
+                }
+              ]
+            },
+            {
+              "conn_id": "fixture-conn-2",
+              "target_id": "fixture-echo",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-2",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-c",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        },
+        "note": "pid is required, though informational"
+      }
+    ]
+  }
+}

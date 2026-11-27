@@ -1,0 +1,50 @@
+{
+  "seam": "C5",
+  "name": "supervisor-manifest-proto-version",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "artifacts:supervisor-manifests",
+  "description": "A v0.2 supervisor's manifest names its C3 version. A core creates workers only through a supervisor whose manifest carries a version it speaks, because a session on a v0.1 worker would get no heartbeat and no worker-run timers; a v0.1 manifest, without the field, stays valid and is still addressed — pinged, listed — but never asked for a worker.",
+  "corpus": [
+    "immortality §6.4",
+    "decision 5.13",
+    "session model §14"
+  ],
+  "case": {
+    "schema": "schemas/supervisor-manifest.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "supervisor_id": "fixture-sup-1",
+          "pid": 1,
+          "control_sock": "/tmp/tsb/supervisors/fixture-sup-1/control.sock",
+          "started_at": "2026-09-29T00:00:00Z",
+          "proto_version": "0.2"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "supervisor_id": "fixture-sup-1",
+          "pid": 1,
+          "control_sock": "/tmp/tsb/supervisors/fixture-sup-1/control.sock",
+          "started_at": "2026-09-29T00:00:00Z"
+        },
+        "note": "a v0.1 supervisor"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "supervisor_id": "fixture-sup-1",
+          "pid": 1,
+          "control_sock": "/tmp/tsb/supervisors/fixture-sup-1/control.sock",
+          "started_at": "2026-09-29T00:00:00Z",
+          "proto_version": "0.2-beta"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "seam": "C2",
+  "name": "owner-takeover-then-ctrl-c",
+  "mark": {"required-green": "e2"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "The ordering rule (C2 decision 6, terminal-size-and-control.md §6): one client's frames are applied in the order it sent them, and a take-over is applied before that client's next frame. The owner's client sends `handoff` to itself then `0x03` (Ctrl-C) back to back — one trip. The token moves to the owner first, so the 0x03 reaches the target as the owner's keystroke. The graded echo is `^C`: a real terminal echoes Ctrl-C as those two characters, not the raw byte, so the fixture is serve-exempt — the stub echoes bytes raw. Needs a peer login with session.join.rw (inputs peer_user, peer_password).",
+  "corpus": ["C2 decision 6", "C2 decision 11", "5.53", "terminal-size-and-control.md §6"],
+  "case": {
+    "inputs": ["user", "password", "target_id", "peer_user", "peer_password"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"ta": "/ticket"}},
+      {"ws_open": "o", "path": "/ws/attach"},
+      {"ws_send": "o", "frame": {"t": "attach", "v": 1, "ticket": "${ta}", "session_id": "${sid}"}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_o": "/client_id"}}},
+      {"ws_expect": "o", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}, "as": "peer"}, "expect": {"status": 200}, "save": {"tp": "/ticket"}},
+      {"ws_open": "p", "path": "/ws/attach"},
+      {"ws_send": "p", "frame": {"t": "attach", "v": 1, "ticket": "${tp}", "session_id": "${sid}"}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_p": "/client_id"}}},
+      {"ws_expect": "p", "prefix": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_send": "o", "frame": {"t": "handoff", "v": 1, "to": "${client_p}"}},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "token"}, {"pointer": "/holder/client_id", "eq": "${client_p}"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "token"}, {"pointer": "/holder/client_id", "eq": "${client_p}"}]}},
+      {"ws_send": "o", "frame": {"t": "handoff", "v": 1, "to": "${client_o}"}},
+      {"ws_send": "o", "bytes": "\u0003"},
+      {"ws_expect": "o", "frame": {"match": [{"pointer": "/t", "eq": "token"}, {"pointer": "/reason", "eq": "takeover"}, {"pointer": "/holder/client_id", "eq": "${client_o}"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "token"}, {"pointer": "/holder/client_id", "eq": "${client_o}"}]}},
+      {"ws_expect": "o", "output_contains": "^C"},
+      {"ws_close": "p"},
+      {"ws_close": "o"}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "seam": "C3",
+  "name": "link-state",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_keepalive.py — a silent peer: link_state missing after one keepalive interval with no E3, answering when E3 returns, and link_state as the first event to a new control peer of a connected connection"
+    }
+  ],
+  "description": "What link_timeout's countdown is computed from (session model §11 expiry_notice: the countdown runs from the first missed keepalive, and only the core computes it). The worker reports missing when a keepalive interval passes with no E3, answering when E3 returns — a metro flap that recovers before link_timeout ends nothing (T6) — and, so a restarted core has the countdown at once, link_state is the first event to every new control peer of a connection that is connected. last_ack_at is when the last E3 arrived.",
+  "corpus": [
+    "session model §9 E3",
+    "session model §11",
+    "session model §11 T6"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        },
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "missing",
+          "last_ack_at": "2026-09-29T01:00:00Z"
+        },
+        "note": "a keepalive interval passed with no E3",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "answering",
+          "last_ack_at": "2026-09-29T01:01:10Z"
+        },
+        "note": "E3 returned",
+        "run": "01789000000000000000"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "link_state",
+          "conn_id": "fixture-conn-1",
+          "state": "answering",
+          "last_ack_at": "2026-09-29T01:01:40Z"
+        },
+        "run": "01789000100000000000",
+        "note": "the first event to the restarted core"
+      }
+    ]
+  }
+}

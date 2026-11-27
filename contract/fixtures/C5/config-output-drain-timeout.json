@@ -1,0 +1,239 @@
+{
+  "seam": "C5",
+  "name": "config-output-drain-timeout",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5/U2/U3 `drain_config_exact_ms`: required runtime key, additive schema optionality, exact bounds/conversion/reload, V7 scope exception, old wire excludes key, no schema default."
+    },
+    {
+      "unit": "U2",
+      "test": "owed: U5/U2/U3 `drain_config_exact_ms`: required runtime key, additive schema optionality, exact bounds/conversion/reload, V7 scope exception, old wire excludes key, no schema default."
+    },
+    {
+      "unit": "U3",
+      "test": "owed: U5/U2/U3 `drain_config_exact_ms`: required runtime key, additive schema optionality, exact bounds/conversion/reload, V7 scope exception, old wire excludes key, no schema default."
+    }
+  ],
+  "description": "U5/U2/U3 `drain_config_exact_ms`: required runtime key, additive schema optionality, exact bounds/conversion/reload, V7 scope exception, old wire excludes key, no schema default.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "output_drain_timeout": "5s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "output_drain_timeout": 5000
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "output_drain_timeout": "-1s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "seam": "C2",
+  "name": "notice-changes",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/countdown_test.go — a notice when ending or ends_by changes, and while ending is true when ends_at moves; none outside a window; the warning withdrawn with ending false"
+    }
+  ],
+  "description": "The countdown's warning (session model §11 expiry_notice; T6): a notice goes to attached clients when ending or ends_by changes, and while ending is true when ends_at moves — never outside a window. idle moves with every byte, so a notice on every change of ends_at would be a frame per output chunk; this way a warning appears (a link that stops answering: ends in 6 min), updates, and is withdrawn — ending false, as when a flapping link recovers — and nothing else is sent. It reaches a client only under short lab timers, so the core's own test grades it.",
+  "corpus": [
+    "session model §11",
+    "session model §11 T6"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "notice",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "ends_at": "2026-09-29T01:06:00Z",
+          "ends_by": "link_timeout",
+          "ending": true
+        },
+        "note": "a warning appears"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "notice",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "ends_at": "2026-09-29T01:06:30Z",
+          "ends_by": "link_timeout",
+          "ending": true
+        },
+        "note": "while ending, ends_at moved"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "notice",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        },
+        "note": "the link recovered: withdrawn"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "notice",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "ends_at": "2026-09-29T01:06:00Z",
+          "ends_by": "link_timeout"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "notice",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "ends_at": "2026-09-29T01:06:00Z",
+          "ends_by": "grace",
+          "ending": true
+        },
+        "note": "no grace (decision 5.45)"
+      }
+    ]
+  }
+}

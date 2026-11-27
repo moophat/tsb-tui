@@ -1,0 +1,59 @@
+{
+  "seam": "C7",
+  "name": "chain-org-seal-broker",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/org_resolve_test.go — TestOrgSealVectors: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/pylib/tests/test_vaultclient.py — test_chain_seals_reproduce_and_open: independently reproduces the core-only vector using the Python reference client, never the authoring script"
+    }
+  ],
+  "description": "Chain step 9a: a broker-unlocked org credential's blob (org_credential_secret, UTF-8 JSON) sealed under the broker key (here a fixed 32-byte test key), associated data naming its reference and its unlock class, so the blob cannot move to another reference or class (credential-protection §4.1, §8.2).",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_seal",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "org-seal-broker",
+          "implementations": [
+            {
+              "unit": "U6",
+              "what": "the Go core (vault/)"
+            },
+            {
+              "unit": "U11",
+              "what": "the harness's Python reference client (hashlib, cryptography)"
+            }
+          ],
+          "key_name": "broker_key",
+          "key": "707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f",
+          "iv": "505152535455565758595a5b",
+          "aad_fields": [
+            "tsb.vault.org.v1",
+            "fleet-backup",
+            "broker_unlocked"
+          ],
+          "aad": "00107473622e7661756c742e6f72672e7631000c666c6565742d6261636b7570000f62726f6b65725f756e6c6f636b6564",
+          "plaintext": "7b226c6f67696e5f6e616d65223a227376632d6261636b7570222c22736563726574223a22464958545552452d4e4f542d412d50415353574f5244222c226c6162656c223a224261636b7570206163636f756e74227d",
+          "sealed": "505152535455565758595a5b8061be382268d8343b7b5a0492d69bd12403bbcf7698249ea7ae3b6ad221cebac394655263f70d354bbddb7321a5be2d5c4aa75b949f751881429224c43c61179f896f0e8af395b2e835b0072668b93ea55d60eee185e75dbf67df14fa1be4d5385e8239a57a"
+        }
+      }
+    ]
+  }
+}

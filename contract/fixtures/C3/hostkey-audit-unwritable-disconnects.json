@@ -1,0 +1,87 @@
+{
+  "seam": "C3",
+  "name": "hostkey-audit-unwritable-disconnects",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestAHostKeyAcceptWhoseAuditLineCannotBeWrittenDisconnects AndEndsConnectFailed (one name, split for the hygiene scan): the worker is sent disconnect and never hostkey_answer, the pane gets connect_failed and close 4016, the failure is logged, and no target.hostkey_refused is written"
+    },
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_a_disconnect_after_the_ask_records_no_key"
+    }
+  ],
+  "description": "When the operator accepts a first-use host key and the core cannot write the audit line `target.hostkey_accepted` (ruled 2026-11-01 15:00, on derived 23), the acceptance is refused and the login goes no further, and the failure is TSB's own, not the operator's: the core sends the worker `disconnect` (C3 rule 3), never `hostkey_answer` with `accept` false, since the operator did not refuse. The worker closes the probe and answers `connection_lost` cause `disconnect` naming no session, and records no key. The core logs the audit failure and writes no `target.hostkey_refused`: nobody refused. On C2 the pane is told `device_login_result` `outcome: connect_failed` (C2/device-login-hostkey-audit-unwritable) and the socket closes 4016. The sequence is the worker's half: the ask, no answer relayed, the cancel, the answer to it.",
+  "corpus": [
+    "decision 5.18",
+    "open_decisions §5",
+    "device-login step 13",
+    "ipc-control rule 3"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hostkey_ask",
+          "conn_id": "fixture-conn-1",
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "disconnect"
+        },
+        "note": "the operator accepted, but target.hostkey_accepted could not be written: no hostkey_answer is relayed, and nothing is recorded"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [],
+          "cause": "disconnect",
+          "reason": "the core asked to disconnect"
+        },
+        "note": "no session exists to list; the worker recorded no key"
+      }
+    ]
+  }
+}

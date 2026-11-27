@@ -1,0 +1,60 @@
+{
+  "seam": "C1",
+  "name": "target-create-outside-filter-403",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "description": "A holder of target.edit restricted to tag:lab cannot create this target; no file is written. Core test supplies that policy.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Storage §10.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "fixture-w-${nonce}",
+            "type": "ssh",
+            "host": "192.0.2.60",
+            "tags": [
+              "outside"
+            ]
+          }
+        },
+        "expect": {
+          "status": 403,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "forbidden",
+              "message": "target request refused"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/targets_write_test.go — TestACreateOutsideThePrincipalsFiltersIs403"
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "seam": "C2",
+  "name": "device-login-ticket-once",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "A device-login ticket is one-time. It is burned on the first presentation, so a second socket presenting the same ticket is closed 4001 and a second socket cannot take over a device login another one holds. The first socket's first frame depends on the device (a key to accept, a prompt, or a result), so this fixture reads any frame from it and then presents the ticket again.",
+  "corpus": [
+    "decision 5.34",
+    "conventions V10",
+    "device-login step 8",
+    "session-attach R2"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "prompt"
+              },
+              "recording_acknowledged": true
+            }
+          }
+        },
+        "expect": {
+          "status": 202,
+          "example": {
+            "device_login_id": "fixture-device-login-1",
+            "ticket": "FIXTURE-TICKET-000000000000000000",
+            "expires_in": 30
+          }
+        },
+        "save": {
+          "device_login": "/device_login_id",
+          "dl_ticket": "/ticket"
+        }
+      },
+      {
+        "ws_open": "a",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "a",
+        "frame": {
+          "t": "device_login_attach",
+          "v": 1,
+          "ticket": "${dl_ticket}",
+          "device_login_id": "${device_login}"
+        }
+      },
+      {
+        "ws_expect": "a",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "present": true
+            }
+          ]
+        }
+      },
+      {
+        "ws_open": "b",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "b",
+        "frame": {
+          "t": "device_login_attach",
+          "v": 1,
+          "ticket": "${dl_ticket}",
+          "device_login_id": "${device_login}"
+        }
+      },
+      {
+        "ws_expect": "b",
+        "close": 4001
+      },
+      {
+        "ws_close": "a"
+      }
+    ]
+  }
+}

@@ -1,0 +1,580 @@
+{
+  "seam": "C3",
+  "name": "control-message-shape-v0.7",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "artifacts:control-sequence",
+  "description": "What proto_version 0.7 adds to a connection's control socket, as closed shapes: `auth {kind: prompt}` and `connect.login_timeout` (integer milliseconds, 10000 to 1800000, sent only with a prompt-mode connect to a peer at 0.7 or later); the events `hostkey_ask` and `auth_prompt` (`banner`, `password`, `keyboard-interactive`); the commands `hostkey_answer` and `auth_answer`; `auth_failed.code`; `error` code `hostkey_refused` in the branch without a session. The schema checks each field's shape; that a prompt-mode connect carries `login_timeout`, and the order of the rest, are the control-sequence check's and the worker's tests. An `auth_prompt` is `prompt_id` exactly when it has prompts. Every credential-shaped value is the synthetic constant.",
+  "corpus": [
+    "immortality §6.4",
+    "open_decisions §5",
+    "device-login steps 10 to 18",
+    "ipc-control rules 1 to 8"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "a prompt-mode connect: no secret"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 10000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "the least login_timeout, 10 s"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 1800000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "the most, 30 min"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.7",
+          "last_committed_seq": 0
+        },
+        "note": "the handshake at proto_version 0.7"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.7",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": false
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "hostkey_ask",
+          "conn_id": "fixture-conn-1",
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "a first-use key, asked and not accepted by the worker"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hostkey_answer",
+          "accept": true
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hostkey_answer",
+          "accept": false
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "banner",
+          "text": "Authorized use only. Activity is logged."
+        },
+        "note": "the banner: display-only"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Password: ",
+              "echo": false
+            },
+            {
+              "text": "Verification code: ",
+              "echo": true
+            }
+          ],
+          "prompt_id": 1
+        },
+        "note": "a round with two prompts, one echoed"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "Notice",
+          "instruction": "No answer is needed.",
+          "prompts": []
+        },
+        "note": "no prompts: display-only"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "",
+              "echo": false
+            }
+          ],
+          "prompt_id": 3
+        },
+        "note": "an empty prompt text"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "password",
+          "attempt": 2,
+          "prompt_id": 4
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "auth_answer",
+          "prompt_id": 1,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "one string per prompt"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "the device refused every method",
+          "code": "refused"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "the device refused every method",
+          "code": "login_timeout"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "the device refused every method",
+          "code": "password_change_requested"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "code": "hostkey_refused",
+          "message": "the host key was refused"
+        },
+        "note": "in the branch with no session"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 9999,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "below 10 s"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 1800001,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "past 30 min"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": "120s",
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "integer milliseconds on the wire, never a duration string"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt",
+            "user": "x"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "the prompt branch carries nothing else"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "hostkey_ask",
+          "conn_id": "fixture-conn-1",
+          "kind": "changed",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "one kind at this release"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "hostkey_ask",
+          "conn_id": "fixture-conn-1",
+          "kind": "first_use"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "hostkey_answer",
+          "accept": "yes"
+        },
+        "note": "accept is a boolean"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Password: ",
+              "echo": false
+            },
+            {
+              "text": "Verification code: ",
+              "echo": true
+            }
+          ]
+        },
+        "note": "prompts with no prompt_id"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [],
+          "prompt_id": 1
+        },
+        "note": "a prompt_id with no prompts"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "banner",
+          "text": "Authorized use only. Activity is logged.",
+          "prompt_id": 1
+        },
+        "note": "a banner is never answered"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "password",
+          "attempt": 1,
+          "prompt_id": 1,
+          "text": "Password:"
+        },
+        "note": "a password request carries no device text"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "password",
+          "attempt": 1,
+          "prompt_id": 0
+        },
+        "note": "prompt_id counts from 1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "password",
+          "attempt": 0,
+          "prompt_id": 1
+        },
+        "note": "attempt counts from 1"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "voice",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Password: ",
+              "echo": false
+            },
+            {
+              "text": "Verification code: ",
+              "echo": true
+            }
+          ],
+          "prompt_id": 1
+        },
+        "note": "a method this release does not define: the core answers disconnect, connect_failed (rule 7)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "auth_answer",
+          "prompt_id": 1,
+          "answers": []
+        },
+        "note": "an answer has at least one string"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "auth_answer",
+          "prompt_id": 1,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "at most 16 strings"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "auth_answer",
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "auth_failed",
+          "conn_id": "fixture-conn-1",
+          "reason": "the device refused every method",
+          "code": "locked"
+        },
+        "note": "a code this release does not define: a core reads it as refused"
+      }
+    ]
+  }
+}

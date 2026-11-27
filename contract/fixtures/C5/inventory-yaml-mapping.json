@@ -1,0 +1,74 @@
+{
+  "seam": "C5",
+  "name": "inventory-yaml-mapping",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed by the E3 schema plan (the loader reads every tree)"
+    }
+  ],
+  "description": "Rule 10 of the target schema's x-layout, the YAML data model: a reader parses a target file as YAML and checks the JSON form in which every scalar of a key the schema types as a string is that scalar's text. One file carries an unquoted last_seen date-time, which a YAML 1.1 reader reads as a timestamp, and an unquoted on in name, which it reads as a boolean. Both load as strings, so the file is valid and enters the index: the discovery writer (Python, YAML 1.1) and the core (Go, YAML 1.2) read the same file. The rule is executable in tsbc (_inventory.inventory_read); this case is its record. A tags item is typed a string too, so an unquoted on or 123 in tags is that text, not a boolean or a number. `alerts` is the reader's report of what it refused; the core writes each as a log line (x-layout identity-and-refusals, missing-current).",
+  "corpus": [
+    "Storage §2.1",
+    "Storage §3.1"
+  ],
+  "case": {
+    "transform": "inventory-yaml-mapping",
+    "input": {
+      "reads": [
+        {
+          "current": "v17",
+          "files": [
+            {
+              "source": "manual",
+              "name": "core-rtr-06.yaml",
+              "yaml": {
+                "id": {"text": "core-rtr-06", "yaml11": "string"},
+                "type": {"text": "ssh", "yaml11": "string"},
+                "name": {"text": "on", "yaml11": "bool"},
+                "group": {"text": "core-network", "yaml11": "string"},
+                "tags": [{"text": "on", "yaml11": "bool"}, {"text": "123", "yaml11": "int"}],
+                "last_seen": {"text": "2026-03-18T10:30:00Z", "yaml11": "timestamp"},
+                "options": {
+                  "host": {"text": "10.0.1.1", "yaml11": "string"},
+                  "user": {"text": "admin", "yaml11": "string"}
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "results": [
+        {
+          "index": [
+            {"id": "core-rtr-06", "source": "manual", "tags": ["on", "123"]}
+          ],
+          "alerts": [],
+          "docs": [
+            {
+              "stem": "core-rtr-06",
+              "source": "manual",
+              "doc": {
+                "id": "core-rtr-06",
+                "type": "ssh",
+                "name": "on",
+                "group": "core-network",
+                "tags": ["on", "123"],
+                "last_seen": "2026-03-18T10:30:00Z",
+                "options": {"host": "10.0.1.1", "user": "admin"}
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

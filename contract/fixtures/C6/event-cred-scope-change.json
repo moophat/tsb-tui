@@ -1,0 +1,63 @@
+{
+  "seam": "C6",
+  "name": "event-cred-scope-change",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "cred.scope_change: a grant's selectors changed, the new and the previous (credential-protection §8.4).",
+  "corpus": [
+    "credential-protection §8.4",
+    "E4 DEFAULT 10",
+    "E4 DEFAULT 49",
+    "E4 DEFAULT 51"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.scope_change",
+          "credential_ref": "fleet-backup",
+          "credential_layer": "org",
+          "grant_id": "g-0001",
+          "grantee": "fixture-peer",
+          "selectors": [
+            "tag:core",
+            "id:edge-01"
+          ],
+          "previous_selectors": [
+            "tag:core"
+          ]
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.scope_change",
+          "credential_ref": "fleet-backup",
+          "credential_layer": "org",
+          "grant_id": "g-0001",
+          "grantee": "fixture-peer",
+          "selectors": [
+            "tag:core"
+          ]
+        },
+        "note": "a scope change carries the previous selectors"
+      }
+    ]
+  }
+}

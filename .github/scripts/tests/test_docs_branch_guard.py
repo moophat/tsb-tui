@@ -116,7 +116,7 @@ class DocsBranchGuard(unittest.TestCase):
         # Why it matters: a branch Qodo never reviews (by name alone) must not be able to slip a
         # real code change through on green CI just by living on a plan/ branch. Each path gets its
         # own fresh repo so one offending file's diff is never muddied by another's.
-        for path in ("tsb_tui/app.py", "tests/test_app.py", "tools/check-engine.sh", "Makefile"):
+        for path in ("tsb_tui/app.py", "tests/test_app.py", "tools/check-engine.sh", "Makefile", "contract.pin", "contract/README.md"):
             with self.subTest(path=path):
                 work = self._fresh_repo()
                 self._commit({path: "x\n"}, work=work)

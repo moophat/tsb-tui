@@ -1,0 +1,222 @@
+{
+  "seam": "C1",
+  "name": "session-create-reuse-ambiguous-409",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "When the principal holds two or more connections to the target that reuse could pick, a reuse without connection_id is refused with 409 connection_choice_required: the broker presents the choice and never picks one (GET /sessions lists each session's connection_id). Naming one with connection_id reuses exactly that connection; naming a connection that is not a candidate is 422.",
+  "corpus": [
+    "Contract §12",
+    "Contract §15.3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_a": "/session/id",
+          "conn_a": "/session/connection_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_b": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "connection_choice_required"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "connection_choice_required",
+              "message": "several connections could be reused; name one"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "connection_id": "${conn_a}"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/session/connection_id",
+              "eq": "${conn_a}"
+            }
+          ],
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_c": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "connection_id": "fixture-no-such-connection",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "connection_id is not a connection reuse may pick"
+            }
+          }
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_a}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_b}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_c}"
+      }
+    ]
+  }
+}

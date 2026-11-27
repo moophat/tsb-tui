@@ -1,0 +1,429 @@
+{
+  "seam": "C6",
+  "name": "continuity-record-valid",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "schema/session/session_test.go — every valid instance decodes into session.Stored strictly and re-encodes to the same fields; every invalid one is refused"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/store_test.go — what the core writes to the sessions and connections buckets validates against continuity-state.schema.json"
+    }
+  ],
+  "description": "The durable state a restarted core reattaches from (Storage §8.6; immortality §7): the sessions bucket holds the record E0 already writes, and an E0-written record loads unchanged — the migration-free rule plan.md §3 sets for C6: its owner_id and tenant_id are \"\" and its two clocks carry the process's local offset. A v0.2 core writes the clocks in UTC with Z, and adds protocol and out_bytes_committed. recording_last_seq_out is immortality §4.1's last_committed_seq — one counter, never a renamed copy beside it — and unreachable_reason lives only in the nested northbound record. The connections bucket maps a connection to its worker, target, credential reference, version and sessions, and keeps the buffer_bytes and input_frame_max it was connected with — fixed for the connection's life — so a restarted core splits input at the value the worker holds, never at a value its configuration now has. What is refused: a second counter, a second unreachable_reason, a clock with no zone, an ended_at not in UTC, and any field the layout does not hold.",
+  "corpus": [
+    "Storage §8.6",
+    "Storage §9",
+    "immortality §4.1",
+    "immortality §7",
+    "plan.md §3 C6",
+    "decision 5.39"
+  ],
+  "case": {
+    "schema": "schemas/continuity-state.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T19:04:11.482913201+07:00",
+          "activity_at": "2026-09-23T19:05:02.1+07:00"
+        },
+        "note": "as the E0 core writes it"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T12:04:11.482913201Z",
+          "activity_at": "2026-09-23T12:05:02.1Z",
+          "protocol": "ssh",
+          "out_bytes_committed": 18230
+        },
+        "note": "as a v0.2 core writes it"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "killed",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T12:04:11.482913201Z",
+          "activity_at": "2026-09-23T12:05:02.1Z",
+          "protocol": "ssh",
+          "out_bytes_committed": 18230,
+          "end_reason": "owner",
+          "ended_at": "2026-09-24T08:00:00.5Z"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "unreachable",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "unreachable_reason": "protocol",
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T12:04:11.482913201Z",
+          "activity_at": "2026-09-23T12:05:02.1Z",
+          "protocol": "ssh",
+          "out_bytes_committed": 18230
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "fixture-credential-1",
+          "proto_version": "0.2",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        },
+        "note": "a v0.2 worker's connection, with the knobs it was connected with"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "fixture-credential-1",
+          "session_ids": [
+            "fixture-session-a"
+          ]
+        },
+        "note": "a v0.1 worker's connection"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T12:04:11.482913201Z",
+          "activity_at": "2026-09-23T12:05:02.1Z",
+          "protocol": "ssh",
+          "out_bytes_committed": 18230,
+          "last_committed_seq": 57
+        },
+        "note": "one counter: recording_last_seq_out is last_committed_seq"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "unreachable",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "unreachable_reason": "protocol",
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T12:04:11.482913201Z",
+          "activity_at": "2026-09-23T12:05:02.1Z",
+          "protocol": "ssh",
+          "out_bytes_committed": 18230,
+          "unreachable_reason": "protocol"
+        },
+        "note": "one copy, in the nested record"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T12:04:11.482913201Z",
+          "activity_at": "2026-09-23T12:05:02",
+          "protocol": "ssh",
+          "out_bytes_committed": 18230
+        },
+        "note": "a clock with no zone"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "killed",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            }
+          },
+          "owner_id": "",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T12:04:11.482913201Z",
+          "activity_at": "2026-09-23T12:05:02.1Z",
+          "protocol": "ssh",
+          "out_bytes_committed": 18230,
+          "end_reason": "owner",
+          "ended_at": "2026-09-24T15:00:00+07:00"
+        },
+        "note": "ended_at is written in UTC"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "detached",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": null,
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "owner_id": "a/b",
+          "tenant_id": "",
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec",
+          "recording_committed_offset": 4096,
+          "recording_last_seq_out": 57,
+          "recording_last_seq_in": 12,
+          "client_touch_at": "2026-09-23T12:04:11.482913201Z",
+          "activity_at": "2026-09-23T12:05:02.1Z",
+          "protocol": "ssh",
+          "out_bytes_committed": 18230
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "fixture-credential-1",
+          "proto_version": "0.2",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "password": "FIXTURE-NOT-A-PASSWORD"
+        },
+        "note": "a reference to a credential, never the credential"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "target_id": "fixture-target",
+          "credential_ref": "fixture-credential-1",
+          "proto_version": "0.2",
+          "session_ids": [
+            "fixture-session-a"
+          ],
+          "buffer_bytes": 8388608,
+          "input_frame_max": 0
+        },
+        "note": "a knob keeps its connect range"
+      }
+    ]
+  }
+}

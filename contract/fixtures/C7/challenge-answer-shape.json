@@ -1,0 +1,67 @@
+{
+  "seam": "C7",
+  "name": "challenge-answer-shape",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "The challenge answer's shape (C7): 32 bytes, a login handle, at most 60 seconds to live.",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection §5.2",
+    "credential-protection §5.3",
+    "credential-protection §7.2",
+    "device-trust"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/DeviceChallenge",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "challenge_id": "ch-0001",
+          "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+          "login_handle": "lh-fixture-0001",
+          "expires_in": 30
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "challenge_id": "ch-0001",
+          "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+          "login_handle": "lh-fixture-0001",
+          "expires_in": 120
+        },
+        "note": "seconds, not minutes: at most 60"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "challenge_id": "ch-0001",
+          "challenge": "RklYVFVSRS1DSEFM",
+          "login_handle": "lh-fixture-0001",
+          "expires_in": 30
+        },
+        "note": "32 bytes"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "challenge_id": "ch-0001",
+          "challenge": "RklYVFVSRS1DSEFMTEVOR0UtMDAwMDAwMDAwMDAwMDA=",
+          "expires_in": 30
+        },
+        "note": "the login handle is signed"
+      }
+    ]
+  }
+}

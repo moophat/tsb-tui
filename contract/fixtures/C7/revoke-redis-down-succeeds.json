@@ -1,0 +1,55 @@
+{
+  "seam": "C7",
+  "name": "revoke-redis-down-succeeds",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "A revocation with Redis down answers 204 once bbolt has committed and the logins have ended, and logs the Redis failure loudly: the Part 2 left behind is unreachable (every Part 2 read sits behind the allowlist) and expires by its TTL (DEFAULT 48).",
+  "corpus": [
+    "credential-protection Amendment 2026-09-14",
+    "credential-protection §5.2",
+    "credential-protection §5.3",
+    "credential-protection §7.2",
+    "device-trust",
+    "decision 5.40c",
+    "E4 Q8 (a)",
+    "E4 D5",
+    "E4 DEFAULT 48",
+    "E4 DEFAULT 49",
+    "E4 DEFAULT 43"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/devices/FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA"
+        },
+        "expect": {
+          "status": 204
+        }
+      }
+    ]
+  }
+}

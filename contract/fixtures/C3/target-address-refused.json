@@ -1,0 +1,66 @@
+{
+  "seam": "C3",
+  "name": "target-address-refused",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed by the E3 worker plan"
+    },
+    {
+      "unit": "U2",
+      "test": "owed by the E3 core plan"
+    }
+  ],
+  "description": "The worker resolves connect.host once. It refuses an address in its deployment's deny list with error target_address_refused, naming the target id and never the address; an IPv4-mapped IPv6 address is checked as the IPv4 address it maps. It then connects to the address it checked, so a second lookup cannot move it. No TCP connection is opened for a refused address. The core answers the create 502 target_connect_failed. The deny list is the deployment's (the worker's launch environment), never a contract value. U3 and U2 tests, owed.",
+  "corpus": [
+    "Contract §15",
+    "open_decisions §5",
+    "session-open step 8",
+    "Storage §3"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-telnet-denied",
+          "protocol": "telnet",
+          "host": "denied.example",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "target_address_refused",
+          "message": "fixture-telnet-denied resolves to an address in the deployment's deny list; no connection was opened"
+        },
+        "note": "the message names the target id, never the address; the core answers the create 502 target_connect_failed"
+      }
+    ]
+  }
+}

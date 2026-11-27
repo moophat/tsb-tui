@@ -1,0 +1,83 @@
+{
+  "seam": "C4",
+  "name": "vt-hello-grids",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "The C4 handshake and the grids a returning core learns (D19): hello is the first message on the socket, answered by hello_ack carrying proto_version, engine and the grids the worker holds. The VT worker keeps every grid when a core's socket closes, so a core that reconnects — a restart-core, or a core that lost and redialed the socket — sends hello again and hello_ack.grids tells it what survived, rather than the core assuming an empty worker. The second hello is the same socket, not a new run: the worker's grids are still there. Graded against the U4 worker and the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 3",
+    "plan.md C4 decision 5",
+    "vt-ipc.schema.json hello",
+    "vt-ipc.schema.json hello_ack"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": [
+            {
+              "session_id": "sess-1",
+              "through_seq": 1,
+              "cols": 80,
+              "rows": 24
+            }
+          ]
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": [
+            {
+              "session_id": "sess-1",
+              "through_seq": 1,
+              "cols": 80,
+              "rows": 24
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

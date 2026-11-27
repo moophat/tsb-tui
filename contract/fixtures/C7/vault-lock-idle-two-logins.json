@@ -1,0 +1,63 @@
+{
+  "seam": "C7",
+  "name": "vault-lock-idle-two-logins",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "Idle is measured per user across all surfaces: with lock on idle, a user idle for the vault idle timer has every unlock purged, both logins' at once, and an unlock past the bound is refused at its next use and swept within a second (DEFAULT 31); activity on either login keeps both.",
+  "corpus": [
+    "credential-protection §5.5",
+    "credential-protection §10.2",
+    "E4 D9",
+    "E4 DEFAULT 31",
+    "E4 DEFAULT 32"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "vault_locked",
+              "message": "unlock the vault, then try again"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

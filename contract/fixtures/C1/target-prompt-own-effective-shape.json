@@ -1,0 +1,89 @@
+{
+  "seam": "C1",
+  "name": "target-prompt-own-effective-shape",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks own and effective prompt shape and write omission/null rules."
+    }
+  ],
+  "description": "Provider checks own and effective prompt shape and write omission/null rules.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetRecord",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "name": "core router 01",
+          "group": "lab",
+          "tags": [
+            "router"
+          ],
+          "discovered_by": "private-d13a96877f2e264dbb95b7932b14a165",
+          "host": "192.0.2.10",
+          "port": 22,
+          "prompt_pattern": "[^ ]+[>#]",
+          "share": [
+            "fixture-user"
+          ],
+          "owner": "fixture-user"
+        },
+        "note": "valid record with share and owner"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "name": "core router 01",
+          "group": "lab",
+          "tags": [
+            "router"
+          ],
+          "discovered_by": "private-d13a96877f2e264dbb95b7932b14a165",
+          "host": "192.0.2.10",
+          "port": 22,
+          "prompt_pattern": "[^ ]+[>#]",
+          "private_owner": "fixture-user",
+          "share": [
+            "fixture-user"
+          ],
+          "owner": "fixture-user"
+        },
+        "note": "private_owner is forbidden in records"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "name": "core router 01",
+          "group": "lab",
+          "tags": [
+            "router"
+          ],
+          "discovered_by": "private-d13a96877f2e264dbb95b7932b14a165",
+          "host": "192.0.2.10",
+          "port": 22,
+          "prompt_pattern": "[^ ]+[>#]",
+          "share": [
+            "fixture-user"
+          ]
+        },
+        "note": "share requires owner"
+      }
+    ]
+  }
+}

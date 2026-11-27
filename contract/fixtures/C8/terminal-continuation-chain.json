@@ -1,0 +1,745 @@
+{
+  "seam": "C8",
+  "name": "terminal-continuation-chain",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: recording_continuation_terminal_continuation_chain_u2: chained recordings, evidence and comparison through multiple failures"
+    },
+    {
+      "unit": "U1",
+      "test": "tests/test_terminal_output_accounting.py::RecordingChainTests::test_chain_reference_cases"
+    },
+    {
+      "unit": "U1",
+      "test": "tests/test_recording_chain_collection.py::ChainCollection::test_complete_chain_and_legacy_refusal"
+    }
+  ],
+  "description": "Fixed raw pair snapshots and audit history grade the chain reader and specify the provider obligation.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3"
+  ],
+  "case": {
+    "schema": "schemas/recording-chain-fixture.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": "0000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "03000000000000000100000043",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": null,
+          "expected_seq": 2,
+          "expected_bytes": 2,
+          "expected_evidence_status": "parsed",
+          "expected_input_status": "unconfirmed"
+        },
+        "note": "The rejected old output is evidence and the continuation supplies output once."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "01000000000000000100000041000000000000000000000000000000000000000000000000",
+              "sidecar_hex": "00"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "03000000000000000100000043",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": null,
+          "expected_seq": 2,
+          "expected_bytes": 2,
+          "expected_evidence_status": "unparseable",
+          "expected_input_status": "unconfirmed"
+        },
+        "note": "An all-zero suffix is unparseable evidence, not output."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": "0000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "03000000000000000100000043",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": "missing_notice"
+        },
+        "note": "A missing predecessor notice fails closed."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": "0000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "02000000000000005b0000000d0a5b545342206761703a2033206279746573206c6f73742066726f6d20313937302d30312d30315430303a30303a30312e3030303030305a20746f20313937302d30312d30315430303a30303a30322e3030303030305a5d0d0a000000000000000000000000000000000000000000000000",
+              "sidecar_hex": "02"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-2.ttyrec",
+              "ttyrec_hex": "04000000000000000100000044",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.chain/continuation-1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation_unconfirmed",
+                "key": "ri1:s1:q:1",
+                "generation": 1,
+                "baseline_seq": 4,
+                "baseline_bytes": 4,
+                "baseline_offset": 103,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 2,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.chain/continuation-1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:2",
+                "generation": 2,
+                "previous_path": "recordings/s1.chain/continuation-1.ttyrec",
+                "previous_seq_out": 4,
+                "previous_bytes": 4,
+                "previous_offset": 103,
+                "continuation_path": "recordings/s1.chain/continuation-2.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": null,
+          "expected_seq": 5,
+          "expected_bytes": 5,
+          "expected_evidence_status": "parsed",
+          "expected_input_status": "unconfirmed"
+        },
+        "note": "Three generations preserve two unconfirmed suffixes and carry a committed gap sequence through the next link."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": "0000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "03000000000000000100000043",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": "missing_link"
+        },
+        "note": "The complete audit history omits the required link."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": null
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "03000000000000000100000043",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": "unavailable_pair"
+        },
+        "note": "A missing predecessor sidecar returns explicit evidence and an unavailable error."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": "0000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "03000000000000000100000043",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-9.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": "invalid_link"
+        },
+        "note": "A successor path mismatching its durable link fails closed."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": "0000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-2.ttyrec",
+              "ttyrec_hex": "03000000000000000100000043",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:2",
+                "generation": 2,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-2.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": null,
+          "expected_seq": 2,
+          "expected_bytes": 2,
+          "expected_evidence_status": "parsed",
+          "expected_input_status": "unconfirmed"
+        },
+        "note": "An unlinked generation 1 is not in the chain; the durable link selects generation 2."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": "0000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "",
+              "sidecar_hex": ""
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": null,
+          "expected_seq": 1,
+          "expected_bytes": 1,
+          "expected_evidence_status": "parsed",
+          "expected_input_status": "unconfirmed"
+        },
+        "note": "An empty worker replay adds no output; the old unconfirmed suffix is not counted."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000042",
+              "sidecar_hex": "0000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "02000000000000005b0000000d0a5b545342206761703a2033206279746573206c6f73742066726f6d20313937302d30312d30315430303a30303a30312e3030303030305a20746f20313937302d30312d30315430303a30303a30322e3030303030305a5d0d0a000000000000000000000000000000000000000000000000",
+              "sidecar_hex": "02"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-2.ttyrec",
+              "ttyrec_hex": "04000000000000000100000044",
+              "sidecar_hex": "00"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:1:1",
+                "baseline_seq": 1,
+                "baseline_bytes": 1,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 1,
+                "previous_offset": 13,
+                "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.chain/continuation-1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation_unconfirmed",
+                "key": "ri1:s1:q:1",
+                "generation": 1,
+                "baseline_seq": 1,
+                "baseline_bytes": 4,
+                "baseline_offset": 103,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 2,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.chain/continuation-1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:2",
+                "generation": 2,
+                "previous_path": "recordings/s1.chain/continuation-1.ttyrec",
+                "previous_seq_out": 1,
+                "previous_bytes": 4,
+                "previous_offset": 103,
+                "continuation_path": "recordings/s1.chain/continuation-2.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": "invalid_link"
+        },
+        "note": "A later link cannot move the committed sequence backwards across a counted gap."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "session_id": "s1",
+          "pairs": [
+            {
+              "path": "recordings/s1.ttyrec",
+              "ttyrec_hex": "0100000000000000010000004102000000000000000100000041030000000000000001000000410400000000000000010000004105000000000000000100000041060000000000000001000000410700000000000000010000004108000000000000000100000041090000000000000001000000410a0000000000000001000000410b0000000000000001000000410c0000000000000001000000410d0000000000000001000000410e0000000000000001000000410f000000000000000100000041100000000000000001000000411100000000000000010000004112000000000000000100000041130000000000000001000000411400000000000000010000004115000000000000000100000041160000000000000001000000411700000000000000010000004118000000000000000100000041190000000000000001000000411a0000000000000001000000411b0000000000000001000000411c0000000000000001000000411d0000000000000001000000411e0000000000000001000000411f000000000000000100000041200000000000000001000000412100000000000000010000004122000000000000000100000041230000000000000001000000412400000000000000010000004125000000000000000100000041260000000000000001000000412700000000000000010000004128000000000000000100000041290000000000000001000000412a0000000000000001000000422b000000000000000100000043",
+              "sidecar_hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+            },
+            {
+              "path": "recordings/s1.chain/continuation-1.ttyrec",
+              "ttyrec_hex": "290000000000000001000000412a0000000000000001000000582b000000000000000100000043",
+              "sidecar_hex": "000000"
+            }
+          ],
+          "audit": [
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "unconfirmed",
+                "key": "ri1:s1:u:40:40",
+                "baseline_seq": 40,
+                "baseline_bytes": 40,
+                "reason": "recording_unsynced",
+                "observed_at_ns": 1,
+                "unknown_suffix": true
+              }
+            },
+            {
+              "ts": "2026-11-15T02:15:00Z",
+              "action": "recording.output_incomplete",
+              "session_id": "s1",
+              "session_type": "shell",
+              "recording_path": "recordings/s1.ttyrec",
+              "detail": {
+                "version": 1,
+                "kind": "continuation",
+                "key": "ri1:s1:c:1",
+                "generation": 1,
+                "previous_path": "recordings/s1.ttyrec",
+                "previous_seq_out": 40,
+                "previous_bytes": 40,
+                "previous_offset": 520,
+                "continuation_path": "recordings/s1.chain/continuation-1.ttyrec"
+              }
+            }
+          ],
+          "audit_complete": true,
+          "expected_error": null,
+          "expected_seq": 43,
+          "expected_bytes": 43,
+          "expected_evidence_status": "parsed",
+          "expected_input_status": "unconfirmed",
+          "expected_output_hex": "41414141414141414141414141414141414141414141414141414141414141414141414141414141415843"
+        },
+        "note": "P=40: old 41 matches replay, old 42 differs, and old 43 follows; only replay is authoritative."
+      }
+    ]
+  }
+}

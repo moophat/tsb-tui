@@ -31,7 +31,7 @@ from typing import Any, Self
 _HERE = Path(__file__).resolve().parent
 TUI_DIR = _HERE.parent
 REPO_ROOT = TUI_DIR
-CONTRACT_DIR = REPO_ROOT / "program" / "contract"
+CONTRACT_DIR = REPO_ROOT / "contract"
 for _entry in (TUI_DIR, CONTRACT_DIR, CONTRACT_DIR / "client"):
     if _entry.is_dir() and str(_entry) not in sys.path:
         sys.path.insert(0, str(_entry))

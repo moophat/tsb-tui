@@ -1,0 +1,31 @@
+{
+  "seam": "C2",
+  "name": "attach-first-frame-invalid-close-4000",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "The first frame must be the attach frame. Bytes sent before it are refused with close 4000 and reach no session: nothing flows on a socket that has not presented a ticket.",
+  "corpus": [
+    "decision 5.34",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [],
+    "steps": [
+      {
+        "ws_open": "w",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "w",
+        "bytes": "tsbc: bytes before attach"
+      },
+      {
+        "ws_expect": "w",
+        "close": 4000
+      }
+    ]
+  }
+}

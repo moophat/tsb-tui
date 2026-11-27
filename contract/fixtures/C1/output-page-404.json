@@ -1,0 +1,25 @@
+{
+  "seam": "C1",
+  "name": "output-page-404",
+  "mark": {"published": "e2", "required-green": "e5"},
+  "kind": "rest",
+  "grade": "live",
+  "description": "An unknown session has no output ring (C1 decision 3; 5.48; F15): GET /sessions/{id}/output for a session that does not exist is 404 session_not_found, never an empty page. Published e2 so the web lane may build against it; required green at e5, where a core ring first exists.",
+  "corpus": ["C1 decision 3", "5.48", "F15"],
+  "case": {
+    "inputs": ["user", "password"],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/fixture-session-gone/output?before_seq=10&max_bytes=4096"
+        },
+        "expect": {
+          "status": 404,
+          "match": [{"pointer": "/error/code", "eq": "session_not_found"}],
+          "example": {"error": {"code": "session_not_found", "message": "no such session"}}
+        }
+      }
+    ]
+  }
+}

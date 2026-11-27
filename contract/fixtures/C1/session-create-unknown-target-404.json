@@ -1,0 +1,50 @@
+{
+  "seam": "C1",
+  "name": "session-create-unknown-target-404",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "A target the principal cannot see is not found: 404 target_not_found, the same answer as for a target that does not exist, so the visibility gate never confirms a target's existence.",
+  "corpus": [
+    "Storage §10.1a",
+    "Storage §9"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "fixture-no-such-target",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "target_not_found",
+              "message": "no such target"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

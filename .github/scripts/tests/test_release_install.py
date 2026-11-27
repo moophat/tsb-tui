@@ -16,10 +16,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 TUI = "tsb_tui-1.2.3-py3-none-any.whl"
 CONTRACT = "tsb_contract-0.12.1-py3-none-any.whl"
+# The release builds the contract tarball from the copy, so its name follows the pinned contract.
+TARBALL = f"tsb-{(ROOT / 'contract' / 'CONTRACT_VERSION').read_text().strip()}.tar.gz"
 ENGINE = "libghostty-vt-linux-x86_64.tar.gz"
 WINDOWS_ZIP = "tsb-tui-1.2.3-windows-x64.zip"
 MACOS_ZIPS = ["tsb-tui-1.2.3-macos-arm64.zip", "tsb-tui-1.2.3-macos-x64.zip"]
-PAYLOADS = [TUI, CONTRACT, ENGINE, "install.sh", "install.ps1"]
+INSTALL_PAYLOADS = [TUI, CONTRACT, ENGINE, "install.sh"]
+PAYLOADS = [TUI, CONTRACT, TARBALL, ENGINE, "install.sh", "install.ps1"]
 
 
 def executable(path, source):
@@ -99,7 +102,7 @@ def bundle(tmp_path, monkeypatch):
         with open(os.environ['CALL_LOG'], 'a') as log:
             log.write(json.dumps(['tsb-tui', *sys.argv[1:]]) + '\\n')
     """)
-    for name in (TUI, CONTRACT):
+    for name in (TUI, CONTRACT, TARBALL):
         (assets / name).write_bytes(b'wheel test double')
     with tarfile.open(assets / ENGINE, "w:gz") as archive:
         for name, content in {"libghostty-vt.so": b"engine bytes", "PIN": b"pin",
@@ -120,7 +123,7 @@ def run_install(assets):
                           check=False)
 
 
-@pytest.mark.parametrize("name", [name for name in PAYLOADS if name != "install.ps1"])
+@pytest.mark.parametrize("name", INSTALL_PAYLOADS)
 def test_bad_checksum_stops_before_pipx(bundle, name):
     assets, venvs, log = bundle
     with (assets / name).open("ab") as output:
@@ -250,7 +253,7 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
     vendor = tmp_path / "vendor/libghostty-vt"
     shutil.copytree(ROOT / "vendor/libghostty-vt", vendor)
     shutil.copytree(ROOT / "tools", tmp_path / "tools")
-    shutil.copytree(ROOT / "program/contract", tmp_path / "program/contract")
+    shutil.copytree(ROOT / "contract", tmp_path / "contract")
     shutil.copyfile(ROOT / "install.sh", tmp_path / "install.sh")
     shutil.copyfile(ROOT / "install.ps1", tmp_path / "install.ps1")
     bin_dir = tmp_path / "bin"
@@ -270,7 +273,7 @@ def test_release_checksums_archive_and_both_upload_paths(tmp_path, monkeypatch, 
         destination.mkdir(exist_ok=True)
         name = {TUI!r} if args[-1] == '.' else {CONTRACT!r}
         if name == {CONTRACT!r}:
-            assert Path(args[-1]).resolve() != Path('program/contract').resolve()
+            assert Path(args[-1]).resolve() != Path('contract').resolve()
             assert (Path(args[-1]) / 'pyproject.toml').is_file()
         (destination / name).write_bytes(b'wheel test double')
     """)

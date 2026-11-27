@@ -1,0 +1,172 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-authorization",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: List/single target-scoped gates and one captured runtime target context; no metadata read when permission or runtime visibility fails."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: No metadata preparation/evaluation on permission omission."
+    }
+  ],
+  "description": "Invisible and unknown single targets remain identical 404. Provider runs hint-discover-only as a caller lacking target-scoped session.create: row stays visible with no field. With no target.discover the list is empty. Runtime visibility failure also omits without resolution; existing authentication and index-outage behavior is unchanged. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-invisible"
+        },
+        "expect": {
+          "status": 404,
+          "example": {
+            "error": {
+              "code": "target_not_found",
+              "message": "no such target"
+            }
+          },
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_not_found"
+            }
+          ]
+        },
+        "save": {
+          "invisible_error": ""
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-unknown"
+        },
+        "expect": {
+          "status": 404,
+          "example": {
+            "error": {
+              "code": "target_not_found",
+              "message": "no such target"
+            }
+          },
+          "match": [
+            {
+              "pointer": "",
+              "eq": "${invisible_error}"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-discover-only"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-discover-only"
+              }
+            },
+            {
+              "pointer": "/targets/0/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-discover-only",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-discover-only"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22
+              }
+            ]
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-discover-only"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-discover-only"
+            },
+            {
+              "pointer": "/login_hint",
+              "absent": true
+            }
+          ],
+          "example": {
+            "id": "hint-discover-only",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-discover-only"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "eq": []
+            }
+          ],
+          "example": {
+            "targets": []
+          }
+        }
+      }
+    ]
+  }
+}

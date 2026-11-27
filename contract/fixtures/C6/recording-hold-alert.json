@@ -1,0 +1,66 @@
+{
+  "seam": "C6",
+  "name": "recording-hold-alert",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: recording_hold_alert_identity"
+    }
+  ],
+  "description": "Exactly one session identifies each held-session alert. This reference case records the held-session contract and requires its named provider test.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "alert.raised",
+          "detail": {
+            "alert_id": "a1",
+            "kind": "recording_unavailable",
+            "session_ids": [
+              "s1"
+            ]
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "alert.raised",
+          "detail": {
+            "alert_id": "a1",
+            "kind": "recording_unavailable",
+            "session_ids": []
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "alert.raised",
+          "detail": {
+            "alert_id": "a1",
+            "kind": "recording_unavailable",
+            "session_ids": [
+              "s1",
+              "s2"
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "seam": "C3",
+  "name": "hostkey-refused",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_a_refused_key_is_hostkey_refused_and_is_not_recorded"
+    }
+  ],
+  "description": "A refused key ends the connect: the core relays `hostkey_answer {accept: false}` and the worker answers `error` code `hostkey_refused`, which is the terminal answer (rule 6). It records nothing in `known_hostscopy`, closes the probe, and sends no `connected` and no `auth_prompt`. The code is in the branch of `error` without a session. The core maps it to the device login's outcome `hostkey_refused` and writes `target.hostkey_refused`.",
+  "corpus": [
+    "decision 5.18",
+    "device-login step 13",
+    "ipc-control rule 6"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hostkey_ask",
+          "conn_id": "fixture-conn-1",
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hostkey_answer",
+          "accept": false
+        },
+        "note": "the operator refused"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "hostkey_refused",
+          "message": "the host key was refused"
+        },
+        "note": "terminal; nothing was recorded"
+      }
+    ]
+  }
+}

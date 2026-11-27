@@ -1,0 +1,301 @@
+{
+  "seam": "C1",
+  "name": "session-record-shape-v0.2",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "with:session-countdown",
+  "description": "The session record at contract-v0.2, additive on v0.1 (immortality §6.4): every v0.1 record stays valid. It gains the countdown — ends_at, ends_by and ending, all three together, on every record not yet ended and on none that has — and the state unreachable, with unreachable_reason present exactly then. The live run of session-countdown validates real records against the same shape.",
+  "corpus": [
+    "session model §10",
+    "session model §11",
+    "immortality §6.4",
+    "decision 5.38"
+  ],
+  "case": {
+    "schema": "schemas/session-record.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "live",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": {
+            "client_id": "fixture-client-1",
+            "user": "fixture-user"
+          },
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "ends_at": "2026-09-29T01:06:00Z",
+          "ends_by": "link_timeout",
+          "ending": true
+        },
+        "note": "the link stopped answering: ends in 6 min"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "unreachable",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "unreachable_reason": "protocol",
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "killed",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "an ended record carries no countdown"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          }
+        },
+        "note": "a v0.1 record is valid"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "killed",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        },
+        "note": "an ended session has nothing to count down"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "ends_at": "2026-09-30T12:00:00Z"
+        },
+        "note": "the three travel together"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "unreachable",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        },
+        "note": "unreachable says why"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "unreachable_reason": "protocol",
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "lifetime",
+          "ending": false
+        },
+        "note": "no lifetime cap (decision 5.45)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "orphan-pending",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        },
+        "note": "the worker's state is never on the record"
+      }
+    ]
+  }
+}

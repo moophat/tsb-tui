@@ -1,0 +1,52 @@
+{
+  "seam": "C7",
+  "name": "chain-device-id",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain2_test.go — TestDeviceIDVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "Chain step 4: device_id = SHA-256 over the device's facts' canonical bytes (credential-protection §4.2), and its wire form, base64url without padding. Which facts, and their canonical form, are the vault client's plan (DEFAULT 17): this vector fixes one example input, the digest and the encoding.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55",
+    "credential-protection §4.2"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_device_id",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "device-id",
+          "implementations": [
+            {
+              "unit": "U8c",
+              "what": "the browser vault client (web/src/vault/)"
+            },
+            {
+              "unit": "U6",
+              "what": "Go test code in vault/ (5.26: a second implementation of a browser-only step)"
+            }
+          ],
+          "facts_bytes": "7473622d63372d666978747572652d6465766963652d66616374732d76312d3337363832",
+          "device_id": "36582605103cf07de683402644dce9ef79cadfc9fc47e97016e98ade52a168a0",
+          "device_id_b64url": "NlgmBRA88H3mg0AmRNzp73nK38n8R-lwFumK3lKhaKA"
+        }
+      }
+    ]
+  }
+}

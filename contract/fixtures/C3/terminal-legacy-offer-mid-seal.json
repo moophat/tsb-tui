@@ -1,0 +1,81 @@
+{
+  "seam": "C3",
+  "name": "terminal-legacy-offer-mid-seal",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U3 `legacy_offer_mid_seal`: a hello stating a version below 0.8 while the session is sealing or its core-requested end is in flight is answered unsupported_proto naming the session, never terminal_busy; output_sealed and terminal_busy reach only a peer that stated 0.8 on that control connection by a parsed hello (refused hellos included) or seal_output; after sealing that peer gets the ordinary legacy handshake and legacy release, at the legacy core's next start (it sets no retry timer); a core at an effective version below 0.8 stays the legacy core."
+    },
+    {
+      "unit": "U3",
+      "test": "owed: U2/U3 `legacy_offer_mid_seal`: a hello stating a version below 0.8 while the session is sealing or its core-requested end is in flight is answered unsupported_proto naming the session, never terminal_busy; output_sealed and terminal_busy reach only a peer that stated 0.8 on that control connection by a parsed hello (refused hellos included) or seal_output; after sealing that peer gets the ordinary legacy handshake and legacy release, at the legacy core's next start (it sets no retry timer); a core at an effective version below 0.8 stays the legacy core."
+    }
+  ],
+  "description": "U2/U3 `legacy_offer_mid_seal`: a hello stating a version below 0.8 while the session is sealing or its core-requested end is in flight is answered unsupported_proto naming the session, never terminal_busy; output_sealed and terminal_busy reach only a peer that stated 0.8 on that control connection by a parsed hello (refused hellos included) or seal_output; after sealing that peer gets the ordinary legacy handshake and legacy release, at the legacy core's next start (it sets no retry timer); a core at an effective version below 0.8 stays the legacy core.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.7",
+          "last_committed_seq": 42
+        },
+        "note": "A spoken offer below 0.8 from a replacement control peer while fixture-session-a is sealing, or while its already-requested core end is in flight."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "session_id": "fixture-session-a",
+          "code": "unsupported_proto",
+          "message": "unsupported protocol version"
+        },
+        "note": "The C3 0.8 worker's answer while the operation is carried (#138): old messages only, never terminal_busy, and no output_sealed to this peer."
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "error",
+          "code": "unsupported_proto",
+          "message": "unsupported protocol version"
+        },
+        "note": "The answer names the session."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.7",
+          "first_buffered_seq": 43,
+          "first_buffered_offset": 8192,
+          "current_seq": 44,
+          "ended": true
+        },
+        "note": "Once the operation has sealed, at the legacy core's next start: the ordinary legacy handshake toward that peer, with no output_seal summary."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "release",
+          "session_id": "fixture-session-a"
+        },
+        "note": "The legacy release, unchanged, disposes of the sealed session for the peer below 0.8."
+      }
+    ]
+  }
+}

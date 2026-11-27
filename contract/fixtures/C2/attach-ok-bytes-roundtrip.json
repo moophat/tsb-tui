@@ -1,0 +1,194 @@
+{
+  "seam": "C2",
+  "name": "attach-ok-bytes-roundtrip",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "The whole attach, the phase-00 first gate's shape: mint a ticket for the session; open GET /ws/attach with nothing in the URL; present the ticket in the first text frame; receive attached — this client now holds the control token and the session is live; then bytes flow both ways, typed bytes reach the target and its output comes back (a terminal echoes what is typed). Closing the socket leaves the session alive, detached, the control token back in escrow.",
+  "corpus": [
+    "Contract §11",
+    "Contract §10",
+    "PTY §7.1",
+    "session model §10",
+    "phase-00 first gate",
+    "decision 5.34"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "v": 1,
+            "ticket": "FIXTURE-TICKET-000000000000000000",
+            "expires_in": 30
+          }
+        },
+        "save": {
+          "minted": "/ticket"
+        }
+      },
+      {
+        "ws_open": "w",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "w",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${minted}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "w",
+        "frame": {
+          "save": {
+            "client_id": "/client_id"
+          },
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            },
+            {
+              "pointer": "/session/id",
+              "eq": "${sid}"
+            },
+            {
+              "pointer": "/session/state",
+              "eq": "live"
+            },
+            {
+              "pointer": "/session/control_holder/client_id",
+              "eq": "${client_id}"
+            },
+            {
+              "pointer": "/session/control_holder/user",
+              "eq": "${user}"
+            }
+          ],
+          "example": {
+            "t": "attached",
+            "v": 1,
+            "client_id": "fixture-client-1",
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "live",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": {
+                "client_id": "fixture-client-1",
+                "user": "fixture-user"
+              },
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        }
+      },
+      {
+        "ws_send": "w",
+        "bytes": "# tsbc ${nonce}\r"
+      },
+      {
+        "ws_expect": "w",
+        "output_contains": "tsbc ${nonce}"
+      },
+      {
+        "ws_close": "w"
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/${sid}"
+        },
+        "poll": true,
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/state",
+              "eq": "detached"
+            },
+            {
+              "pointer": "/control_holder",
+              "eq": null
+            }
+          ]
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

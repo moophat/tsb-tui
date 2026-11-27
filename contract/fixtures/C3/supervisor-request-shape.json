@@ -1,0 +1,84 @@
+{
+  "seam": "C3",
+  "name": "supervisor-request-shape",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:supervisor-sequence",
+  "description": "create_worker carries routing, placement and capacity only. placement_key is required: without it a supervisor could hand this connection to a worker holding another user's connections (session model §4; Contract §4: users are tenants). It has a user name's shape, so a per_user key is the owning TSB login name as is, '@' included. A credential or any connect detail in create_worker is refused by the schema: credentials reach a worker only through connect.auth on the connection's own socket, never through the process that spawns workers, their argv or their environment. Every request in a collected supervisor capture must be this shape.",
+  "corpus": [
+    "decision 5.13",
+    "open_decisions §5",
+    "session model §4",
+    "Contract §4"
+  ],
+  "case": {
+    "schema": "schemas/supervisor.schema.json#/$defs/request",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 2
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "ops@fixture",
+          "n_max": 1
+        },
+        "note": "a TSB login name may hold '@'; a per_user key is that name as is"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "n_max": 2
+        },
+        "note": "no placement_key: the supervisor could not keep one user's connections apart from another's"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 1,
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        },
+        "note": "no credential here"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 1,
+          "host": "192.0.2.10"
+        },
+        "note": "no connect detail here"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 0
+        },
+        "note": "a worker holds at least one"
+      }
+    ]
+  }
+}

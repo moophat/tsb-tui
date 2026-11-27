@@ -1,0 +1,85 @@
+{
+  "seam": "C1",
+  "name": "session-create-device-login-202",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/device_login_test.go — TestAPromptModeCreateAnswers202WithATicketAndListsNoSession: 202 with device_login_id, ticket and expires_in, no session in GET /sessions, no worker placed, nothing audited, and no field of the request in the answer"
+    }
+  ],
+  "description": "A create in prompt mode (`connection: new` with `login {user, auth: {kind: prompt}}`) answers 202 with a device login and its one-time ticket, `DeviceLoginPending {device_login_id, ticket, expires_in}`, and no session: nothing is listed, placed, dialled, recorded or audited until the surface redeems the ticket on GET /ws/attach with `device_login_attach` (device-login steps 3 to 8). The body carries no secret: the branch has no field for one. `expires_in` is the ticket's lifetime, 1 to 60 seconds, and an unattached device login ends when it passes (OPEN-R1 (a)). The 202 is its own closed shape, never `Ticket`, whose `session_id` binding stays true. The answer carries no `session` and none of the request's values. `recording_acknowledged` is accepted and changes nothing while `GET /auth/me` says `recording.login_input` is false, so a surface may always send it.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "credential §10.2",
+    "Contract §12",
+    "Contract §6",
+    "device-login steps 3 to 8",
+    "session-open step 1"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "prompt"
+              },
+              "recording_acknowledged": true
+            }
+          }
+        },
+        "expect": {
+          "status": 202,
+          "match": [
+            {
+              "pointer": "/ticket",
+              "present": true
+            },
+            {
+              "pointer": "/device_login_id",
+              "present": true
+            },
+            {
+              "pointer": "/expires_in",
+              "present": true
+            },
+            {
+              "pointer": "/session",
+              "absent": true
+            },
+            {
+              "pointer": "/login",
+              "absent": true
+            }
+          ],
+          "example": {
+            "device_login_id": "fixture-device-login-1",
+            "ticket": "FIXTURE-TICKET-000000000000000000",
+            "expires_in": 30
+          }
+        }
+      }
+    ]
+  }
+}

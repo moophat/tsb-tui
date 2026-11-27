@@ -1,0 +1,44 @@
+{
+  "seam": "C8",
+  "name": "broker-marker-ctrl-l",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "bytes",
+  "grade": "with:recordings-broker-marker",
+  "description": "The broker marker for a ctrl_l answer, and the input frame that follows it. The marker (sidecar code 5, data the x-broker-line line for choice ctrl_l) stands before the code-1 input frame carrying 0x0C, because the core records an input frame before it sends it (Contract §13): the recording shows the broker sent Ctrl-L on the session's behalf, and that the byte the target sees is the core's, not a client's. Who chose is on the session.stale_choice audit event. A leader that records the input before the marker would hide that the broker originated the byte.",
+  "corpus": [
+    "5.46",
+    "Contract §13",
+    "plan.md §3 C8",
+    "immortality §5.3"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "broker-marker-ctrl-l.ttyrec.bin",
+    "sidecar": "broker-marker-ctrl-l.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 123456,
+        "length": 2,
+        "direction": "out",
+        "data_hex": "2420"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 0,
+        "length": 57,
+        "marker": "broker",
+        "data_hex": "0d0a5b5453423a207374616c652073637265656e206166746572206c6f7374206f7574707574202d206374726c5f6c2063686f73656e5d0d0a"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 1000,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "0c"
+      }
+    ]
+  }
+}

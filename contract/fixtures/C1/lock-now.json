@@ -1,0 +1,46 @@
+{
+  "seam": "C1",
+  "name": "lock-now",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "Lock now: 204, and every vault unlock the caller's user holds, from any of its logins, is gone; established sessions are untouched. The calling client locks its own screen too (credential-protection §5.5; M7).",
+  "corpus": [
+    "credential-protection §5.5",
+    "Frontend §10.4",
+    "E4 D9",
+    "E4 D14",
+    "E4 H5 (b)",
+    "E4 M7 / OPEN-7"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/lock"
+        },
+        "expect": {
+          "status": 204
+        }
+      }
+    ]
+  }
+}

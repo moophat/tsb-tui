@@ -1,0 +1,5485 @@
+{
+  "C1/alerts-stream": [
+    {
+      "unit": "U2",
+      "file": "core/internal/alert/stream_test.go",
+      "test_id": "TestAlertStreamSendsTheActiveSetThenEachRaiseAndClear"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/alert/stream_test.go",
+      "test_id": "TestAlertStreamKeepaliveAfterHeartbeatIntervalOfSilence"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/alert/stream_test.go",
+      "test_id": "TestAlertStreamEndsOnLogout"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/alert/stream_test.go",
+      "test_id": "TestAlertStreamEndsWhenItsLoginExpires"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/alert/stream_test.go",
+      "test_id": "TestAPolicyReloadEndsTheStreamsItRevokesAndNoOther"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/heartbeat_test.go",
+      "test_id": "TestAGoneSupervisorsAlertsClearAndNothingIsRaisedForIt"
+    }
+  ],
+  "C1/auth-cross-origin-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/httpapi_test.go",
+      "test_id": "TestCrossOriginStateChangesAreRefused"
+    }
+  ],
+  "C1/create-refused-v0.1-workers": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/sessions_test.go",
+      "test_id": "TestCreateAgainstOnlyV01WorkersAnswersTheFixturesError"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestACreateAgainstOnlyV01SupervisorsIsRefusedWithTheFixturesMessage"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestReuseNeverPicksAV01Connection"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/n1-negative.sh",
+      "test_id": "rig-n1-negative"
+    }
+  ],
+  "C1/output-page-gap": [
+    {
+      "unit": "U2",
+      "owed": "owed by the E5 core plan"
+    }
+  ],
+  "C1/output-page-ground-start": [
+    {
+      "unit": "U2",
+      "owed": "owed by the E5 core plan"
+    }
+  ],
+  "C1/policy-broker-health": [
+    {
+      "unit": "U5",
+      "file": "schema/policy/policy_test.go",
+      "test_id": "TestPolicyBrokerHealthFixtureInstances"
+    }
+  ],
+  "C1/policy-storage-example": [
+    {
+      "unit": "U5",
+      "file": "schema/policy/policy_test.go",
+      "test_id": "TestPolicyFixtureInstances"
+    },
+    {
+      "unit": "U5",
+      "file": "schema/policy/policy_test.go",
+      "test_id": "TestStorageSection9YAMLVerbatim"
+    },
+    {
+      "unit": "U5",
+      "file": "schema/policy/policy_test.go",
+      "test_id": "TestUnknownPermissionIsRefused"
+    }
+  ],
+  "C1/session-create-hostkey-first-use": [
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/manager_test.go",
+      "test_id": "TestHostkeyEventPutsHostkeyInTheCreateResponse"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/hostkey-persist.sh",
+      "test_id": "rig-hostkey-persist"
+    }
+  ],
+  "C1/session-create-telnet-reuse": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/sessions_test.go",
+      "test_id": "TestATelnetReuseTheWorkerRefusesIs502AndLeavesTheLiveSessionAsItWas"
+    }
+  ],
+  "C1/session-ended-unexpectedly": [
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/manager_test.go",
+      "test_id": "TestSIGKILLTheEchoWorkerMidStream"
+    }
+  ],
+  "C1/session-unreachable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/unreachable_test.go",
+      "test_id": "TestAnUnreachableSessionIsAttachableAndItsInputIsRefused"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/unreachable.sh",
+      "test_id": "rig-unreachable"
+    }
+  ],
+  "C1/target-get-invisible-404": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/targets_test.go",
+      "test_id": "TestAnInvisibleTargetIsAnsweredAsAnAbsentOne"
+    }
+  ],
+  "C1/target-record-prompt-pattern": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/targets_test.go",
+      "test_id": "TestGetTargetServesPromptPatternAsWrittenOrOmitsIt"
+    }
+  ],
+  "C1/targets-list-filtered": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/targets_test.go",
+      "test_id": "TestListTargetsFiltersNarrowAndUndeclaredParametersAre422"
+    }
+  ],
+  "C1/targets-list-no-discover-empty": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/targets_test.go",
+      "test_id": "TestListTargetsWithoutTargetDiscoverIsAnEmptyList"
+    }
+  ],
+  "C1/targets-list-paged": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/targets_test.go",
+      "test_id": "TestListTargetsPagesPastTenInIDOrder"
+    }
+  ],
+  "C1/targets-unavailable-503": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/targets_test.go",
+      "test_id": "TestTargetReadsAre503WhileTheIndexIsDownAndCreateStillWorks"
+    }
+  ],
+  "C2/data-path-marker": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/data_path_end_test.go",
+      "test_id": "TestANormalEndNeverSendsALostMarkerButALoneLossDoes"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/handshake_test.go",
+      "test_id": "TestAJumpOnALiveSocketIsRecoveredByAHandshakeThatDeclaresTheLoss"
+    }
+  ],
+  "C2/frame-versioning": [
+    {
+      "unit": "U2",
+      "file": "core/internal/ws/conn_test.go",
+      "test_id": "TestAKnownFrameAtAnUnknownVersionIsIgnoredAndTheCoreSendsOnlyV1"
+    }
+  ],
+  "C2/notice-changes": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/link_test.go",
+      "test_id": "TestNoticeBelongsToTheWindowAndItsMovements"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/link_test.go",
+      "test_id": "TestLinkStateMovesTheCountdownAndItsNotice"
+    }
+  ],
+  "C2/per-client-output": [
+    {
+      "unit": "U2",
+      "file": "core/internal/router/router_test.go",
+      "test_id": "TestASlowClientDelaysNoOtherAndEachKeepsItsOwnOrder"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/prefix_test.go",
+      "test_id": "TestEachClientGetsItsOwnPrefixAndNoLiveByteBeforeIt"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/router/router_test.go",
+      "test_id": "TestTheClientSetIsToldOnEveryChange"
+    }
+  ],
+  "C2/prefix-after-restart": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_grid_test.go",
+      "test_id": "TestAGracefulRestartGivesTheReattachingClientTheSameDump"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_grid_test.go",
+      "test_id": "TestAKilledCoreRebuildsAGridBehindItsRecordingExactly"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_grid_test.go",
+      "test_id": "TestAVTWorkersDeathMidOutputRebuildsTheGridExactly"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/prefix-restart.sh",
+      "test_id": "rig-prefix-restart"
+    }
+  ],
+  "C2/quiet-prompt-owner-only": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/quiet_test.go",
+      "test_id": "TestQuietPromptAsksTheOwnerNotTheSender"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/quiet_test.go",
+      "test_id": "TestQuietPromptAnswersAreJudgedStrictly"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/quiet_test.go",
+      "test_id": "TestQuietPromptIgnoresAnAnswerFromAClientThatWasNotAsked"
+    }
+  ],
+  "C2/size-coalesced": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/size_test.go",
+      "test_id": "TestABurstAppliesTheLastAndAnswersEveryRequestInOrder"
+    }
+  ],
+  "C2/size-not-resizable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/telnet_size_test.go",
+      "test_id": "TestATelnetPeerThatRefusedNAWSIsNotResizable"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/telnet_size_test.go",
+      "test_id": "TestANonResizableTelnetSessionStaysNonResizableAcrossARestart"
+    }
+  ],
+  "C2/size-pinned": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/size_test.go",
+      "test_id": "TestFloorEqualToCeilingPinsTheSizeAndAnswersPinned"
+    }
+  ],
+  "C2/stale-flow": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/stale_test.go",
+      "test_id": "TestAGapRaisesTheStaleFlowAndTheHoldersAnswerClearsIt"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/stale_test.go",
+      "test_id": "TestASeqJumpRaisesGridLostWithNoGapSeqAndTheGridIsUnavailable"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/stale-ctrl-l.sh",
+      "test_id": "rig-stale-ctrl-l"
+    }
+  ],
+  "C2/stream-input-refused-replaying": [
+    {
+      "unit": "U2",
+      "file": "core/internal/ws/attach_test.go",
+      "test_id": "TestControlFramesReachTheClientAsTextAndMatchTheSchema"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/handshake_test.go",
+      "test_id": "TestLiveWaitsForTheGapFrameAndInputIsRefusedMeanwhile"
+    }
+  ],
+  "C2/stream-input-refused-unreachable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/unreachable_test.go",
+      "test_id": "TestAnUnreachableSessionIsAttachableAndItsInputIsRefused"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/unreachable.sh",
+      "test_id": "rig-unreachable"
+    }
+  ],
+  "C2/token-auto-release": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/control_test.go",
+      "test_id": "TestAutoReleaseReturnsTheKeyboardToThePreviousHolderAndZeroMeansNever"
+    }
+  ],
+  "C2/token-escrow-after-restart": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_test.go",
+      "test_id": "TestAfterARestartTheTokenIsInEscrowAndTheFirstWritableAttachTakesItOnce"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/kill-core.sh",
+      "test_id": "rig-kill-core"
+    }
+  ],
+  "C3/attach-redraw-wiggle": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/wiggle_test.go",
+      "test_id": "TestOneWigglePerAttachAfterClientsAndNoneWhenRuledOut"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/wiggle_test.go",
+      "test_id": "TestTheWiggleAtTheFloorGoesOneColumnWider"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/attach-wiggle.sh",
+      "test_id": "rig-attach-wiggle"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/stale-ctrl-l.sh",
+      "test_id": "rig-stale-ctrl-l"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/n1-positive.sh",
+      "test_id": "rig-n1-positive"
+    }
+  ],
+  "C3/channel-closed-by-worker": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/worker_end_test.go",
+      "test_id": "TestAWorkerDecidedEndAfterARestartIsTheWorkersEnd"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_end_during_handshake.py",
+      "test_id": "test_a_worker_timer_end_under_way_at_a_restart_waits_for_that_cores_live_then_reports_by_worker"
+    }
+  ],
+  "C3/config-reload-timers": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/reconfigure_test.go",
+      "test_id": "TestAConfigEditSendsTimersToEachConnectionWhoseSetChangedAndMovesEndsAt"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/timers-reload.sh",
+      "test_id": "rig-timers-reload"
+    }
+  ],
+  "C3/connect-without-timers-refused": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_control.py",
+      "test_id": "test_a_connect_missing_any_of_timers_buffer_bytes_input_frame_max_is_refused_and_opens_nothing"
+    }
+  ],
+  "C3/control-socket-stays-open": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_worker.py",
+      "test_id": "test_a_core_that_stops_reading_control_replies_loses_nothing_and_is_never_hung_up_on"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_worker.py",
+      "test_id": "test_a_core_that_closes_its_control_socket_without_disconnect_ends_nothing_and_the_next_core_finds_the_session_live"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/redial_control_test.go",
+      "test_id": "TestEveryControlEOFDialsOnceHoweverSoonAfterTheLast"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/redial_control_test.go",
+      "test_id": "TestControlSocketDeathWhenTheListenerIsGoneToo"
+    }
+  ],
+  "C3/ended-release-attached": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_reattach.py",
+      "test_id": "test_an_ended_session_keeps_its_manifest_entry_and_data_socket_until_release"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/reattach_test.go",
+      "test_id": "TestAnAttachedEndIsReleasedOnceItsOutputAndEndAreRecorded"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/reattach_test.go",
+      "test_id": "TestAnEndTheWorkerHasNotSeenIsLiveThenClosedThenReleased"
+    }
+  ],
+  "C3/ended-retention-bounded": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_linger.py",
+      "test_id": "test_a_retained_ended_session_does_not_hold_connection_linger_and_the_close_releases_it"
+    }
+  ],
+  "C3/hello-no-data-peer": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_reattach.py",
+      "test_id": "test_hello_with_no_new_data_peer_times_out_as_no_data_peer_and_unpauses_the_read_loop"
+    }
+  ],
+  "C3/hello-no-such-session": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_reattach.py",
+      "test_id": "test_hello_for_a_session_the_worker_does_not_hold_answers_no_such_session"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/spool_test.go",
+      "test_id": "TestNoSuchSessionReadsTheSpoolBeforeDeclaringE10"
+    }
+  ],
+  "C3/hello-unsupported-proto": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_reattach.py",
+      "test_id": "test_hello_with_a_version_this_worker_does_not_speak_answers_unsupported_proto"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestAnUnrecognisedWorkerVersionGetsHelloAndRefusalMakesTheSessionUnreachable"
+    }
+  ],
+  "C3/input-refused-ended": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_worker.py",
+      "test_id": "test_an_input_frame_for_an_ended_channel_is_refused_ended_with_its_own_seq"
+    }
+  ],
+  "C3/input-refused-replaying": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_reattach.py",
+      "test_id": "test_input_is_refused_replaying_before_replay_done_and_accepted_strictly_after_it_not_live"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/handshake_test.go",
+      "test_id": "TestLiveWaitsForTheGapFrameAndInputIsRefusedMeanwhile"
+    }
+  ],
+  "C3/input-refused-too-large": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_frame_fixture.py",
+      "test_id": "test_an_absurd_input_length_is_refused_from_the_header_alone"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/handshake_test.go",
+      "test_id": "TestInputIsSplitAtTheConnectionsFrameMax"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/reattach_test.go",
+      "test_id": "TestRestartSeedsTheConnectionFromItsRecord"
+    }
+  ],
+  "C3/link-state": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_keepalive.py",
+      "test_id": "test_a_silent_peer_goes_missing_then_times_out_at_exactly_interval_times_count_max"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_keepalive.py",
+      "test_id": "test_a_link_that_answers_again_goes_back_to_answering_and_a_new_peer_is_told_the_current_state_first"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_keepalive.py",
+      "test_id": "test_missing_is_reported_after_the_last_ack_and_before_the_close"
+    }
+  ],
+  "C3/link-state-telnet": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_liveness.py",
+      "test_id": "test_will_and_wont_timing_mark_each_count_as_e3"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_liveness.py",
+      "test_id": "test_two_probes_in_a_row_to_a_silent_peer_are_both_sent"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_liveness.py",
+      "test_id": "test_a_silent_peer_goes_missing_then_times_out_at_interval_times_count"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_liveness.py",
+      "test_id": "test_a_late_answer_and_a_second_answer_to_one_probe_each_count"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_liveness.py",
+      "test_id": "test_keepalive_interval_0_sends_no_probe_and_nothing_fires"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_liveness.py",
+      "test_id": "test_link_timeout_is_disarmed_while_reads_are_paused_before_open_shell"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_liveness.py",
+      "test_id": "test_when_the_socket_closes_with_the_session_no_further_link_state_is_sent"
+    }
+  ],
+  "C3/n1-v0.1-worker-unreachable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestALiveV01WorkersSessionsAreUnreachableAndItIsSentNothing"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/n1-negative.sh",
+      "test_id": "rig-n1-negative"
+    }
+  ],
+  "C3/n1-v0.2-worker-positive": [
+    {
+      "unit": "U11",
+      "file": "harness/rigs/n1-positive.sh",
+      "test_id": "rig-n1-positive"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestAV03CoreSpeaksV02ToAV02WorkerAndNoProbeKey"
+    }
+  ],
+  "C3/n1-v0.3-worker-positive": [
+    {
+      "unit": "U11",
+      "file": "harness/rigs/n1-positive-v03.sh",
+      "test_id": "rig-n1-positive-v03"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestAV04CoreSpeaksV03ToAV03WorkerWithTheProbeKey"
+    }
+  ],
+  "C3/n1-v0.4-worker-positive": [
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestAV05CoreSpeaksV04ToAV04WorkerAndNeverTelnet"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/n1-positive-v04.sh",
+      "test_id": "rig-n1-positive-v04"
+    }
+  ],
+  "C3/n1-v0.5-worker-positive": [
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestAV06CoreSpeaksV05ToAV05WorkerWithNoOpenTimeout"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/n1-positive-v05.sh",
+      "test_id": "rig-n1-positive-v05"
+    }
+  ],
+  "C3/open-late-closed-released": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/open_bound_test.go",
+      "test_id": "TestALateChannelOpenedIsClosedAndReleasedWithNothingRecorded"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/open_bound_test.go",
+      "test_id": "TestALateOpenWhoseEndWasSpooledLeavesNoSpoolEntry"
+    }
+  ],
+  "C3/open-timeout-expired": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_open_shell_task.py",
+      "test_id": "test_t10_past_the_bound_the_worker_answers_error_and_never_channel_opened"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_open_shell_task.py",
+      "test_id": "test_t11_an_open_completing_at_the_bound_gets_exactly_one_answer"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/open_bound_test.go",
+      "test_id": "TestTheCoreWaitsTheTargetsBoundPlusOneHeartbeatInterval"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/late_error_test.go",
+      "test_id": "TestALateErrorClearsItsLateEntry"
+    }
+  ],
+  "C3/reattach-ended": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_reattach.py",
+      "test_id": "test_a_session_that_ends_while_no_core_is_attached_is_retained_and_a_later_hello_reports_it_ended"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/reattach_test.go",
+      "test_id": "TestARetainedEndIsReplayedThenReleasedNeverLive"
+    }
+  ],
+  "C3/supervisor-bad-request": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_supervisor.py",
+      "test_id": "test_a_malformed_or_duplicate_create_worker_is_answered_bad_request"
+    }
+  ],
+  "C3/supervisor-kill": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_supervisor.py",
+      "test_id": "test_kill_worker_sigkills_and_reaps_answering_only_after_the_reap"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/hung-worker.sh",
+      "test_id": "rig-hung-worker"
+    }
+  ],
+  "C3/supervisor-kill-failed": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_supervisor.py",
+      "test_id": "test_a_ping_is_answered_while_a_kill_worker_is_still_waiting_out_its_reap_timeout"
+    }
+  ],
+  "C3/supervisor-kill-gone": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_supervisor.py",
+      "test_id": "test_kill_worker_for_a_worker_already_gone_is_answered_worker_killed"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_supervisor.py",
+      "test_id": "test_kill_worker_sigkills_and_reaps_answering_only_after_the_reap"
+    }
+  ],
+  "C3/supervisor-unknown-cmd": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_supervisor.py",
+      "test_id": "test_an_unrecognized_command_is_answered_unknown_cmd_and_the_socket_is_kept"
+    }
+  ],
+  "C3/target-address-refused": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_address_check.py",
+      "test_id": "test_an_address_in_the_deny_list_is_refused_with_no_tcp_connection"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_address_check.py",
+      "test_id": "test_an_ipv4_mapped_ipv6_address_is_checked_as_the_ipv4_it_maps"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/telnet_test.go",
+      "test_id": "TestAnAddressTheWorkerRefusesAnswersTheCreate502"
+    }
+  ],
+  "C3/telnet-one-session": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_one_session.py",
+      "test_id": "test_a_second_open_shell_is_refused_not_supported_and_nothing_follows"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_one_session.py",
+      "test_id": "test_the_cores_close_is_followed_by_single_session_before_any_other_event"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_one_session.py",
+      "test_id": "test_a_worker_timer_end_no_peer_knows_waits_for_a_hello_and_reports_after_release"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_one_session.py",
+      "test_id": "test_a_worker_timer_end_with_no_hello_reports_at_the_heartbeat_bound_listing_the_session"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/telnet_test.go",
+      "test_id": "TestSingleSessionAfterTheSessionsOwnEndEndsNothing"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/telnet_test.go",
+      "test_id": "TestARestartedCoreRecordsATelnetWorkerTimerEndAsTheWorkersEnd"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/telnet_test.go",
+      "test_id": "TestAtTheBoundASingleSessionListingTheSessionIsReadFromTheSpoolFirst"
+    }
+  ],
+  "C3/telnet-output-from-connect": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_driver.py",
+      "test_id": "test_output_from_tcp_up_is_the_sessions_first_frames_from_seq_1"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_driver.py",
+      "test_id": "test_more_than_buffer_bytes_before_open_shell_loses_nothing_and_pauses_the_read"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_driver.py",
+      "test_id": "test_a_connection_closed_before_its_first_open_shell_discards_what_it_held"
+    }
+  ],
+  "C3/telnet-payload-bytes": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_driver.py",
+      "test_id": "test_payload_bytes_reach_the_data_socket_after_iac_processing_only"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_driver.py",
+      "test_id": "test_input_ff_goes_out_doubled_and_a_bare_cr_as_cr_nul_without_binary"
+    }
+  ],
+  "C3/telnet-socket-close": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_telnet_one_session.py",
+      "test_id": "test_the_target_closing_the_socket_is_transport_listing_the_session"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/telnet_test.go",
+      "test_id": "TestATelnetTargetSocketCloseEndsTheSessionTerminatedConnectionLost"
+    }
+  ],
+  "C4/golden-alt-screen": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/golden_test.go",
+      "test_id": "TestC4Golden/golden-alt-screen"
+    }
+  ],
+  "C4/golden-input-modes": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/golden_test.go",
+      "test_id": "TestC4Golden/golden-input-modes"
+    }
+  ],
+  "C4/golden-mode-reset": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/golden_test.go",
+      "test_id": "TestC4Golden/golden-mode-reset"
+    }
+  ],
+  "C4/golden-reflow": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/golden_test.go",
+      "test_id": "TestC4Golden/golden-reflow"
+    }
+  ],
+  "C4/golden-resize-mid-stream": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/golden_test.go",
+      "test_id": "TestC4Golden/golden-resize-mid-stream"
+    }
+  ],
+  "C4/golden-sgr": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/golden_test.go",
+      "test_id": "TestC4Golden/golden-sgr"
+    }
+  ],
+  "C4/golden-wide-chars": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/golden_test.go",
+      "test_id": "TestC4Golden/golden-wide-chars"
+    }
+  ],
+  "C4/vt-applied-ground": [
+    {
+      "unit": "U2",
+      "owed": "owed by the E5 core plan"
+    },
+    {
+      "unit": "U4",
+      "owed": "owed by the E5 vt plan"
+    }
+  ],
+  "C4/vt-feed-order": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/grid_test.go",
+      "test_id": "TestEveryFrameReachesTheGridVerbatimAndInOrderGapFramesIncluded"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4FeedOrder"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/server_test.go",
+      "test_id": "TestFramesAreAppliedInOrderReFedOnesIgnoredAndJumpsRefused"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/server_test.go",
+      "test_id": "TestAGapFrameMovesThroughSeqAndNothingElse"
+    }
+  ],
+  "C4/vt-frame-layout": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/c4/frame_layout_test.go",
+      "test_id": "TestC4FrameLayout"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/vt/codec_test.go",
+      "test_id": "TestTheCodecReproducesTheFrameLayoutFixtureBothWays"
+    }
+  ],
+  "C4/vt-grid-lost": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/stale_test.go",
+      "test_id": "TestASeqJumpRaisesGridLostWithNoGapSeqAndTheGridIsUnavailable"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/stale_test.go",
+      "test_id": "TestAGridLostResumesAtTheNextFrameAndTheNextAttachIsServed"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/stale_test.go",
+      "test_id": "TestASeqJumpReplacesTheGridFromTheRefusedFrameOn"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_grid_test.go",
+      "test_id": "TestAnIncompatibleSnapshotOpensAnEmptyGridThatResumes"
+    }
+  ],
+  "C4/vt-hello-grids": [
+    {
+      "unit": "U2",
+      "file": "core/internal/vt/conn_test.go",
+      "test_id": "TestHelloIsFirstOnEveryConnectionAndTheGridsAreRead"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_grid_test.go",
+      "test_id": "TestARestartedCoreSaysHelloAgainAndKeepsTheGridsItsVTWorkerHolds"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4HelloGrids"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/server_test.go",
+      "test_id": "TestHelloAckListsEveryGridInSessionOrder"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/server_test.go",
+      "test_id": "TestASecondHelloOnTheCurrentConnectionIsAnsweredWithoutPromotion"
+    }
+  ],
+  "C4/vt-ping-pong": [
+    {
+      "unit": "U2",
+      "file": "core/internal/vt/conn_test.go",
+      "test_id": "TestPongsAnswerPingsInOrderAndAMissedWindowRedials"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4PingPong"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/server_test.go",
+      "test_id": "TestNoPongWhileTheEngineIsHung"
+    }
+  ],
+  "C4/vt-prefix-at-ground": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/prefix_test.go",
+      "test_id": "TestThePrefixIsAskedBehindEveryFedFrameAndCarriesTheVTsAnswer"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4PrefixAtGround"
+    }
+  ],
+  "C4/vt-prefix-mid-sequence": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/prefix_test.go",
+      "test_id": "TestAMidSequenceDumpIsForwardedWholeAndLiveStartsAfterItsSeq"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4PrefixMidSequence"
+    }
+  ],
+  "C4/vt-restore-after-vt-death": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_grid_test.go",
+      "test_id": "TestAVTWorkersDeathIsRestoredAndBroughtToTheRecordingsEnd"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4RestoreAfterVTDeath"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/cmd/tsb-vt/e2e_test.go",
+      "test_id": "TestBinaryKillRestore"
+    }
+  ],
+  "C4/vt-screen-change": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/snapshot_test.go",
+      "test_id": "TestEachScreenChangeForcesOneSnapshot"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4ScreenChange"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/server_test.go",
+      "test_id": "TestScreenChangeEventsNameTheFrameThatCausedThem"
+    }
+  ],
+  "C4/vt-screen-shape": [
+    {
+      "unit": "U4",
+      "file": "vt/internal/oracle/c4_screen_shape_test.go",
+      "test_id": "TestC4ScreenShape"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/contracttest/schema_test.go",
+      "test_id": "TestScreenShapeInstancesValidateAsMarked"
+    }
+  ],
+  "C4/vt-snapshot-on-resize": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/snapshot_test.go",
+      "test_id": "TestEveryPTYSizeChangeForcesASnapshotWiggleHalvesIncluded"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4SnapshotOnResize"
+    }
+  ],
+  "C4/vt-snapshot-restore": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/snapshot_test.go",
+      "test_id": "TestTheSnapshotIsStoredAsTheEngineGaveIt"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_grid_test.go",
+      "test_id": "TestARestoredGridAnswersWithTheSnapshotsSeq"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4SnapshotRestore"
+    }
+  ],
+  "C4/vt-snapshot-unavailable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/snapshot_test.go",
+      "test_id": "TestASnapshotThatCannotBeTakenRaisesVTUnavailableAndTheCommitPointStays"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/restart_grid_test.go",
+      "test_id": "TestAReattachWhileTheVTWorkerIsDownWaitsAtMostSnapshotWaitSecThenGivesTheGridUp"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4SnapshotUnavailable"
+    }
+  ],
+  "C4/vt-unknown-cmd": [
+    {
+      "unit": "U2",
+      "file": "core/internal/vt/conn_test.go",
+      "test_id": "TestUnknownCmdIsLoggedAndTheConnectionKept"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/fixtures_test.go",
+      "test_id": "TestC4UnknownCmd"
+    },
+    {
+      "unit": "U4",
+      "file": "vt/internal/server/server_test.go",
+      "test_id": "TestAnUnknownCommandIsAnsweredAndTheConnectionKept"
+    }
+  ],
+  "C5/config-open-timeout": [
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestEveryConfigOpenTimeoutInstanceLoadsOrIsRefusedAsTheFixtureSays"
+    }
+  ],
+  "C5/config-valid": [
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestEveryConfigValidInstanceLoadsOrIsRefusedAsTheFixtureSays"
+    }
+  ],
+  "C5/inventory-bulk-swap": [
+    {
+      "unit": "U2",
+      "file": "core/internal/inventory/watch_test.go",
+      "test_id": "TestALinkSwapRebuildsTheIndexWhole"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/inventory-swap.sh",
+      "test_id": "rig-inventory-swap"
+    }
+  ],
+  "C5/inventory-layout": [
+    {
+      "unit": "U5",
+      "file": "schema/inventory/inventory_test.go",
+      "test_id": "TestTheReaderFollowsTheInventoryLayoutFixture"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/inventory/watch_test.go",
+      "test_id": "TestTheCoreFollowsTheInventoryLayoutFixture"
+    }
+  ],
+  "C5/inventory-target-open-timeout": [
+    {
+      "unit": "U5",
+      "file": "schema/inventory/file_test.go",
+      "test_id": "TestEveryInventoryTargetOpenTimeoutInstanceLoadsOrIsRefusedAsTheFixtureSays"
+    }
+  ],
+  "C5/inventory-target-prompt-pattern": [
+    {
+      "unit": "U5",
+      "file": "schema/inventory/file_test.go",
+      "test_id": "TestPromptPatternBoundsAndCharactersMatchTheFixture"
+    }
+  ],
+  "C5/inventory-target-valid": [
+    {
+      "unit": "U5",
+      "file": "schema/inventory/file_test.go",
+      "test_id": "TestEveryInventoryTargetValidInstanceLoadsOrIsRefusedAsTheFixtureSays"
+    }
+  ],
+  "C5/inventory-write-then-observe": [
+    {
+      "unit": "U2",
+      "file": "core/internal/inventory/watch_test.go",
+      "test_id": "TestAFileRenamedIntoASourceReachesTheIndexWithNoRequest"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/inventory-write.sh",
+      "test_id": "rig-inventory-write"
+    }
+  ],
+  "C5/inventory-yaml-mapping": [
+    {
+      "unit": "U5",
+      "file": "schema/inventory/inventory_test.go",
+      "test_id": "TestTheReaderMapsYAMLScalarsAsTheYAMLMappingFixtureSays"
+    }
+  ],
+  "C5/inventory-yaml-prompt-pattern": [
+    {
+      "unit": "U5",
+      "file": "schema/inventory/file_test.go",
+      "test_id": "TestUnquotedPromptPatternScalarsLoadAsTheFixtureText"
+    }
+  ],
+  "C5/manifest-rediscovery-case": [
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/rediscover_test.go",
+      "test_id": "TestRediscoveryDialsExactlyWhatTheFixtureSays"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/rediscover_test.go",
+      "test_id": "TestRestartedCoreEndsWhatTheFixtureSaysIsDead"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/kill-core.sh",
+      "test_id": "rig-kill-core"
+    }
+  ],
+  "C5/manifest-rediscovery-v0.2": [
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/rediscover_test.go",
+      "test_id": "TestRediscoveryInTheV02OrderMatchesTheFixture"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/spool_test.go",
+      "test_id": "TestRediscoveryAppliesTheSpoolInTheOrderOfTheFixture"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/kill-core.sh",
+      "test_id": "rig-kill-core"
+    }
+  ],
+  "C5/spool-entry-shape": [
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_spool.py",
+      "test_id": "test_a_spool_entry_is_fsynced_in_full_in_a_temporary_file_and_only_then_renamed_over_the_entry"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_spool.py",
+      "test_id": "test_the_spool_entry_is_fsynced_before_the_worker_acts_on_the_end"
+    },
+    {
+      "unit": "U3",
+      "file": "worker/tests/test_worker.py",
+      "test_id": "test_a_spooled_end_is_still_on_disk_after_the_worker_has_exited"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/spool_test.go",
+      "test_id": "TestASpooledEndOfAnUnlistedSessionIsRecordedAfterItsGap"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/spool_test.go",
+      "test_id": "TestALiveWorkerEndDeletesItsSpoolEntryAfterTheAudit"
+    }
+  ],
+  "C6/continuity-record-valid": [
+    {
+      "unit": "U5",
+      "file": "schema/session/session_test.go",
+      "test_id": "TestContinuityRecordValidFixtureSessions"
+    },
+    {
+      "unit": "U5",
+      "file": "schema/session/connection_test.go",
+      "test_id": "TestContinuityRecordValidFixtureConnections"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/store_test.go",
+      "test_id": "TestWhatTheCoreWritesToTheSessionsAndConnectionsBucketsValidatesAgainstTheContinuitySchema"
+    }
+  ],
+  "C6/event-alert": [
+    {
+      "unit": "U2",
+      "file": "core/internal/alert/alert_test.go",
+      "test_id": "TestRebuildKeepsWhatStillHoldsAndClearsWhatDoesNot"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/alert/alert_test.go",
+      "test_id": "TestRaiseAndClearRoundTripUnderOneAlertID"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/alert/alert_test.go",
+      "test_id": "TestAuditedLinesHaveTheFixturesFieldSets"
+    }
+  ],
+  "C6/event-vocabulary-v0.3": [
+    {
+      "unit": "U2",
+      "file": "core/internal/audit/audit_test.go",
+      "test_id": "TestTheV03EventsMatchTheVocabularyFixture"
+    }
+  ],
+  "C6/grid-snapshot-record": [
+    {
+      "unit": "U5",
+      "file": "schema/session/snapshot_test.go",
+      "test_id": "TestGridSnapshotRecordFixture"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/store/store_test.go",
+      "test_id": "TestTheGridSnapshotRecordValidatesAndOnlyTheLatestIsKept"
+    }
+  ],
+  "C6/no-claim-token-field": [
+    {
+      "unit": "U5",
+      "file": "schema/session/session_test.go",
+      "test_id": "TestNoClaimTokenFieldFixture"
+    }
+  ],
+  "C6/out-bytes-committed-after-reopen": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/out_bytes_reopen_test.go",
+      "test_id": "TestReopenCutRecomputesOutBytesFromWhatItKeptGapMarkersIncluded"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/record/gap_test.go",
+      "test_id": "TestReopenCountsPastTheCommittedOffset"
+    }
+  ],
+  "C6/session-record-protocol-telnet": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/telnet_test.go",
+      "test_id": "TestATelnetSessionsRecordIsAValidContinuityRecordWithProtocolTelnet"
+    }
+  ],
+  "C6/snapshot-seq-aligned": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/snapshot_test.go",
+      "test_id": "TestTheCommitPointMovesOnlyWithASnapshotOrRecordOnlyAndNeverBackwards"
+    }
+  ],
+  "C6/stale-pending-durable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/stale_test.go",
+      "test_id": "TestAPendingGapIsInTheMarkersCommitAndSurvivesARestart"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/snapshot_test.go",
+      "test_id": "TestAGapsHoldCommitsItsMarkerWithThePairInTheSnapshotsWriteOrRecordOnly"
+    }
+  ],
+  "C6/state-vocabulary": [
+    {
+      "unit": "U5",
+      "file": "schema/session/session_test.go",
+      "test_id": "TestParseStateFixture"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/store_test.go",
+      "test_id": "TestEverySessionStateTheCoreWritesIsInTheContractsVocabulary"
+    }
+  ],
+  "C8/gap-before-end": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/spool_test.go",
+      "test_id": "TestASpooledEndOfAnUnlistedSessionIsRecordedAfterItsGap"
+    }
+  ],
+  "C8/input-recorded-before-sent": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/input_order_test.go",
+      "test_id": "TestInputIsOnTheWorkersSocketOnlyAfterItIsRecorded"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/handshake_test.go",
+      "test_id": "TestInputIsRecordedBeforeItIsSent"
+    }
+  ],
+  "C8/payload-identical-across-restart": [
+    {
+      "unit": "U11",
+      "file": "harness/rigs/kill-core.sh",
+      "test_id": "rig-kill-core"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/reattach_test.go",
+      "test_id": "TestRestartResendsTimersThenHandshakesFromWhatTheRecordingKeeps"
+    }
+  ],
+  "C8/payload-identical-gap-declared": [
+    {
+      "unit": "U11",
+      "file": "harness/rigs/kill-core.sh",
+      "test_id": "rig-kill-core"
+    }
+  ],
+  "C1/session-create-needs-v0.5-503": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/sessions_test.go",
+      "test_id": "TestATelnetCreateBelowV05AnswersTheFixturesWorkerUnavailable"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/worker/version_test.go",
+      "test_id": "TestATelnetCreateWithNoV05SupervisorIsRefused503AndAsksNoWorker"
+    }
+  ],
+  "C1/session-create-serial-502": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/sessions_test.go",
+      "test_id": "TestASerialCreateIsStill502AndAsksNoWorker"
+    }
+  ],
+  "C1/session-create-supplied-login": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/sessions_test.go",
+      "test_id": "TestACreateWithALoginSendsItInConnectAuthAndNotTheStoredCredential"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/create_test.go",
+      "test_id": "TestALoginOnATargetWithNoStoredCredentialIsNotRefused409"
+    }
+  ],
+  "C1/session-create-login-not-ssh-422": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/create_test.go",
+      "test_id": "TestALoginOnATelnetOrEchoTargetIsRefusedBeforeAnyWorker"
+    }
+  ],
+  "C1/session-create-login-unacknowledged-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/sessions_test.go",
+      "test_id": "TestALoginThatWouldBeRecordedIsRefused409UntilAcknowledged"
+    }
+  ],
+  "C1/session-create-login-never-echoed": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/sessions_test.go",
+      "test_id": "TestNoAnswerLogLineOrAuditEventCarriesTheSuppliedPassword"
+    }
+  ],
+  "C5/policy-login-input": [
+    {
+      "unit": "U5",
+      "file": "schema/policy/policy_test.go",
+      "test_id": "TestTheLoginInputKnobLoadsOrIsRefusedAsTheFixtureSays"
+    }
+  ],
+  "C6/event-session-connect-login": [
+    {
+      "unit": "U2",
+      "file": "core/internal/audit/audit_test.go",
+      "test_id": "TestSessionConnectSaysSuppliedAndNeverAValue"
+    }
+  ],
+  "C6/event-target-auth-failed": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/create_test.go",
+      "test_id": "TestAnAuthFailedIsAuditedWithoutTheSecret"
+    }
+  ],
+  "C8/recording-login-frames": [
+    {
+      "unit": "U2",
+      "file": "core/internal/record/login_write_test.go",
+      "test_id": "TestTheLoginFramesAreTheContractsBytes"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/record/login_walk_test.go",
+      "test_id": "TestAReopenKeepsTheContractsLoginRecordings"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/record/login_walk_test.go",
+      "test_id": "TestAnInvalidLoginFrameIsCorruptInsideTheCommittedPartAndCutPastIt"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/login_recording_test.go",
+      "test_id": "TestWithTheKnobOnTheLoginIsAtTheRecordingsHeadAsCodes6And7"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/login_recording_test.go",
+      "test_id": "TestWithTheKnobOffNoByteOfTheLoginIsInTheRecording"
+    }
+  ],
+  "C8/login-line-escape": [
+    {
+      "unit": "U2",
+      "file": "core/internal/record/login_write_test.go",
+      "test_id": "TestTheLoginFramesAreTheContractsBytes"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/record/login_walk_test.go",
+      "test_id": "TestAReopenKeepsTheContractsLoginRecordings"
+    }
+  ],
+  "C7/salt-read": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    }
+  ],
+  "C7/salt-read-shape": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    }
+  ],
+  "C7/salt-mint": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestMintStoresSaltsOnceAndRepeatsTheSame"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestInitAndMintOnASealedVaultAreRefused"
+    }
+  ],
+  "C7/init": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestInitSealsAnEmptySetWithAnEmptyIndex"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestInitAndMintOnASealedVaultAreRefused"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestAnUnlockBelongsToTheLoginThatMadeIt"
+    }
+  ],
+  "C7/unlock-untrusted": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestAnUnlockBelongsToTheLoginThatMadeIt"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestAWrongPassphraseIsCountedPerPrincipalAcrossLogins"
+    }
+  ],
+  "C7/unlock-trusted": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestTrustedUnlockHoldsAnUnlockOnTheTiedLoginRecordingTheDevice"
+    }
+  ],
+  "C7/part2-regenerate": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestRegenerationForTheTiedTrustedDeviceStoresAFreshPart2AndHoldsAnUnlock"
+    }
+  ],
+  "C7/challenge-shape": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestTheFixturesBodiesAreJudgedAsTheContractJudgesThem"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestAChallengeIsRandomOpaqueAndNamesTheLoginByAHandle"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestAnUnknownOperationOrDeviceIDIsRefusedAtIssue"
+    }
+  ],
+  "C7/challenge-answer-shape": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    }
+  ],
+  "C7/device-register": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestTheFixturesBodiesAreJudgedAsTheContractJudgesThem"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterStoresTheDeviceAndPart2TiesTheLoginAndHoldsAnUnlock"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestOnlyAP256KeyIsAcceptedAtRegister"
+    }
+  ],
+  "C7/device-list": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    }
+  ],
+  "C7/device-list-shape": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestMalformedRequestsAre422AndNeverReachTheVault"
+    }
+  ],
+  "C7/device-revoke": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRevokeWritesTheLineFirstThenDeletesTheKeyAndPart2"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRevokeUnderTheDefaultPolicyEndsExactlyThatDevicesLogins"
+    }
+  ],
+  "C7/vault-wipe": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/wipe_test.go",
+      "test_id": "TestWipeStartsOverFromNothing"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/wipe_test.go",
+      "test_id": "TestWipeOfAMintedVaultAndOfNobody"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/wipe_test.go",
+      "test_id": "TestWipeIsRefusedWhileTheUserStoredUserUnlockedOrgCredentials"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devlife_test.go",
+      "test_id": "TestTheWipeRevokesEveryDeviceOfTheUserAfterItsOwnLineAndRunsTheRestAfterTheCommit"
+    }
+  ],
+  "C7/credential-store-key": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestStoreRefusesAnEncryptedPrivateKey"
+    }
+  ],
+  "C7/credential-store-password": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestStoreSealsTheEntryAndWritesAPersonalLine"
+    }
+  ],
+  "C7/credential-store-none": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestEveryWriteReSealsUnderANewIVAndKeepsTheIndexTrue"
+    }
+  ],
+  "C7/credential-store-missing-login-name-invalid": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestTheFixturesBodiesAreJudgedAsTheContractJudgesThem"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestMalformedRequestsAre422AndNeverReachTheVault"
+    }
+  ],
+  "C7/credential-list": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    }
+  ],
+  "C7/credential-list-shape": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    }
+  ],
+  "C7/credential-delete": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestDelete"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestDeleteClearsMappingsInTheOrderTheAuditLineFileCommit"
+    }
+  ],
+  "C7/org-credential-store-broker": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgStoreWritesItsLineAndAPlaintextRecordAroundASealedBlob"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgBlobHoldsWhatTheRecordDoesNotUnderTheKeyOfItsClass"
+    }
+  ],
+  "C7/org-credential-store-user": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgStoreWritesItsLineAndAPlaintextRecordAroundASealedBlob"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgBlobHoldsWhatTheRecordDoesNotUnderTheKeyOfItsClass"
+    }
+  ],
+  "C7/org-credential-store-none": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgStoreWritesItsLineAndAPlaintextRecordAroundASealedBlob"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgBlobHoldsWhatTheRecordDoesNotUnderTheKeyOfItsClass"
+    }
+  ],
+  "C7/org-credential-store-no-class-invalid": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestTheFixturesBodiesAreJudgedAsTheContractJudgesThem"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestMalformedRequestsAre422AndNeverReachTheVault"
+    }
+  ],
+  "C7/org-credential-list": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    }
+  ],
+  "C7/org-credential-delete": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgDeleteWritesItsLineFirstAndRefusesWhileGrantsNameTheCredential"
+    }
+  ],
+  "C7/grant-create": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_grants_test.go",
+      "test_id": "TestCreateGrantWritesItsLineFirstAndTheRecord"
+    }
+  ],
+  "C7/grant-scope-change": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_grants_test.go",
+      "test_id": "TestChangeGrantScope"
+    }
+  ],
+  "C7/grant-revoke": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestNonAdministratorsAreRefusedEveryAdministratorOperation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_grants_test.go",
+      "test_id": "TestRevokeGrant"
+    }
+  ],
+  "C1/login-bind": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestTheFixturesBodiesAreJudgedAsTheContractJudgesThem"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestABindIsRefusedOnceTied"
+    }
+  ],
+  "C1/principal-lock-settings": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestMeAndLoginCarryTheResolversLockSettings"
+    }
+  ],
+  "C1/lock-settings-shape": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestMeAndLoginCarryTheResolversLockSettings"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/contracttest/validate_test.go",
+      "test_id": "TestValidateAcceptsAndRefusesByTheContractsShapes"
+    }
+  ],
+  "C1/activity-signal": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestTheActivitySignalIsCountedOncePerIntervalAndAlwaysAnswers204"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestLockRoutesAreBehindTheLoginAndTheOriginCheck"
+    }
+  ],
+  "C1/lock-now": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestLockNowReachesTheVaultOnceAndEndsNoLogin"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestLockUserAndPurge"
+    }
+  ],
+  "C1/screen-unlock": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestTheScreenLockRecheck"
+    }
+  ],
+  "C1/profile-map": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestTheFixturesBodiesAreJudgedAsTheContractJudgesThem"
+    }
+  ],
+  "C1/credential-choice-required-candidates-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateMapsEachCredentialOutcome"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestCreateResolvesZeroOneAndManyCandidates"
+    }
+  ],
+  "C1/credential-choice-made": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateReadsTheChoiceAndTheLoginToken"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestAChosenReferenceAndLayerIsUsedAndRecorded"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestAnUnknownOrHalfAPairIsNotACandidate"
+    }
+  ],
+  "C1/credential-choice-same-name-two-layers": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestAChosenReferenceAndLayerIsUsedAndRecorded"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestTwoGrantsNamingOneReferenceAreOneCandidate"
+    }
+  ],
+  "C1/credential-choice-with-login-422": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateReadsTheChoiceAndTheLoginToken"
+    }
+  ],
+  "C1/session-create-vault-locked-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateMapsEachCredentialOutcome"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestAnUnlockTheLoginLacksIsAnsweredBeforeAnyWorkerIsPlaced"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/material_test.go",
+      "test_id": "TestMaterialOfAPasswordNeedsThisLoginsUnlock"
+    }
+  ],
+  "C1/session-create-org-credential-locked-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateMapsEachCredentialOutcome"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestAnUnlockTheLoginLacksIsAnsweredBeforeAnyWorkerIsPlaced"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_resolve_test.go",
+      "test_id": "TestMaterialOfAUserUnlockedCredentialFollowsItsAdminsUnlockOnAnyLogin"
+    }
+  ],
+  "C1/session-create-mapped-credential-missing-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateMapsEachCredentialOutcome"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestAnUnlockTheLoginLacksIsAnsweredBeforeAnyWorkerIsPlaced"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/material_test.go",
+      "test_id": "TestACandidateMappedToAMissingReferenceIsAnError"
+    }
+  ],
+  "C1/error-codes-vault": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateMapsEachCredentialOutcome"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestTheScreenLockRecheck"
+    }
+  ],
+  "C7/replay-unlock-to-regenerate": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestReplayUnlockSignatureToRegenerate"
+    }
+  ],
+  "C7/replay-expired": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestReplayExpired"
+    }
+  ],
+  "C7/replay-spent": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestReplaySpent"
+    }
+  ],
+  "C7/replay-concurrent": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestReplayConcurrent"
+    }
+  ],
+  "C7/replay-cross-login": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestReplayCrossLogin"
+    }
+  ],
+  "C7/replay-cross-device": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestReplayCrossDevice"
+    }
+  ],
+  "C7/replay-cross-user": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestReplayCrossUser"
+    }
+  ],
+  "C7/revoked-device-challenge-fails": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestRevokedDeviceChallengeFails"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-revoke.sh",
+      "test_id": "rig-vault-revoke"
+    }
+  ],
+  "C7/part2-regenerate-revoked-refused": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestRegenerationIsRefusedForARevokedDeviceEvenWithTheRightPassphrase"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-revoke.sh",
+      "test_id": "rig-vault-revoke"
+    }
+  ],
+  "C7/challenge-device-not-trusted-first": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestDeviceNotTrustedIsCheckedFirstAtIssue"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-revoke.sh",
+      "test_id": "rig-vault-revoke"
+    }
+  ],
+  "C7/challenge-untied-device-refused": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestAnAllowlistedDeviceThatIsNotTheLoginsTiedOneIsRefusedAtIssue"
+    }
+  ],
+  "C7/bind-once": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestABindIsRefusedOnceTied"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-flows.sh",
+      "test_id": "rig-vault-flows"
+    }
+  ],
+  "C7/register-other-device-refused": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestATiedLoginCannotRegisterAnotherDevice"
+    }
+  ],
+  "C7/unlock-attempt-limit": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestAWrongPassphraseIsCountedPerPrincipalAcrossLogins"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestPastTheLimitTheRightPassphraseIsRefusedUncounted"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterWithAGarbagePart2IsRefusedCountedAndWritesNothing"
+    }
+  ],
+  "C7/trusted-unlock-never-counted": [
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestASignedTrustedUnlockSucceedsAfterTheUntrustedAttemptsReachedTheLimit"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestRegenerationForTheTiedTrustedDeviceStoresAFreshPart2AndHoldsAnUnlock"
+    }
+  ],
+  "C7/part2-missing-409-uncounted": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestPart2MissingIsAnsweredAndNeverCounted"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-flows.sh",
+      "test_id": "rig-vault-flows"
+    }
+  ],
+  "C7/part2-ttl-renewed": [
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestTrustedUnlockHoldsAnUnlockOnTheTiedLoginRecordingTheDevice"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestRegenerationForTheTiedTrustedDeviceStoresAFreshPart2AndHoldsAnUnlock"
+    }
+  ],
+  "C7/register-proves-passphrase": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterWithAGarbagePart2IsRefusedCountedAndWritesNothing"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-flows.sh",
+      "test_id": "rig-vault-flows"
+    }
+  ],
+  "C7/register-needs-init": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterNeedsAnInitialisedVault"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-flows.sh",
+      "test_id": "rig-vault-flows"
+    }
+  ],
+  "C7/register-holds-unlock": [
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterStoresTheDeviceAndPart2TiesTheLoginAndHoldsAnUnlock"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-flows.sh",
+      "test_id": "rig-vault-flows"
+    }
+  ],
+  "C7/register-ties-login": [
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterStoresTheDeviceAndPart2TiesTheLoginAndHoldsAnUnlock"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestABindIsRefusedOnceTied"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-flows.sh",
+      "test_id": "rig-vault-flows"
+    }
+  ],
+  "C7/revoke-default-ends-logins": [
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRevokeUnderTheDefaultPolicyEndsExactlyThatDevicesLogins"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-revoke.sh",
+      "test_id": "rig-vault-revoke"
+    }
+  ],
+  "C7/revoke-switch-next-connection": [
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRevokeUnderTheSwitchEndsNoLoginAndTheAllowlistRefusesTheDevice"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateMapsEachCredentialOutcome"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-revoke.sh",
+      "test_id": "rig-vault-revoke"
+    }
+  ],
+  "C7/revoke-redis-down-succeeds": [
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRevokeWithRedisDownSucceedsLogsLoudlyAndTheAllowlistRefuses"
+    }
+  ],
+  "C7/revoke-inflight-unlock-not-installed": [
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestAnUnlockParkedInsideTheLockWindowIsOrderedBeforeARevocation"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/trusted_test.go",
+      "test_id": "TestARevocationHoldsTheLockAcrossTheWholeOfIt"
+    }
+  ],
+  "C7/audit-unwritable-refuses-act": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterWithAnAuditSinkThatFailsRefusesAndWritesNothing"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRevokeWithAnAuditSinkThatFailsIsRefusedAndChangesNothing"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestAnAuditSinkThatFailsRefusesTheStoreAndRollsBack"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestDeleteWithAFailingSinkTouchesNeitherFileNorBbolt"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnAuditSinkThatFailsRefusesAnOrgStore"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgDeleteWithAFailingSinkOrCommitChangesNothing"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_grants_test.go",
+      "test_id": "TestAnAuditSinkThatFailsRefusesAGrantAScopeChangeAndARevoke"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/wipe_test.go",
+      "test_id": "TestWipeWithAFailingSinkChangesNothing"
+    }
+  ],
+  "C7/vault-wipe-fresh-start": [
+    {
+      "unit": "U6",
+      "file": "vault/wipe_test.go",
+      "test_id": "TestWipeStartsOverFromNothing"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devlife_test.go",
+      "test_id": "TestTheWipeRevokesEveryDeviceOfTheUserAfterItsOwnLineAndRunsTheRestAfterTheCommit"
+    }
+  ],
+  "C7/credential-store-used-reference-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestStoreRefusals"
+    }
+  ],
+  "C7/salt-mint-repeat-same-salts": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestMintStoresSaltsOnceAndRepeatsTheSame"
+    }
+  ],
+  "C7/init-before-mint-refused": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestInitBeforeMintIsRefused"
+    }
+  ],
+  "C7/unlock-on-minted-vault-not-initialized": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestUnlockOnAVaultThatIsNotSealedIsNotCounted"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterNeedsAnInitialisedVault"
+    }
+  ],
+  "C7/mint-and-init-write-no-audit-line": [
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestMintStoresSaltsOnceAndRepeatsTheSame"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestInitSealsAnEmptySetWithAnEmptyIndex"
+    }
+  ],
+  "C7/vault-wipe-removes-minted": [
+    {
+      "unit": "U6",
+      "file": "vault/wipe_test.go",
+      "test_id": "TestWipeOfAMintedVaultAndOfNobody"
+    }
+  ],
+  "C7/credential-delete-clears-mappings": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestDeleteClearsMappingsInTheOrderTheAuditLineFileCommit"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestDeleteWhoseCommitFailsLeavesTheCredentialLiveAndUnmapped"
+    }
+  ],
+  "C7/org-no-secret-needs-class": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEveryRequestAndAnswerIsTheContracts"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgStoreWithoutAClassIsRefusedWhateverTheKind"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_resolve_test.go",
+      "test_id": "TestMaterialOfAKindNoneOrgEntryBehavesAsItsClassSays"
+    }
+  ],
+  "C7/vault-locked-other-login": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/credential_choice_test.go",
+      "test_id": "TestCreateMapsEachCredentialOutcome"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestAnUnlockBelongsToTheLoginThatMadeIt"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-flows.sh",
+      "test_id": "rig-vault-flows"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-lock.sh",
+      "test_id": "rig-vault-lock"
+    }
+  ],
+  "C7/reuse-on-locked-vault": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestAReuseNeedsNoMaterialAndTheReferencePicksTheConnection"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-locked.sh",
+      "test_id": "rig-vault-locked"
+    }
+  ],
+  "C7/vault-lock-idle-two-logins": [
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestIdleUserLosesEveryUnlockAndAnExpiredOneIsRefusedAtUse"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestActivityKeepsBothUnlocksUntilEachOnesHardCap"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-lock.sh",
+      "test_id": "rig-vault-lock"
+    }
+  ],
+  "C7/vault-lock-hard-cap": [
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestActivityKeepsBothUnlocksUntilEachOnesHardCap"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestTheHardCapPurgesWhenLockOnIdleIsOff"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-lock.sh",
+      "test_id": "rig-vault-lock"
+    }
+  ],
+  "C7/lock-now-purges": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestLockNowReachesTheVaultOnceAndEndsNoLogin"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/unlock_test.go",
+      "test_id": "TestLockUserAndPurge"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-lock.sh",
+      "test_id": "rig-vault-lock"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-locked.sh",
+      "test_id": "rig-vault-locked"
+    }
+  ],
+  "C1/activity-signal-rate": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestTheActivitySignalIsCountedOncePerIntervalAndAlwaysAnswers204"
+    }
+  ],
+  "C7/broker-unlocked-without-key-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/vault_test.go",
+      "test_id": "TestEachOutcomeMapsToItsCodeAndStatus"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestBrokerUnlockedWithoutABrokerKeyIsRefused"
+    }
+  ],
+  "C1/screen-unlock-wrong-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestTheScreenLockRecheck"
+    }
+  ],
+  "C1/screen-unlock-limiter": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestTheRecheckSharesTheLoginsRateLimitAnd429"
+    }
+  ],
+  "C1/login-name-from-credential": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestConnectCarriesTheCredentialsLoginNameNotTheTargets"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/material_test.go",
+      "test_id": "TestMaterialOfAPasswordNeedsThisLoginsUnlock"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-canary.sh",
+      "test_id": "rig-vault-canary"
+    }
+  ],
+  "C1/core-restart-ends-logins": [
+    {
+      "unit": "U2",
+      "file": "core/internal/vaultwire/wired_session_test.go",
+      "test_id": "TestARestartLeavesNoLoginOrUnlockTakesSessionsBackAndCallsNoVault"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-locked.sh",
+      "test_id": "rig-vault-locked"
+    }
+  ],
+  "C7/breach-l": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-r": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-b": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-p": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-lr": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-lb": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-rb": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-pl-same-device": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-pl-other-device": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-pr": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-lrp-original-device": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C7/breach-lrb": [
+    {
+      "unit": "U6",
+      "file": "vault/breach_test.go",
+      "test_id": "TestBreachNoRowsStayNo"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-breach.sh",
+      "test_id": "rig-vault-breach"
+    }
+  ],
+  "C6/event-cred-store-org": [
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgStoreWritesItsLineAndAPlaintextRecordAroundASealedBlob"
+    }
+  ],
+  "C6/event-cred-store-personal-no-class": [
+    {
+      "unit": "U2",
+      "file": "core/internal/vaultwire/auditor_test.go",
+      "test_id": "TestEveryVaultEventIsTheContractsAuditLine"
+    }
+  ],
+  "C6/event-cred-delete": [
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestDelete"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestDeleteClearsMappingsInTheOrderTheAuditLineFileCommit"
+    }
+  ],
+  "C6/event-cred-grant": [
+    {
+      "unit": "U6",
+      "file": "vault/org_grants_test.go",
+      "test_id": "TestCreateGrantWritesItsLineFirstAndTheRecord"
+    }
+  ],
+  "C6/event-cred-revoke": [
+    {
+      "unit": "U6",
+      "file": "vault/org_grants_test.go",
+      "test_id": "TestRevokeGrant"
+    }
+  ],
+  "C6/event-cred-scope-change": [
+    {
+      "unit": "U6",
+      "file": "vault/org_grants_test.go",
+      "test_id": "TestChangeGrantScope"
+    }
+  ],
+  "C6/event-device-register": [
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterStoresTheDeviceAndPart2TiesTheLoginAndHoldsAnUnlock"
+    }
+  ],
+  "C6/event-device-revoke": [
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRevokeWritesTheLineFirstThenDeletesTheKeyAndPart2"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devlife_test.go",
+      "test_id": "TestTheSweepRevokesAnIdleDeviceWithReasonInactive"
+    }
+  ],
+  "C6/event-vault-wipe": [
+    {
+      "unit": "U6",
+      "file": "vault/wipe_test.go",
+      "test_id": "TestWipeStartsOverFromNothing"
+    }
+  ],
+  "C6/event-screen-unlock-failed": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/locks_test.go",
+      "test_id": "TestTheScreenLockRecheck"
+    }
+  ],
+  "C6/event-session-connect-credential": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/credential_choice_test.go",
+      "test_id": "TestAChosenReferenceAndLayerIsUsedAndRecorded"
+    }
+  ],
+  "C6/vault-user-record": [
+    {
+      "unit": "U5",
+      "file": "schema/vault/vault_test.go",
+      "test_id": "TestEveryC6FixtureInstanceIsAcceptedOrRefusedAsTheFixtureSays"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/init_test.go",
+      "test_id": "TestInitSealsAnEmptySetWithAnEmptyIndex"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestStoreSealsTheEntryAndWritesAPersonalLine"
+    }
+  ],
+  "C6/device-record": [
+    {
+      "unit": "U5",
+      "file": "schema/vault/vault_test.go",
+      "test_id": "TestEveryC6FixtureInstanceIsAcceptedOrRefusedAsTheFixtureSays"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRegisterStoresTheDeviceAndPart2TiesTheLoginAndHoldsAnUnlock"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/devices_test.go",
+      "test_id": "TestRevokeWritesTheLineFirstThenDeletesTheKeyAndPart2"
+    }
+  ],
+  "C6/grant-record": [
+    {
+      "unit": "U5",
+      "file": "schema/vault/vault_test.go",
+      "test_id": "TestEveryC6FixtureInstanceIsAcceptedOrRefusedAsTheFixtureSays"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_grants_test.go",
+      "test_id": "TestCreateGrantWritesItsLineFirstAndTheRecord"
+    }
+  ],
+  "C6/org-credential-record": [
+    {
+      "unit": "U5",
+      "file": "schema/vault/vault_test.go",
+      "test_id": "TestEveryC6FixtureInstanceIsAcceptedOrRefusedAsTheFixtureSays"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/org_store_test.go",
+      "test_id": "TestAnOrgStoreWritesItsLineAndAPlaintextRecordAroundASealedBlob"
+    }
+  ],
+  "C6/credential-set-plaintext": [
+    {
+      "unit": "U6",
+      "file": "vault/personal_test.go",
+      "test_id": "TestStoreSealsTheEntryAndWritesAPersonalLine"
+    }
+  ],
+  "C6/profiles-file": [
+    {
+      "unit": "U5",
+      "file": "schema/profile/profile_test.go",
+      "test_id": "TestProfilesFileFixtureInstances"
+    }
+  ],
+  "C6/connection-record-credential-layer": [
+    {
+      "unit": "U2",
+      "file": "core/internal/session/reattach_test.go",
+      "test_id": "TestARestartKeepsTheStoredCredentialLayer"
+    }
+  ],
+  "C1/policy-e4-keys": [
+    {
+      "unit": "U5",
+      "file": "schema/policy/policy_test.go",
+      "test_id": "TestPolicyE4KeysFixtureInstances"
+    }
+  ],
+  "C5/config-e4-knobs": [
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestEveryE4ConfigFixtureInstanceLoadsOrIsRefusedAsTheFixtureSays"
+    },
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestE4DurationsArePositive"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/config/e4_test.go",
+      "test_id": "TestEachLoginAndLockKnobIsRequired"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/config/e4_test.go",
+      "test_id": "TestTheCoreRefusesAnIdleTimerPastTheHardCapAndNonPositiveValues"
+    }
+  ],
+  "C5/config-e4-vault-knobs": [
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestEveryE4ConfigFixtureInstanceLoadsOrIsRefusedAsTheFixtureSays"
+    },
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestE4DurationsArePositive"
+    },
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestChallengeTTLIsOneToSixtySeconds"
+    },
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestUnlockAttemptsIsAnIntegerInTheSchemasRange"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/config/vault_test.go",
+      "test_id": "TestEachVaultKnobIsRequired"
+    }
+  ],
+  "C5/config-e4-auth-knobs": [
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestEveryE4ConfigFixtureInstanceLoadsOrIsRefusedAsTheFixtureSays"
+    },
+    {
+      "unit": "U5",
+      "file": "schema/config/config_test.go",
+      "test_id": "TestE4DurationsArePositive"
+    },
+    {
+      "unit": "U2",
+      "file": "core/internal/config/e4_test.go",
+      "test_id": "TestEachLoginAndLockKnobIsRequired"
+    }
+  ],
+  "C1/session-create-device-login-202": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C1/session-create-device-login-needs-v0.7-503": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C1/session-create-device-login-limit-429": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C1/session-create-device-login-unacknowledged-409": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C1/session-create-device-login-not-ssh-422": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C1/session-create-device-login-no-join-403": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C1/reuse-prompted-connection-by-id": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C1/reuse-prompted-connection-offered-to-its-principal": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C2/ws-frames-shape-device-login": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    },
+    {
+      "unit": "U7",
+      "owed": "login-at-connect phase B7 (U7: the pane, Remember, drive)"
+    }
+  ],
+  "C2/device-login-relay": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C2/device-login-order": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C2/device-login-hostkey-first-use": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C2/device-login-cancel": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C2/device-login-after-connected": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C2/device-login-permission-lost": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C2/device-login-answer-refused": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C2/device-login-unattached-expires": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C3/hostkey-ask-before-any-auth": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    }
+  ],
+  "C3/hostkey-refused": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    }
+  ],
+  "C3/hostkey-revoked-refused-before-ask": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    }
+  ],
+  "C3/auth-failed-codes": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    }
+  ],
+  "C3/device-login-bad-answer-ends": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    },
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C3/device-login-partial-success": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    },
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C3/device-login-connect-without-login-timeout-refused": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    }
+  ],
+  "C3/device-login-disconnect-cancels": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    }
+  ],
+  "C3/device-login-peer-gone-drops": [
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    }
+  ],
+  "C3/device-login-version-gate": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C3/n1-v0.6-worker-positive": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    },
+    {
+      "unit": "U11",
+      "owed": "login-at-connect phase B8 (U11: rig-device-login, the N-1 proof, the graders) and B2a (the frozen 0.6 worker)"
+    }
+  ],
+  "C5/config-login-timeout": [
+    {
+      "unit": "U5",
+      "owed": "login-at-connect phase B3 (U5: the knobs and the connection record's login in the loaders)"
+    }
+  ],
+  "C5/config-device-logins-max": [
+    {
+      "unit": "U5",
+      "owed": "login-at-connect phase B3 (U5: the knobs and the connection record's login in the loaders)"
+    }
+  ],
+  "C5/inventory-target-login-timeout": [
+    {
+      "unit": "U5",
+      "owed": "login-at-connect phase B3 (U5: the knobs and the connection record's login in the loaders)"
+    }
+  ],
+  "C6/event-target-auth-failed-prompted": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C6/event-target-hostkey-refused": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C6/event-session-connect-prompted": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C6/connection-record-login": [
+    {
+      "unit": "U5",
+      "owed": "login-at-connect phase B3 (U5: the knobs and the connection record's login in the loaders)"
+    },
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C8/recording-device-login-frames": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C8/recording-device-login-own-prompt": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C3/hostkey-audit-unwritable-disconnects": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    },
+    {
+      "unit": "U3",
+      "owed": "login-at-connect phase B6 (U3: the worker asks and relays, 0.7)"
+    }
+  ],
+  "C2/device-login-hostkey-audit-unwritable": [
+    {
+      "unit": "U2",
+      "owed": "login-at-connect phase B5 (U2: the core runs the device login, 0.7)"
+    }
+  ],
+  "C5/policy-target-edit": [
+    {
+      "unit": "U5",
+      "file": "schema/policy/policy_test.go",
+      "test_id": "TestTheTargetEditPermissionLoads"
+    }
+  ],
+  "C6/event-target-create": [
+    {
+      "unit": "U2",
+      "file": "core/internal/audit/audit_test.go",
+      "test_id": "TestEachWriteIsAuditedWithFieldNamesNeverValues"
+    }
+  ],
+  "C6/event-target-update": [
+    {
+      "unit": "U2",
+      "file": "core/internal/audit/audit_test.go",
+      "test_id": "TestEachWriteIsAuditedWithFieldNamesNeverValues"
+    }
+  ],
+  "C6/event-target-delete": [
+    {
+      "unit": "U2",
+      "file": "core/internal/audit/audit_test.go",
+      "test_id": "TestEachWriteIsAuditedWithFieldNamesNeverValues"
+    }
+  ],
+  "C1/target-create-outside-filter-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/targets_write_test.go",
+      "test_id": "TestACreateOutsideThePrincipalsFiltersIs403"
+    }
+  ],
+  "C1/target-write-index-timeout-503": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/targets_write_test.go",
+      "test_id": "TestTheIndexWaitIsBoundedAndSays503WithTheFileWritten"
+    }
+  ],
+  "C7/chain-challenge-signed-bytes": [
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestChallengeSignedBytesVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/chain-device-id": [
+    {
+      "unit": "U6",
+      "file": "vault/chain2_test.go",
+      "test_id": "TestDeviceIDVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/chain-encryption-key": [
+    {
+      "unit": "U6",
+      "file": "vault/chain_test.go",
+      "test_id": "TestEncryptionKeyVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/pylib/tests/test_vaultclient.py",
+      "test_id": "test_chain_encryption_key"
+    }
+  ],
+  "C7/chain-master-hash": [
+    {
+      "unit": "U6",
+      "file": "vault/chain2_test.go",
+      "test_id": "TestMasterHashVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/chain-org-seal-broker": [
+    {
+      "unit": "U6",
+      "file": "vault/org_resolve_test.go",
+      "test_id": "TestOrgSealVectors"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/pylib/tests/test_vaultclient.py",
+      "test_id": "test_chain_seals_reproduce_and_open"
+    }
+  ],
+  "C7/chain-org-seal-user": [
+    {
+      "unit": "U6",
+      "file": "vault/org_resolve_test.go",
+      "test_id": "TestOrgSealVectors"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/pylib/tests/test_vaultclient.py",
+      "test_id": "test_chain_seals_reproduce_and_open"
+    }
+  ],
+  "C7/chain-part1-seal": [
+    {
+      "unit": "U6",
+      "file": "vault/chain2_test.go",
+      "test_id": "TestPart1SealVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/chain-passphrase-bytes": [
+    {
+      "unit": "U6",
+      "file": "vault/chain2_test.go",
+      "test_id": "TestPassphraseBytesVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/chain-set-seal": [
+    {
+      "unit": "U6",
+      "file": "vault/chain_test.go",
+      "test_id": "TestSetSealVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/pylib/tests/test_vaultclient.py",
+      "test_id": "test_chain_seals_reproduce_and_open"
+    }
+  ],
+  "C7/chain-split": [
+    {
+      "unit": "U6",
+      "file": "vault/chain_test.go",
+      "test_id": "TestReconstructionVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/chain-storage-key": [
+    {
+      "unit": "U6",
+      "file": "vault/chain2_test.go",
+      "test_id": "TestStorageKeyVector"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/kat-aes256gcm": [
+    {
+      "unit": "U6",
+      "file": "vault/chain_test.go",
+      "test_id": "TestAESGCMKnownAnswers"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/kat-argon2id-reference": [
+    {
+      "unit": "U6",
+      "file": "vault/chain2_test.go",
+      "test_id": "TestArgon2idReferenceKnownAnswers"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/kat-argon2id-rfc9106": [
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/kat-ecdsa-p256-p1363": [
+    {
+      "unit": "U6",
+      "file": "vault/challenge_test.go",
+      "test_id": "TestECDSAP256P1363KnownAnswers"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/kat-opaquestring": [
+    {
+      "unit": "U6",
+      "file": "vault/chain2_test.go",
+      "test_id": "TestOpaqueStringKnownAnswers"
+    },
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C7/kat-pbkdf2-sha256": [
+    {
+      "unit": "U11",
+      "file": "harness/rigs/pylib/tests/test_vaultclient.py",
+      "test_id": "test_pbkdf2_sha256_known_answers"
+    }
+  ],
+  "C7/kat-sha256": [
+    {
+      "unit": "U11",
+      "file": "harness/rigs/vault-vectors.sh",
+      "test_id": "rig-vault-vectors"
+    }
+  ],
+  "C1/account-list": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountCreateFilteredPermissionsAndDefaultDeny"
+    }
+  ],
+  "C1/account-create": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountCreateFilteredPermissionsAndDefaultDeny"
+    }
+  ],
+  "C1/account-create-existing-permissions": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountCreateFilteredPermissionsAndDefaultDeny"
+    }
+  ],
+  "C1/account-disable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountDisableEnableAndAdminSet"
+    }
+  ],
+  "C1/account-enable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountDisableEnableAndAdminSet"
+    }
+  ],
+  "C1/account-password-set": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountEndCompletesBeforeResponse"
+    }
+  ],
+  "C1/account-password-set-self": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountDisableEnableAndAdminSet"
+    }
+  ],
+  "C1/account-password-change-own": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordChangeOwn"
+    }
+  ],
+  "C1/account-disable-already-disabled": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountDisableEnableAndAdminSet"
+    }
+  ],
+  "C1/account-enable-already-enabled-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountDisableEnableAndAdminSet"
+    }
+  ],
+  "C1/account-password-set-disabled-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountDisableEnableAndAdminSet"
+    }
+  ],
+  "C1/account-create-name-exists-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountCreatePolicyPermissions"
+    }
+  ],
+  "C1/account-create-disabled-name-exists-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountDisableEnableAndAdminSet"
+    }
+  ],
+  "C1/account-disable-self-409": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountDisableEnableAndAdminSet"
+    }
+  ],
+  "C1/account-disable-unknown-404": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-enable-unknown-404": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-password-unknown-404": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-list-forbidden-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-create-forbidden-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-disable-forbidden-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-enable-forbidden-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-password-set-forbidden-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-list-unauthenticated-401": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-create-unauthenticated-401": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-disable-unauthenticated-401": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-enable-unauthenticated-401": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-password-set-unauthenticated-401": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-password-change-own-unauthenticated-401": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-password-change-wrong-current-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordChangeWrongCurrent403"
+    }
+  ],
+  "C1/account-password-change-limited-429": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordChangeLimited429"
+    }
+  ],
+  "C1/account-name-shape-422": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountUsernameUTF8Validation"
+    }
+  ],
+  "C1/account-name-reserved-422": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountReservedNameExactRefusal"
+    }
+  ],
+  "C1/account-password-empty-422": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordValidationAcrossOperations"
+    }
+  ],
+  "C1/account-password-utf8-422": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordValidationAcrossOperations"
+    }
+  ],
+  "C1/account-password-too-long-422": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordValidationAcrossOperations"
+    }
+  ],
+  "C1/account-password-too-short-422": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordValidationAcrossOperations"
+    }
+  ],
+  "C1/account-cross-origin-403": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountRefusalFixtureMatrix"
+    }
+  ],
+  "C1/account-password-never-echoed": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordNeverEchoed"
+    }
+  ],
+  "C1/account-create-audit-unwritable-500": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountAuditFailureRollbacks"
+    }
+  ],
+  "C1/account-disable-audit-unwritable-500": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountAuditFailureRollbacks"
+    }
+  ],
+  "C1/account-enable-audit-unwritable-500": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountAuditFailureRollbacks"
+    }
+  ],
+  "C1/account-password-set-audit-unwritable-500": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountAuditFailureRollbacks"
+    }
+  ],
+  "C1/account-password-change-own-audit-unwritable-500": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountAuditFailureRollbacks"
+    }
+  ],
+  "C1/account-disabled-login-401": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestDisabledLoginHTTPIsOrdinaryFailureAndAudited"
+    }
+  ],
+  "C2/account-login-ended-close-4017": [
+    {
+      "unit": "U2",
+      "owed": "E4b account management: Provider supplies a real attach ticket in place of the synthetic shape ticket and ends that login by disable, administrator password set or another login own change. Attached client closes 4017 account_login_ended by the response, sessions live; consumer never auto-reattaches, including an older consumer treating 4017 as 4010. Caller of own change stays attached. Login side effects are asserted by C1/account-disable and password fixtures."
+    },
+    {
+      "unit": "U7",
+      "owed": "Consumer never auto-reattaches after 4017."
+    }
+  ],
+  "C5/policy-account-admin": [
+    {
+      "unit": "U5",
+      "file": "schema/policy/account_fixture_test.go",
+      "test_id": "TestAccountAdminPolicyFixture"
+    }
+  ],
+  "C5/config-account-password-min-length": [
+    {
+      "unit": "U5",
+      "file": "schema/config/account_fixture_test.go",
+      "test_id": "TestAccountPasswordMinimumFixture"
+    }
+  ],
+  "C6/users-record": [
+    {
+      "unit": "U5",
+      "file": "schema/users/users_test.go",
+      "test_id": "TestUsersRecordFixture"
+    }
+  ],
+  "C6/users-old-record-loads-enabled": [
+    {
+      "unit": "U5",
+      "file": "schema/users/users_test.go",
+      "test_id": "TestUsersOldRecordLoadsEnabled"
+    }
+  ],
+  "C6/event-account-create": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountSuccessAuditIdentitiesAndNoEcho"
+    }
+  ],
+  "C6/event-account-disable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountSuccessAuditIdentitiesAndNoEcho"
+    }
+  ],
+  "C6/event-account-enable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountSuccessAuditIdentitiesAndNoEcho"
+    }
+  ],
+  "C6/event-account-password-set": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountSuccessAuditIdentitiesAndNoEcho"
+    }
+  ],
+  "C6/event-account-password-changed": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountSuccessAuditIdentitiesAndNoEcho"
+    }
+  ],
+  "C6/event-login-failed-disabled": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestDisabledLoginHTTPIsOrdinaryFailureAndAudited"
+    }
+  ],
+  "C6/event-account-recover": [
+    {
+      "unit": "U2",
+      "file": "core/cmd/tsb/accounts_test.go",
+      "test_id": "TestHostRecoveryAuditsBeforeCommit"
+    }
+  ],
+  "C1/account-create-concurrent-name": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountCreateConcurrentName"
+    }
+  ],
+  "C1/account-password-set-racing-disable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountHandlerPreparedRaces"
+    }
+  ],
+  "C1/account-password-change-racing-disable": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountHandlerPreparedRaces"
+    }
+  ],
+  "C1/account-password-change-proof-replaced": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountHandlerPreparedRaces"
+    }
+  ],
+  "C6/event-password-change-failed": [
+    {
+      "unit": "U2",
+      "file": "core/internal/httpapi/accounts_test.go",
+      "test_id": "TestAccountPasswordChangeWrongCurrent403"
+    }
+  ],
+  "C2/account-device-login-ended-close-4017": [
+    {
+      "unit": "U2",
+      "owed": "Account act ends a device-login socket in progress with 4017 before successful response; no device_login_result or session exists. Consumer never auto-reattaches."
+    },
+    {
+      "unit": "U7",
+      "owed": "Account act ends a device-login socket in progress with 4017 before successful response; no device_login_result or session exists. Consumer never auto-reattaches."
+    }
+  ],
+  "C7/account-inflight-unlock-not-installed": [
+    {
+      "unit": "U2",
+      "file": "core/internal/vaultwire/account_unlock_test.go",
+      "test_id": "TestAccountInflightUnlockNotInstalled"
+    },
+    {
+      "unit": "U6",
+      "file": "vault/account_unlock_test.go",
+      "test_id": "TestAccountInflightUnlockNotInstalled"
+    }
+  ],
+  "C1/session-list-ended-exclude": [
+    {
+      "unit": "U2",
+      "owed": "Provider seeds four retained, visible sessions: live, detached, killed and terminated. Exclusion returns the live and detached records and neither ended record; also seed a visible unreachable session and an invisible session, asserting the non-ended unreachable record survives and the invisible record remains absent. Published e4, required green e5; U2 provider test owed."
+    }
+  ],
+  "C1/session-list-ended-include": [
+    {
+      "unit": "U2",
+      "owed": "Provider seeds four retained, visible sessions: live, detached, killed and terminated. Both the absent parameter and explicit include return all four; compare the complete answers to verify exact preservation. Published e4, required green e5; U2 provider test owed."
+    }
+  ],
+  "C1/session-list-ended-invalid": [
+    {
+      "unit": "U2",
+      "owed": "An invalid ended value is refused with 422 invalid_request; the provider test asserts the response contains no echo of the supplied value. Published e4, required green e5; U2 provider test owed."
+    }
+  ],
+  "C3/control-message-shape-v0.8": [
+    {
+      "unit": "U1",
+      "owed": "U1/U5 `terminal_control_shapes`: new exact messages/summary/error and version metadata, optional old fields still valid."
+    },
+    {
+      "unit": "U5",
+      "owed": "U1/U5 `terminal_control_shapes`: new exact messages/summary/error and version metadata, optional old fields still valid."
+    }
+  ],
+  "C3/reattach-ended-audited-sealed": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3 `audited_closed_hello_seal_replay`: hello first, no close/live, two replay barriers, durable accounting before release; empty ring still needs seal."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3 `audited_closed_hello_seal_replay`: hello first, no close/live, two replay barriers, durable accounting before release; empty ring still needs seal."
+    }
+  ],
+  "C3/reattach-ended-audited-open-unread": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3 `audited_open_queued_output`: ended:false then one close; queued/in-flight data included or unknown; sibling survives."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3 `audited_open_queued_output`: ended:false then one close; queued/in-flight data included or unknown; sibling survives."
+    }
+  ],
+  "C3/terminal-drain-timeout": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3/U11 `terminal_deadline_tie`: configured bound, stop/join and timeout suffix; drive core deadline exactly with worker result, reject equal-counter false completeness."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3/U11 `terminal_deadline_tie`: configured bound, stop/join and timeout suffix; drive core deadline exactly with worker result, reject equal-counter false completeness."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U3/U11 `terminal_deadline_tie`: configured bound, stop/join and timeout suffix; drive core deadline exactly with worker result, reject equal-counter false completeness."
+    }
+  ],
+  "C3/terminal-drain-read-error": [
+    {
+      "unit": "U3",
+      "owed": "U3 `terminal_error_not_eof`: old finally/read_drained cannot map read error to EOF."
+    }
+  ],
+  "C3/terminal-seal-idempotent": [
+    {
+      "unit": "U3",
+      "owed": "U3 `seal_stable_across_peers`: duplicate seals coalesce/reuse final result, no new deadline, no output after seal."
+    }
+  ],
+  "C3/terminal-hello-busy": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3 `hello_during_seal_or_core_end`: terminal_busy for both cases, only attempted peer closed, fresh peer after proper event barrier."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3 `hello_during_seal_or_core_end`: terminal_busy for both cases, only attempted peer closed, fresh peer after proper event barrier."
+    }
+  ],
+  "C3/terminal-disposal-version-gate": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3 `terminal_old_peer_unchanged`: old tags receive old messages/keys, live/unsealed new disposal refuses, absent duplicate succeeds without ack."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3 `terminal_old_peer_unchanged`: old tags receive old messages/keys, live/unsealed new disposal refuses, absent duplicate succeeds without ack."
+    }
+  ],
+  "C3/channel-closed-after-data-eof": [
+    {
+      "unit": "U3",
+      "owed": "U3/U2 `channel_event_data_order`: enqueue/close old data before event; core waits for independent data barrier."
+    },
+    {
+      "unit": "U2",
+      "owed": "U3/U2 `channel_event_data_order`: enqueue/close old data before event; core waits for independent data barrier."
+    }
+  ],
+  "C3/terminal-close-raced-target": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3 `target_close_race`: bad_request is rediscovery, not blanket release success."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3 `target_close_race`: bad_request is rediscovery, not blanket release success."
+    }
+  ],
+  "C3/terminal-input-refused-mid-seal": [
+    {
+      "unit": "U3",
+      "owed": "U3 `ended_input_during_seal_replay`: input/resize never reaches driver while sealing/replaying ended session, no deferred delivery/live."
+    }
+  ],
+  "C3/terminal-linger-not-reset": [
+    {
+      "unit": "U3",
+      "owed": "U3/U11 `terminal_recovery_preserves_linger`: repeated hello/replay/seal never resets original last-live-session linger; sibling live connection unaffected."
+    },
+    {
+      "unit": "U11",
+      "owed": "U3/U11 `terminal_recovery_preserves_linger`: repeated hello/replay/seal never resets original last-live-session linger; sibling live connection unaffected."
+    }
+  ],
+  "C3/terminal-worker-exits-last-connection": [
+    {
+      "unit": "U3",
+      "owed": "U3 `terminal_disposal_worker_exit`: no remaining connection permits exit; another connection forbids it."
+    }
+  ],
+  "C3/terminal-disposal-crash-after-drop": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `release_applied_before_core_persistence`: next manifest/no-such-session observes absence, no second release requirement/end or resurrection."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `release_applied_before_core_persistence`: next manifest/no-such-session observes absence, no second release requirement/end or resurrection."
+    }
+  ],
+  "C5/config-output-drain-timeout": [
+    {
+      "unit": "U5",
+      "owed": "U5/U2/U3 `drain_config_exact_ms`: required runtime key, additive schema optionality, exact bounds/conversion/reload, V7 scope exception, old wire excludes key, no schema default."
+    },
+    {
+      "unit": "U2",
+      "owed": "U5/U2/U3 `drain_config_exact_ms`: required runtime key, additive schema optionality, exact bounds/conversion/reload, V7 scope exception, old wire excludes key, no schema default."
+    },
+    {
+      "unit": "U3",
+      "owed": "U5/U2/U3 `drain_config_exact_ms`: required runtime key, additive schema optionality, exact bounds/conversion/reload, V7 scope exception, old wire excludes key, no schema default."
+    }
+  ],
+  "C6/recording-integrity-event-shape": [
+    {
+      "unit": "U1",
+      "owed": "U1/U5 `integrity_event_variants`: the original five variants and the two continuation variants, keys/enums/required/forbidden fields; examples valid, unknown fails closed. Includes the ruled explicit unrecorded kind with null baselines and no path/finality."
+    },
+    {
+      "unit": "U5",
+      "owed": "U1/U5 `integrity_event_variants`: the original five variants and the two continuation variants, keys/enums/required/forbidden fields; examples valid, unknown fails closed. Includes the ruled explicit unrecorded kind with null baselines and no path/finality."
+    }
+  ],
+  "C6/recording-integrity-exact-once": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `integrity_contiguous_identity`: stable extent keys, disjoint boundary coverage, holes/overlap/conflicts/malformed evidence refuse, no max-only scan or second disconnect."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `integrity_contiguous_identity`: stable extent keys, disjoint boundary coverage, holes/overlap/conflicts/malformed evidence refuse, no max-only scan or second disconnect."
+    }
+  ],
+  "C6/recording-integrity-unknown-suffix": [
+    {
+      "unit": "U2",
+      "owed": "U2/U5 `unknown_never_zero_or_eof`: empty/equal counters not proof, timeout stays unknown, EOF settles only complete coverage."
+    },
+    {
+      "unit": "U5",
+      "owed": "U2/U5 `unknown_never_zero_or_eof`: empty/equal counters not proof, timeout stays unknown, EOF settles only complete coverage."
+    }
+  ],
+  "C6/terminal-accounting-write-failed": [
+    {
+      "unit": "U2",
+      "owed": "U2 `integrity_append_sync_cuts`: no core release on failure, torn suffix startup rule, valid synced identity reused on retry."
+    }
+  ],
+  "C6/terminal-audit-single-file-coverage": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `history_three_restarts_one_file`: original end, extents and later seal from three restarts in one audit_path all scanned/deduped."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `history_three_restarts_one_file`: original end, extents and later seal from three restarts in one audit_path all scanned/deduped."
+    }
+  ],
+  "C6/terminal-audit-tail-reopen": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `audit_non_lf_tail`: cut only unterminated suffix, including complete JSON without LF; no-LF file cuts to zero; sync before writer exposed."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `audit_non_lf_tail`: cut only unterminated suffix, including complete JSON without LF; no-LF file cuts to zero; sync before writer exposed."
+    }
+  ],
+  "C6/terminal-audit-complete-malformed": [
+    {
+      "unit": "U2",
+      "owed": "U2/U5 `audit_complete_bad_line_preserved`: malformed middle/final LF line never cut, scan uncertain, no release."
+    },
+    {
+      "unit": "U5",
+      "owed": "U2/U5 `audit_complete_bad_line_preserved`: malformed middle/final LF line never cut, scan uncertain, no release."
+    }
+  ],
+  "C6/terminal-audit-repair-order": [
+    {
+      "unit": "U2",
+      "owed": "U2 `audit_exclusive_repair`: existing ownership before repair/writer exposure, inspect/truncate/sync failure stops initialization, crashes retry without cutting full lines."
+    }
+  ],
+  "C8/terminal-incomplete-before-end": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `marker_original_end`: code 9 before original end, counted gap separate, stamp/reason precedence correct; never after end."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `marker_original_end`: code 9 before original end, counted gap separate, stamp/reason precedence correct; never after end."
+    }
+  ],
+  "C8/terminal-incomplete-reader-refusal": [
+    {
+      "unit": "U5",
+      "owed": "U5/U11 `marker_strict_codec`: exact tag/def/grammar, 100..167 and actual payload length, old reader refuses 9, overflow/unknown reason rejected."
+    },
+    {
+      "unit": "U11",
+      "owed": "U5/U11 `marker_strict_codec`: exact tag/def/grammar, 100..167 and actual payload length, old reader refuses 9, overflow/unknown reason rejected."
+    }
+  ],
+  "C8/terminal-incomplete-payload-identical": [
+    {
+      "unit": "U11",
+      "owed": "U11 `marker_compare_out`: list equality only under out, no payload concatenation, absent/different marker unequal, in unchanged."
+    }
+  ],
+  "C8/terminal-incomplete-clock": [
+    {
+      "unit": "U5",
+      "owed": "U5/U11 `marker_clock_none`: code 9 exempt/no accumulator reset, normal decreasing data clock still fails."
+    },
+    {
+      "unit": "U11",
+      "owed": "U5/U11 `marker_clock_none`: code 9 exempt/no accumulator reset, normal decreasing data clock still fails."
+    }
+  ],
+  "C8/terminal-incomplete-crash-reopen": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `marker_complete_preserved`: paired torn cut only, complete marker/end immutable, original missing audit repaired."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `marker_complete_preserved`: paired torn cut only, complete marker/end immutable, original missing audit repaired."
+    }
+  ],
+  "C8/audited-end-recording-unchanged": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `recording_sidecar_immutable`: full byte identity of ttyrec AND dir through exact-tail/unknown recovery; linked integrity facts accompany export/comparison."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `recording_sidecar_immutable`: full byte identity of ttyrec AND dir through exact-tail/unknown recovery; linked integrity facts accompany export/comparison."
+    }
+  ],
+  "C3/core-stop-during-end-drain": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3 `close_admission_and_end_stop`: #680 no new action after Close, interrupted not EOF, no stop seal/release/disconnect, live sibling survives."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3 `close_admission_and_end_stop`: #680 no new action after Close, interrupted not EOF, no stop seal/release/disconnect, live sibling survives."
+    }
+  ],
+  "C6/terminal-unrecorded-and-partial": [
+    {
+      "unit": "U2",
+      "owed": "U2/U5 `unrecorded_not_partial`: disabled gets no fabricated missing extent, partial remains integrity path, original unaudited marker/end repaired. Includes the ruled unrecorded close notice; never a fabricated recording baseline."
+    },
+    {
+      "unit": "U5",
+      "owed": "U2/U5 `unrecorded_not_partial`: disabled gets no fabricated missing extent, partial remains integrity path, original unaudited marker/end repaired. Includes the ruled unrecorded close notice; never a fabricated recording baseline."
+    }
+  ],
+  "C6/terminal-close-before-seal": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3/U11 `close_before_result_unknown`: linger-zero/connection loss/worker death before seal result disposes without wait; running core writes unknown at durable C, no exact or zero suffix/no second end."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3/U11 `close_before_result_unknown`: linger-zero/connection loss/worker death before seal result disposes without wait; running core writes unknown at durable C, no exact or zero suffix/no second end."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U3/U11 `close_before_result_unknown`: linger-zero/connection loss/worker death before seal result disposes without wait; running core writes unknown at durable C, no exact or zero suffix/no second end."
+    }
+  ],
+  "C6/terminal-close-after-result-before-sync": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `volatile_seal_close_unknown`: receive valid result, hold accounting before sync, close connection, then resume core processing; unknown after C, no new exact extent from cached result/no release on closed peer."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `volatile_seal_close_unknown`: receive valid result, hold accounting before sync, close connection, then resume core processing; unknown after C, no new exact extent from cached result/no release on closed peer."
+    }
+  ],
+  "C6/terminal-close-partial-durable-coverage": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `close_after_extent_before_seal`: fsynced exact prefix retained, notice starts at its frontier, not recording A or highest unvalidated seq; no repeated count."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `close_after_extent_before_seal`: fsynced exact prefix retained, notice starts at its frontier, not recording A or highest unvalidated seq; no repeated count."
+    }
+  ],
+  "C6/terminal-close-core-restart": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `close_restart_each_cut`: for each before-result, after-result/pre-sync, partial-sync, full-sync and notice-sync/pre-bookkeeping cut, restart observes absence, reconstructs correct durable facts/unknown, no double event/end or live publication."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `close_restart_each_cut`: for each before-result, after-result/pre-sync, partial-sync, full-sync and notice-sync/pre-bookkeeping cut, restart observes absence, reconstructs correct durable facts/unknown, no double event/end or live publication."
+    }
+  ],
+  "C6/terminal-close-audit-write-failed": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3/U11 `close_does_not_wait_for_audit`: pause/fail audit append/sync, expire original linger, observe connection closed; later unblock and retry, preserve uncertainty/recovery anchor, never claim completed accounting. No worker disk publication occurs before or after unblock."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3/U11 `close_does_not_wait_for_audit`: pause/fail audit append/sync, expire original linger, observe connection closed; later unblock and retry, preserve uncertainty/recovery anchor, never claim completed accounting. No worker disk publication occurs before or after unblock."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U3/U11 `close_does_not_wait_for_audit`: pause/fail audit append/sync, expire original linger, observe connection closed; later unblock and retry, preserve uncertainty/recovery anchor, never claim completed accounting. No worker disk publication occurs before or after unblock."
+    }
+  ],
+  "C6/recording-integrity-unrecorded": [
+    {
+      "unit": "U2",
+      "owed": "U2/U5 integrity_unrecorded_shape: ruled unrecorded close notice has recording_enabled false, null baselines, no path or final counters/outcome; refuses fabricated path or zero baseline; durable retry key ri1:<session_id>:u:null:null."
+    },
+    {
+      "unit": "U5",
+      "owed": "U2/U5 integrity_unrecorded_shape: ruled unrecorded close notice has recording_enabled false, null baselines, no path or final counters/outcome; refuses fabricated path or zero baseline; durable retry key ri1:<session_id>:u:null:null."
+    }
+  ],
+  "C3/terminal-non-pty-retained": [
+    {
+      "unit": "U2",
+      "owed": "non_pty_retained_excludes_terminal_accounting: retain a non-PTY session across data-peer loss/end; capture the existing handshake with no ring/replayed output; assert no seal_output or release_accounted and no terminal_incomplete/code-9 marker in any recording, including on timeout/core stop. Preserve the published non-PTY loss rule."
+    },
+    {
+      "unit": "U3",
+      "owed": "non_pty_retained_excludes_terminal_accounting: retain a non-PTY session across data-peer loss/end; capture the existing handshake with no ring/replayed output; assert no seal_output or release_accounted and no terminal_incomplete/code-9 marker in any recording, including on timeout/core stop. Preserve the published non-PTY loss rule."
+    },
+    {
+      "unit": "U5",
+      "owed": "non_pty_retained_excludes_terminal_accounting: retain a non-PTY session across data-peer loss/end; capture the existing handshake with no ring/replayed output; assert no seal_output or release_accounted and no terminal_incomplete/code-9 marker in any recording, including on timeout/core stop. Preserve the published non-PTY loss rule."
+    }
+  ],
+  "C6/terminal-recording-sync-quarantine": [
+    {
+      "unit": "U2",
+      "owed": "U2 `recording_sync_failure_quarantine`: a failed recording fsync appends unconfirmed recording_unsynced at bbolt's commit point P, below A; no exact fact above P and no release_accounted, in the running core and after a restart; a restart keeps the commit point at P, so its hello carries P's seq, and no realign or later successful fsync lifts the quarantine; the \u00a78 notice reuses the key at P; a failed quarantine append leaves only the in-process rule."
+    }
+  ],
+  "C3/terminal-legacy-offer-mid-seal": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3 `legacy_offer_mid_seal`: a hello stating a version below 0.8 while the session is sealing or its core-requested end is in flight is answered unsupported_proto naming the session, never terminal_busy; output_sealed and terminal_busy reach only a peer that stated 0.8 on that control connection by a parsed hello (refused hellos included) or seal_output; after sealing that peer gets the ordinary legacy handshake and legacy release, at the legacy core's next start (it sets no retry timer); a core at an effective version below 0.8 stays the legacy core."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3 `legacy_offer_mid_seal`: a hello stating a version below 0.8 while the session is sealing or its core-requested end is in flight is answered unsupported_proto naming the session, never terminal_busy; output_sealed and terminal_busy reach only a peer that stated 0.8 on that control connection by a parsed hello (refused hellos included) or seal_output; after sealing that peer gets the ordinary legacy handshake and legacy release, at the legacy core's next start (it sets no retry timer); a core at an effective version below 0.8 stays the legacy core."
+    }
+  ],
+  "C6/terminal-close-late-exact-fact": [
+    {
+      "unit": "U2",
+      "owed": "U2/U11 `worker_absent_freezes_accounting`: an exact fact whose write or fsync straddles the closure is not durable before closure; the notice is worker_absent at F; in the running core and after a restart no sealed or not_recorded fact and no extent with lower boundary at or above F counts, wherever it lies in the file; such lines are reported post-closure and non-authoritative; nothing settles the notice and no later C follows it."
+    },
+    {
+      "unit": "U11",
+      "owed": "U2/U11 `worker_absent_freezes_accounting`: an exact fact whose write or fsync straddles the closure is not durable before closure; the notice is worker_absent at F; in the running core and after a restart no sealed or not_recorded fact and no extent with lower boundary at or above F counts, wherever it lies in the file; such lines are reported post-closure and non-authoritative; nothing settles the notice and no later C follows it."
+    }
+  ],
+  "C1/session-list-paged": [
+    {
+      "unit": "U2",
+      "owed": "Session-history U2 provider plan: Seed four visible records in the illustrated creation order, including a timestamp tie with ids b then a, plus invisible records between them. Fill pages after visibility and ended filtering. Cursor example bytes are illustrative, not a prescribed encoding: save the provider cursor and use it unchanged. Assert no duplicates, strict descending (created_at, id) order, full first page, a full final page either without next_cursor or with a cursor whose next page is empty, no cursor on a short or empty page, and continuation after removal of the boundary record without checking its existence. Re-evaluate changed visibility and filter on each page; unsigned cursor grants nothing and survives a core restart. For ended=exclude, prove the answer cost does not grow with retained ended history; the live view is sorted in the same order."
+    }
+  ],
+  "C1/session-list-ended-only": [
+    {
+      "unit": "U2",
+      "owed": "Session-history U2 provider plan: Seed the same visible killed, terminated, detached and live records as session-list-paged. only is exactly the ended-state complement of exclude; filter before filling. Later end states follow the common state registry. Assert the same selection without limit and with continuation. Compare unpaged records as a set. A full final page may omit next_cursor or carry one whose next page is empty; short and empty pages have no cursor. No look-ahead is required."
+    }
+  ],
+  "C1/session-list-cursor-without-limit": [
+    {
+      "unit": "U2",
+      "owed": "Session-history U2 provider plan: A cursor without limit is 422 invalid_request. The example rule text is illustrative; do not echo the supplied cursor."
+    }
+  ],
+  "C1/session-list-cursor-invalid": [
+    {
+      "unit": "U2",
+      "owed": "Session-history U2 provider plan: A malformed cursor is 422 invalid_request with exactly cursor is invalid. Check empty, overlong and invalid encodings; never echo any supplied cursor, including text containing a host path."
+    }
+  ],
+  "C1/session-list-legacy-complete": [
+    {
+      "unit": "U2",
+      "owed": "Session-history U2 provider plan: Seed all four visible records illustrated here and an invisible record. With neither limit nor cursor return the entire retained visible list, including both ended states, never a silent cap or next_cursor. Repeat with ended=include; ordering of the legacy request is not newly prescribed. Compare both unpaged answers as a set and reject extra records."
+    }
+  ],
+  "C1/session-get-removed-404": [
+    {
+      "unit": "U2",
+      "owed": "Session-history U2 provider plan: After explicit successful retention removal of an eligible fully finalised ended record, GET is word-for-word identical to an unknown id: 404 session_not_found. Also absent from every list view. This fixture has no sweep deadline and never waits a prescribed time for removal."
+    }
+  ],
+  "C1/session-retention-safety": [
+    {
+      "unit": "U2",
+      "owed": "Session-history U2 provider plan: With the provider clock controlled, exercise removal directly, never a sweep deadline. No record is removed before ended_at + retention; equality is eligible, not a removal deadline. A missing ended_at ages from persisted activity_at, not client_touch_at or created_at. An expired record remains listed and GET-readable until successfully removed, including deletion failure and restart. Only fully finalised killed/terminated ends qualify: durable end marker and audit complete, worker release/reconciliation complete, no unreleased worker obligation. Live, detached, orphan-pending, unreachable and unfinished ends survive regardless of age. Recheck eligibility atomically and prevent pending writers resurrecting a removed record. No shared connection or sibling session is deleted. Audit and recording bytes remain identical, and no recording-retention policy is introduced."
+    }
+  ],
+  "C5/config-sessions-ended-retention": [
+    {
+      "unit": "U2",
+      "owed": "Session-history U2 provider plan: sessions.ended_retention is a required runtime core-wide positive Go duration, optional in the additive schema with no default. U2 loader tests must refuse missing, zero (0, 0s, 0h0m), negative, malformed, wrong-type and overflowing durations, accept positive representable durations, and prove templates supply 168h with no code default or test-login/per-target exception. Zero and overflow are prose bounds enforced by the loader, like the existing duration knobs. No page-size or sweep knob."
+    }
+  ],
+  "C1/target-login-hint-saved": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: One request context, one profile read and grant scan per eligible full page; no material/unlock reads or extension; structural sealed health and zero/one/many evaluation."
+    }
+  ],
+  "C1/target-login-hint-choice-required": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    }
+  ],
+  "C1/target-login-hint-none": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    }
+  ],
+  "C1/target-login-hint-unavailable": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: Candidate evaluation and structural unsealed-personal health check."
+    }
+  ],
+  "C1/target-login-hint-create-parity": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: Create and inventory share metadata candidate rules; preserve personal-before-org errors and existing create error ordering."
+    }
+  ],
+  "C1/target-login-hint-dedup-layers": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: Deduplicate by (reference, layer), never by reference alone; no layer precedence."
+    }
+  ],
+  "C1/target-login-hint-caller-scope": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: Read only caller personal mappings/index and relevant caller grants; evaluate target matching without unrelated private state."
+    }
+  ],
+  "C1/target-login-hint-resolution-faults": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: Preserve stage errors and precedence; target-specific missing mapping must not poison unrelated targets; profile-read failure affects all eligible targets; grant errors cannot override a personal error."
+    }
+  ],
+  "C1/target-login-hint-locked-vault": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: No material retrieval, unlock-state inspection, unlock or extension; locked/unlocked metadata evaluation is identical."
+    }
+  ],
+  "C1/target-login-hint-never-revealed": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    }
+  ],
+  "C1/target-login-hint-authorization": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: List/single target-scoped gates and one captured runtime target context; no metadata read when permission or runtime visibility fails."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: No metadata preparation/evaluation on permission omission."
+    }
+  ],
+  "C1/target-login-hint-runtime-absent": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Runtime lookup and captured runtime view; no index/runtime comparison signal and no metadata resolution on missing runtime."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: No metadata read/preparation for missing-runtime omission."
+    }
+  ],
+  "C1/target-login-hint-protocol-omission": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    }
+  ],
+  "C1/target-login-hint-recheck": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Fresh create inputs after concurrent mapping/grant changes; hints never authorize use."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: Best-effort per-request metadata snapshots; fresh preparation on later requests, no cross-request cache."
+    }
+  ],
+  "C1/target-login-hint-older-core-and-unknown": [
+    {
+      "unit": "U1",
+      "file": "tests/test_target_login_hint.py",
+      "test_id": "ClientDecoding::test_absent_and_unknown_suppress_hint_on_all_target_methods"
+    },
+    {
+      "unit": "U1",
+      "file": "tests/test_target_login_hint.py",
+      "test_id": "Schema::test_older_records_and_old_consumer_remain_compatible"
+    }
+  ],
+  "C1/target-login-hint-metadata-not-material": [
+    {
+      "unit": "U2",
+      "owed": "Target login hint implementation: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "owed": "Target login hint shared metadata resolver: Structural sealed-record health without decryption; metadata existence is not encrypted material validation; unmapped unsealed vault must not poison org-only candidates."
+    }
+  ],
+  "C3/terminal-seal-output-states-version": [
+    {
+      "unit": "U2",
+      "owed": "U2/U3 `seal_output_states_version`: a running capable core sends seal_output on its control connection without any hello and receives output_sealed; the worker records that command as the control peer stating 0.8; a replacement control peer starts with no statement and receives neither output_sealed nor terminal_busy until it states 0.8 itself by seal_output or a parsed hello, refused hellos included."
+    },
+    {
+      "unit": "U3",
+      "owed": "U2/U3 `seal_output_states_version`: a running capable core sends seal_output on its control connection without any hello and receives output_sealed; the worker records that command as the control peer stating 0.8; a replacement control peer starts with no statement and receives neither output_sealed nor terminal_busy until it states 0.8 itself by seal_output or a parsed hello, refused hellos included."
+    }
+  ],
+  "C6/terminal-continuation-audit": [
+    {
+      "unit": "U2",
+      "owed": "recording_continuation_terminal_continuation_audit_u2: validates continuation link and generation-specific quarantine semantics"
+    }
+  ],
+  "C3/terminal-continuation-input-seq": [
+    {
+      "unit": "U3",
+      "owed": "recording_continuation_terminal_continuation_input_seq_u3: worker accepts the input sequence jump across a continuation switch"
+    },
+    {
+      "unit": "U2",
+      "owed": "recording_continuation_terminal_continuation_input_seq_u2: reserve the input high-water before use and jump only on continuation switch"
+    }
+  ],
+  "C3/terminal-continuation-hold": [
+    {
+      "unit": "U3",
+      "owed": "recording_continuation_terminal_continuation_hold_u3: held-session ring proof with control and heartbeats connected"
+    },
+    {
+      "unit": "U2",
+      "owed": "recording_continuation_terminal_continuation_hold_u2: suppress redial and isolate the held session"
+    }
+  ],
+  "C8/terminal-continuation-chain": [
+    {
+      "unit": "U2",
+      "owed": "recording_continuation_terminal_continuation_chain_u2: chained recordings, evidence and comparison through multiple failures"
+    },
+    {
+      "unit": "U1",
+      "file": "tests/test_terminal_output_accounting.py",
+      "test_id": "RecordingChainTests::test_chain_reference_cases"
+    },
+    {
+      "unit": "U1",
+      "file": "tests/test_recording_chain_collection.py",
+      "test_id": "ChainCollection::test_complete_chain_and_legacy_refusal"
+    }
+  ],
+  "C6/terminal-continuation-recovery": [
+    {
+      "unit": "U2",
+      "owed": "recording_continuation_terminal_continuation_recovery_u2: recover generation allocation, link and bbolt crash cuts without adopting an orphan"
+    }
+  ],
+  "C6/terminal-continuation-failures": [
+    {
+      "unit": "U2",
+      "owed": "recording_continuation_terminal_continuation_failures_u2: fault-injection tests for every listed continuation scenario"
+    }
+  ],
+  "C5/config-recording-input-seq-reservation": [
+    {
+      "unit": "U2",
+      "owed": "recording_input_seq_reservation_config"
+    }
+  ],
+  "C2/recording-hold-input-refused": [
+    {
+      "unit": "U2",
+      "owed": "recording_hold_input_refused"
+    }
+  ],
+  "C2/recording-hold-data-path": [
+    {
+      "unit": "U2",
+      "owed": "recording_hold_data_path"
+    }
+  ],
+  "C6/recording-hold-alert": [
+    {
+      "unit": "U2",
+      "owed": "recording_hold_alert_identity"
+    }
+  ],
+  "C6/event-import-credential-stores": [
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C6/import-receipt-recovery": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C6/event-import-target-writes": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-import-preview-no-write": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C5/inventory-prompt-presence": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    }
+  ],
+  "C5/policy-target-private": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    }
+  ],
+  "C1/vendor-prompt-catalogue-proposals": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/vendor-prompt-template-reads": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U7",
+      "owed": "owed by U7"
+    }
+  ],
+  "C5/inventory-private-layout": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C5/inventory-import-reference-rebuild": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-private-write-scope": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-create-generated-id": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    }
+  ],
+  "C1/target-import-preview-mobaxterm": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-import-cross-origin-403": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-import-scope-forbidden-403": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-import-org-forbidden-403": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-errors": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-key-file-report": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U7",
+      "owed": "owed by U7"
+    }
+  ],
+  "C1/target-import-unsupported-rows": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C5/import-tabby-timer-units": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C7/import-save-profile-mappings": [
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C5/import-vendor-password-known-answers": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-abort": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-preview-binding": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    }
+  ],
+  "C1/target-import-retry-idempotent": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-private-owner-only": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-private-disabled-owner": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    }
+  ],
+  "C1/target-private-policy-gates": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-private-forced-recording": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U11",
+      "owed": "owed by U11"
+    }
+  ],
+  "C1/target-private-session-disclosure": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U7",
+      "owed": "owed by U7"
+    }
+  ],
+  "C1/target-prompt-own-effective-shape": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C5/inventory-private-import-collision": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C5/inventory-generated-id-collisions": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C5/inventory-prompt-presence-rebuild": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C5/import-no-plaintext-persistence": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    },
+    {
+      "unit": "U11",
+      "owed": "owed by U11"
+    },
+    {
+      "unit": "U10",
+      "owed": "owed by U10: proxy buffering and HTTP/2"
+    }
+  ],
+  "C5/inventory-import-atomic-publish": [
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    }
+  ],
+  "C1/target-import-save-personal": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-save-org": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-save-vault-locked-409": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-partial-failure": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-resume-after-restart-no-duplicate": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-reimport": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    }
+  ],
+  "C1/target-import-never-echoes-secrets": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-surface-memory": [
+    {
+      "unit": "U7",
+      "owed": "owed by U7"
+    }
+  ],
+  "C1/target-prompt-follow-detach": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    }
+  ],
+  "C5/import-format-recognition-and-bounds": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5"
+    }
+  ],
+  "C1/target-private-grant-resolution": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2"
+    },
+    {
+      "unit": "U6",
+      "owed": "owed by U6"
+    }
+  ],
+  "C1/target-import-filter-create-403": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2: Provider sets target.edit filters, submits a batch containing an out-of-filter create, and checks preview and commit each return the fixed 403 without any definition or mutation; the answer is indistinguishable from an out-of-filter matched update. For commit, first preview under a permitting filter and then change the filter before commit."
+    }
+  ],
+  "C1/target-import-filter-match-403": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2: Provider arranges a matched target outside the caller target.edit filters, including a proposed row inside the filters, and checks preview and commit return the same fixed 403 as an out-of-filter create, without definitions, match disclosure or mutations. For commit, first preview under a permitting filter and then change the filter before commit."
+    }
+  ],
+  "C5/import-tabby-groups": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2: Provider imports Tabby version 2 with groups Parent and Child linked by parentGroupId and a profile referencing Child; it checks Parent/Child, source identity, root omission and bounded rejection of cyclic group metadata. Version 1 literal groups remain literal. Synthetic input: version 2; groups [{id: p, name: Parent}, {id: c, name: Child, parentGroupId: p}]; profile {id: foreign, type: ssh, name: router, group: c, options: {host: fixture.invalid}}."
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5: Provider imports Tabby version 2 with groups Parent and Child linked by parentGroupId and a profile referencing Child; it checks Parent/Child, source identity, root omission and bounded rejection of cyclic group metadata. Version 1 literal groups remain literal. Synthetic input: version 2; groups [{id: p, name: Parent}, {id: c, name: Child, parentGroupId: p}]; profile {id: foreign, type: ssh, name: router, group: c, options: {host: fixture.invalid}}."
+    }
+  ],
+  "C5/import-securecrt-folders": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2: Provider imports VanDyke 3.0 XML with Sessions/Parent/Child/router and checks group Parent/Child and source reference Parent/Child/router; root sessions omit group, folder and Default records are not targets, and moving a session changes its native reference. Synthetic input has nested key names Sessions, Parent, Child, router, with Is Session 1, Protocol Name SSH2 and Hostname fixture.invalid."
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5: Provider imports VanDyke 3.0 XML with Sessions/Parent/Child/router and checks group Parent/Child and source reference Parent/Child/router; root sessions omit group, folder and Default records are not targets, and moving a session changes its native reference. Synthetic input has nested key names Sessions, Parent, Child, router, with Is Session 1, Protocol Name SSH2 and Hostname fixture.invalid."
+    }
+  ],
+  "C5/import-telnet-rows": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2: Provider imports Tabby and SecureCRT Telnet rows and verifies telnet type, host, port and documented stream settings; omitted port has effective default 23, and unsupported options are reported without script execution or credential harvesting. Synthetic Tabby profile has id foreign, type telnet and options.host fixture.invalid; the SecureCRT session has Protocol Name Telnet and Hostname fixture.invalid."
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5: Provider imports Tabby and SecureCRT Telnet rows and verifies telnet type, host, port and documented stream settings; omitted port has effective default 23, and unsupported options are reported without script execution or credential harvesting. Synthetic Tabby profile has id foreign, type telnet and options.host fixture.invalid; the SecureCRT session has Protocol Name Telnet and Hostname fixture.invalid."
+    }
+  ],
+  "C5/config-import-knobs": [
+    {
+      "unit": "U2",
+      "owed": "owed by U2: Provider checks each of the five import keys is required at core startup, with invalid values refused. The additive schema deliberately accepts a partial object; the loader must still refuse it. No deployment value is a schema or code default."
+    },
+    {
+      "unit": "U5",
+      "owed": "owed by U5: Provider checks each of the five import keys is required at core startup, with invalid values refused. The additive schema deliberately accepts a partial object; the loader must still refuse it. No deployment value is a schema or code default."
+    }
+  ],
+  "C1/target-share-record-shape": [
+    {
+      "unit": "U2",
+      "owed": "owed: TestRecordsCarryShareAndOwnerForEveryNamedViewer"
+    }
+  ],
+  "C5/inventory-share-layout": [
+    {
+      "unit": "U5",
+      "owed": "owed: TestAShareListLoadsOnlyInItsOwnersSource"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed: TestAnUnknownShareEntryKindMatchesNoPrincipal"
+    }
+  ],
+  "C1/target-share-create-refusals": [
+    {
+      "unit": "U2",
+      "owed": "owed: TestAShareListNeedsTargetPrivateAndNeverFallsBack"
+    }
+  ],
+  "C1/target-share-put-semantics": [
+    {
+      "unit": "U2",
+      "owed": "owed: TestAReorderedShareListIsAnAuditedNoOp"
+    }
+  ],
+  "C1/target-share-visibility": [
+    {
+      "unit": "U2",
+      "owed": "owed: TestTheNamedSeeAnOwnTargetWithoutDiscoverOrFilters"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed: TestOwnerDisableHidesFromEveryoneNamed"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed: TestRemovingANameEndsNoSession"
+    },
+    {
+      "unit": "U2",
+      "owed": "owed: TestMembershipIsCheckedAgainstTheParsedInventory"
+    }
+  ],
+  "C1/target-share-write-owner-only": [
+    {
+      "unit": "U2",
+      "owed": "owed: TestAWriteOnAnUnnamedOwnTargetIs404"
+    }
+  ],
+  "C1/target-write-query-parameter-422": [
+    {
+      "unit": "U2",
+      "owed": "owed: TestATargetWriteRefusesAQueryParameter"
+    }
+  ],
+  "C1/target-import-share": [
+    {
+      "unit": "U2",
+      "owed": "owed: TestAnImportsShareListIsItsDestination"
+    }
+  ],
+  "C6/event-target-share-field": [
+    {
+      "unit": "U2",
+      "owed": "owed: U2 verifies target write audit events contain field names only, including share"
+    }
+  ]
+}

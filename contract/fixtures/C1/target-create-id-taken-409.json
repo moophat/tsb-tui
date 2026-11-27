@@ -1,0 +1,52 @@
+{
+  "seam": "C1",
+  "name": "target-create-id-taken-409",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "A create naming an id held by any source is 409 target_id_taken and writes nothing: a duplicate would make both sources fail to load under the existing inventory identity rule.",
+  "corpus": [
+    "Storage §3.5",
+    "Storage §9",
+    "Storage §10.1",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets",
+          "body": {
+            "id": "${target_id}",
+            "type": "ssh",
+            "host": "192.0.2.60"
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "target_id_taken"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "target_id_taken",
+              "message": "target request refused"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

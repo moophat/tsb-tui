@@ -1,0 +1,49 @@
+{
+  "seam": "C7",
+  "name": "kat-pbkdf2-sha256",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U11",
+      "test": "harness/rigs/pylib/tests/test_vaultclient.py — test_pbkdf2_sha256_known_answers: independently reproduces the core-only vector using the Python reference client, never the authoring script"
+    }
+  ],
+  "description": "PBKDF2-HMAC-SHA256's known answers from RFC 7914 §11 (\"passwd\"/\"salt\", c=1; \"Password\"/\"NaCl\", c=80000; 64-byte keys). Only the core derives encryption_key (S8), so the Go core and the harness's Python reference client check it; contract/tests recomputes it with hashlib. Published e4: reference, tests owed (phase 16).",
+  "corpus": [
+    "RFC 7914 §11",
+    "credential-protection §4.1",
+    "decision 5.26 (c)"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/kat_pbkdf2",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "primitive": "pbkdf2-hmac-sha256",
+          "source": "RFC 7914 §11",
+          "cases": [
+            {
+              "password": "706173737764",
+              "salt": "73616c74",
+              "iterations": 1,
+              "dk_length": 64,
+              "dk": "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783"
+            },
+            {
+              "password": "50617373776f7264",
+              "salt": "4e61436c",
+              "iterations": 80000,
+              "dk_length": 64,
+              "dk": "4ddcd8f60b98be21830cee5ef22701f9641a4418d04c0414aeff08876b34ab56a1d425a1225833549adb841b51c9b3176a272bdebba1d078478f62b397f33c8d"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

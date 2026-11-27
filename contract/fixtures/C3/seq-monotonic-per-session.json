@@ -1,0 +1,72 @@
+{
+  "seam": "C3",
+  "name": "seq-monotonic-per-session",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:frames-seq",
+  "description": "One session's data socket, both directions interleaved: each direction counts its own frames from 1 — the worker's output 1, 2, 3, the core's input 1, 2. The index is the session's (Contract §15.1, decision 5.24), never the connection's. A captured run may show a jump where frames were dropped while no core was attached, but never a repeat or a decrease.",
+  "corpus": [
+    "immortality §4.1",
+    "Contract §15.1",
+    "decision 5.24",
+    "immortality §4.3"
+  ],
+  "case": {
+    "format": "c3-frames",
+    "file": "seq-monotonic-per-session.bin",
+    "frames": [
+      {
+        "version": 1,
+        "flags": 0,
+        "direction": "out",
+        "stream": 0,
+        "length": 2,
+        "seq": 1,
+        "timestamp": 1789000000123456789,
+        "payload_hex": "2420"
+      },
+      {
+        "version": 1,
+        "flags": 1,
+        "direction": "in",
+        "stream": 0,
+        "length": 1,
+        "seq": 1,
+        "timestamp": 1789000001123456789,
+        "payload_hex": "65"
+      },
+      {
+        "version": 1,
+        "flags": 0,
+        "direction": "out",
+        "stream": 0,
+        "length": 1,
+        "seq": 2,
+        "timestamp": 1789000001123556789,
+        "payload_hex": "65"
+      },
+      {
+        "version": 1,
+        "flags": 1,
+        "direction": "in",
+        "stream": 0,
+        "length": 1,
+        "seq": 2,
+        "timestamp": 1789000001323456789,
+        "payload_hex": "0d"
+      },
+      {
+        "version": 1,
+        "flags": 0,
+        "direction": "out",
+        "stream": 0,
+        "length": 4,
+        "seq": 3,
+        "timestamp": 1789000001323506789,
+        "payload_hex": "0d0a2420"
+      }
+    ]
+  }
+}

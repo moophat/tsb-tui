@@ -1,0 +1,112 @@
+{
+  "seam": "C2",
+  "name": "token-auto-release",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U2", "test": "owed by the E2 core plan"}
+  ],
+  "description": "Taking the keyboard back and giving it up again (C2 decision 6; 5.53; D31, D32): a handoff moves the control token — the frame that moves it is one of handoff (to a client_id, to null to revoke to escrow) or an owner's handoff to itself — and, when the auto-release knob is above 0, the token returns to the client that held it before the take-over N seconds after the owner's last keystroke, with reason release. With the knob 0 it never returns by itself; 0 is the default and a config.yaml knob, never a schema default. Every token move is a session.control audit event. The live shapes are graded by U2 (owed by the E2 core plan).",
+  "corpus": [
+    "C2 decision 6",
+    "5.53",
+    "D31",
+    "D32"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "handoff",
+          "v": 1,
+          "to": "fixture-client-2"
+        },
+        "note": "the holder hands the token to another attached client"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "handoff",
+          "v": 1,
+          "to": null
+        },
+        "note": "revoke to escrow: the owner reassigns later, an attach does not take it"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "handoff",
+          "v": 1,
+          "to": "fixture-client-1"
+        },
+        "note": "the owner's explicit take-over: to its own client_id"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "handoff",
+          "v": 1
+        },
+        "note": "to is required, and null is its revoke form"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "handoff",
+          "v": 1,
+          "to": 7
+        },
+        "note": "to is a client_id or null, never a number"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": {"client_id": "fixture-client-2", "user": "fixture-user"},
+          "reason": "release"
+        },
+        "note": "auto-release returned the token to the previous holder"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": {"client_id": "fixture-client-1", "user": "fixture-user"},
+          "reason": "takeover"
+        },
+        "note": "the token went to the owner per taking the keyboard back"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": null,
+          "reason": "owner"
+        },
+        "note": "a revoke to escrow: holder is null, reason owner (the owner revoked it)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "control",
+          "holder": {"client_id": "fixture-client-2", "user": "fixture-user"},
+          "reason": "auto_release"
+        },
+        "note": "the reason is release, one spelling (F17)"
+      }
+    ]
+  }
+}

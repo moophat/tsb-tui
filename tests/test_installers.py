@@ -157,7 +157,7 @@ def test_release_checksums_cover_uploads(tmp_path):
     workflow = (ROOT / '.github/workflows/release.yml').read_text()
     publish = workflow.split('      - name: Publish the release assets and checksums', 1)[1]
     patterns = set(re.findall(r'dist/([\w.*-]+)', publish))
-    names = ['tsb_tui-1-py3-none-any.whl', 'tsb_contract-1-py3-none-any.whl',
+    names = ['tsb_tui-1-py3-none-any.whl', 'tsb_contract-1-py3-none-any.whl', 'tsb-1.tar.gz',
              'libghostty-vt-linux-x86_64.tar.gz', 'install.sh', 'install.ps1',
              'tsb-tui-1-windows-x64.zip', 'tsb-tui-1-windows-x64.zip.sha256',
              'tsb-tui-1-macos-arm64.zip', 'tsb-tui-1-macos-arm64.zip.sha256',

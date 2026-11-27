@@ -1,0 +1,50 @@
+{
+  "seam": "C1",
+  "name": "targets-list-no-discover-empty",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 U2 plan"
+    }
+  ],
+  "description": "A principal without target.discover gets 200 with targets empty, not 403: seeing the fleet is a permission (Storage §9), and the answer to a principal who lacks it is the empty list, so a surface that lists targets for every login never has to handle a second refusal. Graded by the U2 plan's test, which is owed.",
+  "corpus": [
+    "Storage §9",
+    "Storage §10.1a"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "none": {}
+            }
+          ],
+          "example": {
+            "targets": []
+          }
+        }
+      }
+    ]
+  }
+}

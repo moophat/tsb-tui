@@ -1,0 +1,176 @@
+{
+  "seam": "C3",
+  "name": "device-login-sequence",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-sequence",
+  "description": "One device login on a connection's control socket, in order (C3 rules 1 to 8; device-login steps 10 to 20). The core sends a prompt-mode `connect` with `auth {kind: prompt}` and `login_timeout`. The worker, with no key on record, asks `hostkey_ask {kind: first_use}` before any prompt, and the core's `hostkey_answer` follows. The banner is a display-only `auth_prompt`. A keyboard-interactive round with two prompts is answered by one `auth_answer` of two strings; a round with no prompts is display-only and the worker answers it itself, so no answer crosses; a password request follows in the same attempt (a partial success keeps the attempt, OPEN-R5 (a)). Then exactly one terminal answer, `connected`, and the connection goes on as any other. Until the terminal answer the core sends only `hostkey_answer`, `auth_answer`, `disconnect` and `ping`. `answers` is the synthetic constant in a collection. A collected run must follow the same order as C3/control-connect-openshell-sequence after `connected`.",
+  "corpus": [
+    "open_decisions §5",
+    "credential §10.1",
+    "Contract §6",
+    "device-login steps 10 to 20",
+    "conventions V10, V13"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "a prompt-mode connect: no secret, and login_timeout (10 s to 30 min) is required with it"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hostkey_ask",
+          "conn_id": "fixture-conn-1",
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "no key on record: asked before any prompt, and before any user name reaches the device"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hostkey_answer",
+          "accept": true
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "banner",
+          "text": "Authorized use only. Activity is logged."
+        },
+        "note": "display-only: no prompt_id, no attempt"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "Two-step login",
+          "instruction": "Enter your password and your code.",
+          "prompts": [
+            {
+              "text": "Password: ",
+              "echo": false
+            },
+            {
+              "text": "Verification code: ",
+              "echo": true
+            }
+          ],
+          "prompt_id": 1
+        },
+        "note": "attempt 1, prompt_id 1"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "auth_answer",
+          "prompt_id": 1,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD",
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "one string per prompt"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "Almost there",
+          "instruction": "One more step.",
+          "prompts": []
+        },
+        "note": "a round with no prompts: display-only, no prompt_id; the worker answers it itself"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "password",
+          "attempt": 1,
+          "prompt_id": 3
+        },
+        "note": "a partial success keeps the attempt: the password request is attempt 1 too"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "auth_answer",
+          "prompt_id": 3,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        },
+        "note": "exactly one terminal answer"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "open_timeout": 20000
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "seam": "C2",
+  "name": "device-login-hostkey-first-use",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/ws/device_login_test.go — TestAFirstUseKeyIsAskedAuditedAndRelayedBeforeAnyPrompt: device_login_hostkey first, target.hostkey_accepted written before hostkey_answer is relayed, no prompt before the answer"
+    }
+  ],
+  "description": "A key the worker has never recorded is fetched by a key-only probe connection and shown before any user name reaches the device: `hostkey_ask` (C3) becomes `device_login_hostkey {kind: first_use, fingerprint}`, and no `device_login_prompt` comes before the operator's answer. The core writes `target.hostkey_accepted` or `target.hostkey_refused` before it relays the decision, the line recording the operator's decision (L3), and a line that cannot be written for an acceptance refuses it and ends the login (C2/device-login-hostkey-audit-unwritable). `kind` has one value at this release; a consumer that meets another sends `device_login_cancel` and never offers Accept.",
+  "corpus": [
+    "open_decisions §5",
+    "decision 5.18",
+    "device-login steps 11 to 13",
+    "conventions V5"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey",
+          "v": 1,
+          "kind": "first_use",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "the first-use key, in OpenSSH SHA256 form"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey_answer",
+          "v": 1,
+          "accept": true
+        },
+        "note": "accepted"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_hostkey_answer",
+          "v": 1,
+          "accept": false
+        },
+        "note": "refused: the login ends hostkey_refused"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_hostkey",
+          "v": 1,
+          "kind": "changed",
+          "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000"
+        },
+        "note": "not a kind of this release"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "device_login_hostkey",
+          "v": 1,
+          "kind": "first_use"
+        },
+        "note": "the fingerprint is the point"
+      }
+    ]
+  }
+}

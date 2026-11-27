@@ -1,0 +1,71 @@
+{
+  "seam": "C1",
+  "name": "target-import-errors",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider verifies ordered gates, error classifications, conflicts and authorized progress."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Provider verifies ordered gates, error classifications, conflicts and authorized progress."
+    }
+  ],
+  "description": "Provider verifies ordered gates, error classifications, conflicts and authorized progress.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/error.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "import_preview_stale",
+            "message": "request refused"
+          }
+        },
+        "note": "stale preview"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "import_format_unsupported",
+            "message": "request refused"
+          }
+        },
+        "note": "unsupported signature"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "invalid_request",
+            "message": "request refused"
+          }
+        },
+        "note": "recognized malformed input"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused",
+            "unexpected": "detail"
+          }
+        },
+        "note": "refusal does not carry extra details"
+      }
+    ]
+  }
+}

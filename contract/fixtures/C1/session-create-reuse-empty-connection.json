@@ -1,0 +1,134 @@
+{
+  "seam": "C1",
+  "name": "session-create-reuse-empty-connection",
+  "mark": {
+    "published": "e0",
+    "required-green": "e1"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "A connection stays a reuse candidate while its transport is up, whether or not a session is on it: session model §11's connection_linger keeps a connection up for a while after its last session ends, so that a quick reopen reuses the login (§5; a TACACS+ round trip saved). The fixture opens a session on a new connection, ends it, then reuses that connection by connection_id: the new session rides the same connection_id. A connection that has closed, or whose transport was lost, is never a candidate: nothing is reused after a connection dies. Published at e0, required green at e1: at E0 connection_linger is 0 (a knob, decision 5.36), so the connection closes with its last session and no candidate without a session exists; from E1 a connection lingers for connection_linger (5 min by default), far longer than this fixture runs. Closing a session never closes its connection by itself (Contract §15.2): only the empty-connection timer does.",
+  "corpus": [
+    "Contract §15.2",
+    "Contract §15.3",
+    "session model §5",
+    "session model §11",
+    "decision 5.45"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_a": "/session/id",
+          "conn_a": "/session/connection_id"
+        }
+      },
+      {
+        "http": {
+          "method": "DELETE",
+          "path": "/sessions/${sid_a}"
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "connection_id": "${conn_a}"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/session/connection_id",
+              "eq": "${conn_a}"
+            },
+            {
+              "pointer": "/session/id",
+              "ne": "${sid_a}"
+            }
+          ],
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_b": "/session/id"
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_b}"
+      }
+    ]
+  }
+}

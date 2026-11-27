@@ -31,7 +31,7 @@ import tsb_tui.screens.terminal as terminal_screen
 from tsb_tui.model.fleet import Fleet
 from tsb_tui.screens.fleet_view import FleetRow, FleetViewModel, visible_rows
 
-CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
+CONTRACT = Path(__file__).resolve().parents[1] / "contract"
 REGISTRY = Registry.from_tree(CONTRACT)
 BASE = json.loads((CONTRACT / "fixtures" / "C1" / "session-record-shape-v0.3.json")
                   .read_text(encoding="utf-8"))["case"]["instances"][0]["doc"]

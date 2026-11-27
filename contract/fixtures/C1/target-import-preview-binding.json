@@ -1,0 +1,152 @@
+{
+  "seam": "C1",
+  "name": "target-import-preview-binding",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "description": "Changed export bytes invalidate confirmation; providers verify canonical plan, caller, scope, counter and choice-independent binding.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "preview",
+            "format": "yaml",
+            "export_bytes": "aWQ6IGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIKdHlwZTogc3NoCm5hbWU6IGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIKdGFnczogW2xhYl0KdmVuZG9yOiBjaXNjbwpwcm9tcHRfcGF0dGVybjogIiIKb3B0aW9uczoKICBob3N0OiBiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiCg=="
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "preview_token": "fixture_token",
+            "format": "yaml",
+            "targets": [
+              {
+                "entry": {
+                  "index": 1,
+                  "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                },
+                "source_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "target": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "tags": [
+                    "lab"
+                  ],
+                  "discovered_by": "tsb",
+                  "host": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "port": 22,
+                  "vendor": "cisco",
+                  "prompt_pattern": ""
+                },
+                "change": "create",
+                "n": 0,
+                "has_credentials": false,
+                "key_file_referenced": false,
+                "definition": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "discovered_by": "tsb",
+                  "options": {
+                    "host": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                  },
+                  "tags": [
+                    "lab"
+                  ],
+                  "vendor": "cisco",
+                  "prompt_pattern": ""
+                },
+                "mapping": null
+              }
+            ],
+            "not_carried": [],
+            "credentials": []
+          },
+          "match": [
+            {
+              "pointer": "/format",
+              "eq": "yaml"
+            },
+            {
+              "pointer": "/targets/0/source_ref",
+              "eq": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            {
+              "pointer": "/targets/0/change",
+              "eq": "create"
+            },
+            {
+              "pointer": "/targets/0/definition/tags/0",
+              "eq": "lab"
+            },
+            {
+              "pointer": "/targets/0/definition/vendor",
+              "eq": "cisco"
+            },
+            {
+              "pointer": "/targets/0/definition/prompt_pattern",
+              "eq": ""
+            }
+          ]
+        },
+        "save": {
+          "import_token": "/preview_token",
+          "import_id": "/import_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "commit",
+            "format": "yaml",
+            "export_bytes": "aWQ6IGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIKdHlwZTogc3NoCm5hbWU6IGJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIKdGFnczogW2xhYl0KdmVuZG9yOiBjaXNjbwpwcm9tcHRfcGF0dGVybjogIiIKb3B0aW9uczoKICBob3N0OiBiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiCgo=",
+            "preview_token": "${import_token}"
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "import_preview_stale"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "import_preview_stale",
+              "message": "request refused"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Changed export bytes invalidate confirmation; providers verify canonical plan, caller, scope, counter and choice-independent binding."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: Changed export bytes invalidate confirmation; providers verify canonical plan, caller, scope, counter and choice-independent binding."
+    }
+  ]
+}

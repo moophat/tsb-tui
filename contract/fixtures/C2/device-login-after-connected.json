@@ -1,0 +1,53 @@
+{
+  "seam": "C2",
+  "name": "device-login-after-connected",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/ws/device_login_test.go — TestACancelBeforeOpensLastCheckWithdrawsAndALostSocketLeavesADetachedSession: a cancel before the last check leaves no session, a cancel after it is ignored, a lost socket leaves a detached owned session"
+    }
+  ],
+  "description": "Two cancel points, read exactly (OQ4 (c)). A `device_login_cancel` is honoured when the device login takes `connected` and once more inside `open`, just before the durable record: `open` then withdraws the session the way it withdraws a failed one, leaving nothing, and the result is `cancelled` with no audit event, since the device accepted and no session exists. A cancel read after that is ignored, as a frame after the result is, and the session opens. A lost socket never withdraws: after the core took `connected` the open goes on and the session lives on detached, owned and listed, as a 201 nobody read does.",
+  "corpus": [
+    "open_decisions §5",
+    "device-login step 20, how a device login ends",
+    "session model §5"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_cancel",
+          "v": 1
+        },
+        "note": "read before open's last check: the session is withdrawn"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "cancelled"
+        },
+        "note": "the result of a withdrawn open"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "connected"
+        },
+        "note": "a cancel read later is ignored and the session opens"
+      }
+    ]
+  }
+}

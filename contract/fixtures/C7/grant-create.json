@@ -1,0 +1,83 @@
+{
+  "seam": "C7",
+  "name": "grant-create",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "Grant an org credential to a principal over targets matched by Storage §9's filters, a vault administrator only; the cred.grant line first. A reference that is no org credential is 422.",
+  "corpus": [
+    "Storage §10.1a",
+    "credential-protection §8.3",
+    "credential-protection §8.4",
+    "E4 DEFAULT 8",
+    "E4 DEFAULT 9"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/grants",
+          "body": {
+            "user": "fixture-peer",
+            "selectors": [
+              "tag:core"
+            ],
+            "credential_ref": "fleet-backup"
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "grant_id": "g-0001",
+            "user": "fixture-peer",
+            "selectors": [
+              "tag:core"
+            ],
+            "credential_ref": "fleet-backup",
+            "granted_by": "fixture-user",
+            "granted_at": "2026-10-29T08:00:00Z"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/grants",
+          "body": {
+            "user": "fixture-peer",
+            "selectors": [],
+            "credential_ref": "fleet-backup"
+          },
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "at least one selector"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

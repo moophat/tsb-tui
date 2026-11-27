@@ -1,6 +1,7 @@
 """Packaging checks: run after a dummy-engine build, without running Windows code."""
 import hashlib
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -69,9 +70,30 @@ def test_missing_distribution_license_fails(tmp_path):
 
 
 def leak_pattern():
-    # Read the repository guard instead of maintaining a second leak pattern.
-    guard = (HERE.parent / '.github/scripts/leak-check.sh').read_text()
-    return re.compile(re.search(r"^PATTERN='(.*)'$", guard, re.MULTILINE).group(1), re.IGNORECASE)
+    pattern = os.environ.get('TSB_LEAK_PATTERN', '')
+    private = HERE.parent.parent / 'tsb-program/ops/publish/leak-pattern'
+    if not pattern and private.is_file():
+        pattern = private.read_text().split('\n', 1)[0].rstrip('\r')
+    if not pattern:
+        pytest.skip('TSB_LEAK_PATTERN and private tsb-program/ops/publish/leak-pattern are missing or empty')
+    return re.compile(pattern, re.IGNORECASE)
+
+
+@pytest.mark.parametrize('source', ['environment', 'file', 'missing'])
+def test_leak_pattern_sources(tmp_path, monkeypatch, source):
+    monkeypatch.setattr(sys.modules[__name__], 'HERE', tmp_path / 'consumer/packaging')
+    monkeypatch.delenv('TSB_LEAK_PATTERN', raising=False)
+    if source == 'environment':
+        monkeypatch.setenv('TSB_LEAK_PATTERN', 'synthetic-environment-marker')
+    if source in {'environment', 'file'}:
+        private = tmp_path / 'tsb-program/ops/publish/leak-pattern'
+        private.parent.mkdir(parents=True)
+        private.write_text('synthetic-file-marker\nunused-push-marker\n')
+        expected = 'synthetic-environment-marker' if source == 'environment' else 'synthetic-file-marker'
+        assert leak_pattern().search(expected)
+    else:
+        with pytest.raises(pytest.skip.Exception, match='TSB_LEAK_PATTERN.*leak-pattern'):
+            leak_pattern()
 
 
 def assert_no_authored_leaks(archive, root):
@@ -180,8 +202,8 @@ def assembly_inputs(tmp_path, monkeypatch):
     copytree = assemble.shutil.copytree
     repository_trees = {
         root / 'tsb_tui',
-        root / 'program/contract/client/tsb_contract_client',
-        root / 'program/contract/tsbc',
+        root / 'contract/client/tsb_contract_client',
+        root / 'contract/tsbc',
     }
 
     def copy_repository_tree(source, destination, **kwargs):
@@ -243,7 +265,7 @@ def test_contract_pin_failure_precedes_inputs(tmp_path, monkeypatch, capsys):
 
     def fail_check(command, **kwargs):
         calls.append(command)
-        assert command == ['bash', 'tools/contract-pin.sh', 'check']
+        assert command == ['bash', 'tools/contract-pin.sh', 'copy-check']
         assert kwargs['cwd'] == assemble.ROOT
         assert kwargs['check'] is True
         print('contract-check: deliberate failure', file=sys.stderr)
@@ -274,7 +296,7 @@ def test_dirty_source_precedes_inputs(tmp_path, monkeypatch, tracked, untracked,
     calls = []
 
     def run(*args, **kwargs):
-        assert args == ('bash', 'tools/contract-pin.sh', 'check')
+        assert args == ('bash', 'tools/contract-pin.sh', 'copy-check')
         assert kwargs['cwd'] == root
         calls.append('contract')
 

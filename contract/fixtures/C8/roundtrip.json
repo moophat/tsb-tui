@@ -1,0 +1,57 @@
+{
+  "seam": "C8",
+  "name": "roundtrip",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:recordings-parse",
+  "description": "A recording decodes to its frames and encodes back to the same bytes, in its two files: the .ttyrec is classic ttyrec — little-endian [sec u32][usec u32][len u32], then the data — and the .dir sidecar holds one code per frame, 0 for output and 1 for input. One recording per session, input and output in it. This one belongs to a session still live when it was read, so it has no end marker. Every collected recording must parse to its last byte — a torn tail, or a sidecar that does not count the frames, is a failure.",
+  "corpus": [
+    "lang-arch §8.3",
+    "open_decisions §5",
+    "spine plan.md §3 C8 (byte-exact round trip)"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "roundtrip.ttyrec.bin",
+    "sidecar": "roundtrip.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 123456,
+        "length": 2,
+        "direction": "out",
+        "data_hex": "2420"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 123456,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "65"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 123556,
+        "length": 1,
+        "direction": "out",
+        "data_hex": "65"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 323456,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "0d"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 323506,
+        "length": 4,
+        "direction": "out",
+        "data_hex": "0d0a2420"
+      }
+    ]
+  }
+}

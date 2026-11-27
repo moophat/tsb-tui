@@ -1,0 +1,154 @@
+{
+  "seam": "C1",
+  "name": "policy-e4-keys",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5's tests in schema/; E4 phase 4 (U5: the vault schema, policy.yaml and config.yaml E4 keys); the test is named in phase 16"
+    }
+  ],
+  "description": "policy.yaml's E4 keys: the vault.admin permission (Q6 (a)), recording.force by target filter, where the gate's \"single session\" reads as a single target, id: (Q9 (a); O16 (a)), and devices: the revocation switch (5.40c) and the inactivity bound (credential-protection §7.1).",
+  "corpus": [
+    "decision 5.40a",
+    "decision 5.40c",
+    "E4 Q6 (a)",
+    "E4 Q9 (a)",
+    "E4 DEFAULT 15",
+    "E4 DEFAULT 54"
+  ],
+  "case": {
+    "schema": "schemas/policy.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "session.create",
+                "vault.admin"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": false,
+            "force": [
+              "tag:core",
+              "id:edge-01"
+            ]
+          },
+          "devices": {
+            "revocation": "end_logins",
+            "inactive_after": "2160h"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "session.create",
+                "vault.admin"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": false,
+            "force": [
+              "tag:core",
+              "id:edge-01"
+            ]
+          },
+          "devices": {
+            "revocation": "next_connection",
+            "inactive_after": "0"
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "session.create",
+                "vault.admin"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": false,
+            "force": [
+              "tag:core",
+              "id:edge-01"
+            ]
+          },
+          "devices": {
+            "revocation": "never"
+          }
+        },
+        "note": "two values only"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "fixture-user": {
+              "permissions": [
+                "session.create",
+                "vault.admin"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          },
+          "recording": {
+            "enabled": true,
+            "force": [
+              "session:s-0001"
+            ]
+          },
+          "devices": {
+            "revocation": "end_logins",
+            "inactive_after": "2160h"
+          }
+        },
+        "note": "a target filter, never a session"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "users": {
+            "u": {
+              "permissions": [
+                "vault.superuser"
+              ],
+              "targets": [
+                "*"
+              ]
+            }
+          }
+        },
+        "note": "a permission outside the set"
+      }
+    ]
+  }
+}

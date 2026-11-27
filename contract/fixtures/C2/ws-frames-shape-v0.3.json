@@ -1,0 +1,278 @@
+{
+  "seam": "C2",
+  "name": "ws-frames-shape-v0.3",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "with:attach-ok-bytes-roundtrip",
+  "description": "Every frame v0.3 adds to the session stream (C2 decisions 2, 3, 5, 6, 8, 10): the attach viewport, the attach prefix, the clients frame, the handoff and its refusal, the size answer with its six reasons, and the stale / stale_prompt / stale_answer flow. Each is additive (every frame keeps v 1), so a v0.2 client ignores a t it does not know. The v0.2 invalid cases — an owner token moving by itself, an ack, a resume — stay invalid: nothing about them changed at this tag. The live run of attach-ok-bytes-roundtrip validates real server frames against the same shapes.",
+  "corpus": [
+    "decision 5.15",
+    "terminal-size-and-control.md §2–§3, §5–§6",
+    "Contract §10, §11",
+    "PTY §7.1"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "FIXTURE-TICKET-000000000000000000",
+          "session_id": "fixture-session-a",
+          "cols": 100,
+          "rows": 30
+        },
+        "note": "the client's viewport at attach (D2)"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "prefix",
+          "v": 1,
+          "through_seq": 12,
+          "cols": 120,
+          "rows": 40,
+          "scrollback": {"first_seq": 1, "bytes": 4096}
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "clients",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "clients": [
+            {"client_id": "fixture-client-1", "user": "fixture-user", "may_control": true}
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "handoff",
+          "v": 1,
+          "to": "fixture-client-2"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "handoff",
+          "v": 1,
+          "to": null
+        },
+        "note": "revoke to escrow"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "request_refused",
+          "v": 1,
+          "request": "handoff",
+          "reason": "view_only"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 132,
+          "rows": 40,
+          "reason": "applied"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 80,
+          "rows": 24,
+          "reason": "not_typist"
+        },
+        "note": "the size that stands, refused because the sender holds no token"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "pending",
+          "cause": "gap",
+          "gap_seq": 9,
+          "at": "2026-10-06T01:00:00Z"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "pending",
+          "cause": "grid_lost",
+          "at": "2026-10-06T01:00:00Z"
+        },
+        "note": "no gap_seq: no lost seq to name"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "chosen",
+          "cause": "gap",
+          "gap_seq": 9,
+          "at": "2026-10-06T01:00:00Z",
+          "choice": "wiggle",
+          "by": {"client_id": "fixture-client-1", "user": "fixture-user"}
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale_prompt",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "code": "stale.choose",
+          "text": "TSB: lost output - the screen may be wrong. Choose:",
+          "choices": [
+            {"choice": "wiggle", "text": "Redraw the screen (no guarantee)"},
+            {"choice": "ctrl_l", "text": "Send Ctrl-L (clears the screen, no guarantee)"},
+            {"choice": "continue", "text": "Keep going without a redraw (no guarantee the screen is right)"},
+            {"choice": "fresh_session", "text": "Start a fresh session"}
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale_answer",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "choice": "fresh_session"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "pending",
+          "cause": "gap",
+          "at": "2026-10-06T01:00:00Z"
+        },
+        "note": "cause gap names where the loss began"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "pending",
+          "cause": "grid_lost",
+          "gap_seq": 9,
+          "at": "2026-10-06T01:00:00Z"
+        },
+        "note": "grid_lost has no lost seq to name"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "chosen",
+          "cause": "gap",
+          "gap_seq": 9,
+          "at": "2026-10-06T01:00:00Z"
+        },
+        "note": "chosen carries the answer"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale_prompt",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "code": "stale.choose",
+          "text": "Choose wisely?",
+          "choices": [{"choice": "wiggle", "text": "Redraw the screen (no guarantee)"}]
+        },
+        "note": "the prompt text is fixed by the contract"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale_answer",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "choice": "restart"
+        },
+        "note": "the four choices are fixed"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "size",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "cols": 132,
+          "rows": 40,
+          "reason": "grew"
+        },
+        "note": "the six reasons are fixed"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "handoff",
+          "v": 1,
+          "to": "fixture-client-2",
+          "to_owner": true
+        },
+        "note": "no ownership transfer at this tag"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "token",
+          "v": 1,
+          "kind": "owner",
+          "holder": null,
+          "reason": "attach"
+        },
+        "note": "the owner token never moves by itself (v0.2, unchanged)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "ack",
+          "v": 1,
+          "seq": 42
+        },
+        "note": "no ack frame (decision 5.15)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "resume",
+          "v": 1,
+          "from_seq": 43
+        },
+        "note": "no resume frame (decision 5.15)"
+      }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "seam": "C1",
+  "name": "targets-list-unauthenticated-401",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "GET /targets uses the session cookie like every operation but /healthz: with no cookie the answer is 401 unauthenticated, before any inventory read. The target list is a principal's view, so it is never open to an anonymous caller.",
+  "corpus": [
+    "Storage §9",
+    "Contract §2",
+    "decision 5.34"
+  ],
+  "case": {
+    "inputs": [],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets",
+          "as": "none"
+        },
+        "expect": {
+          "status": 401,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "unauthenticated"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "unauthenticated",
+              "message": "log in first"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

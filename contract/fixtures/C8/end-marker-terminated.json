@@ -1,0 +1,57 @@
+{
+  "seam": "C8",
+  "name": "end-marker-terminated",
+  "mark": {
+    "published": "e0",
+    "required-green": "e1"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:recordings-end-marker-terminated",
+  "description": "The end from outside TSB: when a session's worker dies — or the target closes the session, or its connection is lost — the session cannot continue, and the core finalizes its recording with a terminated end marker — sidecar code 4, no data, the time the session ended, as seen by the component that observed the end (the core at this tag) — as the last frame: immortality §1.1 and §3's 'recording is finalized with a termination marker'. The rules are end-marker-killed's. Published at e0 — self-check grades these bytes at every run — and required green at e1, when a collection must hold the recording of a session that ended terminated (the harness's worker-death rig; worker-death-recorded). At e0 the core's own test proves the terminated marker (C1 session-ended-unexpectedly).",
+  "corpus": [
+    "immortality §1.1",
+    "immortality §3",
+    "session model §12",
+    "Storage §6",
+    "decision 5.44",
+    "decision 5.45",
+    "development-plan.md §2 v0.1 (C8: the termination marker)",
+    "lang-arch §8.3",
+    "session model §15"
+  ],
+  "case": {
+    "format": "c8-recording",
+    "file": "end-marker-terminated.ttyrec.bin",
+    "sidecar": "end-marker-terminated.dir.bin",
+    "frames": [
+      {
+        "sec": 1789000000,
+        "usec": 123456,
+        "length": 2,
+        "direction": "out",
+        "data_hex": "2420"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 123456,
+        "length": 1,
+        "direction": "in",
+        "data_hex": "65"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 123556,
+        "length": 1,
+        "direction": "out",
+        "data_hex": "65"
+      },
+      {
+        "sec": 1789000001,
+        "usec": 423456,
+        "length": 0,
+        "end": "terminated",
+        "data_hex": ""
+      }
+    ]
+  }
+}

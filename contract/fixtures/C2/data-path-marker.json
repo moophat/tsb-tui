@@ -1,0 +1,55 @@
+{
+  "seam": "C2",
+  "name": "data-path-marker",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/handshake_test.go — TestAJumpOnALiveSocketIsRecoveredByAHandshakeThatDeclaresTheLoss: with the data socket's loss and its re-dial mocked, lost is sent only after the wait for a control-side end passes with none, and restored when the re-dial's handshake reaches live"
+    }
+  ],
+  "description": "The data-path marker (Tu, 2026-09-27, ruled 2026-09-29: \"with mock test even\"): what the core observed — the session's data path to the worker is interrupted, so input may not reach the target and output may not come back — until restored. lost is sent only once the core has decided the loss is alone, after its wait for a control-side end passes with none, so a normal end never sends a spurious lost; restored when the re-dial's handshake reaches live; input meanwhile is refused replaying, and a re-dial that fails ends the session E10, terminated / worker_lost, so a lost path is never left standing. Tu's framing was a warning that input was delivered and the target is not answering: that case is quiet_prompt's, and this frame carries the data-path fact the core can observe.",
+  "corpus": [
+    "ipc-data-frame (the data path)",
+    "session model §9 E2"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "data_path",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "lost",
+          "at": "2026-09-29T01:00:01Z"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "data_path",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "restored",
+          "at": "2026-09-29T01:00:02Z"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "data_path",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "degraded",
+          "at": "2026-09-29T01:00:01Z"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "seam": "C3",
+  "name": "create-worker-knobs-no-default",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "artifacts:supervisor-sequence",
+  "description": "The supervisor clause carries ranges, never defaults (decision 5.36). create_worker's optional undialled_timeout bounds a worker no core ever dials — no connect will reach it, and E0 left such a worker running — and a v0.1 request without it stays valid: nothing is assumed in its place. kill_worker names its reap_timeout every time. Every create_worker a collection captures validates against the same shape.",
+  "corpus": [
+    "decision 5.36",
+    "session model §11",
+    "decision 5.13"
+  ],
+  "case": {
+    "schema": "schemas/supervisor.schema.json#/$defs/request",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 4
+        },
+        "note": "a v0.1 request: no bound, and none assumed"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 4,
+          "undialled_timeout": 60000
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 4,
+          "undialled_timeout": 0
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "kill_worker",
+          "worker_id": "fixture-worker-1",
+          "reap_timeout": 5000
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "kill_worker",
+          "worker_id": "fixture-worker-1"
+        },
+        "note": "the reap bound is always sent"
+      }
+    ]
+  }
+}

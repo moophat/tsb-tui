@@ -1,0 +1,158 @@
+{
+  "seam": "C2",
+  "name": "device-login-ticket-kinds",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "A ticket records its kind, and neither kind redeems the other. A session ticket (POST /auth/ws-ticket) presented in `device_login_attach` is closed 4003, and a device-login ticket (the 202's) presented in `attach` is closed 4003, each before anything is placed or dialled. The refusal burns the ticket it was given, as any first presentation does. The device login the second step created is never attached and ends at its ticket's lifetime.",
+  "corpus": [
+    "decision 5.34",
+    "conventions V10",
+    "device-login step 8",
+    "session-attach R3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-11-01T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_a": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid_a}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "v": 1,
+            "ticket": "FIXTURE-TICKET-000000000000000000",
+            "expires_in": 30
+          }
+        },
+        "save": {
+          "session_ticket": "/ticket"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "prompt"
+              },
+              "recording_acknowledged": true
+            }
+          }
+        },
+        "expect": {
+          "status": 202,
+          "example": {
+            "device_login_id": "fixture-device-login-1",
+            "ticket": "FIXTURE-TICKET-000000000000000000",
+            "expires_in": 30
+          }
+        },
+        "save": {
+          "device_login": "/device_login_id",
+          "dl_ticket": "/ticket"
+        }
+      },
+      {
+        "ws_open": "a",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "a",
+        "frame": {
+          "t": "device_login_attach",
+          "v": 1,
+          "ticket": "${session_ticket}",
+          "device_login_id": "${device_login}"
+        }
+      },
+      {
+        "ws_expect": "a",
+        "close": 4003
+      },
+      {
+        "ws_open": "b",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "b",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${dl_ticket}",
+          "session_id": "${sid_a}"
+        }
+      },
+      {
+        "ws_expect": "b",
+        "close": 4003
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_a}"
+      }
+    ]
+  }
+}

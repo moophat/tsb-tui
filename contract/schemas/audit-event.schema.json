@@ -1,0 +1,1730 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C6 audit event (minimal vocabulary)",
+  "description": "One line of the audit log: append-only JSONL, one event per line (Storage §6). The vocabulary at this tag is the minimum E0 writes. session.connect: a session was opened (its connection and channel) on a target; the core persists the session's record, created_at in it, before it writes this event, so its ts is never earlier than created_at. session.join: a client attached. session.terminate: a principal chose to end the session (DELETE /sessions/{id}). session.disconnect: the session ended — the event that closes its audit record — and says how and why (session model §12–§13; Storage §6): end_state killed, ended by TSB or through it, with end_reason idle, unattended or orphan (the session model §11 timers), owner or admin; or end_state terminated, ended from outside TSB, with end_reason worker_lost, target_closed (the target sent SSH_MSG_CHANNEL_CLOSE on the session's channel, or SSH_MSG_DISCONNECT on its connection) or connection_lost (our end of the connection is gone, or link_timeout fired). There is no separate expiry event: a timer's end is killed with the timer as its reason (decision 5.45). No exit status and no prompt text is ever acted on: at this release the contract does not carry an exit status, and carrying it to the clients as data is E5's, with exec. The session's recording ends in the end marker of the same end_state (C8); the reason is only here. auth.login and auth.login_failed: TSB's own login (the attempted name for a failure). target.hostkey_accepted: a target host key was accepted on first use (decision 5.18: an accepted host key is an audit event). target.auth_failed: the target refused a login supplied on session create, or a device login that ended without connecting after at least one answered attempt (the principal, the target and the connection; never the password or an answer, never the device's reason). target.hostkey_refused: the operator refused a first-use host key in a device login (the principal, the target, the fingerprint and the connection; no session). session.connect's detail may say where the credential came from (login: stored, supplied or prompted), whether a supplied or prompted login was recorded (login_recorded) and, for a prompted login that connected after refused attempts, how many (refused_attempts), never a value. config.recording_state: written once when the core starts, so a disabled recorder is on the record. session_type is mandatory on every session.* event: without it a shell and a file transfer are indistinguishable (Storage §6). recording_path names the session's .ttyrec (C8), and is absent, never an empty string, when there is none. Events reference recordings by path and never contain their bytes. From contract-v0.2: an end spooled while the core was away (spool-entry.schema.json) is written when the core returns, with ts the worker's stamp of the end (session model §15: stamped by the worker, written by the core; if the core never returns, the event never lands); and each operator alert is raised and cleared as an event (session model §11), alert.raised and alert.cleared, bound to no principal and to no session's record, naming only TSB's own components — never a pid, a path or a hostname (Contract §4: TSB's own state is not host state). From the vault release (E4): cred.store, cred.grant, cred.revoke and cred.scope_change (credential-protection §8.4, LOCKED) and cred.delete, each naming its credential by credential_ref and credential_layer (cred_event; cred.store carries unlock_class for an org credential and none for a personal one, DEFAULT 50); device.register and device.revoke, naming the device's principal, the device_id, who acted and, for a revocation, why (device_event); vault.wipe, a vault administrator's wipe of a user's vault (vault_wipe_event); auth.screen_unlock_failed, a refused screen-lock re-check, naming the principal as auth.login_failed names its attempt; and session.connect gains the chosen credential_ref and credential_layer (Contract §12: the record of the operator's choice). Each vault, device and grant act writes its line first, inside its bbolt write transaction before the commit, and is refused when the line cannot be written (DEFAULT 49). On device and wipe lines `user` is the principal whose device or vault it is and `actor` the principal who acted (absent when the core acted alone: the inactivity sweep); on every other line `user` is the principal who acted. No event carries a secret, a key, a Part, master_hash, a label, a login name or a password. Vault unlock and lock events wait for credential-protection §11.2. target_write_event records target.create and target.update with the shared or validated private source and field names, never values; target.delete carries its source and no field names. At E4b, account_event joins the device/wipe convention: user is the account acted on, actor is the authenticated caller. This is an exception to the preceding rule for every other line. The five account events name account and actor, never a password or hash; the act writes its line before commit and is refused if the line cannot be written. Already-disabled disable writes no line. auth.login_failed gains detail.reason disabled for a disabled account, without changing its northbound invalid_credentials answer. recording.output_incomplete: recording_integrity_event links immutable session recordings and explicit unrecorded context to durable integrity facts, never another lifecycle end (terminal-output-accounting.md; C6/recording-integrity-event-shape).",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/session_connect"
+    },
+    {
+      "$ref": "#/$defs/session_end"
+    },
+    {
+      "$ref": "#/$defs/session_other"
+    },
+    {
+      "$ref": "#/$defs/session_control"
+    },
+    {
+      "$ref": "#/$defs/session_kick"
+    },
+    {
+      "$ref": "#/$defs/session_stale_choice"
+    },
+    {
+      "$ref": "#/$defs/auth_event"
+    },
+    {
+      "$ref": "#/$defs/target_event"
+    },
+    {
+      "$ref": "#/$defs/target_auth_event"
+    },
+    {
+      "$ref": "#/$defs/config_event"
+    },
+    {
+      "$ref": "#/$defs/alert_event"
+    },
+    {
+      "$ref": "#/$defs/cred_event"
+    },
+    {
+      "$ref": "#/$defs/device_event"
+    },
+    {
+      "$ref": "#/$defs/vault_wipe_event"
+    },
+    {
+      "$ref": "#/$defs/target_hostkey_refused_event"
+    },
+    {
+      "$ref": "#/$defs/target_write_event"
+    },
+    {
+      "$ref": "#/$defs/account_event"
+    },
+    {
+      "$ref": "#/$defs/account_recover_event"
+    },
+    {
+      "$ref": "#/$defs/recording_integrity_event"
+    }
+  ],
+  "$defs": {
+    "ts": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "holder": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "client_id",
+        "user"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "client_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        }
+      },
+      "description": "An attached client, or null for broker escrow: the control-token holder's shape the session record uses. null names escrow — the token moved out of, or into, no client's hands (PTY §7.1)."
+    },
+    "session_connect": {
+      "type": "object",
+      "anyOf": [
+        {"required": ["credential_ref", "credential_layer"]},
+        {"properties": {"credential_ref": false, "credential_layer": false}}
+      ],
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "session_id",
+        "session_type",
+        "target"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "const": "session.connect"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_type": {
+          "$ref": "common.schema.json#/$defs/session_type"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id",
+          "description": "The target the session was opened on: required, so every session's audit record names what it reached."
+        },
+        "credential_ref": {
+          "$ref": "common.schema.json#/$defs/credential_ref",
+          "description": "From the vault release: the stored credential the session's connection was authenticated with, a reference and never the credential — the one the operator chose when two or more resolved, or the only one (Contract §12: the broker records the operator's choice). With credential_layer, both or neither. Absent for a supplied or a prompted login (detail.login supplied or prompted) and for a session on a reused connection, which sent no credential."
+        },
+        "credential_layer": {
+          "$ref": "common.schema.json#/$defs/credential_layer"
+        },
+        "detail": {
+          "type": "object",
+          "properties": {
+            "login": {
+              "enum": [
+                "stored",
+                "supplied",
+                "prompted"
+              ],
+              "description": "Where the credential this session's connection was authenticated with came from: `stored` (the credential the core resolved for the principal and target), `supplied` (the login the create request carried, SessionCreateRequest.login) or `prompted` (a device login: the answers typed at the device's own prompts). Optional. Never a value of the credential."
+            },
+            "refused_attempts": {
+              "$ref": "common.schema.json#/$defs/count",
+              "description": "For a `prompted` login that connected after refused attempts: the number of distinct attempt numbers (common.schema.json login_attempt) the core relayed an answer for that are below the highest attempt the device login saw, at least 1 (derived 9), so a guess that ended in success is still on the record. Written only when at least 1. Absent on a session on a reused prompted connection, and on a line rebuilt at a core restart, which cannot carry it (it is not persisted). Never an answer."
+            },
+            "login_recorded": {
+              "type": "boolean",
+              "description": "True exactly when login frames (C8 sidecar codes 6 and 7) were written at the head of this session's recording. A later session on the same connection carries none: it sent no login. Optional. Never a value. A device login's own-prompt frames (code 8) are among the frames it counts."
+            }
+          },
+          "description": "Detail the core adds. This tag names three optional keys, `login`, `login_recorded` and `refused_attempts`; the object stays open as before. A password, a key or any value of a login is never put here."
+        }
+      }
+    },
+    "session_end": {
+      "description": "ts is when the session ended as seen by the component that observed the end: the core's clock, or the worker's for an end the core records from the worker's stamp: one spooled while the core was away, one named on channel_closed by: worker, and one read from the spool at a connection_lost (session-end-by-tsb step 23b; session-end-from-outside step 5).",
+      "type": "object",
+      "required": [
+        "ts",
+        "action",
+        "session_id",
+        "session_type",
+        "end_state",
+        "end_reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username",
+          "description": "The principal who ended the session. Required when one did (end_reason owner or admin); a timer and an end from outside TSB have no actor."
+        },
+        "action": {
+          "const": "session.disconnect"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_type": {
+          "$ref": "common.schema.json#/$defs/session_type"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "end_state": {
+          "enum": [
+            "killed",
+            "terminated"
+          ]
+        },
+        "end_reason": {
+          "enum": [
+            "idle",
+            "unattended",
+            "orphan",
+            "owner",
+            "admin",
+            "worker_lost",
+            "target_closed",
+            "connection_lost"
+          ],
+          "description": "Why the session ended (session model §12–§13). killed: idle, unattended or orphan — a timer, with no actor — or owner or admin, the principal named in user. terminated: worker_lost (its worker died, stopped answering, or was not where its manifest said), target_closed (the target closed the session's channel, or disconnected the connection), connection_lost (our end of the connection is gone, or link_timeout fired)."
+        },
+        "recording_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Seconds from session.connect to this end."
+        },
+        "detail": {
+          "type": "object"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "end_state": {
+              "const": "killed"
+            },
+            "end_reason": {
+              "enum": [
+                "idle",
+                "unattended",
+                "orphan"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "end_state": {
+              "const": "killed"
+            },
+            "end_reason": {
+              "enum": [
+                "owner",
+                "admin"
+              ]
+            }
+          },
+          "required": [
+            "user"
+          ]
+        },
+        {
+          "properties": {
+            "end_state": {
+              "const": "terminated"
+            },
+            "end_reason": {
+              "enum": [
+                "worker_lost",
+                "target_closed",
+                "connection_lost"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "session_other": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "session_id",
+        "session_type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "enum": [
+            "session.join",
+            "session.terminate"
+          ]
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_type": {
+          "$ref": "common.schema.json#/$defs/session_type"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "detail": {
+          "type": "object"
+        }
+      }
+    },
+    "session_control": {
+      "description": "The control token moved (5.53): who could type when. The recording does not attribute input, so this event is what tells the audit who was the typist. reason: attach — a client attached and took the token (the no-clients case); detach — a client detached and the token left with it; handoff — an explicit C2 handoff moved it; owner — the owner revoked or reassigned it; takeover — the token went to the owner per 5.53 (by typing, or an explicit hand-off to self); release — auto-release returned it to the previous holder. from and to are the control-token holder's shape (client_id and user), null for broker escrow: so a detach is from the departing holder to null, and an attach from null to the new holder. A v0.2 receiver reads the holder from the token event, so these values are additive (immortality §6.4). user is the principal who acted: the departing holder for detach, the owner for owner and takeover. A size request is not audited — it is presentation (Contract §12) — and no audit event carries a size.",
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "session_id",
+        "session_type",
+        "from",
+        "to",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "const": "session.control"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_type": {
+          "$ref": "common.schema.json#/$defs/session_type"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "from": {
+          "$ref": "#/$defs/holder",
+          "description": "The holder the token moved from, or null for escrow."
+        },
+        "to": {
+          "$ref": "#/$defs/holder",
+          "description": "The holder the token moved to, or null for escrow."
+        },
+        "reason": {
+          "enum": [
+            "attach",
+            "detach",
+            "handoff",
+            "owner",
+            "takeover",
+            "release"
+          ]
+        }
+      }
+    },
+    "session_kick": {
+      "description": "The owner (or a session.terminate holder) removed one attached client from a session (Contract §10, PTY §7.1; C1 DELETE /sessions/{id}/clients/{client_id}). It closes that client's socket with code 4014 removed and does not end the session. client_id is the removed client; client_user is that client's principal — the actor is in user, and the two differ when an owner removes another user's client. For the token the removal is a detach (session.control reason detach).",
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "session_id",
+        "session_type",
+        "client_id",
+        "client_user"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username",
+          "description": "The principal who removed the client: the session's owner, or a holder of session.terminate."
+        },
+        "action": {
+          "const": "session.kick"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_type": {
+          "$ref": "common.schema.json#/$defs/session_type"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "client_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "client_user": {
+          "$ref": "common.schema.json#/$defs/username",
+          "description": "The removed client's principal."
+        }
+      }
+    },
+    "session_stale_choice": {
+      "description": "The holder answered the stale-grid prompt (5.46: whatever is chosen is recorded in the audit). choice is one of the four: wiggle, ctrl_l, continue, fresh_session — one spelling everywhere (C2, the audit, the recording; underscores, never a hyphen or an em dash). cause says what raised the stale flow: gap for a declared loss of target output, grid_lost for a grid that could not be rebuilt with no byte lost (5.52). gap_seq is present exactly when cause is gap — there is no lost seq to name for grid_lost — a oneOf + const on cause. client_id is the answering client. user is the chooser: who chose lives here, because the recording says only that the broker acted. This is the audit counterpart of the C8 broker marker.",
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "session_id",
+        "session_type",
+        "choice",
+        "cause",
+        "client_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username",
+          "description": "The principal who chose: the control-token holder that answered."
+        },
+        "action": {
+          "const": "session.stale_choice"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_type": {
+          "$ref": "common.schema.json#/$defs/session_type"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "choice": {
+          "enum": [
+            "wiggle",
+            "ctrl_l",
+            "continue",
+            "fresh_session"
+          ]
+        },
+        "cause": {
+          "enum": [
+            "gap",
+            "grid_lost"
+          ]
+        },
+        "gap_seq": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "description": "The lost seq the gap frame names, present exactly when cause is gap."
+        },
+        "client_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "cause": {
+              "const": "gap"
+            }
+          },
+          "required": [
+            "gap_seq"
+          ]
+        },
+        {
+          "properties": {
+            "cause": {
+              "const": "grid_lost"
+            },
+            "gap_seq": false
+          }
+        }
+      ]
+    },
+    "auth_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "enum": [
+            "auth.login",
+            "auth.login_failed",
+            "auth.screen_unlock_failed",
+            "auth.password_change_failed"
+          ]
+        },
+        "detail": {
+          "type": "object"
+        }
+      },
+      "description": "auth.login_failed gains detail.reason disabled at E4b, for a disabled account even when the supplied password is correct. The northbound answer remains identical to wrong credentials. Other existing detail keys remain extensible; auth.login_failed detail.reason is registered here, and other auth actions retain their existing detail shape.",
+      "oneOf": [
+        {
+          "properties": {
+            "action": {
+              "enum": [
+                "auth.login",
+                "auth.screen_unlock_failed",
+                "auth.password_change_failed"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "auth.login_failed"
+            },
+            "detail": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "enum": [
+                    "invalid_credentials",
+                    "disabled"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "target_event": {
+      "description": "target.hostkey_accepted: a target host key was accepted on first use (decision 5.18). On a prompt-mode connect (a device login) it records the operator's decision, not the worker's: the core writes it when the operator accepts the key in the pane, before it relays hostkey_answer, `user` is the principal who accepted, and the line stays as the record of what the operator decided even if the worker then ends the login hostkey_changed because a different key was recorded meanwhile. A line that cannot be written refuses the acceptance and the login goes no further (ruled 2026-11-01 15:00): the core sends the worker disconnect, the pane is told connect_failed, and no key is recorded.",
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "target",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "const": "target.hostkey_accepted"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "detail": {
+          "type": "object",
+          "required": [
+            "fingerprint"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "fingerprint": {
+              "$ref": "common.schema.json#/$defs/fingerprint"
+            },
+            "conn_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            }
+          }
+        }
+      }
+    },
+    "target_auth_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "target",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "description": "target.auth_failed: the target refused a login supplied on session create (SessionCreateRequest.login), or a device login ended without `connected` after at least one answered attempt (device-login step 19). The core writes it only for those; a refused stored credential writes no event, as before. `user` is the TSB principal who made the create, as on every event here, and never the target account name. No session exists, so there is no session_id. Never the password and never the device's own reason text (V4, V10).",
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "const": "target.auth_failed"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "detail": {
+          "type": "object",
+          "required": [
+            "login"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "login": {
+              "enum": [
+                "supplied",
+                "prompted"
+              ],
+              "description": "Where the refused credential came from: `supplied` (the login the create request carried) or `prompted` (a device login: answers typed at the device's own prompts). Only these two are audited here."
+            },
+            "conn_id": {
+              "$ref": "common.schema.json#/$defs/id",
+              "description": "The connection the worker was asked to open, when it had one."
+            },
+            "attempts": {
+              "$ref": "common.schema.json#/$defs/count",
+              "description": "For a `prompted` login: the number of distinct attempt numbers (common.schema.json login_attempt) for which the core relayed an answer, at least 1. With the worker's numbering every one of them failed (OPEN-R5 (a)). A login abandoned with no answer sent writes no event. Absent for a supplied login. Never an answer."
+            }
+          },
+          "oneOf": [
+            {
+              "required": [
+                "login",
+                "attempts"
+              ],
+              "properties": {
+                "login": {
+                  "const": "prompted"
+                }
+              }
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "login": {
+                  "const": "supplied"
+                },
+                "conn_id": {
+                  "$ref": "common.schema.json#/$defs/id"
+                }
+              }
+            }
+          ],
+          "$comment": "`attempts` goes with `login` `prompted` and is absent for `supplied`: the first branch requires it, the second closes the shape without it."
+        }
+      }
+    },
+    "target_hostkey_refused_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "target",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "description": "target.hostkey_refused (Release B): the operator refused a first-use host key in a device login (C2 device_login_hostkey_answer accept false). The core writes it before it relays the refusal to the worker, so the line records the operator's decision (L3); a refusal whose line cannot be written is logged and the refusal goes on, since a refusal records nothing (the ruling of 2026-11-01 15:00 changed only the acceptance). `user` is the TSB principal who refused, as on every event here. No session exists, so there is no session_id. `detail` carries the fingerprint the operator was shown and the connection the worker was asked to open. Never an answer to a prompt, and never the device's reason text (V4, V10).",
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "const": "target.hostkey_refused"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "detail": {
+          "type": "object",
+          "required": [
+            "fingerprint",
+            "conn_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "fingerprint": {
+              "$ref": "common.schema.json#/$defs/fingerprint"
+            },
+            "conn_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            }
+          }
+        }
+      }
+    },
+    "alert_event": {
+      "description": "An operator alert raised or cleared (session model §11). detail.alert_id matches a clear to its raise, and a restarted core rebuilds the active set from the raises that have no clear. supervisor_unresponsive names its supervisor; worker_unkillable its worker, and the supervisor that could not kill it; session_ids, when present, are the sessions it affects.",
+      "type": "object",
+      "required": [
+        "ts",
+        "action",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "action": {
+          "enum": [
+            "alert.raised",
+            "alert.cleared"
+          ]
+        },
+        "detail": {
+          "type": "object",
+          "required": [
+            "alert_id",
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "alert_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "kind": {
+              "$ref": "common.schema.json#/$defs/alert_kind"
+            },
+            "supervisor_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "worker_id": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "session_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/id"
+              }
+            }
+          },
+          "$ref": "common.schema.json#/$defs/alert_subjects"
+        }
+      }
+    },
+    "config_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "action",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "action": {
+          "const": "config.recording_state"
+        },
+        "detail": {
+          "type": "object",
+          "required": [
+            "enabled"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "cred_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "credential_ref",
+        "credential_layer"
+      ],
+      "additionalProperties": false,
+      "description": "From the vault release: a credential's or a grant's lifecycle (credential-protection §8.4, LOCKED, and cred.delete). cred.store: a credential created — an org one carrying the unlock class its administrator chose (§8.2), a personal one carrying none (DEFAULT 50). cred.delete: a credential deleted (a personal one's cleared Layer 2a mappings named in cleared_targets, O30). cred.grant, cred.scope_change, cred.revoke: a grant created, its selectors changed, removed; always of an org credential (DEFAULT 8), naming the grant, the principal granted it and the selectors (for a scope change, the new ones and the previous ones). `user` is the principal who acted. A store under a used reference is refused, so a replacement is a cred.delete then a cred.store (O32).",
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "enum": [
+            "cred.store",
+            "cred.delete",
+            "cred.grant",
+            "cred.revoke",
+            "cred.scope_change"
+          ]
+        },
+        "credential_ref": {
+          "$ref": "common.schema.json#/$defs/credential_ref"
+        },
+        "credential_layer": {
+          "$ref": "common.schema.json#/$defs/credential_layer"
+        },
+        "unlock_class": {
+          "$ref": "common.schema.json#/$defs/unlock_class"
+        },
+        "kind": {
+          "$ref": "common.schema.json#/$defs/credential_kind",
+          "description": "cred.store only, optional: what the entry carries (the plaintext index's kind)."
+        },
+        "grant_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "grantee": {
+          "$ref": "common.schema.json#/$defs/username",
+          "description": "The principal granted the credential."
+        },
+        "selectors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "policy.schema.json#/$defs/target_filter"
+          }
+        },
+        "previous_selectors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "policy.schema.json#/$defs/target_filter"
+          }
+        },
+        "cleared_targets": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "description": "cred.delete of a personal credential: the targets whose Layer 2a mapping to it the delete cleared (O30). Absent or empty when none was mapped."
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "action": {
+              "const": "cred.store"
+            },
+            "credential_layer": {
+              "const": "org"
+            },
+            "grant_id": false,
+            "grantee": false,
+            "selectors": false,
+            "previous_selectors": false,
+            "cleared_targets": false
+          },
+          "required": [
+            "unlock_class"
+          ]
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "cred.store"
+            },
+            "credential_layer": {
+              "const": "personal"
+            },
+            "unlock_class": false,
+            "grant_id": false,
+            "grantee": false,
+            "selectors": false,
+            "previous_selectors": false,
+            "cleared_targets": false
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "cred.delete"
+            },
+            "unlock_class": false,
+            "kind": false,
+            "grant_id": false,
+            "grantee": false,
+            "selectors": false,
+            "previous_selectors": false
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "enum": [
+                "cred.grant",
+                "cred.revoke"
+              ]
+            },
+            "credential_layer": {
+              "const": "org"
+            },
+            "unlock_class": false,
+            "kind": false,
+            "previous_selectors": false,
+            "cleared_targets": false
+          },
+          "required": [
+            "grant_id",
+            "grantee",
+            "selectors"
+          ]
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "cred.scope_change"
+            },
+            "credential_layer": {
+              "const": "org"
+            },
+            "unlock_class": false,
+            "kind": false,
+            "cleared_targets": false
+          },
+          "required": [
+            "grant_id",
+            "grantee",
+            "selectors",
+            "previous_selectors"
+          ]
+        }
+      ]
+    },
+    "device_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "device_id"
+      ],
+      "additionalProperties": false,
+      "description": "From the vault release: device.register, a device put on the allowlist (its key stored, its Part 2 set, credential-protection §5.2, §5.3); device.revoke, a device taken off it (its key and its Part 2 deleted, §7.2), reason user (by its own principal), admin (by a vault administrator, a wipe included) or inactive (by the core's inactivity sweep, with no actor). `user` is the principal whose device it is; `actor` the principal who acted. Never the public key.",
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "enum": [
+            "device.register",
+            "device.revoke"
+          ]
+        },
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/device_id"
+        },
+        "actor": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "reason": {
+          "enum": [
+            "user",
+            "admin",
+            "inactive"
+          ]
+        },
+        "device_name": {
+          "$ref": "common.schema.json#/$defs/device_name"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "action": {
+              "const": "device.register"
+            },
+            "reason": false
+          },
+          "required": [
+            "actor"
+          ]
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "device.revoke"
+            },
+            "reason": {
+              "enum": [
+                "user",
+                "admin"
+              ]
+            }
+          },
+          "required": [
+            "actor",
+            "reason"
+          ]
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "device.revoke"
+            },
+            "reason": {
+              "const": "inactive"
+            },
+            "actor": false
+          },
+          "required": [
+            "reason"
+          ]
+        }
+      ]
+    },
+    "vault_wipe_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "actor"
+      ],
+      "additionalProperties": false,
+      "description": "From the vault release: vault.wipe, a vault administrator wiped a user's vault (D16; DEFAULT 46): written first, then every device of the user revoked (each with its own device.revoke line, reason admin), the user's vault record deleted, every unlock of the user purged and the user's Layer 2a mappings cleared. `user` is the wiped principal, `actor` the administrator. Nothing is recovered.",
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "const": "vault.wipe"
+        },
+        "actor": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "cleared_targets": {
+          "type": "array",
+          "maxItems": 100000,
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "description": "The targets whose Layer 2a mapping the wipe cleared (O30)."
+        }
+      }
+    },
+    "target_write_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "target",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "enum": [
+            "target.create",
+            "target.update",
+            "target.delete"
+          ]
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "detail": {
+          "type": "object",
+          "required": [
+            "source"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "$ref": "common.schema.json#/$defs/id",
+              "pattern": "^(tsb|private-[0-9a-f]{32})$",
+              "description": "The shared source or validated private source; no owner field."
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "type",
+                  "name",
+                  "group",
+                  "tags",
+                  "vendor",
+                  "prompt_pattern",
+                  "import_ref",
+                  "share",
+                  "host",
+                  "port",
+                  "user",
+                  "auth",
+                  "x11",
+                  "skipBanner",
+                  "agentForward",
+                  "algorithms.hmac",
+                  "algorithms.kex",
+                  "algorithms.cipher",
+                  "algorithms.serverHostKey",
+                  "algorithms.compression",
+                  "forwardedPorts",
+                  "keepaliveInterval",
+                  "keepaliveCountMax",
+                  "inputMode",
+                  "inputNewlines",
+                  "outputMode",
+                  "outputNewlines",
+                  "input.backspace",
+                  "connection_linger",
+                  "keepaliveProbeInterval",
+                  "orphan_timeout",
+                  "idle",
+                  "unattended",
+                  "expiry_notice",
+                  "quiet_prompt",
+                  "open_timeout",
+                  "login_timeout",
+                  "size_floor",
+                  "size_ceiling"
+                ]
+              },
+              "description": "Names only: fields set on create, changed on update; a no-op update has []. Delete has no fields."
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "action": {
+              "enum": [
+                "target.create",
+                "target.update"
+              ]
+            },
+            "detail": {
+              "required": [
+                "fields"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "target.delete"
+            },
+            "detail": {
+              "properties": {
+                "fields": false
+              }
+            }
+          }
+        }
+      ],
+      "description": "Every target file write is audited as soon as the file lands, before waiting for the index. Audit failure answers 500 with the change retained and its audit line missing, whatever the index does. With the audit written, an index timeout answers 503 saying the change took effect and is audited but is not yet listed. Delete omits fields; no-op update is audited with []."
+    },
+    "account_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "actor": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "enum": [
+            "account.create",
+            "account.disable",
+            "account.enable",
+            "account.password_set",
+            "account.password_changed"
+          ]
+        }
+      },
+      "description": "E4b API account acts: user is the account acted on; actor is the authenticated principal. Written before commit, never a password or hash. No account event for a refusal or an already-disabled disable retry. Host recovery uses account_recover_event, with actor absent.",
+      "required": [
+        "ts",
+        "user",
+        "action",
+        "actor"
+      ]
+    },
+    "account_recover_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "user",
+        "action"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "action": {
+          "const": "account.recover"
+        }
+      }
+    },
+    "recording_integrity_extent": {
+      "type": "object",
+      "required": [
+        "version",
+        "kind",
+        "key",
+        "from_seq",
+        "through_seq",
+        "from_byte",
+        "through_byte",
+        "from_out_ts",
+        "through_out_ts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "extent"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^ri1:[A-Za-z0-9][A-Za-z0-9._-]{0,127}:e:(0|[1-9][0-9]{0,19}):(0|[1-9][0-9]{0,19}):(0|[1-9][0-9]{0,19}):(0|[1-9][0-9]{0,19})$"
+        },
+        "from_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "through_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "from_byte": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "through_byte": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "from_out_ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "through_out_ts": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        }
+      },
+      "description": "Validated contiguous missing assigned-output extent: lower exclusive, upper inclusive; through_seq > from_seq and through_byte > from_byte, key ri1:<session_id>:e:<from_seq>:<through_seq>:<from_byte>:<through_byte>. Exact key/continuity/timestamp validation is U5/U2 owed in C6/recording-integrity-exact-once; schema cannot compare fields."
+    },
+    "recording_integrity_unconfirmed": {
+      "type": "object",
+      "required": [
+        "version",
+        "kind",
+        "key",
+        "baseline_seq",
+        "baseline_bytes",
+        "reason",
+        "observed_at_ns",
+        "unknown_suffix"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "unconfirmed"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^ri1:[A-Za-z0-9][A-Za-z0-9._-]{0,127}:u:(0|[1-9][0-9]{0,19}):(0|[1-9][0-9]{0,19})$"
+        },
+        "baseline_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "baseline_bytes": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "reason": {
+          "enum": [
+            "core_wait_timeout",
+            "core_stop",
+            "worker_drain_timeout",
+            "worker_read_error",
+            "worker_absent",
+            "recording_unsynced"
+          ]
+        },
+        "observed_at_ns": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        },
+        "unknown_suffix": {
+          "const": true
+        }
+      },
+      "description": "Unknown remainder after recording baseline or last validated durable contiguous coverage. No upper count/stamp. key ri1:<session_id>:u:<baseline_seq>:<baseline_bytes>. First durable observation reused on retry. C6/terminal-close-partial-durable-coverage (U2 owed). recording_unsynced (audit-only, tsb-program #137): a failed recording fsync quarantines the pair at P, the session record's commit point in bbolt, which may be below A; only this reason has a baseline below A, and the pair is never relied on above P. C6/terminal-recording-sync-quarantine (U2 owed)."
+    },
+    "recording_integrity_sealed": {
+      "type": "object",
+      "required": [
+        "version",
+        "kind",
+        "key",
+        "read_outcome",
+        "final_last_seq",
+        "final_out_bytes",
+        "final_last_out_ts",
+        "observed_at_ns",
+        "unknown_suffix"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "sealed"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^ri1:[A-Za-z0-9][A-Za-z0-9._-]{0,127}:s$"
+        },
+        "read_outcome": {
+          "enum": [
+            "eof",
+            "timeout",
+            "read_error"
+          ]
+        },
+        "final_last_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "final_out_bytes": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "final_last_out_ts": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "observed_at_ns": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        },
+        "unknown_suffix": {
+          "type": "boolean"
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "final_last_seq": {
+              "const": 0
+            },
+            "final_out_bytes": {
+              "const": 0
+            },
+            "final_last_out_ts": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "final_last_seq": {
+              "minimum": 1
+            },
+            "final_out_bytes": {
+              "minimum": 1
+            },
+            "final_last_out_ts": {
+              "minimum": 1
+            }
+          }
+        }
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "read_outcome": {
+              "const": "eof"
+            },
+            "unknown_suffix": {
+              "const": false
+            }
+          }
+        },
+        {
+          "properties": {
+            "read_outcome": {
+              "enum": [
+                "timeout",
+                "read_error"
+              ]
+            },
+            "unknown_suffix": {
+              "const": true
+            }
+          }
+        }
+      ],
+      "description": "Immutable worker seal, key ri1:<session_id>:s. EOF settles only with full contiguous coverage; timeout/read_error retain permanent unknown suffix. C6/recording-integrity-unknown-suffix (U2/U5 owed)."
+    },
+    "recording_integrity_not_recorded": {
+      "type": "object",
+      "required": [
+        "version",
+        "kind",
+        "key",
+        "read_outcome",
+        "final_last_seq",
+        "final_out_bytes",
+        "final_last_out_ts",
+        "observed_at_ns",
+        "unknown_suffix",
+        "recording_enabled"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "not_recorded"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^ri1:[A-Za-z0-9][A-Za-z0-9._-]{0,127}:n$"
+        },
+        "read_outcome": {
+          "enum": [
+            "eof",
+            "timeout",
+            "read_error"
+          ]
+        },
+        "final_last_seq": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "final_out_bytes": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "final_last_out_ts": {
+          "$ref": "common.schema.json#/$defs/u64"
+        },
+        "observed_at_ns": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        },
+        "unknown_suffix": {
+          "type": "boolean"
+        },
+        "recording_enabled": {
+          "const": false
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "final_last_seq": {
+              "const": 0
+            },
+            "final_out_bytes": {
+              "const": 0
+            },
+            "final_last_out_ts": {
+              "const": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "final_last_seq": {
+              "minimum": 1
+            },
+            "final_out_bytes": {
+              "minimum": 1
+            },
+            "final_last_out_ts": {
+              "minimum": 1
+            }
+          }
+        }
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "read_outcome": {
+              "const": "eof"
+            },
+            "unknown_suffix": {
+              "const": false
+            }
+          }
+        },
+        {
+          "properties": {
+            "read_outcome": {
+              "enum": [
+                "timeout",
+                "read_error"
+              ]
+            },
+            "unknown_suffix": {
+              "const": true
+            }
+          }
+        }
+      ],
+      "description": "Entirely unrecorded session with validated final seal, key ri1:<session_id>:n; never a partial recording. C6/terminal-unrecorded-and-partial (U2/U5 owed)."
+    },
+    "recording_integrity_unrecorded": {
+      "type": "object",
+      "required": [
+        "version",
+        "kind",
+        "key",
+        "recording_enabled",
+        "baseline_seq",
+        "baseline_bytes",
+        "reason",
+        "observed_at_ns",
+        "unknown_suffix"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "unrecorded"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^ri1:[A-Za-z0-9][A-Za-z0-9._-]{0,127}:u:null:null$"
+        },
+        "recording_enabled": {
+          "const": false
+        },
+        "baseline_seq": {
+          "type": "null"
+        },
+        "baseline_bytes": {
+          "type": "null"
+        },
+        "reason": {
+          "enum": [
+            "core_wait_timeout",
+            "core_stop",
+            "worker_drain_timeout",
+            "worker_read_error",
+            "worker_absent"
+          ]
+        },
+        "observed_at_ns": {
+          "$ref": "common.schema.json#/$defs/u64",
+          "minimum": 1
+        },
+        "unknown_suffix": {
+          "const": true
+        }
+      },
+      "description": "Entirely unrecorded close-before-accounting, key ri1:<session_id>:u:null:null (the unconfirmed form with null baselines; reason-free, so the first durable fact is reused whatever the later reason). No path, final counters/outcome or fabricated zero baseline; original per-session recording-disabled context required. Its reason enum is the unconfirmed one without recording_unsynced: there is no recording pair to quarantine. C6/recording-integrity-unrecorded (U2/U5 owed)."
+    },
+    "recording_integrity_continuation": {
+      "type": "object",
+      "required": ["version", "kind", "key", "generation", "previous_path", "previous_seq_out", "previous_bytes", "previous_offset", "continuation_path"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {"const": 1},
+        "kind": {"const": "continuation"},
+        "key": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^ri1:[A-Za-z0-9][A-Za-z0-9._-]{0,127}:c:[1-9][0-9]{0,19}$"},
+        "generation": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1},
+        "previous_path": {"type": "string", "minLength": 1},
+        "previous_seq_out": {"$ref": "common.schema.json#/$defs/u64"},
+        "previous_bytes": {"$ref": "common.schema.json#/$defs/u64"},
+        "previous_offset": {"$ref": "common.schema.json#/$defs/u64"},
+        "continuation_path": {"type": "string", "minLength": 1}
+      },
+      "description": "A durable link from the quarantined pair at P to a continuation. Validate key, pair identity, paths, P and complete audit history; it does not establish output completeness. terminal-output-accounting.md."
+    },
+    "recording_integrity_continuation_unconfirmed": {
+      "type": "object",
+      "required": ["version", "kind", "key", "generation", "baseline_seq", "baseline_bytes", "baseline_offset", "reason", "observed_at_ns", "unknown_suffix"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {"const": 1},
+        "kind": {"const": "continuation_unconfirmed"},
+        "key": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^ri1:[A-Za-z0-9][A-Za-z0-9._-]{0,127}:q:[1-9][0-9]{0,19}$"},
+        "generation": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1},
+        "baseline_seq": {"$ref": "common.schema.json#/$defs/u64"},
+        "baseline_bytes": {"$ref": "common.schema.json#/$defs/u64"},
+        "baseline_offset": {"$ref": "common.schema.json#/$defs/u64"},
+        "reason": {"const": "recording_unsynced"},
+        "observed_at_ns": {"$ref": "common.schema.json#/$defs/u64", "minimum": 1},
+        "unknown_suffix": {"const": true}
+      },
+      "description": "A continuation pair quarantined at its durable P by a recording file or directory sync failure. Validate key, generation and path against its incoming link. terminal-output-accounting.md."
+    },
+    "recording_integrity_detail": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/recording_integrity_extent"
+        },
+        {
+          "$ref": "#/$defs/recording_integrity_unconfirmed"
+        },
+        {
+          "$ref": "#/$defs/recording_integrity_sealed"
+        },
+        {
+          "$ref": "#/$defs/recording_integrity_not_recorded"
+        },
+        {
+          "$ref": "#/$defs/recording_integrity_unrecorded"
+        },
+        {"$ref": "#/$defs/recording_integrity_continuation"},
+        {"$ref": "#/$defs/recording_integrity_continuation_unconfirmed"}
+      ]
+    },
+    "recording_integrity_event": {
+      "type": "object",
+      "required": [
+        "ts",
+        "action",
+        "session_id",
+        "session_type",
+        "detail"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "action": {
+          "const": "recording.output_incomplete"
+        },
+        "session_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "session_type": {
+          "$ref": "common.schema.json#/$defs/session_type"
+        },
+        "recording_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "$ref": "#/$defs/recording_integrity_detail"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "recording_path"
+          ],
+          "properties": {
+            "detail": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "extent",
+                    "unconfirmed",
+                    "sealed",
+                    "continuation",
+                    "continuation_unconfirmed"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "recording_path": false,
+            "detail": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "not_recorded",
+                    "unrecorded"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "Integrity facts linked to an original session, including after lifecycle closure. No user/actor/payload or second end. Closed detail union; exact boundary-derived key is validated by U5/U2 (C6/recording-integrity-event-shape, reference tests owed). Compare/export includes these alongside the immutable recording. terminal-output-accounting.md."
+    }
+  }
+}

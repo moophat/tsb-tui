@@ -1,0 +1,91 @@
+{
+  "seam": "C2",
+  "name": "prefix-after-restart",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U2", "test": "owed by the E2 core plan"},
+    {"unit": "U11", "test": "owed by the E2 harness plan"}
+  ],
+  "description": "The attach prefix survives a core or VT restart (C2 decision 3; 5.47; F3d): after a kill the reattaching client still gets a prefix whose dump yields the golden screen, and a kill-vt case restores the last snapshot and feeds the VT the recording's own frames past it, with no C3 handshake, so nothing is recorded twice. The prefix carries the dump's geometry and the seq the dump stops at; through_seq is 0 before any output. The live shapes are graded by U2 and U11 (owed by the E2 core and harness plans).",
+  "corpus": [
+    "C2 decision 3",
+    "5.47",
+    "Contract §11",
+    "F3d"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "prefix",
+          "v": 1,
+          "through_seq": 0,
+          "cols": 120,
+          "rows": 40
+        },
+        "note": "a session with no output yet: the dump is the ground state, through_seq is 0"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "prefix",
+          "v": 1,
+          "through_seq": 42,
+          "cols": 120,
+          "rows": 40,
+          "scrollback": {"first_seq": 11, "bytes": 2048}
+        },
+        "note": "after output the dump covers frames up to through_seq; scrollback names what the raw ring still holds"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "prefix",
+          "v": 1,
+          "through_seq": 7,
+          "cols": 80,
+          "rows": 24
+        },
+        "note": "cols and rows are the dump's geometry, not the client's viewport"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "prefix",
+          "v": 1,
+          "cols": 120,
+          "rows": 40
+        },
+        "note": "through_seq is required: a receiver needs the dump's end point"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "prefix",
+          "v": 1,
+          "through_seq": 0,
+          "rows": 40
+        },
+        "note": "cols is required: the dump's geometry"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "prefix",
+          "v": 1,
+          "through_seq": 0,
+          "cols": 120,
+          "rows": 40,
+          "scrollback": {"first_seq": 11}
+        },
+        "note": "scrollback carries both first_seq and bytes"
+      }
+    ]
+  }
+}

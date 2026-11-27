@@ -1,0 +1,109 @@
+{
+  "seam": "C3",
+  "name": "open-late-closed-released",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the core plan for the open-shell bound — the core waits the target's bound plus one heartbeat_interval toward a worker below 0.6 too, and a channel_opened after it gave up is closed and released with nothing recorded"
+    }
+  ],
+  "description": "A channel_opened arrives after the core gave up waiting for it (ipc-control open_shell, release; session-open steps 12 and 14). The core's wait for channel_opened, the target's bound plus one heartbeat_interval, applies toward every worker: toward a 0.5 worker the open_shell carries no open_timeout, the worker applies no bound, and the core waits the same. The wait expires, which nothing on this socket shows; then the worker's channel_opened arrives. The core never offered the session, so it closes it with close_channel, and on the channel_closed by: core that answers it sends release, so the worker drops the session instead of listing it until its connection closes. The core records nothing for it: no session record, no recording, no audit line. If the worker wrote a spool entry for the session (it ended the channel by itself, or saw the target close it, before the close_channel reached it), the core deletes that entry before it sends release, auditing nothing; that is a file operation, which this socket does not show. A 0.6 worker racing its own bound is answered the same. The core's wait and its answer to the late open are graded by U2's test.",
+  "corpus": [
+    "immortality §4.1",
+    "immortality §6.4",
+    "lang-arch §7.3",
+    "plan.md §3 C3",
+    "Contract §15.2"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000,
+            "keepalive_probe_interval": 15000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24
+        },
+        "note": "toward a 0.5 worker: no open_timeout, so the worker applies no bound; the core still waits the target's bound plus one heartbeat_interval, and that wait expires after this line: nothing crosses the socket when it does"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        },
+        "note": "late: the core gave up on this open and never offered the session"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "close_channel",
+          "session_id": "fixture-session-a"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "core",
+          "reason": "closed by the core"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "release",
+          "session_id": "fixture-session-a"
+        },
+        "note": "nothing to record: no session record, no recording, no audit line; the session's spool entry, if any, was deleted first with nothing audited; the worker drops the session from its manifest"
+      }
+    ]
+  }
+}

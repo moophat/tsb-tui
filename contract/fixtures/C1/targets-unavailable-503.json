@@ -1,0 +1,119 @@
+{
+  "seam": "C1",
+  "name": "targets-unavailable-503",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 U2 plan"
+    }
+  ],
+  "description": "With the inventory index down, both read operations answer 503 inventory_unavailable, and session create still works: the index serves listing, not opening, so a Redis outage takes the target picker away and leaves a running session, and a create on a known target id, alive. Graded by the U2 plan's test, which is owed.",
+  "corpus": [
+    "Storage §2.2",
+    "Storage §9",
+    "session-open step 2"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets"
+        },
+        "expect": {
+          "status": 503,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "inventory_unavailable"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "inventory_unavailable",
+              "message": "the inventory index is down"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/${target_id}"
+        },
+        "expect": {
+          "status": 503,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "inventory_unavailable"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "inventory_unavailable",
+              "message": "the inventory index is down"
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

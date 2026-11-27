@@ -1,0 +1,121 @@
+{
+  "seam": "C6",
+  "name": "event-vocabulary",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:audit-valid",
+  "description": "One line per action of the minimal vocabulary: auth.login, auth.login_failed, session.connect, session.join, session.terminate, session.disconnect (how and why the session ended, its duration and the recording pointer), target.hostkey_accepted, config.recording_state. An action outside the vocabulary is refused. Every line of a collected audit log must validate.",
+  "corpus": [
+    "Storage §6",
+    "decision 5.18",
+    "decision 5.44",
+    "open_decisions §5",
+    "development-plan.md §2 v0.1 (C6 audit vocabulary, minimal)"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "auth.login"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "mallory",
+          "action": "auth.login_failed",
+          "detail": {
+            "reason": "invalid_credentials"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "session.connect",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "session_type": "shell"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "bob",
+          "action": "session.join",
+          "session_id": "fixture-session-a",
+          "session_type": "shell"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "session.terminate",
+          "session_id": "fixture-session-a",
+          "session_type": "shell"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "end_state": "killed",
+          "end_reason": "owner",
+          "user": "alice",
+          "duration": 3600,
+          "recording_path": "/var/lib/tsb/recordings/fixture-session-a.ttyrec"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "target.hostkey_accepted",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a",
+          "detail": {
+            "fingerprint": "SHA256:FIXTURE000000000000000000000000000000000000",
+            "conn_id": "fixture-conn-1"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "config.recording_state",
+          "detail": {
+            "enabled": true
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "user": "alice",
+          "action": "session.frobnicate",
+          "session_id": "fixture-session-a",
+          "session_type": "shell"
+        },
+        "note": "not in the vocabulary"
+      }
+    ]
+  }
+}

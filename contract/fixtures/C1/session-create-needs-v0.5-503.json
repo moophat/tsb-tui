@@ -1,0 +1,58 @@
+{
+  "seam": "C1",
+  "name": "session-create-needs-v0.5-503",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "description": "A create on a telnet target needs a worker at proto_version 0.5 or later: an older worker has no telnet driver. With no supervisor providing one, the core answers 503 worker_unavailable with a message saying the workers predate telnet, and asks no worker for anything — no create_worker goes out. The live shape is owed by the E3 core plan, which can show that no worker was asked for; the contract's stub provider answers create at 201 and cannot grade this.",
+  "corpus": [
+    "session model §5",
+    "session-open step 5",
+    "immortality §6.4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "fixture-telnet-target",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 503,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "worker_unavailable"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "worker_unavailable",
+              "message": "no worker at proto_version 0.5 or later: the workers predate telnet"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 core plan"
+    }
+  ]
+}

@@ -11,7 +11,7 @@
 # Why one script: the earlier pattern lived only in the workflow, so the hook did not exist and
 # reviewers found leaks by hand (2026-09-18).
 #
-# What every mode checks: PATTERN below defines the dev-subnet and CGNAT addresses, dev
+# What every mode checks: PATTERN defines the dev-subnet and CGNAT addresses, dev
 # domain, secret paths, checkout and vault paths, and shared-mount name checked in this repo.
 # Only --push also checks WORKSTATION_PATTERN: lane paths, the toolkit checkout, agent scratch
 # paths, and workstation file URLs. What it cannot catch: node shorthand like ".14 to .10"
@@ -19,18 +19,20 @@
 # Shorthand is prevented by the ops/ split and by review, not by this script.
 set -uo pipefail
 
-PATTERN='10\.98\.10\.[0-9]|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.[0-9]+\.[0-9]+|([a-z0-9-]+\.)?moophat\.cc|/root/\.secrets/|/opt/(ObsidianVault|tsb-(program|core|web)|lanes|tsb-test-venv)|/tmp/opencode|/mnt/shared'
+PATTERN="${TSB_LEAK_PATTERN:-}"
+WORKSTATION_PATTERN="${TSB_LEAK_PUSH_PATTERN:-}"
 
-# A second pattern, applied to a push range only, never to the full-tree scan. Older tracked files
-# already hold some of these strings, so adding them to $PATTERN would fail CI on lines no push
-# touches; cleaning those files is a separate issue. The full-tree scan keeps $PATTERN alone.
-WORKSTATION_PATTERN='/opt/lanes/|/opt/agentoolkit|/tmp/claude-|/root/\.claude|file://(localhost)?/(opt|root|tmp)/'
+if [ -f "../tsb-program/ops/publish/leak-pattern" ]; then
+  if [ -z "$PATTERN" ]; then
+    PATTERN="$(head -n 1 "../tsb-program/ops/publish/leak-pattern" | tr -d '\r\n')"
+  fi
+  if [ -z "$WORKSTATION_PATTERN" ]; then
+    WORKSTATION_PATTERN="$(sed -n '2p' "../tsb-program/ops/publish/leak-pattern" | tr -d '\r\n')"
+  fi
+fi
 
-# Paths the scan skips, each with a reason. Keep this list short and every entry justified:
-# an exclusion is a place to park a leak.
-EXCLUDES=(
-  ':!.github/scripts/leak-check.sh'   # declares the pattern, so it matches itself
-)
+# Every tracked file is scanned, including this guard. (No exclusion list: an empty bash array
+# expanded under set -u fails on macOS's bash 3.2.)
 
 usage="usage: leak-check.sh [--staged] [--warn] | leak-check.sh --push <remote-url> <branch>"
 warn=0; staged=0; push=0; remote=""; branch=""
@@ -51,6 +53,19 @@ done
 if [ "$push" = 1 ] && [ "$warn" = 1 ]; then
   echo "::error::--warn does not apply to --push" >&2
   exit 2
+fi
+
+if [ -z "$PATTERN" ]; then
+  if [ -n "${CI:-}" ] || [ "$push" = 1 ]; then
+    echo "::error::leak-check: TSB_LEAK_PATTERN or private leak-pattern line 1 is missing" >&2
+    exit 1
+  fi
+  echo "SKIP: the environment check runs on the maintainers' side"
+  exit 0
+fi
+if [ "$push" = 1 ] && [ -z "$WORKSTATION_PATTERN" ]; then
+  echo "::error::leak-check: TSB_LEAK_PUSH_PATTERN or private leak-pattern line 2 is missing" >&2
+  exit 1
 fi
 
 if [ "$push" = 1 ]; then
@@ -114,6 +129,10 @@ if [ "$push" = 1 ]; then
   # commit removes is still caught — not just the end state. Gaps 2-4: every added line, each binary
   # file a commit adds or changes, and the names of files added, renamed or copied. A hit names the
   # commit (short sha), the file and the line, then exits 1; a failure to compute exits 2.
+  scan_pattern="$PATTERN"
+  if [ -n "$WORKSTATION_PATTERN" ]; then
+    scan_pattern="$PATTERN|$WORKSTATION_PATTERN"
+  fi
   hits=""; n=0
   while IFS= read -r c; do
     short="$(git rev-parse --short "$c")" \
@@ -127,7 +146,7 @@ if [ "$push" = 1 ]; then
     # --text forces a textual diff, --no-textconv/--no-ext-diff disable external converters and diff
     # drivers, so a file marked -diff (or binary) in .gitattributes still shows its added lines to
     # the line scan; the blob scan by object id stays as it is for real binaries.
-    git show -p -r --no-color --format='' --text --no-textconv --no-ext-diff "$c" -- . "${EXCLUDES[@]}" > "$tmp" \
+    git show -p -r --no-color --format='' --text --no-textconv --no-ext-diff "$c" -- . > "$tmp" \
       || { echo "::error::git show for $short failed — the scan did not run" >&2; rm -f "$tmp"; exit 2; }
     curfile=""; in_header=0
     while IFS= read -r line; do
@@ -145,7 +164,7 @@ if [ "$push" = 1 ]; then
           if [ -n "$curfile" ]; then n=$((n+1)); fi
           printf '%s\n' "$line" > "$scan_tmp" \
             || { echo "::error::added-line temporary write failed — the scan did not run" >&2; exit 2; }
-          grep -qiE "$PATTERN|$WORKSTATION_PATTERN" "$scan_tmp"; ag=$?
+          grep -qiE "$scan_pattern" "$scan_tmp"; ag=$?
           if [ "$ag" -eq 0 ]; then
             hits="${hits}${short} ${curfile}: ${line}"$'\n'
           elif [ "$ag" -gt 1 ]; then
@@ -161,7 +180,7 @@ if [ "$push" = 1 ]; then
     # ':<oldmode> <newmode> <oldsha> <newsha> <status>' then the path(s); R/C records carry source
     # then destination. Skip deletions (status D, new id all zeros). Read a binary's content by its
     # new blob id, never by a displayed path; the destination path is the one the name scan reads.
-    git diff-tree -r -z --raw -M --root "$c" -- . "${EXCLUDES[@]}" > "$tmp2" \
+    git diff-tree -r -z --raw -M --root "$c" -- . > "$tmp2" \
       || { echo "::error::git diff-tree for $short failed — the scan did not run" >&2; rm -f "$tmp" "$tmp2" "$tmp3"; exit 2; }
     {
       IFS= read -r -d '' _sha   # first token is the commit id; skip it
@@ -181,7 +200,7 @@ if [ "$push" = 1 ]; then
           # strip NULs from the match so command substitution does not drop them; no head, so no
           # broken-pipe status, and g is the pipeline's own status (grep's exit, tr always exits 0).
           if [ "$(tr -d '\0' < "$tmp3" | wc -c)" != "$(wc -c < "$tmp3")" ]; then
-            m="$(grep -a -m1 -iE "$PATTERN|$WORKSTATION_PATTERN" "$tmp3" | tr -d '\0')"
+            m="$(grep -a -m1 -iE "$scan_pattern" "$tmp3" | tr -d '\0')"
             g=$?
             if [ "$g" -gt 1 ]; then
               echo "::error::grep on $short:$dest failed — the scan did not run" >&2; rm -f "$tmp" "$tmp2" "$tmp3"; exit 2
@@ -193,7 +212,7 @@ if [ "$push" = 1 ]; then
         case "$st" in A|R|C)
           printf '%s\n' "$dest" > "$scan_tmp" \
             || { echo "::error::file-name temporary write failed — the scan did not run" >&2; exit 2; }
-          grep -qiE "$PATTERN|$WORKSTATION_PATTERN" "$scan_tmp"; ng=$?
+          grep -qiE "$scan_pattern" "$scan_tmp"; ng=$?
           if [ "$ng" -eq 0 ]; then
             hits="${hits}${short} ${dest}: (file name)"$'\n'
           elif [ "$ng" -gt 1 ]; then
@@ -207,7 +226,7 @@ if [ "$push" = 1 ]; then
   rm -f "$tmp" "$tmp2" "$tmp3"
 
   if [ -n "$hits" ]; then
-    echo "::error::environment detail in lines this push would add — it belongs in tsb-program/ops/environment.md"
+    echo "::error::environment detail in lines this push would add: replace it with a neutral value; maintainers have the list"
     printf '%s\n' "${hits%$'\n'}" | sed 's/^/  /' >&2
     exit 1
   fi
@@ -217,25 +236,33 @@ fi
 
 if [ "$staged" = 1 ]; then
   # Only lines being added by the commit in progress. -U0 so context lines do not trip it.
-  hits="$(git diff --cached -U0 -- . "${EXCLUDES[@]}" | grep -E '^\+[^+]' | grep -niE "$PATTERN" || true)"
+  hits="$(git diff --cached -U0 -- . | grep -E '^\+[^+]' | grep -niE "$PATTERN" || true)"
 else
   # Every tracked file. No -I: an address inside a tracked binary is still published.
   status=0
-  hits="$(git grep --no-recurse-submodules -niE "$PATTERN" -- . "${EXCLUDES[@]}")" || status=$?
+  raw_hits="$(git grep --no-recurse-submodules -niE "$PATTERN" -- .)" || status=$?
   # git grep: 0 = matches, 1 = none, >1 = the search itself failed. Treating every nonzero
   # exit as clean is how a broken guard reports success forever.
   if [ "$status" -gt 1 ]; then
     echo "::error::git grep exited $status — the scan did not run, so this is not a pass" >&2
     exit 1
   fi
+  hits=""
+  if [ -n "$raw_hits" ]; then
+    while IFS= read -r match; do
+      file_line="$(cut -d: -f1,2 <<< "$match")"
+      hits="${hits}${file_line}: environment detail"$'\n'
+    done <<< "$raw_hits"
+    hits="${hits%$'\n'}"
+  fi
 fi
 
 if [ -n "$hits" ]; then
   if [ "$warn" = 1 ]; then
-    echo "WARNING: environment detail in staged changes — it belongs in tsb-program/ops/environment.md." >&2
+    echo "WARNING: environment detail in staged changes: replace it with a neutral value; maintainers have the list." >&2
     echo "         CI (the required test job, through make lint) will fail the PR on these lines:" >&2
   else
-    echo "::error::environment detail found in tracked files — it belongs in tsb-program/ops/environment.md"
+    echo "::error::environment detail found in tracked files: replace it with a neutral value; maintainers have the list"
   fi
   printf '%s\n' "$hits" | sed 's/^/  /' >&2
   [ "$warn" = 1 ] && exit 0 || exit 1

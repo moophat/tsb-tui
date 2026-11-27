@@ -1,0 +1,100 @@
+{
+  "seam": "C3",
+  "name": "device-login-bad-answer-ends",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_a_stale_or_miscounted_answer_ends_the_login_bad_request_and_later_ones_are_ignored"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestAnErrorDuringADeviceLoginIsItsTerminalAnswer"
+    }
+  ],
+  "description": "One terminal answer (C3 rule 6; H3). Before the terminal answer every `error` the worker sends is the terminal answer. An `auth_answer` naming a `prompt_id` other than the outstanding one, or carrying another count than the prompt's, or with no prompt outstanding, a second `hostkey_answer`, or either command malformed, is answered `error` code `bad_request`: the worker closes the transport and the connection ends as a refused one does. After the terminal answer the worker ignores `hostkey_answer` and `auth_answer` and logs each, with no answer and no prompt text: the late `auth_answer` below is ignored and nothing follows it. The core maps `bad_request` to `connect_failed`.",
+  "corpus": [
+    "open_decisions §5",
+    "device-login step 18",
+    "ipc-control rule 6"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "password",
+          "attempt": 1,
+          "prompt_id": 1
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "auth_answer",
+          "prompt_id": 2,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "another prompt_id than the outstanding 1"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "bad_request",
+          "message": "no such prompt outstanding"
+        },
+        "note": "the terminal answer"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "auth_answer",
+          "prompt_id": 1,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "a late answer: ignored and logged, with nothing sent"
+      }
+    ]
+  }
+}

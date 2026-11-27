@@ -28,7 +28,7 @@ from pathlib import Path
 TESTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TESTS_DIR.parent
 sys.path.insert(0, str(TESTS_DIR))
-for _entry in (REPO_ROOT / "program" / "contract", REPO_ROOT / "program" / "contract" / "client"):
+for _entry in (REPO_ROOT / "contract", REPO_ROOT / "contract" / "client"):
     sys.path.insert(0, str(_entry))
 
 from test_fleet_view_painted_rows import CASES, GOLDEN, paint_case

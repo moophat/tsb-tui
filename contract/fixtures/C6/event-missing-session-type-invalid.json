@@ -1,0 +1,40 @@
+{
+  "seam": "C6",
+  "name": "event-missing-session-type-invalid",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "instance",
+  "grade": "artifacts:audit-valid",
+  "description": "session_type is mandatory on every session.* event. Without it, 'alice opened a shell' and 'alice pulled a file off the router' read the same, and an audit that cannot tell them apart is worse than none, because it reads as complete. Every line of a collected audit log is held to it.",
+  "corpus": [
+    "Storage §6",
+    "Contract §15"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.connect",
+          "user": "alice",
+          "target": "core-rtr-01",
+          "session_id": "fixture-session-a"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-09-23T12:00:00Z",
+          "action": "session.disconnect",
+          "session_id": "fixture-session-a",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "duration": 10
+        }
+      }
+    ]
+  }
+}

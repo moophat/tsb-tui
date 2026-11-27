@@ -1,0 +1,57 @@
+{
+  "seam": "C7",
+  "name": "import-save-profile-mappings",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: Provider verifies personal mappings after target publication, deduplication, preserved mappings and no org mappings."
+    },
+    {
+      "unit": "U2",
+      "test": "owed: Provider verifies personal mappings after target publication, deduplication, preserved mappings and no org mappings."
+    }
+  ],
+  "description": "Provider verifies personal mappings after target publication, deduplication, preserved mappings and no org mappings.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetImportCredentialDisposition",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "choice": "none",
+          "stored": [],
+          "mappings": []
+        },
+        "note": "no credentials"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "choice": "discard",
+          "stored": [
+            {
+              "reference": "import-aaaaaaaa-1",
+              "layer": "personal",
+              "kind": "password",
+              "target_ids": [
+                "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          ],
+          "mappings": []
+        },
+        "note": "discard cannot store"
+      }
+    ]
+  }
+}

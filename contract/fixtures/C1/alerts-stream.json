@@ -1,0 +1,117 @@
+{
+  "seam": "C1",
+  "name": "alerts-stream",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/alert/stream_test.go — GET /alerts sends the active set, then each raise and clear; a keepalive comment every heartbeat_interval; the stream ends on logout, on expiry and on a policy reload that removes broker.health; a gone supervisor's alerts clear, audited"
+    }
+  ],
+  "description": "The operator alert stream (session model §11; Tu, 2026-09-26): a text/event-stream behind broker.health, cookie-authenticated. On connect one alert event per alert active now, then each raise and clear, a clear naming its raise's alert_id; a reconnecting surface gets the active set again. A comment line whenever no event was sent for heartbeat_interval, so no proxy closes an idle stream. Authorization holds for the stream's life: the core ends it when the login logs out or expires, and when a policy.yaml reload removes broker.health or the principal. supervisor_unresponsive clears when its supervisor answers again, worker_unkillable when list_workers no longer lists the worker, and both when their supervisor is gone — the manifest removed or its socket refusing, which an operator's container restart leaves behind. An alert names TSB's components only: never a pid, a path or a hostname (Contract §4).",
+  "corpus": [
+    "session model §11",
+    "Contract §4",
+    "Storage §9",
+    "External_Study §1.3"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/AlertEvent",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "alert_id": "fixture-alert-1",
+          "kind": "supervisor_unresponsive",
+          "state": "raised",
+          "at": "2026-10-01T02:00:30Z",
+          "supervisor_id": "fixture-sup-1"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "alert_id": "fixture-alert-1",
+          "kind": "supervisor_unresponsive",
+          "state": "cleared",
+          "at": "2026-10-01T02:07:00Z",
+          "supervisor_id": "fixture-sup-1"
+        },
+        "note": "the same alert_id: its clear"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "alert_id": "fixture-alert-2",
+          "kind": "worker_unkillable",
+          "state": "raised",
+          "at": "2026-10-01T02:05:00Z",
+          "supervisor_id": "fixture-sup-1",
+          "worker_id": "fixture-worker-1",
+          "session_ids": [
+            "fixture-session-a"
+          ]
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "alert_id": "fixture-alert-1",
+          "kind": "supervisor_unresponsive",
+          "state": "raised",
+          "at": "2026-10-01T02:00:30Z",
+          "supervisor_id": "fixture-sup-1",
+          "pid": 4101
+        },
+        "note": "no pid"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "alert_id": "fixture-alert-1",
+          "kind": "supervisor_unresponsive",
+          "state": "raised",
+          "at": "2026-10-01T02:00:30Z",
+          "supervisor_id": "fixture-sup-1",
+          "hostname": "fixture-node"
+        },
+        "note": "no hostname"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "alert_id": "fixture-alert-1",
+          "kind": "supervisor_unresponsive",
+          "state": "active",
+          "at": "2026-10-01T02:00:30Z",
+          "supervisor_id": "fixture-sup-1"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "kind": "supervisor_unresponsive",
+          "state": "raised",
+          "at": "2026-10-01T02:00:30Z",
+          "supervisor_id": "fixture-sup-1"
+        },
+        "note": "a clear must name its raise"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "alert_id": "fixture-alert-2",
+          "kind": "worker_unkillable",
+          "state": "raised",
+          "at": "2026-10-01T02:05:00Z",
+          "supervisor_id": "fixture-sup-1"
+        },
+        "note": "worker_unkillable names its worker, as the audit event does"
+      }
+    ]
+  }
+}

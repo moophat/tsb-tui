@@ -1,0 +1,80 @@
+{
+  "seam": "C3",
+  "name": "control-connect-supplied-login",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-sequence",
+  "description": "A connection opened for a login supplied on session create (SessionCreateRequest.login) uses the connect message a stored password uses, with no new field: user is login.user, auth is {kind password, password}, and nothing else of the login crosses the socket. So every worker that serves a stored password (from proto_version 0.2) serves a supplied login, and no proto_version step is needed. The password travels here only, as every target credential does (V10), and a collection carries it only as the synthetic constant. A collected run must follow the same order as C3/control-connect-openshell-sequence.",
+  "corpus": [
+    "lang-arch §4.1",
+    "open_decisions §5",
+    "credential §10.1",
+    "immortality §6.1",
+    "conventions V10",
+    "session-open steps 7 and 8"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "password",
+            "password": "FIXTURE-NOT-A-PASSWORD"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "the supplied login: user and password, in connect and nowhere else"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        },
+        "note": "the target accepted the password; a refusal is auth_failed, as for a stored credential"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,205 @@
+{
+  "seam": "C6",
+  "name": "import-receipt-recovery",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: receipt-only recovery preserves assigned IDs and does not store credentials twice."
+    },
+    {
+      "unit": "U2",
+      "test": "owed: receipt-only recovery preserves assigned IDs and does not store credentials twice."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: receipt-only recovery preserves assigned IDs and does not store credentials twice."
+    }
+  ],
+  "description": "Complete secret-free receipt and publication marker; providers verify atomic first-durable recording, restart recovery, stage handling and retention.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712",
+    "Contract \u00a713"
+  ],
+  "case": {
+    "schema": "schemas/import-receipt.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "version": 1,
+          "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "user": "fixture-user",
+          "format": "tabby",
+          "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan": [
+            {
+              "locator": {
+                "index": 1
+              },
+              "source_ref": "fixture-native",
+              "change": "create",
+              "target_id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "n": 0,
+              "definition": {
+                "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "type": "ssh",
+                "options": {
+                  "host": "fixture.invalid"
+                },
+                "import_ref": {
+                  "format": "tabby",
+                  "source_ref": "fixture-native"
+                }
+              },
+              "credentials": [
+                {
+                  "reference": "import-aaaaaaaa-1",
+                  "kind": "password"
+                }
+              ],
+              "mapping": {
+                "reference": "import-aaaaaaaa-1",
+                "state": "map"
+              }
+            }
+          ],
+          "not_carried": [],
+          "choice": {
+            "choice": "save",
+            "destination": "personal"
+          },
+          "stage": "committed",
+          "audit": "unknown",
+          "index": "pending",
+          "created_at": "2026-11-23T00:00:00Z",
+          "updated_at": "2026-11-23T00:00:00Z"
+        },
+        "note": "complete confirmed plan"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "version": 1,
+          "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "note": "publication marker"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "version": 1,
+          "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "user": "fixture-user",
+          "format": "tabby",
+          "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan": [
+            {
+              "locator": {
+                "index": 1
+              },
+              "source_ref": "fixture-native",
+              "change": "create",
+              "target_id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "n": 0,
+              "definition": {
+                "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "type": "ssh",
+                "options": {
+                  "host": "fixture.invalid"
+                },
+                "import_ref": {
+                  "format": "tabby",
+                  "source_ref": "fixture-native"
+                }
+              },
+              "credentials": [
+                {
+                  "reference": "import-aaaaaaaa-1",
+                  "kind": "password",
+                  "layer": "personal"
+                }
+              ],
+              "mapping": {
+                "reference": "import-aaaaaaaa-1",
+                "state": "map"
+              }
+            }
+          ],
+          "not_carried": [],
+          "choice": {
+            "choice": "save",
+            "destination": "personal"
+          },
+          "stage": "committed",
+          "audit": "unknown",
+          "index": "pending",
+          "created_at": "2026-11-23T00:00:00Z",
+          "updated_at": "2026-11-23T00:00:00Z"
+        },
+        "note": "layer does not enter the choice-independent plan"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "version": 1,
+          "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "user": "fixture-user",
+          "format": "tabby",
+          "plan_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan": [
+            {
+              "locator": {
+                "index": 1
+              },
+              "source_ref": "fixture-native",
+              "change": "create",
+              "target_id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "n": 0,
+              "definition": {
+                "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "type": "ssh",
+                "options": {
+                  "host": "fixture.invalid"
+                },
+                "import_ref": {
+                  "format": "tabby",
+                  "source_ref": "fixture-native"
+                }
+              },
+              "credentials": [
+                {
+                  "reference": "import-aaaaaaaa-1",
+                  "kind": "password"
+                }
+              ],
+              "mapping": {
+                "reference": "import-aaaaaaaa-1",
+                "state": "map"
+              }
+            }
+          ],
+          "not_carried": [],
+          "choice": {
+            "choice": "save",
+            "destination": "personal"
+          },
+          "stage": "committed",
+          "audit": "unknown",
+          "index": "pending",
+          "created_at": "2026-11-23T00:00:00Z",
+          "updated_at": "2026-11-23T00:00:00Z",
+          "export_bytes": "FIXTURE-NOT-A-PASSWORD"
+        },
+        "note": "raw export is forbidden"
+      }
+    ]
+  }
+}

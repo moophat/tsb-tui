@@ -32,7 +32,7 @@ from tsbc._serve import ServeApp, StubServer
 
 from tsb_tui.model.alerts import Alert, AlertModel, AlertStreamer
 
-CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
+CONTRACT = Path(__file__).resolve().parents[1] / "contract"
 FIXTURE = json.loads((CONTRACT / "fixtures" / "C1" / "alerts-stream.json")
                      .read_text(encoding="utf-8"))
 

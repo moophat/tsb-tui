@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C6 users bucket record",
+  "description": "Account record keyed by username. disabled is additive; records without it load as enabled. password_hash is PHC argon2id and never northbound. E4b writers emit disabled explicitly. Disable empties password_hash: a pre-E4b core cannot authenticate it. Enable writes a fresh hash and disabled false. The field is opaque PHC text; shape validation never verifies a password. The owner and tenant fields retain their pre-E4b meaning.",
+  "type": "object",
+  "required": [
+    "username",
+    "password_hash",
+    "created_at",
+    "owner_id",
+    "tenant_id"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "username": {
+      "$ref": "common.schema.json#/$defs/username"
+    },
+    "password_hash": {
+      "type": "string"
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "owner_id": {
+      "type": "string"
+    },
+    "tenant_id": {
+      "type": "string"
+    },
+    "disabled": {
+      "type": "boolean",
+      "description": "Absent on pre-E4b records: loads as false without altering the hash. E4b writers always emit it."
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "disabled": {
+          "const": true
+        },
+        "password_hash": {
+          "const": ""
+        }
+      },
+      "required": [
+        "disabled"
+      ]
+    },
+    {
+      "properties": {
+        "disabled": {
+          "const": false
+        },
+        "password_hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  ]
+}

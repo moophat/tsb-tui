@@ -1,0 +1,57 @@
+{
+  "seam": "C6",
+  "name": "event-cred-store-personal-no-class",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/vaultwire/auditor_test.go — TestEveryVaultEventIsTheContractsAuditLine"
+    }
+  ],
+  "description": "cred.store for a personal credential carries no unlock class: the class belongs to the org tier (DEFAULT 50; N1 item 9).",
+  "corpus": [
+    "credential-protection §8.4",
+    "E4 DEFAULT 10",
+    "E4 DEFAULT 49",
+    "E4 DEFAULT 51",
+    "E4 DEFAULT 50"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.store",
+          "credential_ref": "lab-switch",
+          "credential_layer": "personal",
+          "kind": "password"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-10-29T08:00:00Z",
+          "user": "fixture-user",
+          "action": "cred.store",
+          "credential_ref": "lab-switch",
+          "credential_layer": "personal",
+          "kind": "password",
+          "unlock_class": "user_unlocked"
+        },
+        "note": "the class is the org tier's"
+      }
+    ]
+  }
+}

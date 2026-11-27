@@ -1,0 +1,132 @@
+{
+  "seam": "C7",
+  "name": "kat-argon2id-reference",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain2_test.go — TestArgon2idReferenceKnownAnswers: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/vault-vectors.sh — rig-vault-vectors: runs this vector through the deployed browser module in Chromium and requires every selected case to pass"
+    }
+  ],
+  "description": "Argon2id's known answers from the reference implementation's own tests (src/test.c, version 0x13), which set neither a secret nor associated data, so every implementation can check them (OPEN-1.7 (c)); the 256 MiB and 1 GiB cases are left out, as a browser cannot run them in a test. Published e4: reference, graded by the implementations of the chain's argon2id steps, tests owed (phase 16).",
+  "corpus": [
+    "RFC 9106",
+    "credential-protection §4.1",
+    "decision 5.26 (c)",
+    "E4 phase 1 OPEN-1.7 (c)"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/kat_argon2id",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "primitive": "argon2id",
+          "source": "the Argon2 reference implementation (P-H-C/phc-winner-argon2), src/test.c, the argon2id version 0x13 cases with memory at most 64 MiB",
+          "checked_by": "every argon2id implementation: these cases set no secret and no associated data",
+          "cases": [
+            {
+              "name": "test.c argon2id v19 t=2 m=2^16 p=1 password/somesalt",
+              "params": {
+                "version": 19,
+                "time_cost": 2,
+                "memory_kib": 65536,
+                "parallelism": 1,
+                "tag_length": 32
+              },
+              "password": "70617373776f7264",
+              "salt": "736f6d6573616c74",
+              "tag": "09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7"
+            },
+            {
+              "name": "test.c argon2id v19 t=2 m=2^8 p=1 password/somesalt",
+              "params": {
+                "version": 19,
+                "time_cost": 2,
+                "memory_kib": 256,
+                "parallelism": 1,
+                "tag_length": 32
+              },
+              "password": "70617373776f7264",
+              "salt": "736f6d6573616c74",
+              "tag": "9dfeb910e80bad0311fee20f9c0e2b12c17987b4cac90c2ef54d5b3021c68bfe"
+            },
+            {
+              "name": "test.c argon2id v19 t=2 m=2^8 p=2 password/somesalt",
+              "params": {
+                "version": 19,
+                "time_cost": 2,
+                "memory_kib": 256,
+                "parallelism": 2,
+                "tag_length": 32
+              },
+              "password": "70617373776f7264",
+              "salt": "736f6d6573616c74",
+              "tag": "6d093c501fd5999645e0ea3bf620d7b8be7fd2db59c20d9fff9539da2bf57037"
+            },
+            {
+              "name": "test.c argon2id v19 t=1 m=2^16 p=1 password/somesalt",
+              "params": {
+                "version": 19,
+                "time_cost": 1,
+                "memory_kib": 65536,
+                "parallelism": 1,
+                "tag_length": 32
+              },
+              "password": "70617373776f7264",
+              "salt": "736f6d6573616c74",
+              "tag": "f6a5adc1ba723dddef9b5ac1d464e180fcd9dffc9d1cbf76cca2fed795d9ca98"
+            },
+            {
+              "name": "test.c argon2id v19 t=4 m=2^16 p=1 password/somesalt",
+              "params": {
+                "version": 19,
+                "time_cost": 4,
+                "memory_kib": 65536,
+                "parallelism": 1,
+                "tag_length": 32
+              },
+              "password": "70617373776f7264",
+              "salt": "736f6d6573616c74",
+              "tag": "9025d48e68ef7395cca9079da4c4ec3affb3c8911fe4f86d1a2520856f63172c"
+            },
+            {
+              "name": "test.c argon2id v19 t=2 m=2^16 p=1 differentpassword/somesalt",
+              "params": {
+                "version": 19,
+                "time_cost": 2,
+                "memory_kib": 65536,
+                "parallelism": 1,
+                "tag_length": 32
+              },
+              "password": "646966666572656e7470617373776f7264",
+              "salt": "736f6d6573616c74",
+              "tag": "0b84d652cf6b0c4beaef0dfe278ba6a80df6696281d7e0d2891b817d8c458fde"
+            },
+            {
+              "name": "test.c argon2id v19 t=2 m=2^16 p=1 password/diffsalt",
+              "params": {
+                "version": 19,
+                "time_cost": 2,
+                "memory_kib": 65536,
+                "parallelism": 1,
+                "tag_length": 32
+              },
+              "password": "70617373776f7264",
+              "salt": "6469666673616c74",
+              "tag": "bdf32b05ccc42eb15d58fd19b1f856b113da1e9a5874fdcc544308565aa8141c"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

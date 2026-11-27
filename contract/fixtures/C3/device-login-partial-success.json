@@ -1,0 +1,147 @@
+{
+  "seam": "C3",
+  "name": "device-login-partial-success",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_device_login.py — test_a_partial_success_keeps_the_attempt_and_a_refusal_raises_it"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestRefusedAttemptsCountOnlyRefusals"
+    }
+  ],
+  "description": "The attempt number rises only when the device refuses an answer (OPEN-R5 (a); C3 rule 8). A correct password that the device accepts as one method of two (RFC 4252 §5.1: partial success) leaves the number as it is, and so does a failure of a request that carried no answer; the next method continues the same attempt. A wrong answer brings the device's next request in a higher attempt. Here: a password and then a code are one attempt, the wrong code is refused, and the repeated request is attempt 2. The core counts `target.auth_failed.attempts` and `session.connect.refused_attempts` from these numbers and the answers it relayed.",
+  "corpus": [
+    "open_decisions §5",
+    "device-login, what crosses for one round",
+    "ipc-control rule 8",
+    "conventions V1"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-account",
+          "auth": {
+            "kind": "prompt"
+          },
+          "login_timeout": 120000,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 30000,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "password",
+          "attempt": 1,
+          "prompt_id": 1
+        },
+        "note": "attempt 1: the password"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "auth_answer",
+          "prompt_id": 1,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 1,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Code: ",
+              "echo": true
+            }
+          ],
+          "prompt_id": 2
+        },
+        "note": "partial success: the device wants a code as well, and the attempt stays 1"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "auth_answer",
+          "prompt_id": 2,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        },
+        "note": "the code is wrong"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "auth_prompt",
+          "conn_id": "fixture-conn-1",
+          "method": "keyboard-interactive",
+          "attempt": 2,
+          "name": "",
+          "instruction": "",
+          "prompts": [
+            {
+              "text": "Code: ",
+              "echo": true
+            }
+          ],
+          "prompt_id": 3
+        },
+        "note": "the device refused: the next request is attempt 2"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "auth_answer",
+          "prompt_id": 3,
+          "answers": [
+            "FIXTURE-NOT-A-PASSWORD"
+          ]
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "seam": "C3",
+  "name": "seq-continuity-across-restart",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:frames-continuity",
+  "description": "One session's data socket across a core restart, as a run-bounded collection taps it: one tap per run. Run 1 tapped output 1 to 4, but its recording kept only 1 to 3 when the core was killed (the tap was ahead of the recording), so the new core's hello says last_committed_seq 3 and the replay starts at 4. Run 2 therefore repeats seq 4 — with the same payload and the same worker stamp, as a replay must — and the merged view takes it once: output 1, 2, 3, 4, 5, every seq once, no jump. Input is the core's own counter and is never replayed, so run 2 simply goes on at 4. A repeat inside one run, a replayed frame with other bytes or another stamp, or a jump that is not a gap frame fails.",
+  "corpus": [
+    "immortality §4.1",
+    "immortality §4.2",
+    "immortality §4.3",
+    "decision 5.14",
+    "decision 5.24"
+  ],
+  "case": {
+    "format": "c3-frames",
+    "runs": [
+      {
+        "run": "01789000000000000000",
+        "file": "seq-continuity-across-restart.run1.bin",
+        "frames": [
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 2,
+            "seq": 1,
+            "timestamp": 1789000000123456789,
+            "payload_hex": "2420"
+          },
+          {
+            "version": 1,
+            "flags": 1,
+            "direction": "in",
+            "stream": 0,
+            "length": 1,
+            "seq": 1,
+            "timestamp": 1789000001123456789,
+            "payload_hex": "6c"
+          },
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 1,
+            "seq": 2,
+            "timestamp": 1789000001123556789,
+            "payload_hex": "6c"
+          },
+          {
+            "version": 1,
+            "flags": 1,
+            "direction": "in",
+            "stream": 0,
+            "length": 1,
+            "seq": 2,
+            "timestamp": 1789000001323456789,
+            "payload_hex": "73"
+          },
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 1,
+            "seq": 3,
+            "timestamp": 1789000001323556789,
+            "payload_hex": "73"
+          },
+          {
+            "version": 1,
+            "flags": 1,
+            "direction": "in",
+            "stream": 0,
+            "length": 1,
+            "seq": 3,
+            "timestamp": 1789000001523456789,
+            "payload_hex": "0d"
+          },
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 13,
+            "seq": 4,
+            "timestamp": 1789000001523556789,
+            "payload_hex": "0d0a6e6f7465732e7478740d0a"
+          }
+        ]
+      },
+      {
+        "run": "01789000100000000000",
+        "file": "seq-continuity-across-restart.run2.bin",
+        "frames": [
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 13,
+            "seq": 4,
+            "timestamp": 1789000001523556789,
+            "payload_hex": "0d0a6e6f7465732e7478740d0a"
+          },
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 2,
+            "seq": 5,
+            "timestamp": 1789000001523656789,
+            "payload_hex": "2420"
+          },
+          {
+            "version": 1,
+            "flags": 1,
+            "direction": "in",
+            "stream": 0,
+            "length": 1,
+            "seq": 4,
+            "timestamp": 1789000105123456789,
+            "payload_hex": "71"
+          }
+        ]
+      }
+    ]
+  }
+}

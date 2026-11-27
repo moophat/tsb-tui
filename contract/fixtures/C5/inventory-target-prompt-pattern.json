@@ -1,0 +1,70 @@
+{
+  "seam": "C5",
+  "name": "inventory-target-prompt-pattern",
+  "mark": {
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: the loader accepts prompt_pattern and refuses its invalid length or characters"
+    }
+  ],
+  "description": "A target file carrying prompt_pattern validates; a control character or 257 characters in it is refused.",
+  "corpus": [
+    "Contract §6",
+    "V12"
+  ],
+  "case": {
+    "schema": "schemas/inventory-target.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "core-rtr-20",
+          "type": "ssh",
+          "name": "Core Router 20",
+          "options": {
+            "host": "10.0.1.20",
+            "port": 22,
+            "user": "admin"
+          },
+          "prompt_pattern": "[^ ]+[>#]"
+        },
+        "note": "a prompt_pattern loads as written"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-rtr-20",
+          "type": "ssh",
+          "name": "Core Router 20",
+          "options": {
+            "host": "10.0.1.20",
+            "port": 22,
+            "user": "admin"
+          },
+          "prompt_pattern": "router\u001b>"
+        },
+        "note": "a prompt_pattern holding ESC (0x1B) is refused"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "core-rtr-20",
+          "type": "ssh",
+          "name": "Core Router 20",
+          "options": {
+            "host": "10.0.1.20",
+            "port": 22,
+            "user": "admin"
+          },
+          "prompt_pattern": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "note": "a prompt_pattern of 257 characters exceeds the maximum 256"
+      }
+    ]
+  }
+}

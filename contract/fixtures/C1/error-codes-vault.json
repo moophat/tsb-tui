@@ -1,0 +1,336 @@
+{
+  "seam": "C1",
+  "name": "error-codes-vault",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "Every error code the vault release adds, in the error body (V4: one status per code, error.schema.json x-codes), and the three fields only one code each carries. A consumer meets an unknown code by its HTTP status.",
+  "corpus": [
+    "conventions V4",
+    "E4 phase 1 OPEN-1.4 (ruled 2026-10-29 18:55)",
+    "E4 DEFAULT 13",
+    "E4 DEFAULT 43",
+    "E4 DEFAULT 47",
+    "E4 DEFAULT 67",
+    "E4 O30-O32"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/Error",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "vault_locked",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "vault_not_initialized",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "vault_exists",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "part2_missing",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "device_not_trusted",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "challenge_failed",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "device_not_found",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "screen_unlock_failed",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "credential_not_found",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "credential_exists",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "credential_has_grants",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "broker_unlock_unavailable",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "grant_not_found",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "user_not_found",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "vault_not_minted",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "unlock_failed",
+            "message": "fixed text",
+            "attempts_remaining": 2
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "unlock_failed",
+            "message": "fixed text"
+          }
+        },
+        "note": "attempts_remaining is optional in the schema"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "credential_choice_required",
+            "message": "fixed text",
+            "candidates": [
+              {
+                "credential_ref": "netops",
+                "credential_layer": "personal"
+              },
+              {
+                "credential_ref": "fleet-backup",
+                "credential_layer": "org"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "vault_wipe_blocked",
+            "message": "fixed text",
+            "credential_refs": [
+              "fleet-backup"
+            ]
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "mapped_credential_missing",
+            "message": "fixed text",
+            "credential_ref": "lab-switch"
+          }
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "org_credential_locked",
+            "message": "fixed text"
+          }
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "org_credential_locked",
+            "message": "fixed text",
+            "credential_ref": "fleet-backup"
+          }
+        },
+        "note": "org_credential_locked carries no field: only mapped_credential_missing carries credential_ref"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "vault_locked",
+            "message": "fixed text",
+            "credential_ref": "lab-switch"
+          }
+        },
+        "note": "only mapped_credential_missing carries credential_ref"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "vault_locked",
+            "message": "fixed text",
+            "attempts_remaining": 1
+          }
+        },
+        "note": "only unlock_failed carries attempts_remaining"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "credential_choice_required",
+            "message": "fixed text",
+            "candidates": [
+              {
+                "credential_ref": "netops",
+                "credential_layer": "personal"
+              }
+            ]
+          }
+        },
+        "note": "a choice needs two or more"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "credential_choice_required",
+            "message": "fixed text",
+            "candidates": [
+              {
+                "credential_ref": "netops",
+                "credential_layer": "personal",
+                "kind": "password"
+              },
+              {
+                "credential_ref": "fleet-backup",
+                "credential_layer": "org"
+              }
+            ]
+          }
+        },
+        "note": "a candidate is a reference and a layer, nothing else"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "unlock_failed",
+            "message": "fixed text",
+            "candidates": [
+              {
+                "credential_ref": "netops",
+                "credential_layer": "personal"
+              },
+              {
+                "credential_ref": "fleet-backup",
+                "credential_layer": "org"
+              }
+            ]
+          }
+        },
+        "note": "only credential_choice_required carries candidates"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "vault_unlocked",
+            "message": "fixed text"
+          }
+        },
+        "note": "codes are the contract"
+      }
+    ]
+  }
+}

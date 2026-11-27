@@ -1,0 +1,85 @@
+{
+  "seam": "C1",
+  "name": "target-write-query-parameter-422",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: TestATargetWriteRefusesAQueryParameter"
+    }
+  ],
+  "description": "Any query parameter on createTarget or replaceTarget returns 422 invalid_request; nothing is written.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Storage \u00a710.1b",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/targets?scope=private",
+          "body": {
+            "type": "ssh",
+            "host": "fixture.invalid",
+            "name": "canary-query-param"
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "PUT",
+          "path": "/targets/core-router-01?x=1",
+          "body": {
+            "id": "core-router-01",
+            "type": "ssh",
+            "host": "192.0.2.10"
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?name=canary-query-param"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "eq": []
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

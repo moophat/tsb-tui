@@ -1,0 +1,46 @@
+{
+  "seam": "C1",
+  "name": "ws-ticket-unknown-session-404",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "No ticket is minted for a session that does not exist, or that the principal may not see: 404 session_not_found, the same answer for both.",
+  "corpus": [
+    "Storage §9",
+    "Contract §4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "fixture-no-such-session"
+          }
+        },
+        "expect": {
+          "status": 404,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "session_not_found"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "session_not_found",
+              "message": "no such session"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

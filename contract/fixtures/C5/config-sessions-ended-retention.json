@@ -1,0 +1,447 @@
+{
+  "seam": "C5",
+  "name": "config-sessions-ended-retention",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: session history config-sessions-ended-retention provider test"
+    }
+  ],
+  "description": "sessions.ended_retention is a required runtime core-wide positive Go duration, optional in the additive schema with no default. U2 loader tests must refuse missing, zero (0, 0s, 0h0m), negative, malformed, wrong-type and overflowing durations, accept positive representable durations, and prove templates supply 168h with no code default or test-login/per-target exception. Zero and overflow are prose bounds enforced by the loader, like the existing duration knobs. No page-size or sweep knob. Published e4 so surfaces can build against the shape; required-green e5 so the addition does not retroactively fail the existing e4 provider.",
+  "corpus": [
+    "session-list rules 8\u201310",
+    "conventions V1, V4, V7, V8",
+    "Storage \u00a78.6"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          },
+          "sessions": {
+            "ended_retention": "168h"
+          }
+        },
+        "note": "Deployment template value: seven days, never a schema default."
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          },
+          "sessions": {
+            "ended_retention": "1ns"
+          }
+        },
+        "note": "Positive duration; no whole-millisecond restriction for metadata retention."
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          },
+          "sessions": {
+            "ended_retention": 168
+          }
+        },
+        "note": "Must be a Go duration string."
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          },
+          "sessions": {
+            "ended_retention": "-1s"
+          }
+        },
+        "note": "Negative duration refused."
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          },
+          "sessions": {
+            "ended_retention": "7d"
+          }
+        },
+        "note": "Go duration syntax uses 168h, not days."
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          },
+          "sessions": {
+            "ended_retention": "bad"
+          }
+        },
+        "note": "Malformed duration refused."
+      }
+    ]
+  }
+}

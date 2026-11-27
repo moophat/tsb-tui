@@ -1,0 +1,100 @@
+{
+  "seam": "C1",
+  "name": "target-import-preview-mobaxterm",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "description": "Synthetic credential-free mobaxterm export: verify the native reference and sanitized SSH preview. Broader mapping and loss cases remain owed.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "preview",
+            "format": "mobaxterm",
+            "export_bytes": "W0Jvb2ttYXJrc10KU3ViUmVwPQpJbWdOdW09MAphYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhPSMxMDkjMCVhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhJTIyCg=="
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "import_id": "imp-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "preview_token": "fixture_token",
+            "format": "mobaxterm",
+            "targets": [
+              {
+                "entry": {
+                  "index": 1,
+                  "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                "source_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "target": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "tags": [],
+                  "discovered_by": "tsb",
+                  "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "port": 22
+                },
+                "change": "create",
+                "n": 0,
+                "has_credentials": false,
+                "key_file_referenced": false,
+                "definition": {
+                  "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "type": "ssh",
+                  "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "discovered_by": "tsb",
+                  "options": {
+                    "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  }
+                },
+                "mapping": null
+              }
+            ],
+            "not_carried": [],
+            "credentials": []
+          },
+          "match": [
+            {
+              "pointer": "/format",
+              "eq": "mobaxterm"
+            },
+            {
+              "pointer": "/targets/0/source_ref",
+              "eq": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            {
+              "pointer": "/targets/0/change",
+              "eq": "create"
+            },
+            {
+              "pointer": "/targets/0/definition/options/host",
+              "eq": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: map observed MobaXterm samples; real-export verification remains a release gate."
+    }
+  ]
+}

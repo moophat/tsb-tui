@@ -1,0 +1,69 @@
+{
+  "seam": "C1",
+  "name": "reuse-prompted-connection-offered-to-its-principal",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestAPromptedConnectionIsOfferedToItsOwnPrincipalOnly: a candidate of a reuse with no id and no credential choice, listed in connection_ids, never another principal's, never a candidate beside a credential choice, and 422 when named with credential_ref"
+    }
+  ],
+  "description": "A prompted connection is offered back to the principal who opened it. A `reuse` create with no `connection_id`, no login and no credential choice takes that principal's own prompted connections to the target as candidates, with the connections opened with the one stored credential that resolves (when exactly one does): the 409 lists them all, and a lone candidate is reused (201). It is never a candidate for another principal, nor beside a credential choice, and a `reuse` that names it together with `credential_ref` is 422 (no stored credential opened it). Here the principal holds a prompted connection `fixture-conn-1` and two stored-credential connections: the 409 lists all three.",
+  "corpus": [
+    "Contract §15.3",
+    "Contract §12",
+    "device-login, reusing a prompted connection",
+    "session-open step 4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "connection_choice_required"
+            },
+            {
+              "pointer": "/error/connection_ids",
+              "present": true
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "connection_choice_required",
+              "message": "several connections could be reused; name one",
+              "connection_ids": [
+                "fixture-conn-1",
+                "fixture-conn-2",
+                "fixture-conn-3"
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

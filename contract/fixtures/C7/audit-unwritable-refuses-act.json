@@ -1,0 +1,58 @@
+{
+  "seam": "C7",
+  "name": "audit-unwritable-refuses-act",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "Every vault, device and grant act writes its audit line first, inside its bbolt write transaction before the commit; when the line cannot be written the act is refused as a login is (500 internal_error) and nothing is committed (DEFAULT 49; credential-protection §8.4).",
+  "corpus": [
+    "credential-protection §8.4",
+    "E4 DEFAULT 49"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/credentials",
+          "body": {
+            "reference": "lab-switch",
+            "kind": "password",
+            "login_name": "netops",
+            "secret": "FIXTURE-NOT-A-PASSWORD"
+          }
+        },
+        "expect": {
+          "status": 500,
+          "example": {
+            "error": {
+              "code": "internal_error",
+              "message": "internal error"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

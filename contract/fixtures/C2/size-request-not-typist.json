@@ -1,0 +1,37 @@
+{
+  "seam": "C2",
+  "name": "size-request-not-typist",
+  "mark": {"required-green": "e2"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "A non-holder's target-size request is refused with the size in effect (C2 decision 8; 5.50 §2; D35): `size` reason `not_typist` carries the size that stands, the PTY is unchanged, and the same client's input is refused `input_refused` `not_typist`. A view-only client (session.join.ro only) may never request; the ANSWER is the one refusal path for a size request, never `request_refused`. Needs the viewer login (inputs viewer_user, viewer_password) and a peer holder (inputs peer_user, peer_password).",
+  "corpus": ["C2 decision 8", "5.50 §2", "D35", "PTY §7.1"],
+  "case": {
+    "inputs": ["user", "password", "target_id", "peer_user", "peer_password", "viewer_user", "viewer_password"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}, "as": "peer"}, "expect": {"status": 200}, "save": {"tp": "/ticket"}},
+      {"ws_open": "p", "path": "/ws/attach"},
+      {"ws_send": "p", "frame": {"t": "attach", "v": 1, "ticket": "${tp}", "session_id": "${sid}"}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "attached"}, {"pointer": "/session/control_holder/user", "eq": "${peer_user}"}], "save": {"client_p": "/client_id"}}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"http": {"method": "POST", "path": "/auth/login", "as": "fresh", "body": {"username": "${viewer_user}", "password": "${viewer_password}"}}, "expect": {"status": 200}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "as": "fresh", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"tv": "/ticket"}},
+      {"ws_open": "v", "path": "/ws/attach"},
+      {"ws_send": "v", "frame": {"t": "attach", "v": 1, "ticket": "${tv}", "session_id": "${sid}"}},
+      {"ws_expect": "v", "frame": {"match": [{"pointer": "/t", "eq": "attached"}, {"pointer": "/session/control_holder/user", "eq": "${peer_user}"}], "save": {"client_v": "/client_id"}}},
+      {"ws_expect": "v", "frame": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "v", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_expect": "p", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_send": "v", "frame": {"t": "resize", "v": 1, "cols": 80, "rows": 24}},
+      {"ws_expect": "v", "frame": {"match": [{"pointer": "/t", "eq": "size"}, {"pointer": "/reason", "eq": "not_typist"}, {"pointer": "/cols", "eq": 120}, {"pointer": "/rows", "eq": 40}]}},
+      {"ws_send": "v", "bytes": "# viewer ${nonce}\r"},
+      {"ws_expect": "v", "frame": {"match": [{"pointer": "/t", "eq": "input_refused"}, {"pointer": "/reason", "eq": "not_typist"}]}},
+      {"http": {"method": "GET", "path": "/sessions/${sid}"}, "expect": {"status": 200, "match": [{"pointer": "/cols", "eq": 120}, {"pointer": "/rows", "eq": 40}]}},
+      {"ws_close": "v"},
+      {"ws_close": "p"}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "seam": "C2",
+  "name": "size-request-clamped",
+  "mark": {"required-green": "e2"},
+  "kind": "ws",
+  "grade": "live",
+  "description": "A request outside the bounds is clamped (C2 decision 8; 5.50 §2–§3; D36): a request below the target's floor is answered `size` reason `clamped_floor` with the floor's size, and one above the ceiling gets `clamped_ceiling` with the ceiling's. The fixture grades that every request below the floor lands on one floor and every request above the ceiling on one ceiling, whatever the graded core's knobs are: it saves the floor from the first clamped answer and the ceiling from the first ceiling-clamped answer, and checks the second request of each pair and the record against the saved values, so the exact bounds are the graded core's providers' to grade. The README Inputs state that the graded core's floor sits above the common minimum and its ceiling below the common maximum so both clamp directions can be provoked.",
+  "corpus": ["C2 decision 8", "5.50 §2", "5.50 §3", "D36"],
+  "case": {
+    "inputs": ["user", "password", "target_id", "peer_user", "peer_password"],
+    "steps": [
+      {"http": {"method": "POST", "path": "/sessions", "body": {"target_id": "${target_id}", "connection": "new", "term": "xterm-256color", "cols": 120, "rows": 40}}, "expect": {"status": 201}, "save": {"sid": "/session/id"}},
+      {"http": {"method": "POST", "path": "/auth/ws-ticket", "body": {"session_id": "${sid}"}}, "expect": {"status": 200}, "save": {"ta": "/ticket"}},
+      {"ws_open": "a", "path": "/ws/attach"},
+      {"ws_send": "a", "frame": {"t": "attach", "v": 1, "ticket": "${ta}", "session_id": "${sid}"}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "attached"}], "save": {"client_a": "/client_id"}}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "prefix"}]}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "clients"}]}},
+      {"ws_send": "a", "frame": {"t": "resize", "v": 1, "cols": 1, "rows": 1}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "size"}, {"pointer": "/reason", "eq": "clamped_floor"}], "save": {"floor_cols": "/cols", "floor_rows": "/rows"}}},
+      {"ws_send": "a", "frame": {"t": "resize", "v": 1, "cols": 2, "rows": 2}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "size"}, {"pointer": "/reason", "eq": "clamped_floor"}, {"pointer": "/cols", "eq": "${floor_cols}"}, {"pointer": "/rows", "eq": "${floor_rows}"}]}},
+      {"ws_send": "a", "frame": {"t": "resize", "v": 1, "cols": 65535, "rows": 65535}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "size"}, {"pointer": "/reason", "eq": "clamped_ceiling"}], "save": {"ceil_cols": "/cols", "ceil_rows": "/rows"}}},
+      {"ws_send": "a", "frame": {"t": "resize", "v": 1, "cols": 65534, "rows": 65534}},
+      {"ws_expect": "a", "frame": {"match": [{"pointer": "/t", "eq": "size"}, {"pointer": "/reason", "eq": "clamped_ceiling"}, {"pointer": "/cols", "eq": "${ceil_cols}"}, {"pointer": "/rows", "eq": "${ceil_rows}"}]}},
+      {"http": {"method": "GET", "path": "/sessions/${sid}"}, "expect": {"status": 200, "match": [{"pointer": "/cols", "eq": "${ceil_cols}"}, {"pointer": "/rows", "eq": "${ceil_rows}"}]}},
+      {"ws_close": "a"}
+    ],
+    "cleanup": [{"method": "DELETE", "path": "/sessions/${sid}"}]
+  }
+}

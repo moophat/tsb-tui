@@ -1,0 +1,78 @@
+{
+  "seam": "C7",
+  "name": "vault-locked-other-login",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    },
+    {
+      "unit": "U11",
+      "test": "owed: a U11 rig against the lab core; E4 phase 11 (U11: the E4 rigs against the lab core); the rig is named in phase 16"
+    }
+  ],
+  "description": "An unlock belongs to the login that made it: another login of the same user is answered vault_locked until it unlocks itself (credential-protection §5.5).",
+  "corpus": [
+    "credential-protection §5.5",
+    "credential-protection §10.2",
+    "E4 D9",
+    "E4 DEFAULT 31",
+    "E4 DEFAULT 32"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "untrusted",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMi0wMA=="
+          }
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "as": "fresh",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 409,
+          "example": {
+            "error": {
+              "code": "vault_locked",
+              "message": "unlock the vault, then try again"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

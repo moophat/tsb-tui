@@ -1,5 +1,13 @@
 # AGENTS.md — tsb-tui
 
+## Outside contributors
+
+Outside contributors: you can build, test and send a pull request with this repository alone: the contract is
+the copy in `contract/` (`make contract-copy-check lint test`). Everything below that names `../tsb-program/`,
+`program/`, the ledgers, lanes or the operator describes the maintainers' process; skip it. Your pull request
+runs no CI here. A maintainer reviews it, re-pushes it to a branch of this repository where CI runs, and merges
+it with your authorship. A change to the contract is never made in `contract/`: open an issue.
+
 *These rules apply to every task in this project unless explicitly overridden. Bias: caution over speed on non-trivial work. Use judgment on trivial tasks.*
 
 0. **A question is not an authorization.** When Tu asks how, what, whether, or what we should or have to do, answer
@@ -269,7 +277,7 @@ builder touches them; builders implement a specified design, never derive one.
 5. **NEVER put phase-level detail in MANIFEST** - Use plan files
 6. **NEVER leave completed work in WORK_TRACKER** - Archive it monthly
 7. **Do not preserve parallel obsolete architectures longer than necessary** - Delete superseded render paths after parity is verified
-8. **NEVER hand-write schema/contract definitions from scratch** - Read the project's authoritative schema source first (here: `program/contract/`, at the release this branch pins — see the TSB section below). Hand-writing caused a ghost alias bug (2026-03-30) that silently dropped data for a full session.
+8. **NEVER hand-write schema/contract definitions from scratch** - Read the project's authoritative schema source first (here: `contract/`, equal to `program/contract/`, at the release this branch pins — see the TSB section below). Hand-writing caused a ghost alias bug (2026-03-30) that silently dropped data for a full session.
 
 ---
 
@@ -289,7 +297,8 @@ unit plan the orchestrator writes for one unit and one epoch.
 | `tsb_tui/`, `tests/`, `bench/` | U7 — the TUI: a first-party shipped surface and the core's verification instrument | imports only the published contract client (the import lint) |
 | `packaging/` (when it lands) | U12 — client builds: the TUI as one zip per OS, built on Linux | `../tsb-program/spine/track-client-builds.md` |
 
-`program/` — tsb-program as a sparse submodule: `program/srs/` the corpus, `program/contract/` the contract, at a pinned
+`contract/` is the repo's copy of the contract, byte-for-byte equal to `program/contract/` at the pinned release.
+`program/` — tsb-program as a sparse submodule: `program/srs/` the corpus, `program/contract/` the contract copy source, at a pinned
 release; read-only here.
 
 ## The program lives in a sibling repo
@@ -306,11 +315,18 @@ nothing. Read `program/srs/` at the pinned release, never the vault and never a 
 
 ## Contract discipline
 
+- The contract is `contract/`, equal to `program/contract/`.
 - `make contract-init` populates `program/` at the release this branch pins (`tools/contract-pin.sh`), in every clone
-  and worktree; `make contract-check` proves the pin. A bump is its own PR: inside `program/` fetch the release tag and
-  check it out detached, stage `program`, run both targets, commit the moved gitlink. Never `submodule deinit`,
-  `sparse-checkout add`, or `git show` inside `program/`; never edit inside it.
-- Read the protocols the TUI drives (`program/contract/protocols/`: `README.md`, `conventions.md`, the edge `SF-CO`
+  and worktree; `make contract-check` proves the pin and the copy.
+- The bump procedure:
+  1. Inside `program/`, `git fetch origin --tags` and `git checkout --detach vX.Y.Z`.
+  2. `git add program` (the index now holds the new gitlink; `HEAD` and `contract/` still hold the old release).
+  3. `make contract-init contract-copy` (the working tree now holds the new `contract/` and `contract.pin`).
+  4. `git add contract contract.pin` (the index now holds the new copy).
+  5. `make contract-check` (index mode: passes because the index holds the new gitlink, copy and pin together).
+  6. Commit.
+  7. `CONTRACT_COMMITTED=1 make contract-check` (proves the commit itself).
+- Read the protocols the TUI drives (`contract/protocols/`: `README.md`, `conventions.md`, the edge `SF-CO`
   and its flows) before their schemas and fixtures. Never hand-write a schema or a fixture from memory.
 - A contract change is a PR to tsb-program, never part of a TUI PR.
 
@@ -343,5 +359,5 @@ a private tmux socket, killed afterwards.
 Conventional message; add files by explicit path; trailer `AI-Model: <model-id>`; no co-authored-by. PRs required on
 `main`, merged one at a time. Qodo reviews every PR but docs-only ones (`.pr_agent.toml`: `plan/…`, `chore/ledger…`,
 `docs/…`, `research/…` branches carry plans, ledgers or notes only, and merge on green CI; the docs-branch guard fails
-one that touches anything else). Licensing is undecided (`../tsb-program/spine/plan.md` §5.3): no LICENSE file, and
-the repo stays private until it is.
+one that touches anything else). The licence is Apache-2.0 (`LICENSE`, `NOTICE`; `open_decisions` §6, LOCKED); no
+per-file licence headers.

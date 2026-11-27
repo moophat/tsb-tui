@@ -1,0 +1,181 @@
+{
+  "seam": "C6",
+  "name": "recording-integrity-unrecorded",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2/U5 integrity_unrecorded_shape: ruled unrecorded close notice has recording_enabled false, null baselines, no path or final counters/outcome; refuses fabricated path or zero baseline; durable retry key ri1:<session_id>:u:null:null."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: U2/U5 integrity_unrecorded_shape: ruled unrecorded close notice has recording_enabled false, null baselines, no path or final counters/outcome; refuses fabricated path or zero baseline; durable retry key ri1:<session_id>:u:null:null."
+    }
+  ],
+  "description": "U2/U5 integrity_unrecorded_shape: ruled unrecorded close notice has recording_enabled false, null baselines, no path or final counters/outcome; refuses fabricated path or zero baseline; durable retry key ri1:<session_id>:u:null:null.",
+  "corpus": [
+    "immortality §4.1–4.3, §6.4",
+    "session model §12–15",
+    "terminal-output-accounting"
+  ],
+  "case": {
+    "schema": "schemas/audit-event.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": ""
+      },
+      {
+        "valid": true,
+        "doc": {
+          "ts": "2026-11-15T02:20:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "core_stop",
+            "observed_at_ns": 1794708000999999999,
+            "unknown_suffix": true
+          }
+        },
+        "note": "same unrecorded session, a later reason core_stop, reuses the one reason-free key ri1:s1:u:null:null (first durable fact reused)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          },
+          "recording_path": "recordings/fabricated.ttyrec"
+        },
+        "note": "unrecorded has no path, numeric baseline or final result"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": 0,
+            "baseline_bytes": null,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": "unrecorded has no path, numeric baseline or final result"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": 0,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true
+          }
+        },
+        "note": "unrecorded has no path, numeric baseline or final result"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true,
+            "final_last_seq": 0
+          }
+        },
+        "note": "unrecorded has no path, numeric baseline or final result"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "ts": "2026-11-15T02:15:00Z",
+          "action": "recording.output_incomplete",
+          "session_id": "s1",
+          "session_type": "shell",
+          "detail": {
+            "version": 1,
+            "kind": "unrecorded",
+            "key": "ri1:s1:u:null:null",
+            "recording_enabled": false,
+            "baseline_seq": null,
+            "baseline_bytes": null,
+            "reason": "worker_absent",
+            "observed_at_ns": 1794708000123456789,
+            "unknown_suffix": true,
+            "read_outcome": "eof"
+          }
+        },
+        "note": "unrecorded has no path, numeric baseline or final result"
+      }
+    ]
+  }
+}

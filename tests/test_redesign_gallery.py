@@ -3,14 +3,15 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import difflib
 import json
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 from input_server import InputRecordingApp
+from snapshot_support import settle_snapshot
 from test_redesign_focus import heavy_panes, workspace_with_sessions
 from tsbc import _serve
 
@@ -216,6 +217,34 @@ def _inline_svg_styles(svg: str) -> str:
     return res
 
 
+def _mask_account_buttons(s: str) -> str:
+    # Mask unfocused AccountsScreen action buttons' disabled shading for account-form at 160x45.
+    # When UserFormScreen is open as a modal dialog at 160x45, the underlying AccountsScreen
+    # action buttons are unfocused and disabled; Textual's CSS compositor renders varying background
+    # fill shading across disabled button spans between passes:
+    # - Rect rows: y=855.5, 879.9, 904.3
+    # - Text rows: y=874, 898.4, 922.8, 947.2, 971.6, 996
+    s = _inline_svg_styles(s)
+    for y in ("855.5", "879.9", "904.3"):
+        s = re.sub(rf"(?:<rect [^>]*?y=[\"\x27]{re.escape(y)}[\"\x27][^>]*?/>)+", f'<rect y="{y}" [MASKED_BG]/>', s)
+    for y in ("874", "898.4", "922.8", "947.2", "971.6", "996"):
+        s = re.sub(rf"(?:<text [^>]*?y=[\"\x27]{re.escape(y)}[\"\x27][^>]*?>.*?</text>)+", f'<text y="{y}">[MASKED_TEXT]</text>', s)
+    return s
+
+
+def _mask_status_row(s: str) -> str:
+    # Mask the status row behind the target form and delete confirmation at 160x45.
+    # Modal forms (TargetFormScreen and ConfirmTargetDeleteScreen) do not draw their own status bar.
+    # The underlying TerminalScreen status row selection hints vary between runs based on targets list
+    # selection and focus state:
+    # - Rect row: y=1075.1
+    # - Text row: y=1093.6 (row 44)
+    s = _inline_svg_styles(s)
+    s = re.sub(r"(?:<rect [^>]*?y=[\"\x27]1075\.1[\"\x27][^>]*?/>)+", '<rect y="1075.1" [MASKED_BG]/>', s)
+    s = re.sub(r"(?:<text [^>]*?y=[\"\x27]1093\.6[\"\x27][^>]*?>.*?</text>)+", '<text y="1093.6">[MASKED_TEXT]</text>', s)
+    return s
+
+
 @pytest.mark.parametrize("size", SIZES)
 @pytest.mark.parametrize("entry_id", _entry_ids())
 def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_text, tmp_path, monkeypatch, entry_id, size):
@@ -291,9 +320,14 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
         monkeypatch.setenv("TSB_TUI_MOTION_LEVEL", "none")
         app = TsbTuiApp(url)
         app.animation_level = "none"
+        seen_ts = datetime.fromisoformat(_serve.SEEN).timestamp()
+        monkeypatch.setattr(app, "wall_clock", lambda: seen_ts + 38 * 86400 + 43200)
         if entry_id == "text-screen-about":
             app.cfg.set_runtime("term.library", "vendor/libghostty-vt/libghostty-vt.so")
         monkeypatch.setattr("tsb_tui.app.library_path", lambda cfg: Path("vendor/libghostty-vt/libghostty-vt.so"))
+        # About names the installed package's version: a checkout that was never pip-installed says "not installed
+        # as a package", an installed one its version. The pictures pin it so they read the same on any machine.
+        monkeypatch.setattr("tsb_tui.screens.chrome_dialogs._package_version", lambda: "0.0.0")
         async with app.run_test(size=size) as pilot:
             # Drive the route steps
             route = list(entry["keys_route"])
@@ -348,7 +382,11 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                                 and (
                                     getattr(app.screen, "fleet_view", None) is None
                                     or not getattr(app.screen, "view_open", False)
-                                    or getattr(app.screen.fleet_view, "tab", None) == "targets"
+                                    or (
+                                        getattr(app.screen.fleet_view, "tab", None) == "targets"
+                                        and getattr(app.screen, "status", None) is not None
+                                        and "keys → targets" in getattr(app.screen.status, "text", "")
+                                    )
                                 )
                             ),
                             "targets rows to load",
@@ -370,6 +408,16 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                     pilot,
                     lambda: getattr(app.screen, "view_open", False) and getattr(app.screen.fleet_view, "tab", "") == "alerts",
                     "Alerts tab open",
+                    timeout_s=10.0,
+                )
+            elif entry_id == "confirm-delete-target":
+                await wait_until(
+                    pilot,
+                    lambda: (
+                        type(app.screen).__name__ == screen_class
+                        and "keys → targets" in screen_text(app)
+                    ),
+                    f"screen {screen_class} with settled targets status for entry {entry_id}",
                     timeout_s=10.0,
                 )
             else:
@@ -401,68 +449,24 @@ def test_every_manifest_entry_is_reachable_by_keys(serve, wait_until, screen_tex
                 pass
             await pilot.pause(0.05)
 
-            # Capture SVG baseline
-            svg = app.export_screenshot(title=f"p6-{entry_id}")
-            tmp_file = tmp_path / baseline_name
-            tmp_file.write_text(svg, encoding="utf-8")
-            content = tmp_file.read_text(encoding="utf-8")
-            assert content.lstrip().startswith("<svg"), f"export_screenshot returned non-SVG for {entry_id}"
-            assert "</svg>" in content, f"{tmp_file} does not contain </svg>"
-            assert len(content) > 500, f"{tmp_file} is suspiciously small ({len(content)} bytes)"
-
-            regen_dir = os.environ.get("TSB_TUI_SNAPSHOT_DIR") or _REGEN_DIR
-            if regen_dir:
-                dest_dir = Path(regen_dir)
-                dest_dir.mkdir(parents=True, exist_ok=True)
-                (dest_dir / baseline_name).write_text(svg, encoding="utf-8")
-            else:
-                committed_file = COMMITTED_SNAP_DIR / baseline_name
-                assert committed_file.is_file(), (
-                    f"Committed baseline missing for {entry_id} at {size_str}: {committed_file}"
-                )
-                norm_captured = _normalize_svg(content)
-                norm_committed = _normalize_svg(committed_file.read_text(encoding="utf-8"))
+            # Capture SVG baseline through settled snapshot helper
+            def normalizer(s: str) -> str:
+                s = _normalize_svg(s)
                 if entry_id == "account-form" and size == (160, 45):
-                    # Mask specific action button elements (rows y=855.5..996): when UserFormScreen
-                    # modal is open at 160x45, the underlying unfocused AccountsScreen action buttons
-                    # vary in Textual CSS disabled fill shading and bevel characters. Rich writes all
-                    # rects on one line and all text glyphs on another; we match only the specific rect
-                    # and text elements on those button rows within the line without dropping SVG lines.
-                    def _mask_account_buttons(s: str) -> str:
-                        s = _inline_svg_styles(s)
-                        for y in ("855.5", "879.9", "904.3"):
-                            s = re.sub(rf"(?:<rect [^>]*?y=[\"\x27]{re.escape(y)}[\"\x27][^>]*?/>)+", f'<rect y="{y}" [MASKED_BG]/>', s)
-                        for y in ("874", "898.4", "922.8", "947.2", "971.6", "996"):
-                            s = re.sub(rf"(?:<text [^>]*?y=[\"\x27]{re.escape(y)}[\"\x27][^>]*?>.*?</text>)+", f'<text y="{y}">[MASKED_TEXT]</text>', s)
-                        return s
-                    norm_captured = _mask_account_buttons(norm_captured)
-                    norm_committed = _mask_account_buttons(norm_committed)
+                    s = _mask_account_buttons(s)
                 elif entry_id in ("target-form", "confirm-delete-target") and size == (160, 45):
-                    # Mask specific underlying TerminalScreen status row elements on row 44 (rects at
-                    # y=1075.1, text at y=1093.6): TargetFormScreen and ConfirmTargetDeleteScreen do not
-                    # draw their own status bar; the background status row selection hints vary between
-                    # runs based on targets list selection and focus state. We match only the specific
-                    # rect and text elements on the status row within the line without dropping SVG lines.
-                    def _mask_status_row(s: str) -> str:
-                        s = _inline_svg_styles(s)
-                        s = re.sub(r"(?:<rect [^>]*?y=[\"\x27]1075\.1[\"\x27][^>]*?/>)+", '<rect y="1075.1" [MASKED_BG]/>', s)
-                        s = re.sub(r"(?:<text [^>]*?y=[\"\x27]1093\.6[\"\x27][^>]*?>.*?</text>)+", '<text y="1093.6">[MASKED_TEXT]</text>', s)
-                        return s
-                    norm_captured = _mask_status_row(norm_captured)
-                    norm_committed = _mask_status_row(norm_committed)
-                if norm_captured != norm_committed:
-                    diff_lines = list(difflib.unified_diff(
-                        norm_committed.splitlines(keepends=True),
-                        norm_captured.splitlines(keepends=True),
-                        fromfile=f"committed:{baseline_name}",
-                        tofile=f"captured:{baseline_name}",
-                        n=3,
-                    ))
-                    print(f"\n--- DIFF FOR {entry_id} {size_str} ---")
-                    print("".join(diff_lines[:100]))
-                assert norm_captured == norm_committed, (
-                    f"Gallery baseline mismatch for entry {entry_id} at {size_str} ({baseline_name})"
-                )
+                    s = _mask_status_row(s)
+                return s
+
+            await settle_snapshot(
+                app,
+                pilot,
+                COMMITTED_SNAP_DIR / baseline_name,
+                title=f"p6-{entry_id}",
+                regen_env="TSB_TUI_SNAPSHOT_DIR",
+                simplify=False,
+                normalizer=normalizer,
+            )
 
     asyncio.run(check())
 

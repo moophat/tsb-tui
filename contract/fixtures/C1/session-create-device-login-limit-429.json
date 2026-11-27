@@ -1,0 +1,70 @@
+{
+  "seam": "C1",
+  "name": "session-create-device-login-limit-429",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/device_login_test.go — TestTheDeviceLoginsPastTheCapAre429AndTheFirstOnesStand"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/device_login_test.go — TestEveryEndOfADeviceLoginGivesItsPlaceBack and TestTwoCreatesAtOnceNeverBothTakeTheLastPlace"
+    }
+  ],
+  "description": "A principal may have at most `config.yaml` `worker.device_logins_max` device logins in progress (1 to 64, device-login step 5). A prompt-mode create past it is 429 `rate_limited` with the fixed text \"too many device logins in progress; finish or cancel one\". The check and the registration of the new device login are one step under one lock, so two creates at once never both take the last place, and a device login gives its place back exactly once at every end (device-login, how a device login ends). The device logins already in progress stand.",
+  "corpus": [
+    "open_decisions §5",
+    "device-login step 5",
+    "conventions V4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "prompt"
+              },
+              "recording_acknowledged": true
+            }
+          }
+        },
+        "expect": {
+          "status": 429,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "rate_limited"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "rate_limited",
+              "message": "too many device logins in progress; finish or cancel one"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

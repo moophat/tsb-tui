@@ -1,0 +1,67 @@
+{
+  "seam": "C2",
+  "name": "account-login-ended-close-4017",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: E4b account management provider tests; Provider supplies a real attach ticket in place of the synthetic shape ticket and ends that login by disable, administrator password set or another login own change. Attached client closes 4017 account_login_ended by the response, sessions live; consumer never auto-reattaches, including an older consumer treating 4017 as 4010. Caller of own change stays attached. Login side effects are asserted by C1/account-disable and password fixtures."
+    },
+    {
+      "unit": "U7",
+      "test": "owed: consumer never auto-reattaches after 4017, including older client mapping to 4010."
+    }
+  ],
+  "description": "Provider establishes this attached client and ends that login by disable, administrator password set or another login own change. Attached client closes 4017 account_login_ended by the response, sessions live; consumer never auto-reattaches, including an older consumer treating 4017 as 4010. Caller of own change stays attached. Login side effects are asserted by C1/account-disable and password fixtures.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json#/$defs/attached",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "attached",
+          "v": 1,
+          "session": {
+            "id": "fixture-session-a",
+            "target_id": "fixture-target",
+            "connection_id": "fixture-conn-1",
+            "session_type": "shell",
+            "state": "live",
+            "tier": 1,
+            "owner": "fixture-user",
+            "control_holder": {
+              "client_id": "fixture-client-7",
+              "user": "fixture-user"
+            },
+            "created_at": "2026-09-23T12:00:00Z",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "recording": {
+              "active": true,
+              "warning_code": "recording.active",
+              "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+            },
+            "ends_at": "2026-09-30T12:00:00Z",
+            "ends_by": "idle",
+            "ending": false
+          },
+          "client_id": "fixture-client-7"
+        },
+        "note": "An attached client before the provider triggers an account act: expect close 4017, never a terminal-session end or automatic reattach."
+      }
+    ]
+  }
+}

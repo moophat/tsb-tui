@@ -1,0 +1,67 @@
+{
+  "seam": "C1",
+  "name": "session-create-device-login-not-ssh-422",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/device_login_test.go — TestAPromptLoginOnATelnetTargetIs422BeforeAnyWorker: 422 invalid_request for a telnet and an echo target, no worker asked"
+    }
+  ],
+  "description": "A prompt-mode login on a target whose type is not ssh (telnet, echo, serial) is 422 `invalid_request`, fixed text, before any worker is asked: a telnet login is typed in the session, and a telnet `connect` carries no user and no credential. It is a `reference` fixture, as C1/session-create-login-not-ssh-422 is (ruling G2 of release A): the runner has no input that names a non-ssh target, so only the core's own test grades it.",
+  "corpus": [
+    "open_decisions §5",
+    "session-open step 2a",
+    "device-login step 4",
+    "ipc-control connect"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "prompt"
+              },
+              "recording_acknowledged": true
+            }
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "a login is for ssh targets only"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

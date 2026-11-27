@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C1 error envelope",
+  "description": "The body of every non-2xx JSON response on the northbound REST API. `code` is the contract; a consumer that meets a code it does not know handles the response by its HTTP status. `message` is human text for an operator and carries no host detail — no filesystem path of the broker host (Contract §4); tsbc fails a live response whose message names one. From contract-v0.2, connection_choice_required carries connection_ids, and no other code does. From the vault release, credential_choice_required carries candidates (each a credential_ref with its credential_layer), unlock_failed carries attempts_remaining, vault_wipe_blocked carries credential_refs, and mapped_credential_missing carries credential_ref; no other code carries any of the five, and each stays optional in the schema so an earlier body stays valid. E4b account state rules: already-disabled disable returns 204 without an error body, audit, mutation or login effects; already-enabled enable is 409 account_already_enabled; administrator password set on disabled is 409 account_disabled. Both refusals leave the supplied password unset and write no audit.",
+  "type": "object",
+  "required": ["error"],
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {"$ref": "#/$defs/code"},
+        "import_progress": {"$ref": "import-receipt.schema.json#/$defs/progress"},
+        "message": {"type": "string"},
+        "connection_ids": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "common.schema.json#/$defs/id"},
+          "description": "With connection_choice_required only: the candidate connections of the requesting principal — its own, never another principal's (Contract §4: users are tenants; a candidate is by definition the principal's), each a connection whose transport is up, a lingering one included (session model §11 connection_linger). The surface asks the operator to pick one and repeats the request with connection_id; the broker never picks (Contract §12). A connection on a v0.1 worker is never a candidate. Optional in the schema only so a v0.1 body stays valid; a v0.2 core always sends it. From Release B a connection a device login opened (a prompted connection) is a candidate of the principal who opened it, as one opened with a stored credential is, and of no other principal; one opened with a supplied login never is."
+        },
+        "candidates": {"type": "array", "minItems": 2, "maxItems": 64, "items": {"type": "object", "required": ["credential_ref", "credential_layer"], "additionalProperties": false, "properties": {"credential_ref": {"$ref": "common.schema.json#/$defs/credential_ref"}, "credential_layer": {"$ref": "common.schema.json#/$defs/credential_layer"}}}, "description": "With credential_choice_required only, from the vault release: every credential that resolves for this principal and target, each by its reference and layer and nothing else — never a kind, a label, a login name or a secret (DEFAULT 51). A personal and an org credential of the same name are two candidates; two grants naming the same org reference are one. The surface asks the operator to pick one and repeats the create with credential_ref and credential_layer; the broker never picks (Contract §12). Optional in the schema only so an earlier body stays valid; a vault-release core always sends it."},
+        "attempts_remaining": {"type": "integer", "minimum": 0, "maximum": 1000, "description": "With unlock_failed only, from the vault release: how many more failed passphrase attempts this principal has in the current window before unlock answers 429 rate_limited (credential-protection Appendix B: \"X attempts remaining\"). A count, never a hint about the passphrase."},
+        "credential_refs": {"type": "array", "minItems": 1, "maxItems": 1024, "items": {"$ref": "common.schema.json#/$defs/credential_ref"}, "description": "With vault_wipe_blocked only, from the vault release: the user-unlocked org credentials the user to be wiped stored, which would become unopenable for ever (O31). A vault administrator deletes each (its grants revoked first) or has another administrator store it again, then repeats the wipe."},
+        "credential_ref": {"$ref": "common.schema.json#/$defs/credential_ref", "description": "With mapped_credential_missing only, from the vault release: the reference a Layer 2a mapping of this principal names for this target that is not in the principal's vault (users/<name>/profiles.yaml edited or restored by hand, for one). The broker never skips it silently (Contract §12): the principal maps the target again (POST /profiles/batch) or removes the mapping."}
+      },
+      "oneOf": [
+        {"properties": {"import_progress": false, "connection_ids": false, "candidates": false, "attempts_remaining": false, "credential_refs": false, "credential_ref": false}},
+        {"properties": {"import_progress": false, "code": {"const": "connection_choice_required"}, "candidates": false, "attempts_remaining": false, "credential_refs": false, "credential_ref": false}, "required": ["connection_ids"]},
+        {"properties": {"import_progress": false, "code": {"const": "credential_choice_required"}, "connection_ids": false, "attempts_remaining": false, "credential_refs": false, "credential_ref": false}, "required": ["candidates"]},
+        {"properties": {"import_progress": false, "code": {"const": "unlock_failed"}, "connection_ids": false, "candidates": false, "credential_refs": false, "credential_ref": false}, "required": ["attempts_remaining"]},
+        {"properties": {"import_progress": false, "code": {"const": "vault_wipe_blocked"}, "connection_ids": false, "candidates": false, "attempts_remaining": false, "credential_ref": false}, "required": ["credential_refs"]},
+        {"properties": {"import_progress": false, "code": {"const": "mapped_credential_missing"}, "connection_ids": false, "candidates": false, "attempts_remaining": false, "credential_refs": false}, "required": ["credential_ref"]},
+        {"properties": {"code": {"enum": ["internal_error", "inventory_unavailable", "import_conflict"]}, "connection_ids": false, "candidates": false, "attempts_remaining": false, "credential_refs": false, "credential_ref": false}, "required": ["import_progress"]},
+        {"properties": {"code": {"const": "import_conflict"}, "import_progress": false, "connection_ids": false, "candidates": false, "attempts_remaining": false, "credential_refs": false, "credential_ref": false}}
+      ]
+    }
+  },
+  "$defs": {
+    "code": {
+      "enum": [
+        "unauthenticated",
+        "invalid_credentials",
+        "rate_limited",
+        "forbidden",
+        "session_not_found",
+        "target_not_found",
+        "vendor_template_not_found",
+        "import_format_unsupported",
+        "import_preview_stale",
+        "import_conflict",
+        "client_not_found",
+        "invalid_request",
+        "no_resolving_credential",
+        "credential_choice_required",
+        "connection_choice_required",
+        "hostkey_changed",
+        "login_recording_not_acknowledged",
+        "target_auth_failed",
+        "target_connect_failed",
+        "worker_unavailable",
+        "inventory_unavailable",
+        "not_implemented",
+        "internal_error",
+        "vault_locked",
+        "vault_not_initialized",
+        "vault_exists",
+        "unlock_failed",
+        "part2_missing",
+        "device_not_trusted",
+        "challenge_failed",
+        "device_not_found",
+        "screen_unlock_failed",
+        "credential_not_found",
+        "credential_exists",
+        "credential_has_grants",
+        "broker_unlock_unavailable",
+        "grant_not_found",
+        "user_not_found",
+        "vault_wipe_blocked",
+        "vault_not_minted",
+        "mapped_credential_missing",
+        "org_credential_locked",
+        "target_id_taken",
+        "user_exists",
+        "account_disabled",
+        "account_self_disable",
+        "account_already_enabled",
+        "password_change_failed"
+      ]
+    }
+  },
+  "x-codes": {
+    "import_format_unsupported": {"status": 422, "meaning": "The declared import format does not recognize the container, signature, version or encoding."},
+    "import_preview_stale": {"status": 409, "meaning": "The preview is stale, or no caller-owned retained receipt is available."},
+    "import_conflict": {"status": 409, "meaning": "The import conflicts with a caller-owned commit or its current state."},
+    "vendor_template_not_found": {"status": 404, "meaning": "No prompt template for this vendor in the running release."},
+    "unauthenticated": {"status": 401, "meaning": "No valid session cookie."},
+    "invalid_credentials": {
+      "status": 401,
+      "meaning": "Login refused: unknown user or wrong password (the two are not distinguished). From E4b a disabled account is indistinguishable from these refusals, with the same hashing work and no cookie."
+    },
+    "rate_limited": {
+      "status": 429,
+      "meaning": "Too many failed logins; try later. From the vault release it also answers an unlock or a device registration past the principal's passphrase limit (config.yaml vault.unlock_attempts in vault.unlock_window; a correctly signed trusted unlock or regeneration is never refused by it), and a screen-lock re-check past the login's failed-login limit, which it shares with POST /auth/login. From Release B it also answers a prompt-mode create (a device login) past the principal's device logins in progress (config.yaml worker.device_logins_max), with the fixed text \"too many device logins in progress; finish or cancel one\". From E4b also an own password change past the login failed-login limiter."
+    },
+    "forbidden": {
+      "status": 403,
+      "meaning": "The principal can see the object but may not do this to it (Storage §9); or, on POST /auth/login and POST /auth/logout, a browser write from a foreign origin. From the vault release also: the principal lacks the policy.yaml permission vault.admin for a vault administrator's operation. Target writes and the definition read require target.edit; a new definition must match the principal’s targets: filters, and only the tsb source is editable. A browser write from a foreign origin is refused on POST, PUT and DELETE too. From E4b, every account administrator operation requires account.admin, with no write or audit on refusal. Every account write authenticates first, then refuses a foreign Origin before account or request-input reads."
+    },
+    "session_not_found": {"status": 404, "meaning": "No such session, or one the principal may not see. Also a removed ended-session record; indistinguishable from unknown or invisible."},
+    "target_not_found": {"status": 404, "meaning": "No such target, or one the principal may not see (the visibility gate, Storage §10.1a)."},
+    "client_not_found": {"status": 404, "meaning": "No such attached client on this session, or one the principal may not see (DELETE /sessions/{id}/clients/{client_id})."},
+    "invalid_request": {
+      "status": 422,
+      "meaning": "The body is not the operation's request schema: a required field is missing, a value is out of range. From this release it also answers a query parameter the operation does not declare, and a value outside the range its parameter states, on GET /targets. From the vault release it also answers a credential_ref and credential_layer pair that is not a candidate for this create, a create carrying both a choice and a login, a store with no unlock class or no login name, an encrypted private key, a free text past its bound, and a key that is not an uncompressed P-256 SubjectPublicKeyInfo. Also a target definition outside its closed shape, carrying a secret key, or whose id differs from the path. From E4b also an account request with a name outside the username shape or reserved shared (case-insensitive), or a password empty, not UTF-8, above 1024 characters, or a newly set password below auth.account_password_min_length. Fixed text names the rule, never a supplied value."
+    },
+    "no_resolving_credential": {"status": 409, "meaning": "The target is visible but no credential resolves for this principal. A legitimate state, not a policy error (Storage §10.1a)."},
+    "credential_choice_required": {"status": 409, "meaning": "More than one credential resolves for this principal and target; the broker does not pick one silently (Contract §12, Storage §10.4). From the vault release the body carries candidates, each a credential_ref with its credential_layer, and the operator's choice is made by repeating the create with credential_ref and credential_layer naming one."},
+    "connection_choice_required": {"status": 409, "meaning": "connection: reuse, and the principal holds two or more connections to the target that could be reused; the broker does not pick one (Contract §12, §15.3). connection_ids lists them; repeat the request with connection_id naming one."},
+    "hostkey_changed": {"status": 409, "meaning": "The target presented a host key other than the one recorded for it; the connection was refused."},
+    "login_recording_not_acknowledged": {"status": 409, "meaning": "The request carries a login that would be recorded (GET /auth/me says recording.login_input is true: recording is enabled and the login_input knob is on) and does not set login.recording_acknowledged to true. The core sent nothing to a worker and recorded nothing. The surface re-reads /auth/me, warns the operator that the login will be recorded, and repeats the request with the field set (session-open step 2b)."},
+    "target_auth_failed": {"status": 502, "meaning": "The target refused the credential."},
+    "target_connect_failed": {"status": 502, "meaning": "The target could not be reached, or the connection failed before a session opened. From this release it also answers a create whose target address the worker refuses (it lies in the deployment's deny list), and a create that reuses a telnet connection: such a connection carries one session, ever, and its worker refuses another, leaving the connection and its session as they were."},
+    "worker_unavailable": {"status": 503, "meaning": "No supervisor could provide a worker for the connection (spawn failed, readiness timed out, or no capacity), or every supervisor predates this core: a session on a v0.1 worker would have no heartbeat and no bound if the core were lost, so the core creates none there, and the message says the workers predate the core. From this release it also answers a create on a telnet target when no supervisor provides a worker at proto_version 0.5 or later: an older worker has no telnet driver, and the message says the workers predate telnet. From Release B it also answers a prompt-mode create (a device login) when no supervisor provides a worker at proto_version 0.7 or later, and the message says the workers predate device logins."},
+    "inventory_unavailable": {"status": 503, "meaning": "The inventory index is down, so GET /targets and GET /targets/{id} have no answer. Session create does not read the index, so a create still works while it is down. Also the definition read when visibility cannot be decided. For a target write, the audit line is written before the index wait; if that wait runs out, the message says the change took effect and is audited but is not yet listed. A failed audit instead answers 500 internal_error, whatever the index does."},
+    "not_implemented": {"status": 501, "meaning": "The core does not serve this yet. GET /sessions/{id}/output returns this at E2, before the core has a ring to page (C1 decision 3)."},
+    "internal_error": {"status": 500, "meaning": "The core failed; the message carries no host detail."},
+    "vault_locked": {"status": 409, "meaning": "From the vault release: the personal credential this create needs for a new connection carries a secret, and this login holds no vault unlock (an unlock belongs to the login that made it, credential-protection §5.5). Unlock (POST /vault/unlock) and repeat the create. Decided before any worker is asked; a reuse never gets it, since it sends no credential. Also a store or delete on a vault this login has not unlocked, and an org store of class user_unlocked by an administrator whose vault this login has not unlocked."},
+    "vault_not_initialized": {"status": 409, "meaning": "From the vault release: the principal has no sealed vault yet — none at all, or one minted (POST /vault/salt) but not sealed (POST /vault/init): initialise it first. The salt read answers initialized false instead; this code answers an unlock, a registration or a store."},
+    "vault_exists": {"status": 409, "meaning": "From the vault release: a mint (POST /vault/salt) or an init (POST /vault/init) on a vault that is sealed already. Nothing changed."},
+    "unlock_failed": {"status": 409, "meaning": "From the vault release: the halves did not open the credential set (a wrong passphrase, or a corrupted sealed Part 1 on the device: credential-protection Appendix B). Counted against the principal's passphrase limit; carries attempts_remaining. Never 401: the login is not lost."},
+    "part2_missing": {"status": 409, "meaning": "From the vault release: a trusted unlock found no Part 2 for this device (Redis lost it, or its TTL ran out). Not counted against the passphrase limit, and never a sign that the device is not trusted: regenerate Part 2 (POST /vault/part2) with the passphrase the surface already holds (credential-protection Appendix B, §9)."},
+    "device_not_trusted": {"status": 403, "meaning": "From the vault release: the device is not on the allowlist (never registered, or revoked); checked before any other challenge check. The one answer on which a browser drops its stored device key and sealed Part 1 (credential-protection Appendix B). Under policy.yaml devices.revocation next_connection it also answers a create on a new connection by a login tied to a revoked device."},
+    "challenge_failed": {"status": 409, "meaning": "From the vault release: a device challenge was refused, at issue or at verification, for any reason but the allowlist (expired, spent, voided, issued for another operation, login or device, not the login's tied device, a login already tied, a tied login naming another device, a bad signature). One code, so an answer never says which check failed. Request a new challenge; never a reason to drop the device key."},
+    "device_not_found": {"status": 404, "meaning": "From the vault release: no such device for this principal — also the answer for another principal's device to a principal who is not a vault administrator, so the answer never confirms that it exists (OPEN-1.6 (a))."},
+    "screen_unlock_failed": {"status": 403, "meaning": "From the vault release: the screen lock's password re-check was refused (a wrong login password). Never 401: the login, and the vault unlock it holds, stay. Counted by the login's failed-login limit (429 rate_limited past it), never by the passphrase limit; audited as auth.screen_unlock_failed."},
+    "credential_not_found": {"status": 404, "meaning": "From the vault release: no credential with this reference in this owner's vault (the principal's own, or the org tier's)."},
+    "credential_exists": {"status": 409, "meaning": "From the vault release: a store under a reference its owner already uses (O32). Nothing changed; to replace a credential, delete it, then store it again, each audited."},
+    "credential_has_grants": {"status": 409, "meaning": "From the vault release: an org credential with live grants cannot be deleted; revoke its grants first, each with its cred.revoke line (DEFAULT 25)."},
+    "broker_unlock_unavailable": {"status": 409, "meaning": "From the vault release: a store of class broker_unlocked on a deployment that holds no broker key. The class is opt-in per deployment (credential-protection §8.2: ship it opt-in); store it user_unlocked, or have the operator configure a broker key."},
+    "grant_not_found": {"status": 404, "meaning": "From the vault release: no grant with this id."},
+    "user_not_found": {
+      "status": 404,
+      "meaning": "From the vault release: no principal of this name (a vault wipe naming an unknown user). From E4b also an account disable, enable or administrator password set naming an unknown user."
+    },
+    "vault_wipe_blocked": {"status": 409, "meaning": "From the vault release: the user to be wiped stored user-unlocked org credentials, which a wipe would make unopenable for ever; credential_refs names them (O31). Delete each, revoking its grants first, or store it again as another administrator, then repeat the wipe. Nothing changed."},
+    "vault_not_minted": {"status": 409, "meaning": "From the vault release: an init (POST /vault/init) for a principal with no minted salt: mint first (POST /vault/salt), derive from the salt it answers, then init. Nothing changed."},
+    "mapped_credential_missing": {"status": 409, "meaning": "From the vault release: the principal's Layer 2a mapping for this target names a reference that is not in the principal's vault; credential_ref names it. The create opened nothing, and the broker never skips the mapping silently (Contract §12). Map the target again or remove the mapping (POST /profiles/batch), then repeat."},
+    "org_credential_locked": {"status": 409, "meaning": "From the vault release: the org credential this create needs for a new connection is of class user_unlocked, and no login of its storing administrator holds an unlock. A user-unlocked org credential is usable for the operators granted it while that administrator holds an unlock, and it locks with that administrator's vault (credential-protection §8.2, LOCKED); an unlock belongs to the login that made it (§5.5), so any login of the administrator will do, and the caller's own unlock never matters for it. The operator's passphrase cannot help: the surface says that the credential's administrator must unlock, never asks for the passphrase, and the create may be repeated once they have. Decided before any worker is asked; a reuse never gets it. Carries no field (ruling 2026-10-30 00:58, DEFAULT)."},
+    "target_id_taken": {
+      "status": 409,
+      "meaning": "A create named an id that a target file in some source already holds (any source, not only tsb). Nothing was written."
+    },
+    "user_exists": {
+      "status": 409,
+      "meaning": "The account name already exists, including a disabled account; names are never reused."
+    },
+    "account_disabled": {
+      "status": 409,
+      "meaning": "An administrator password set is refused while the account is disabled; enable alone installs a usable new password. Nothing changes and no audit line is written."
+    },
+    "account_self_disable": {
+      "status": 409,
+      "meaning": "An account administrator cannot disable their own account; nothing changes and no audit line is written."
+    },
+    "account_already_enabled": {
+      "status": 409,
+      "meaning": "Enable targets an already enabled account; the supplied password is not set, nothing changes and no audit line is written."
+    },
+    "password_change_failed": {
+      "status": 403,
+      "meaning": "The current password in an own password change is wrong; never 401. The login failed-login limiter applies; nothing changes."
+    }
+  }
+}

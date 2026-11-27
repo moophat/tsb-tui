@@ -1,0 +1,91 @@
+{
+  "seam": "C3",
+  "name": "heartbeat-ping-pong",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-heartbeat",
+  "description": "Heartbeats both ways, on every connection's control socket (session model §9 E6, E7; §11). The core pings every heartbeat_interval; the worker answers pong with the same n from its own event loop, so a worker whose loop is stuck stops answering though its process and socket are alive, and worker_heartbeat has it killed. A ping on any of a worker's connections resets its core_heartbeat. The last ping of a capture may still be in flight; every earlier one is answered, in order.",
+  "corpus": [
+    "session model §9 E6",
+    "session model §9 E7",
+    "session model §11",
+    "immortality §8"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping",
+          "n": 1
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "pong",
+          "n": 1
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping",
+          "n": 2
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "pong",
+          "n": 2
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "ping",
+          "n": 3
+        },
+        "note": "in flight"
+      }
+    ]
+  }
+}

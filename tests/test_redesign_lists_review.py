@@ -196,11 +196,11 @@ def test_loading_title_shows_exactly_one_ellipsis(serve, wait_until):
         _bulk(served, 8000)
         original = served._list_targets
 
-        def gated(query):
+        def gated(query, *rest):
             cursor = query.get("cursor")
             if cursor and not gate.is_set():
                 gate.wait(timeout=15)
-            return original(query)
+            return original(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -284,7 +284,7 @@ def test_a_background_refresh_stages_pages_apart_from_the_published_list(serve, 
         lock = threading.Lock()
         gate_on = [False]
 
-        def gated(query):
+        def gated(query, *rest):
             with lock:
                 index = len(calls)
                 calls.append(index)
@@ -292,7 +292,7 @@ def test_a_background_refresh_stages_pages_apart_from_the_published_list(serve, 
                 reached, release = gates.setdefault(index, (threading.Event(), threading.Event()))
                 reached.set()
                 assert release.wait(12), "a held page was never released"
-            return real(query)
+            return real(query, *rest)
 
         first_bg = [len(calls)]  # set below to the background pass's first request index
 
@@ -340,13 +340,13 @@ def test_a_failed_background_pass_leaves_the_published_list_as_it_was(serve, wai
         lock = threading.Lock()
         fail_on = [False]
 
-        def gated(query):
+        def gated(query, *rest):
             with lock:
                 index = len(calls)
                 calls.append(index)
             if fail_on[0]:  # the background pass's first page fails; it is not a 401 or 503
                 return served._err(500, "internal_error", "the broker is not answering")
-            return real(query)
+            return real(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -378,10 +378,10 @@ def test_the_first_load_failing_with_a_500_raises_no_toast_and_the_next_tick_rea
         real = served._list_targets
         fail_on = [True]
 
-        def gated(query):
+        def gated(query, *rest):
             if fail_on[0]:
                 return served._err(500, "internal_error", "the broker is not answering")
-            return real(query)
+            return real(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -413,13 +413,13 @@ def test_a_failed_later_page_shows_the_retry_line_and_r_completes(serve, wait_un
         lock = threading.Lock()
         fail_on = [False]
 
-        def gated(query):
+        def gated(query, *rest):
             with lock:
                 index = len(calls)
                 calls.append(index)
             if fail_on[0] and query.get("cursor"):  # the chained page answers the error; not a 401 or a 503
                 return served._err(500, "internal_error", "the broker is not answering")
-            return real(query)
+            return real(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -522,7 +522,7 @@ def test_a_staging_reply_after_unmount_sends_nothing_and_publishes_nothing(serve
         gated: set[int] = set()
         gates: dict[int, tuple[threading.Event, threading.Event]] = {}
 
-        def handler(query):
+        def handler(query, *rest):
             with lock:
                 index = len(calls)
                 calls.append(index)
@@ -530,7 +530,7 @@ def test_a_staging_reply_after_unmount_sends_nothing_and_publishes_nothing(serve
                 reached, release = gates.setdefault(index, (threading.Event(), threading.Event()))
                 reached.set()
                 assert release.wait(12), "a held page was never released"
-            return real(query)
+            return real(query, *rest)
 
         served._list_targets = handler
         app = TsbTuiApp(url)

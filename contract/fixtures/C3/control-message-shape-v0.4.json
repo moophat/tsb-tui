@@ -1,0 +1,184 @@
+{
+  "seam": "C3",
+  "name": "control-message-shape-v0.4",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "artifacts:control-sequence",
+  "description": "What proto_version 0.4 adds to a connection's control socket: channel_closed by: worker with the end the worker decided, and the version itself. The schema checks each field's shape; that the six are present with by: worker and absent otherwise is checked on captures by the control-sequence check (conventions V1), so a by: core carrying them is schema-valid here and refused there.",
+  "corpus": [
+    "immortality §6.4",
+    "session model §11",
+    "session model §12"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "the worker's idle timer ended the session",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "ended_at": "2026-10-17T04:00:00.123456Z",
+          "out_bytes": 1024,
+          "last_seq": 10,
+          "last_out_ts": 1729137600123456000
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "orphan_timeout fired",
+          "end_state": "killed",
+          "end_reason": "orphan",
+          "ended_at": "2026-10-17T04:00:00.123456Z",
+          "out_bytes": 2048,
+          "last_seq": 20,
+          "last_out_ts": 1729137600123456000
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "unattended timer ended the session",
+          "end_state": "killed",
+          "end_reason": "unattended",
+          "ended_at": "2026-10-17T04:00:00.123456Z",
+          "out_bytes": 0,
+          "last_seq": 0,
+          "last_out_ts": 0
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "core",
+          "reason": "the core asked to close the channel"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.4",
+          "last_committed_seq": 0
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.4",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": false
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "the worker ended the session",
+          "end_state": "terminated",
+          "end_reason": "idle",
+          "ended_at": "2026-10-17T04:00:00.123456Z"
+        },
+        "note": "by: worker with end_state terminated"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "the worker ended the session",
+          "end_state": "killed",
+          "end_reason": "owner",
+          "ended_at": "2026-10-17T04:00:00.123456Z"
+        },
+        "note": "by: worker with end_reason owner"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "the worker ended the session",
+          "end_state": "killed",
+          "end_reason": "admin",
+          "ended_at": "2026-10-17T04:00:00.123456Z"
+        },
+        "note": "by: worker with end_reason admin"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "the worker ended the session",
+          "end_state": "killed",
+          "end_reason": "target_closed",
+          "ended_at": "2026-10-17T04:00:00.123456Z"
+        },
+        "note": "by: worker with end_reason target_closed"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "the worker ended the session",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "ended_at": "2026-10-17T04:00:00"
+        },
+        "note": "by: worker with ended_at missing Z"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "supervisor",
+          "reason": "ended by supervisor"
+        },
+        "note": "by: supervisor"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "channel_closed",
+          "session_id": "fixture-session-a",
+          "by": "worker",
+          "reason": "the worker ended the session",
+          "end_state": "killed",
+          "end_reason": "idle",
+          "ended_at": "2026-10-17T04:00:00.123456Z",
+          "end": "extra"
+        },
+        "note": "by: worker with an extra field end"
+      }
+    ]
+  }
+}

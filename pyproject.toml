@@ -5,10 +5,10 @@ requires-python = ">=3.12"
 description = "TSB tui — own manifest so this directory can leave by subtree split"
 # tsb-contract (tsb_contract_client, tsbc) is a real runtime dependency but is not listed here:
 # PEP 508 cannot express a path relative to this file, and contract/ is not published to an
-# index. It ships in the program submodule at program/contract/; CI's test job does not install it
-# at all — tests import it from program/contract/ directly (tests/conftest.py,
+# index. It ships in contract/ (copied from the program submodule); CI's test job does not install it
+# at all — tests import it from contract/ directly (tests/conftest.py,
 # .github/workflows/test.yml). `pipx install ./tui` needs a second command to put the contract
-# client in the same venv, from a throwaway copy of program/contract/ — see tui/README.md
+# client in the same venv, from a throwaway copy of contract/ — see README.md
 # "Install".
 dependencies = [
     "textual==8.2.8",
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1"]
+test = ["pytest==9.1.1", "PyYAML==6.0.2", "setuptools==84.2.1"]
 
 [project.scripts]
 tsb-tui = "tsb_tui.__main__:main"

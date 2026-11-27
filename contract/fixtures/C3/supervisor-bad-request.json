@@ -1,0 +1,80 @@
+{
+  "seam": "C3",
+  "name": "supervisor-bad-request",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "worker/tests/test_supervisor.py — a duplicate or malformed create_worker is answered error bad_request, with the conn_id when the line has a readable one"
+    }
+  ],
+  "description": "Every request line gets exactly one answer. A duplicate create_worker for a connection the supervisor already placed, and a malformed request, are answered error bad_request — E0 answered them capacity, which misnames them. conn_id is required on every other reason and optional here, for a line with no readable conn_id: the second request below has none.",
+  "corpus": [
+    "session model §11",
+    "decision 5.13"
+  ],
+  "case": {
+    "socket": "supervisor-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 4
+        }
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "worker_created",
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+          "proto_version": "0.2"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "conn_id": "fixture-conn-1",
+          "placement_key": "fixture-user",
+          "n_max": 4
+        },
+        "note": "a duplicate"
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "error",
+          "reason": "bad_request",
+          "conn_id": "fixture-conn-1",
+          "message": "fixture-conn-1 is already placed"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "create_worker",
+          "placement_key": "fixture-user"
+        },
+        "invalid": true,
+        "note": "malformed: no conn_id"
+      },
+      {
+        "from": "supervisor",
+        "msg": {
+          "event": "error",
+          "reason": "bad_request",
+          "message": "create_worker lacks conn_id and n_max"
+        }
+      }
+    ]
+  }
+}

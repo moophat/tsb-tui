@@ -1,0 +1,80 @@
+{
+  "seam": "C4",
+  "name": "vt-applied-ground",
+  "mark": {
+    "published": "e2",
+    "required-green": "e5"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E2 core plan"
+    },
+    {
+      "unit": "U4",
+      "test": "owed by the E2 vt plan"
+    }
+  ],
+  "description": "The ground marks (D22; C4 decision 8). applied is batched and lists, in mid_sequence, exactly the output seqs after which the parser was not at ground; through_seq is the highest seq applied when the mark is sent. It is what a page needs to start at a parser-clean boundary (5.48), so the mark is published e2 and required green only from e5 — pages are the only consumer. After hello, the grid's open and the frames, the VT sends one applied naming the mid-sequence frames and one naming none. Graded by the U4 worker (owed) and the U2 core (owed).",
+  "corpus": [
+    "plan.md C4 decision 8",
+    "vt-ipc.schema.json applied"
+  ],
+  "case": {
+    "socket": "vt-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "proto_version": "0.3"
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "hello_ack",
+          "proto_version": "0.3",
+          "engine": {
+            "name": "libghostty-vt",
+            "version": "1.0"
+          },
+          "grids": []
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open",
+          "session_id": "sess-1",
+          "cols": 80,
+          "rows": 24,
+          "scrollback_bytes": 4194304
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "applied",
+          "session_id": "sess-1",
+          "through_seq": 5,
+          "mid_sequence": [
+            3,
+            5
+          ]
+        }
+      },
+      {
+        "from": "vt",
+        "msg": {
+          "event": "applied",
+          "session_id": "sess-1",
+          "through_seq": 9,
+          "mid_sequence": []
+        }
+      }
+    ]
+  }
+}

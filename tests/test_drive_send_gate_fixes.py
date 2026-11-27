@@ -13,7 +13,7 @@ from tsb_tui import config
 
 
 def fixture_frame(file, kind, **fields):
-    path = Path(__file__).resolve().parents[1] / 'program/contract/fixtures/C2' / file
+    path = Path(__file__).resolve().parents[1] / 'contract/fixtures/C2' / file
     instances = json.loads(path.read_text())['case']['instances']
     return next(item['doc'] for item in instances if item['valid'] and item['doc']['t'] == kind
                 and all(item['doc'].get(key) == value for key, value in fields.items()))

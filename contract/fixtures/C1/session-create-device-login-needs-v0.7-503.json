@@ -1,0 +1,68 @@
+{
+  "seam": "C1",
+  "name": "session-create-device-login-needs-v0.7-503",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/httpapi/device_login_test.go — TestAPromptModeCreateWithNoSupervisorAt07Is503 AndPlacesNothing (one name, split for the hygiene scan): 503 worker_unavailable with the fixed text, and no worker was created and no device login registered"
+    }
+  ],
+  "description": "A prompt-mode create needs a worker that speaks the device-login messages: some creatable supervisor must write proto_version 0.7 or later (the version check of device-login step 6; the telnet floor's pattern). When none does the create is 503 `worker_unavailable` with the fixed text \"no worker at proto_version 0.7 or later: the workers predate device logins\", decided before anything is placed, so no worker, device login or ticket exists. The text is fixed and never echoes a request value. A surface that meets any 503 or 422 to a prompt-mode create hides the way for the rest of that TSB login and never reads the message to decide.",
+  "corpus": [
+    "immortality §6.4",
+    "open_decisions §5",
+    "credential §10.1",
+    "device-login step 6",
+    "conventions V1, V4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "prompt"
+              },
+              "recording_acknowledged": true
+            }
+          }
+        },
+        "expect": {
+          "status": 503,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "worker_unavailable"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "worker_unavailable",
+              "message": "no worker at proto_version 0.7 or later: the workers predate device logins"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

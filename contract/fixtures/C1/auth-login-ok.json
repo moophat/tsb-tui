@@ -1,0 +1,81 @@
+{
+  "seam": "C1",
+  "name": "auth-login-ok",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "TSB's own login: username and password in, the principal and a session cookie out. The cookie is HttpOnly, Secure and SameSite=Strict, so page script cannot read it and no other site can make a browser send it, and it is what authenticates GET /auth/me. The password comes from the file named by TSB_SUPERADMIN_PASSWORD_FILE at run time; no fixture holds one.",
+  "corpus": [
+    "decision 5.34",
+    "Contract §1",
+    "Contract §13",
+    "phase-00 first gate"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/login",
+          "as": "fresh",
+          "body": {
+            "username": "${user}",
+            "password": "${password}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "cookie": {
+            "set": true,
+            "attributes": [
+              "HttpOnly",
+              "Secure",
+              "SameSite=Strict"
+            ]
+          },
+          "match": [
+            {
+              "pointer": "/username",
+              "eq": "${user}"
+            }
+          ],
+          "example": {
+            "username": "fixture-user"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/auth/me",
+          "as": "fresh"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/username",
+              "eq": "${user}"
+            }
+          ],
+          "example": {
+            "username": "fixture-user"
+          }
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "POST",
+        "path": "/auth/logout",
+        "as": "fresh"
+      }
+    ]
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "seam": "C1",
+  "name": "target-import-unsupported-rows",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider verifies unsupported rows and options are dropped and never executed."
+    }
+  ],
+  "description": "Provider verifies unsupported rows and options are dropped and never executed.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/import-receipt.schema.json#/$defs/issue",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "locator": {
+            "index": 1
+          },
+          "kind": "row",
+          "reason": "unsupported_type"
+        },
+        "note": "unsupported row"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "locator": {
+            "index": 1
+          },
+          "kind": "row",
+          "reason": "local_serial"
+        },
+        "note": "local serial"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "locator": {
+            "index": 1
+          },
+          "kind": "option",
+          "reason": "unsupported_option",
+          "fields": [
+            "jumpHost",
+            "readyTimeout"
+          ]
+        },
+        "note": "dropped options"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "locator": {
+            "index": 1
+          },
+          "kind": "row",
+          "reason": "unsupported_type",
+          "fields": [
+            "jumpHost"
+          ]
+        },
+        "note": "row cannot carry option fields"
+      }
+    ]
+  }
+}

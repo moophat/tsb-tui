@@ -1,0 +1,187 @@
+{
+  "seam": "C2",
+  "name": "stale-flow",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {"unit": "U2", "test": "owed by the E2 core plan"},
+    {"unit": "U11", "test": "owed by the E2 harness plan"}
+  ],
+  "description": "The stale flow as wire shapes (C2 decision 10; 5.52 ruled; D11, D39): a stale frame in pending and in chosen, for both causes — cause gap carries gap_seq, cause grid_lost does not, because there is no lost seq to name — the holder-only stale_prompt with its four fixed choices and texts, the holder's stale_answer, and request_refused for an answer that is not pending or not allowed. The prompt and the notice texts are fixed by the contract. Until one answer every client input is refused: input_refused reason stale. The live shapes are graded by U2 and U11 (owed by the E2 core and harness plans).",
+  "corpus": [
+    "5.52",
+    "C2 decision 10",
+    "D11",
+    "D39",
+    "F10"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "pending",
+          "cause": "gap",
+          "gap_seq": 41,
+          "at": "2026-10-06T02:00:00Z"
+        },
+        "note": "a declared loss of target output: gap names where it began"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "pending",
+          "cause": "grid_lost",
+          "at": "2026-10-06T02:00:01Z"
+        },
+        "note": "grid_lost: the grid cannot be rebuilt though no byte was lost (snapshot_incompatible, seq_jump)"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "chosen",
+          "cause": "gap",
+          "gap_seq": 41,
+          "at": "2026-10-06T02:00:00Z",
+          "choice": "wiggle",
+          "by": {"client_id": "fixture-client-1", "user": "fixture-user"}
+        },
+        "note": "chosen carries the choice and who answered; by has control_holder's shape"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale_prompt",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "code": "stale.choose",
+          "text": "TSB: lost output - the screen may be wrong. Choose:",
+          "choices": [
+            {"choice": "wiggle", "text": "Redraw the screen (no guarantee)"},
+            {"choice": "ctrl_l", "text": "Send Ctrl-L (clears the screen, no guarantee)"},
+            {"choice": "continue", "text": "Keep going without a redraw (no guarantee the screen is right)"},
+            {"choice": "fresh_session", "text": "Start a fresh session"}
+          ]
+        },
+        "note": "all four choices for ssh and echo at this tag; the prompt text is fixed"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "stale_answer",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "choice": "ctrl_l"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "request_refused",
+          "v": 1,
+          "request": "stale_answer",
+          "reason": "not_pending"
+        },
+        "note": "no prompt is outstanding"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "request_refused",
+          "v": 1,
+          "request": "stale_answer",
+          "reason": "not_allowed"
+        },
+        "note": "not from the current holder's client"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "input_refused",
+          "v": 1,
+          "reason": "stale"
+        },
+        "note": "every client input is refused until one choice is made"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "pending",
+          "cause": "grid_lost",
+          "gap_seq": 41,
+          "at": "2026-10-06T02:00:01Z"
+        },
+        "note": "grid_lost names no lost seq"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "pending",
+          "cause": "gap",
+          "at": "2026-10-06T02:00:00Z"
+        },
+        "note": "gap names where the loss began"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale_prompt",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "code": "stale.choose",
+          "text": "TSB: lost output - the screen may be wrong. Choose:",
+          "choices": [
+            {"choice": "restart", "text": "Restart the session"}
+          ]
+        },
+        "note": "the four choices are fixed; restart is not one"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale_prompt",
+          "v": 1,
+          "prompt_id": "FIXTURE-TICKET-000000000000000000",
+          "code": "stale.choose",
+          "text": "The screen may be wrong. Choose:",
+          "choices": [
+            {"choice": "wiggle", "text": "Redraw the screen (no guarantee)"}
+          ]
+        },
+        "note": "the prompt text is fixed by the contract"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "t": "stale",
+          "v": 1,
+          "session_id": "fixture-session-a",
+          "state": "chosen",
+          "cause": "gap",
+          "gap_seq": 41,
+          "at": "2026-10-06T02:00:00Z"
+        },
+        "note": "chosen carries the answer"
+      }
+    ]
+  }
+}

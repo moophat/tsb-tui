@@ -1,0 +1,43 @@
+{
+  "seam": "C1",
+  "name": "target-record-prompt-pattern",
+  "mark": {
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: the target handlers serve prompt_pattern as the target file wrote it"
+    }
+  ],
+  "description": "A target record carrying prompt_pattern has the northbound shape; the field is served as the target file wrote it.",
+  "corpus": [
+    "Contract §6",
+    "V2"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetRecord",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "core-router-01",
+          "type": "ssh",
+          "name": "core router 01",
+          "group": "lab",
+          "tags": [
+            "router"
+          ],
+          "discovered_by": "manual",
+          "last_seen": "2026-10-17T08:30:00Z",
+          "host": "192.0.2.10",
+          "port": 22,
+          "prompt_pattern": "[^ ]+[>#]"
+        },
+        "note": "prompt_pattern is present in the closed target record"
+      }
+    ]
+  }
+}

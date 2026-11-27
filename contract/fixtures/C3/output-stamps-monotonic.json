@@ -1,0 +1,122 @@
+{
+  "seam": "C3",
+  "name": "output-stamps-monotonic",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:frames-monotonic",
+  "description": "Each direction's stamps never decrease, across a core restart included (immortality §4.2, LOCKED: timestamps are worker-owned; decision 5.22: the worker stamps at read time, the core preserves the stamp). Each stamp keeps its owner: the worker keeps a session's output stamps non-decreasing at the source — here its clock stepped back between output 3 and 4, and it stamped 4 with 3's value, never a smaller one — and the core never alters an output stamp, so the replayed output 4 carries the stamp run 1 tapped; the core keeps its own input stamps non-decreasing the same way. Across directions nothing is assumed: input 3 is stamped before output 5 by another clock. Captures of a real run must hold the same.",
+  "corpus": [
+    "immortality §4.2",
+    "decision 5.22",
+    "phase-01 (timestamps monotonic across the seam)"
+  ],
+  "case": {
+    "format": "c3-frames",
+    "runs": [
+      {
+        "run": "01789000000000000000",
+        "file": "output-stamps-monotonic.run1.bin",
+        "frames": [
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 2,
+            "seq": 1,
+            "timestamp": 1789000000123456789,
+            "payload_hex": "2420"
+          },
+          {
+            "version": 1,
+            "flags": 1,
+            "direction": "in",
+            "stream": 0,
+            "length": 1,
+            "seq": 1,
+            "timestamp": 1789000003123456789,
+            "payload_hex": "64"
+          },
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 1,
+            "seq": 2,
+            "timestamp": 1789000003123506789,
+            "payload_hex": "64"
+          },
+          {
+            "version": 1,
+            "flags": 1,
+            "direction": "in",
+            "stream": 0,
+            "length": 1,
+            "seq": 2,
+            "timestamp": 1789000003223456789,
+            "payload_hex": "0d"
+          },
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 2,
+            "seq": 3,
+            "timestamp": 1789000003123506790,
+            "payload_hex": "0d0a"
+          },
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 2,
+            "seq": 4,
+            "timestamp": 1789000003123506790,
+            "payload_hex": "2420"
+          }
+        ]
+      },
+      {
+        "run": "01789000100000000000",
+        "file": "output-stamps-monotonic.run2.bin",
+        "frames": [
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 2,
+            "seq": 4,
+            "timestamp": 1789000003123506790,
+            "payload_hex": "2420"
+          },
+          {
+            "version": 1,
+            "flags": 0,
+            "direction": "out",
+            "stream": 0,
+            "length": 1,
+            "seq": 5,
+            "timestamp": 1789000070123456789,
+            "payload_hex": "78"
+          },
+          {
+            "version": 1,
+            "flags": 1,
+            "direction": "in",
+            "stream": 0,
+            "length": 1,
+            "seq": 3,
+            "timestamp": 1789000069123456789,
+            "payload_hex": "78"
+          }
+        ]
+      }
+    ]
+  }
+}

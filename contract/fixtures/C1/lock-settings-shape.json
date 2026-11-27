@@ -1,0 +1,71 @@
+{
+  "seam": "C1",
+  "name": "lock-settings-shape",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    }
+  ],
+  "description": "The lock settings' shape. That the vault idle timer never exceeds the hard cap is config load's rule (config.schema.json), not this shape's.",
+  "corpus": [
+    "credential-protection §5.5",
+    "Frontend §10.4",
+    "E4 D9",
+    "E4 D14",
+    "E4 H5 (b)"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/LockSettings",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "screen_lock_after": 900,
+          "vault_lock_on_idle": true,
+          "vault_idle_after": 1800,
+          "vault_hard_cap": 28800,
+          "activity_interval": 60
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "screen_lock_after": 0,
+          "vault_lock_on_idle": true,
+          "vault_idle_after": 1800,
+          "vault_hard_cap": 28800,
+          "activity_interval": 60
+        },
+        "note": "the screen lock is always on: a positive time"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "screen_lock_after": 900,
+          "vault_lock_on_idle": true,
+          "vault_idle_after": 1800,
+          "vault_hard_cap": 0,
+          "activity_interval": 60
+        },
+        "note": "the hard cap is always on"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "screen_lock_after": 900,
+          "vault_lock_on_idle": true,
+          "vault_idle_after": 1800,
+          "vault_hard_cap": 28800
+        },
+        "note": "all five or none"
+      }
+    ]
+  }
+}

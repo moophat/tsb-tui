@@ -1,0 +1,43 @@
+{
+  "seam": "C8",
+  "name": "ns-derivation-in",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "transform",
+  "grade": "artifacts:recordings-match-frames-in",
+  "description": "An input frame carries the core's send-time stamp — the corpus assigns no clock to input, this tag does — and is derived exactly as output is: 1789000001.000000999 s becomes sec 1789000001, usec 0. Operator input is recorded verbatim (open_decisions §5), in the same recording as the output. The two directions are stamped by two clocks, so a reader never assumes timestamps increase across directions.",
+  "corpus": [
+    "open_decisions §5",
+    "lang-arch §8.3",
+    "decision 5.22"
+  ],
+  "case": {
+    "transform": "c3-to-c8",
+    "input": {
+      "frames": [
+        {
+          "version": 1,
+          "flags": 1,
+          "direction": "in",
+          "stream": 0,
+          "length": 1,
+          "seq": 3,
+          "timestamp": 1789000001000000999,
+          "payload_hex": "0d"
+        }
+      ]
+    },
+    "output": {
+      "frames": [
+        {
+          "sec": 1789000001,
+          "usec": 0,
+          "length": 1,
+          "direction": "in",
+          "data_hex": "0d"
+        }
+      ]
+    }
+  }
+}

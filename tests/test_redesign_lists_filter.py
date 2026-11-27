@@ -9,14 +9,13 @@ AI-Model: strata/strata
 from __future__ import annotations
 
 import asyncio
-import os
-import re
 import threading
 import time
 from pathlib import Path
 
 import pytest
 from input_server import InputRecordingApp
+from snapshot_support import settle_snapshot
 from test_fleet_view_painted_rows import ME as _ME
 from test_fleet_view_painted_rows import TABLE as _TABLE
 from test_fleet_view_painted_rows import (
@@ -62,13 +61,11 @@ def _bulk(served, count, prefix="bulk"):
                                "host": "192.0.2.50", "port": 22}
 
 
-def _p3_snapshot(app, name):
-    svg = re.sub(r"terminal-\d+", "terminal-p3b", app.export_screenshot(title="P3b", simplify=True))
+async def _p3_snapshot(app, pilot, name):
     path = Path(__file__).parent / "snapshots" / "redesign-p3" / f"{name}.svg"
-    if os.environ.get("UPDATE_P3_SNAPSHOTS") == "1":
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(svg)
-    assert path.read_text() == svg
+    await settle_snapshot(
+        app, pilot, path, title="P3b", terminal_tag="terminal-p3b", update_env="UPDATE_P3_SNAPSHOTS"
+    )
 
 
 def test_filter_matches_group_tag_and_the_row_label(serve, wait_until):
@@ -216,7 +213,7 @@ def test_a_stale_page_reply_never_overwrites_a_newer_one(serve, wait_until):
         real = served._list_targets
         lock = threading.Lock()
 
-        def gated(query):
+        def gated(query, *rest):
             with lock:
                 index = len(calls)
                 calls.append(index)
@@ -228,7 +225,7 @@ def test_a_stale_page_reply_never_overwrites_a_newer_one(serve, wait_until):
                     assert release.wait(40), "a held page was never released"
                 finally:
                     served.lock.acquire()
-            return real(query)
+            return real(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -265,11 +262,11 @@ def test_no_no_match_before_the_last_page(serve, wait_until):
         _bulk(served, 600)
         original = served._list_targets
 
-        def gated(query):
+        def gated(query, *rest):
             cursor = query.get("cursor")
             if cursor and not gate.is_set():
                 gate.wait(timeout=10)
-            return original(query)
+            return original(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -343,7 +340,7 @@ def test_loading_title_at_8000_targets(serve, wait_until):
         _bulk(served, 8000)
         original = served._list_targets
 
-        def gated(query):
+        def gated(query, *rest):
             cursor = query.get("cursor")
             if cursor and not gate.is_set():
                 served.lock.release()
@@ -351,7 +348,7 @@ def test_loading_title_at_8000_targets(serve, wait_until):
                     gate.wait(timeout=40)
                 finally:
                     served.lock.acquire()
-            return original(query)
+            return original(query, *rest)
 
         served._list_targets = gated
         app = TsbTuiApp(url)
@@ -739,10 +736,10 @@ def test_selection_follows_the_entity_across_pages_and_filter(serve, wait_until)
         gate = threading.Event()
         original = served._list_targets
 
-        def gated(query):
+        def gated(query, *rest):
             if query.get("cursor") and not gate.is_set():
                 gate.wait(timeout=15)
-            return original(query)
+            return original(query, *rest)
 
         served._list_targets = gated
         for tid in ("bulk-0123", "bulk-0456", "bulk-0512"):
@@ -890,11 +887,11 @@ def test_two_size_galleries_part2(serve, wait_until, size, case):
             gate = threading.Event()
             original = served._list_targets
 
-            def gated(query):
+            def gated(query, *rest):
                 cursor = query.get("cursor")
                 if cursor and not gate.is_set():
                     gate.wait(timeout=20)
-                return original(query)
+                return original(query, *rest)
 
             served._list_targets = gated
         if case == "recent-three":
@@ -919,5 +916,5 @@ def test_two_size_galleries_part2(serve, wait_until, size, case):
             await wait_until(pilot, quiet, "a moment with no alert raised")
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, (case, line)
-            _p3_snapshot(app, f"{case}-{size[0]}x{size[1]}")
+            await _p3_snapshot(app, pilot, f"{case}-{size[0]}x{size[1]}")
     asyncio.run(check())

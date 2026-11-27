@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C2 session stream (WebSocket frames)",
+  "description": "GET /ws/attach upgrades to a WebSocket. Text frames are JSON objects carrying `t` (frame type) and `v` (frame version, 1 at this tag). Binary frames are raw terminal bytes in both directions, with no envelope (Contract §11: attach prefix, then raw bytes; at v0.1 the prefix is empty). A sender emits exactly the shapes below. A receiver ignores any `t` it does not know and any field it does not know, so later tags add frame types and fields without breaking a v0.1 peer; a client treats a 4xxx close code it does not know as 4010. Heartbeat is WebSocket ping/pong; how many missed pongs detach a client is the core's configuration, not contract. From contract-v0.2 the server also sends notice (the countdown's warning), quiet_prompt (the owner is asked \"Kill the session?\"), token (the control token moved), input_refused (input the core did not forward) and data_path (the data path to the worker was interrupted, and restored); the client may answer a quiet_prompt with quiet_prompt_answer. Every one of them is computed by the core alone; a surface only renders it. None carries a delivered position: there is no client-side ack or resume frame (decision 5.15 defers the SSP whole; what a reattaching client sees is contract-v0.3's attach prefix). Versioning (decision 5.15, D1): every frame keeps v 1; a later tag adds a `t` or an optional field, never a breaking change inside a frame, and a receiver ignores a known `t` with an unknown `v` exactly as it ignores an unknown `t`. Ordering (terminal-size-and-control.md §6): one client's frames are applied in the order it sent them, and a take-over is applied before that client's next frame. A receiver that meets a value it does not know: a token reason → read holder; an ends_by → show ends_at. From Release B (the device login; protocols/device-login.md) a socket opened for a device login carries seven more frames, `device_login_attach`, `device_login_hostkey_answer`, `device_login_answer` and `device_login_cancel` from the client and `device_login_hostkey`, `device_login_prompt` and `device_login_result` from the server, each v 1, so an older peer ignores them as it ignores every `t` it does not know (V1), and the socket closes 4016 when the device login ends with no session. A consumer that meets a `device_login_prompt` `method` or a `device_login_hostkey` `kind` it does not know sends `device_login_cancel` and says it is too old for this device login, and never offers Accept for an unknown `kind`; an unknown `device_login_result` `outcome` is a failed device login (conventions V5).",
+  "oneOf": [
+    {"$ref": "#/$defs/client"},
+    {"$ref": "#/$defs/server"}
+  ],
+  "$defs": {
+    "client": {
+      "description": "Frames a client sends.",
+      "oneOf": [{"$ref": "#/$defs/attach"}, {"$ref": "#/$defs/resize"}, {"$ref": "#/$defs/quiet_prompt_answer"}, {"$ref": "#/$defs/handoff"}, {"$ref": "#/$defs/stale_answer"}, {"$ref": "#/$defs/device_login_attach"}, {"$ref": "#/$defs/device_login_hostkey_answer"}, {"$ref": "#/$defs/device_login_answer"}, {"$ref": "#/$defs/device_login_cancel"}]
+    },
+    "server": {
+      "description": "Frames the server sends.",
+      "oneOf": [{"$ref": "#/$defs/attached"}, {"$ref": "#/$defs/prefix"}, {"$ref": "#/$defs/clients"}, {"$ref": "#/$defs/notice"}, {"$ref": "#/$defs/quiet_prompt"}, {"$ref": "#/$defs/token"}, {"$ref": "#/$defs/input_refused"}, {"$ref": "#/$defs/data_path"}, {"$ref": "#/$defs/size"}, {"$ref": "#/$defs/request_refused"}, {"$ref": "#/$defs/stale"}, {"$ref": "#/$defs/stale_prompt"}, {"$ref": "#/$defs/device_login_hostkey"}, {"$ref": "#/$defs/device_login_prompt"}, {"$ref": "#/$defs/device_login_result"}]
+    },
+    "attach": {
+      "description": "On a socket that attaches by a session ticket, must be the first frame on the socket, and text. A device-login socket opens with `device_login_attach` instead and never carries `attach`; a device-login ticket presented here is closed 4003. The ticket comes from POST /auth/ws-ticket for this session_id; it is presented here and never in the URL. The server burns it on first presentation, valid or not for this session. cols and rows are the client's viewport at attach (terminal-size-and-control.md §1, D2): a surface rendering fact, never a target size request, so an attach by a non-holder and an attach while the token is in escrow leave the target's size unchanged. Absent (a v0.2 client), the client has no declared viewport until its first `resize`.",
+      "type": "object",
+      "required": ["t", "v", "ticket", "session_id"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "attach"},
+        "v": {"const": 1},
+        "ticket": {"$ref": "common.schema.json#/$defs/ticket"},
+        "session_id": {"$ref": "common.schema.json#/$defs/id"},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"}
+      }
+    },
+    "resize": {
+      "description": "A target size request: asks the broker to set the target PTY's size (terminal-size-and-control.md §1–§2, D33). Only the client holding the control token may request; a request from any other client is refused with an explicit reply — the server's `size` answer with reason `not_typist`, the one refusal path for a size request — never dropped silently. With the token in escrow the PTY keeps its current size. The broker clamps the request to the target's floor and ceiling (§3) and answers every request with the `size` frame carrying the size actually applied and the reason.",
+      "type": "object",
+      "required": ["t", "v", "cols", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "resize"},
+        "v": {"const": 1},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"}
+      }
+    },
+    "attached": {
+      "description": "The server accepted the attach. `client_id` names this client, so it can tell from session.control_holder whether it holds the control token. A client of a principal that holds only session.join.ro is never given the control token and is view-only. The server answers a view-only client's input and its size request explicitly (input_refused / size, reason `not_typist`, C2 decisions 6 and 8) — it discards neither silently. Binary output follows.",
+      "type": "object",
+      "required": ["t", "v", "session", "client_id"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "attached"},
+        "v": {"const": 1},
+        "session": {"$ref": "session-record.schema.json"},
+        "client_id": {"$ref": "common.schema.json#/$defs/id"}
+      }
+    },
+    "prefix": {
+      "description": "Sent after `attached`, before live output, for PTY `shell` sessions only (F12); other session types get no prefix and output follows `attached` directly. Then the server sends exactly one binary message of at least one byte — the dump — and after it live output: exactly the output frames with seq > through_seq, in order, none repeated, none skipped (Contract §11). cols and rows are the dump's geometry. through_seq is 0 before any output. A v0.2 client ignores this text frame and renders the binary message as bytes. If the grid is unavailable the core holds that client's output until the prefix exists, bounded by a knob, then closes 4011: a client never gets live bytes without a prefix. What the dump carries is C4 decision 6.",
+      "type": "object",
+      "required": ["t", "v", "through_seq", "cols", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "prefix"},
+        "v": {"const": 1},
+        "through_seq": {"$ref": "common.schema.json#/$defs/u64"},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"},
+        "scrollback": {
+          "type": "object",
+          "required": ["first_seq", "bytes"],
+          "additionalProperties": false,
+          "properties": {
+            "first_seq": {"$ref": "common.schema.json#/$defs/u64"},
+            "bytes": {"$ref": "common.schema.json#/$defs/u64"}
+          },
+          "description": "The oldest output seq the core's raw ring holds and the bytes it holds up to through_seq. Optional in the schema; required e5 with pagination (no core ring exists at E2)."
+        }
+      }
+    },
+    "clients": {
+      "description": "The set of attached clients, to every attached client on each attach, detach and removal. Never restored from disk. `clients` carries the same shape as the session record's field (may_control: the client's principal holds session.join.rw).",
+      "type": "object",
+      "required": ["t", "v", "session_id", "clients"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "clients"},
+        "v": {"const": 1},
+        "session_id": {"$ref": "common.schema.json#/$defs/id"},
+        "clients": {"$ref": "session-record.schema.json#/properties/clients"}
+      }
+    },
+    "handoff": {
+      "description": "A client asks to move the control token (PTY §7.1 explicit hand-off). `to` names the destination client_id, or is null to revoke it to escrow. Accepted from the holder's client (to any attached client that may_control) and from any client of the owner principal (to such a client, or null). After a revoke the token sits in escrow until the owner reassigns; an attach does not take it (the no-clients escrow rule is unchanged). `handoff` with `to` equal to the sender's own client_id is the owner's explicit take-over (5.53): the token moves in the same trip as the input that caused it, applied before that client's next frame. Ownership transfer to a new owner is not at this tag. A refused handoff is answered with request_refused.",
+      "type": "object",
+      "required": ["t", "v", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "handoff"},
+        "v": {"const": 1},
+        "to": {
+          "oneOf": [
+            {"$ref": "common.schema.json#/$defs/id"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "request_refused": {
+      "description": "A client request the core refused, named by `request` and `reason`, so no request vanishes without a signal. request `handoff`: the handoff frame was refused. request `stale_answer`: the answer did not come from the current holder's client for the outstanding prompt, or no prompt is outstanding. From Release B, request `device_login_answer`: the answer named no outstanding prompt or carried the wrong count or an over-long string; request `device_login_hostkey_answer`: no host-key question is outstanding. In both device-login cases the prompt or question stays outstanding and nothing crosses C3. reason `not_allowed`: the requester may not make this request; `no_such_client`: the destination client_id names no attached client; `view_only`: the destination holds only session.join.ro and may never hold the token; `not_pending`: no stale choice is outstanding, or no device-login question or prompt with that id is outstanding; `invalid` (from Release B): a device_login_answer with a wrong count of strings, or a string past 1024 bytes of UTF-8. A size request is never refused this way: it is answered with the `size` frame.",
+      "type": "object",
+      "required": ["t", "v", "request", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "request_refused"},
+        "v": {"const": 1},
+        "request": {"enum": ["handoff", "stale_answer", "device_login_answer", "device_login_hostkey_answer"]},
+        "reason": {"enum": ["not_allowed", "no_such_client", "view_only", "not_pending", "invalid"]}
+      }
+    },
+    "size": {
+      "description": "The answer to a target size request (terminal-size-and-control.md §3, D34): the size in effect after the request and why. reason `applied` — the request was applied; `clamped_floor` — clamped up to the target's floor; `clamped_ceiling` — clamped down to the target's ceiling; `pinned` — the target's floor equals its ceiling and its size is fixed; `not_resizable` — the protocol has no size at all (serial); `not_typist` — the requester does not hold the control token, the one refusal path for a size request. cols and rows are the size in effect after the request, so a refusal still carries the size that stands. Sent to the requester, and the applied size is broadcast to every attached surface. A receiver that meets a reason it does not know reads cols and rows as the size in effect.",
+      "type": "object",
+      "required": ["t", "v", "session_id", "cols", "rows", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "size"},
+        "v": {"const": 1},
+        "session_id": {"$ref": "common.schema.json#/$defs/id"},
+        "cols": {"$ref": "common.schema.json#/$defs/cols"},
+        "rows": {"$ref": "common.schema.json#/$defs/rows"},
+        "reason": {"enum": ["applied", "clamped_floor", "clamped_ceiling", "pinned", "not_resizable", "not_typist"]}
+      }
+    },
+    "stale": {
+      "description": "The grid is stale: output was lost or the grid cannot be rebuilt. Sent to every attached client — `pending` at the gap and to each client attaching while pending (after `clients`); `chosen` with `choice` and `by` once answered. `by` has control_holder's shape: the client that answered. cause `gap`: a declared loss of target output, and gap_seq names where it began; cause `grid_lost`: a grid that cannot be rebuilt with no byte lost (snapshot_incompatible, seq_jump), and gap_seq is absent because there is no lost seq to name. The fixed notice line is shown by a surface that renders text: \"TSB: lost output - the screen may be stale until a choice is made.\"",
+      "type": "object",
+      "required": ["t", "v", "session_id", "state", "cause", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "stale"},
+        "v": {"const": 1},
+        "session_id": {"$ref": "common.schema.json#/$defs/id"},
+        "state": {"enum": ["pending", "chosen"]},
+        "cause": {"enum": ["gap", "grid_lost"]},
+        "gap_seq": {"$ref": "common.schema.json#/$defs/u64"},
+        "at": {"$ref": "common.schema.json#/$defs/timestamp"},
+        "choice": {"$ref": "#/$defs/stale_choice"},
+        "by": {"$ref": "session-record.schema.json#/properties/control_holder"}
+      },
+      "oneOf": [
+        {
+          "properties": {"cause": {"const": "gap"}, "state": {"const": "pending"}},
+          "required": ["gap_seq"]
+        },
+        {
+          "properties": {"cause": {"const": "gap"}, "state": {"const": "chosen"}, "by": {"type": "object"}},
+          "required": ["gap_seq", "choice", "by"]
+        },
+        {
+          "properties": {"cause": {"const": "grid_lost"}, "state": {"const": "pending"}, "gap_seq": false}
+        },
+        {
+          "properties": {"cause": {"const": "grid_lost"}, "state": {"const": "chosen"}, "gap_seq": false, "by": {"type": "object"}},
+          "required": ["choice", "by"]
+        }
+      ]
+    },
+    "stale_prompt": {
+      "description": "The question the core asks the holder's client when the grid is stale, so the operator chooses rather than TSB guessing (5.46). Sent to the holder's client only. code names it; text is fixed by the contract. choices is what the session's protocol supports (all four for ssh and echo at this tag), each a choice and its fixed text. Token in escrow: the next eligible attach gets it. A token move while pending voids the prompt and the new holder gets a new prompt_id.",
+      "type": "object",
+      "required": ["t", "v", "prompt_id", "code", "text", "choices"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "stale_prompt"},
+        "v": {"const": 1},
+        "prompt_id": {"$ref": "common.schema.json#/$defs/ticket"},
+        "code": {"const": "stale.choose"},
+        "text": {"const": "TSB: lost output - the screen may be wrong. Choose:"},
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/stale_choice_text"},
+          "description": "Each choice with its fixed text: wiggle \"Redraw the screen (no guarantee)\"; ctrl_l \"Send Ctrl-L (clears the screen, no guarantee)\"; continue \"Keep going without a redraw (no guarantee the screen is right)\"; fresh_session \"Start a fresh session\"."
+        }
+      }
+    },
+    "stale_choice_text": {
+      "description": "One stale choice with its fixed text (C2 decision 10): each choice is valid only with its own text, so a prompt cannot relabel a choice.",
+      "type": "object",
+      "required": ["choice", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "choice": {"$ref": "#/$defs/stale_choice"},
+        "text": {"type": "string", "minLength": 1}
+      },
+      "oneOf": [
+        {"properties": {"choice": {"const": "wiggle"}, "text": {"const": "Redraw the screen (no guarantee)"}}},
+        {"properties": {"choice": {"const": "ctrl_l"}, "text": {"const": "Send Ctrl-L (clears the screen, no guarantee)"}}},
+        {"properties": {"choice": {"const": "continue"}, "text": {"const": "Keep going without a redraw (no guarantee the screen is right)"}}},
+        {"properties": {"choice": {"const": "fresh_session"}, "text": {"const": "Start a fresh session"}}}
+      ]
+    },
+    "stale_answer": {
+      "description": "The holder's answer to a stale_prompt. Valid only from the current holder's client for the outstanding prompt; any other is answered request_refused (`not_pending` or `not_allowed`). Any answer ends the pending state; the answer is a broker marker and a session.stale_choice audit event.",
+      "type": "object",
+      "required": ["t", "v", "prompt_id", "choice"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "stale_answer"},
+        "v": {"const": 1},
+        "prompt_id": {"$ref": "common.schema.json#/$defs/ticket"},
+        "choice": {"$ref": "#/$defs/stale_choice"}
+      }
+    },
+    "stale_choice": {"enum": ["wiggle", "ctrl_l", "continue", "fresh_session"]},
+    "notice": {
+      "description": "The countdown's warning (session model §11 expiry_notice), to every attached client. It carries the record's ends_at, ends_by and ending, and is sent when ending or ends_by changes, and — while ending is true — when ends_at moves; never outside a window. idle moves with every byte, so a notice on every change of ends_at would be a frame per output chunk: this way a warning appears, updates and is withdrawn (ending false, as when a flapping link recovers), and nothing else is sent.",
+      "type": "object",
+      "required": ["t", "v", "session_id", "ends_at", "ends_by", "ending"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "notice"},
+        "v": {"const": 1},
+        "session_id": {"$ref": "common.schema.json#/$defs/id"},
+        "ends_at": {"$ref": "session-record.schema.json#/properties/ends_at"},
+        "ends_by": {"$ref": "session-record.schema.json#/properties/ends_by"},
+        "ending": {"type": "boolean"}
+      }
+    },
+    "quiet_prompt": {
+      "description": "Input went unanswered for quiet_prompt while the link is alive and its sender is attached (session model §11; Tu, 2026-09-26), and TSB asks rather than guesses — it never ends a session by itself. The text is fixed by the contract, as the recording warning is, so no surface can soften it; code names it, so a surface can show a translation keyed on it. Who is asked: the sender's client, when the sender holds the owner token; otherwise every attached client of the owner, and the first valid answer wins; nobody, when the owner has no client attached. Other attached clients never get it: lifecycle authority is the owner token's (Contract §10). prompt_id has the ticket's shape: unguessable, so an answer cannot be forged.",
+      "type": "object",
+      "required": ["t", "v", "prompt_id", "code", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "quiet_prompt"},
+        "v": {"const": 1},
+        "prompt_id": {"$ref": "common.schema.json#/$defs/ticket"},
+        "code": {"const": "quiet_prompt.kill"},
+        "text": {"const": "Kill the session?"}
+      }
+    },
+    "quiet_prompt_answer": {
+      "description": "The owner's answer to a quiet_prompt. The core accepts it only from a client it sent that prompt_id to, and only while that prompt is outstanding — the first valid answer ends it — and ignores every other, so a C2 frame can never end a session without the owner's authority. kill true ends the session killed / owner, as DELETE /sessions/{id} by the owner does; false leaves it, and the question comes again at the next unanswered input or attach. It is an answer, not an ack: it carries no delivered position (decision 5.15).",
+      "type": "object",
+      "required": ["t", "v", "prompt_id", "kill"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "quiet_prompt_answer"},
+        "v": {"const": 1},
+        "prompt_id": {"$ref": "common.schema.json#/$defs/ticket"},
+        "kill": {"type": "boolean"}
+      }
+    },
+    "token": {
+      "description": "The control token moved (PTY §7.1; development-plan §2: token events), to every attached client. holder has the session record's control_holder shape — the attached client now holding input and resize authority — or is null when the token is in broker escrow. reason names the cause, never the destination, which holder already says: attach — a client attached and took the token from escrow; detach — its holder left (session model §9 E4's word), and the token passed on or went to escrow; handoff — the holder moved the token to another client; owner — an owner client revoked it to escrow (to null) or reassigned it to another client, when it is not the holder doing a plain hand-off; takeover — the owner took it for itself, by typing while not the holder or by handoff to its own client_id (5.53); release — auto-release returned it to the previous holder after the owner's silence. A receiver that meets a reason it does not know reads holder.",
+      "type": "object",
+      "required": ["t", "v", "kind", "holder", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "token"},
+        "v": {"const": 1},
+        "kind": {"const": "control"},
+        "holder": {"$ref": "session-record.schema.json#/properties/control_holder"},
+        "reason": {"enum": ["attach", "detach", "handoff", "owner", "takeover", "release"]}
+      }
+    },
+    "input_refused": {
+      "description": "Input the core did not forward to the target, so no keystroke vanishes without a signal. unreachable: the session is unreachable (decision 5.38: input rejected with an explicit error). replaying: it arrived while the session's data path is being restored — from the loss of its data socket, or from hello, until the handshake reaches live — for input authority must not activate before the replay is complete (immortality §6.3), and the core never holds such input for later, because keystrokes typed while the screen still replays are how you type into the wrong prompt. stale: a stale choice is pending, so every client's input is refused until one is chosen (C2 decision 10). not_typist: the sender does not hold the control token (C2 decision 6; the size answer's spelling, one word for one fact). A receiver that meets a reason it does not know reads it as: input was refused. recording_unavailable: recording is quarantined and the session is held, or a failed input-seq reservation write refuses input before assignment (terminal-output-accounting.md §5.3).",
+      "type": "object",
+      "required": ["t", "v", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "input_refused"},
+        "v": {"const": 1},
+        "reason": {"enum": ["unreachable", "replaying", "stale", "not_typist", "recording_unavailable"]}
+      }
+    },
+    "data_path": {
+      "description": "A recording hold sends one lost frame to each attached client; a new attach receives its retained-grid prefix then one lost frame (terminal-output-accounting §5.3). What the core observed of the data path to the worker (Tu, 2026-09-29): lost — the session's data socket ended alone, so input may not reach the target and output may not come back; restored — its re-dial's handshake reached live. Outside a recording hold, lost is sent only once the core has decided the loss is alone, after its wait for a control-side end passes with none, so a normal end never sends a spurious lost. A target that is merely silent is quiet_prompt's case, not this one.",
+      "type": "object",
+      "required": ["t", "v", "session_id", "state", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "data_path"},
+        "v": {"const": 1},
+        "session_id": {"$ref": "common.schema.json#/$defs/id"},
+        "state": {"enum": ["lost", "restored"]},
+        "at": {"$ref": "common.schema.json#/$defs/timestamp"}
+      }
+    },
+    "device_login_attach": {
+      "description": "Client → server, from Release B. The first frame of a device-login socket, and text: the socket GET /ws/attach opened for a device login that POST /sessions answered 202 for (device-login steps 3 to 8). `ticket` is the one `DeviceLoginPending` carried and `device_login_id` the device login it is bound to. The ticket is presented here and never in the URL, and the server burns it on first presentation, valid or not; it redeems a device login only, so a session ticket presented here is closed 4003, as a device-login ticket presented in `attach` is. From the accept a reader runs on the socket for its whole life, so the heartbeat's pongs are read while the person reads a banner. Only the principal that made the create can hold this socket. A core older than Release B closes 4000, because its first frame is not `attach`; an older peer ignores a `t` it does not know (V1).",
+      "type": "object",
+      "required": ["t", "v", "ticket", "device_login_id"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "device_login_attach"},
+        "v": {"const": 1},
+        "ticket": {"$ref": "common.schema.json#/$defs/ticket"},
+        "device_login_id": {"$ref": "common.schema.json#/$defs/id"}
+      }
+    },
+    "device_login_hostkey_answer": {
+      "description": "Client → server, from Release B. The operator's decision on the host key `device_login_hostkey` asked about, sent once and only after it. `accept` true records the key: the core writes `target.hostkey_accepted` and then relays C3 `hostkey_answer`, and the worker records the key under its flock, shared, one per device. false refuses it: `target.hostkey_refused`, and the login ends `hostkey_refused`. An answer with no question outstanding is answered `request_refused` (request `device_login_hostkey_answer`, reason `not_pending`) and nothing crosses C3.",
+      "type": "object",
+      "required": ["t", "v", "accept"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "device_login_hostkey_answer"},
+        "v": {"const": 1},
+        "accept": {"type": "boolean"}
+      }
+    },
+    "device_login_answer": {
+      "description": "Client → server, from Release B. The answer to the outstanding `device_login_prompt` that carries `prompt_id`: one string per prompt, exactly one for a password request, 1 to 16 strings of 0 to 1024 characters each (the byte bound, 1024 bytes of UTF-8, is the core's). The core relays an answer only when it names the outstanding `prompt_id` and holds the right count of strings; otherwise it answers `request_refused` (`not_pending` or `invalid`), the prompt stays outstanding and nothing crosses C3. An empty string is an answer. The answers cross only here and C3 `auth_answer`, never a data socket, the ring, the VT grid, a log, a manifest, the spool, or a recording unless `recording.login_input` is on and the create gave consent (V10). `answers` is a credential-named key: a collection holds only the synthetic constant for each string.",
+      "type": "object",
+      "required": ["t", "v", "prompt_id", "answers"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "device_login_answer"},
+        "v": {"const": 1},
+        "prompt_id": {"$ref": "common.schema.json#/$defs/login_prompt_id"},
+        "answers": {"$ref": "common.schema.json#/$defs/login_answers"}
+      }
+    },
+    "device_login_cancel": {
+      "description": "Client → server, from Release B. The pane gives up the device login: the core sends C3 `disconnect`, answers `device_login_result` `cancelled` while the socket is still there, and closes 4016. Closing the socket does the same. The core honours it when it takes `connected` and once more just before the session's durable record, which withdraws the session and leaves nothing; a cancel it reads after that is ignored, as every frame after the result is. It has no field of its own.",
+      "type": "object",
+      "required": ["t", "v"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "device_login_cancel"},
+        "v": {"const": 1}
+      }
+    },
+    "device_login_hostkey": {
+      "description": "Server → client, from Release B. The host key the worker's probe fetched and has no record of, shown before any user name reaches the device (C3 `hostkey_ask`, relayed). `kind` has one value at this release, `first_use`: the changed-key acceptance of a later release adds a value, never a message. The surface shows the fingerprint in TSB's own words and asks Accept or Refuse; no `device_login_prompt` comes before the answer. A consumer that meets a `kind` it does not know sends `device_login_cancel`, says it is too old for this device login, and never offers Accept for it (V5).",
+      "type": "object",
+      "required": ["t", "v", "kind", "fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "device_login_hostkey"},
+        "v": {"const": 1},
+        "kind": {"enum": ["first_use"]},
+        "fingerprint": {"$ref": "common.schema.json#/$defs/fingerprint"}
+      }
+    },
+    "device_login_prompt": {
+      "description": "Server → client, from Release B. One round of the device's own authentication, relayed unread (Contract §6): the core checks only kinds, counts and lengths. `method` `banner`: the SSH pre-login banner (RFC 4252 §5.4), display-only, with no `prompt_id`, no `attempt` and no answer. `password`: the device asks for a password; the request carries no device text, so the surface shows its own `Password:` outside the frame marked \"device login\". `keyboard-interactive` (RFC 4256): `name`, `instruction` and `prompts`; `prompt_id` is present exactly when `prompts` is not empty, and a round with no prompts is display-only (the worker answers it itself). `attempt` is common.schema.json login_attempt: it rises only when the device refuses an answer. The device's text is plain text, shown inside a frame marked \"device login\" and never as markup. Bounds, in characters (the provider's byte bounds are its own, as SessionLoginAuth.password states its own): the banner's `text` at most 16384, `name` 1024, `instruction` 4096, a prompt's `text` 1024, 0 to 16 prompts; the worker ends the login `error` `not_supported` past one. A consumer that meets a `method` it does not know sends `device_login_cancel` and says it is too old for this device login (V5).",
+      "type": "object",
+      "required": ["t", "v", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "device_login_prompt"},
+        "v": {"const": 1},
+        "method": {"enum": ["banner", "password", "keyboard-interactive"]},
+        "text": {"type": "string", "minLength": 0, "maxLength": 16384, "description": "The banner's text, plain text, at most 16384 characters. `banner` only."},
+        "attempt": {"$ref": "common.schema.json#/$defs/login_attempt"},
+        "name": {"type": "string", "minLength": 0, "maxLength": 1024, "description": "The round's name, at most 1024 characters, possibly empty. `keyboard-interactive` only."},
+        "instruction": {"type": "string", "minLength": 0, "maxLength": 4096, "description": "The round's instruction, at most 4096 characters, possibly empty. `keyboard-interactive` only."},
+        "prompts": {"type": "array", "minItems": 0, "maxItems": 16, "items": {"$ref": "common.schema.json#/$defs/login_prompt_item"}, "description": "The round's questions, 0 to 16. `keyboard-interactive` only."},
+        "prompt_id": {"$ref": "common.schema.json#/$defs/login_prompt_id"}
+      },
+      "oneOf": [
+        {
+          "properties": {"method": {"const": "banner"}, "attempt": false, "name": false, "instruction": false, "prompts": false, "prompt_id": false},
+          "required": ["text"]
+        },
+        {
+          "properties": {"method": {"const": "password"}, "text": false, "name": false, "instruction": false, "prompts": false},
+          "required": ["attempt", "prompt_id"]
+        },
+        {
+          "properties": {"method": {"const": "keyboard-interactive"}, "text": false, "prompts": {"type": "array", "minItems": 1}},
+          "required": ["attempt", "name", "instruction", "prompts", "prompt_id"]
+        },
+        {
+          "properties": {"method": {"const": "keyboard-interactive"}, "text": false, "prompts": {"type": "array", "maxItems": 0}, "prompt_id": false},
+          "required": ["attempt", "name", "instruction", "prompts"]
+        }
+      ]
+    },
+    "device_login_result": {
+      "description": "Server → client, from Release B. How the device login ended, sent while the socket is still there. With `connected` the same socket goes on as an attach, `attached` next; with any other outcome the server closes 4016 `device_login_ended` right after it, and no session exists. connected: the device accepted and the session opened. refused: the device has no method left. timeout: `login_timeout` passed. password_change_requested: the password method's change request (a PAM password change asked through keyboard-interactive rounds is relayed and done in the pane instead). hostkey_refused: the operator refused the key. hostkey_changed: the target presented a key other than the recorded one. cancelled: the pane cancelled, or the TSB login ended. connect_failed: any other failure of the connect, including an unknown value or an event out of turn at the core. worker_unavailable: no worker could be placed at proto_version 0.7, or the worker was lost. too_long: past 32 rounds, or 64 KiB of device text and answers together. forbidden: the principal no longer sees the target, holds session.create or may join it. A consumer reads an outcome it does not know as a failed device login (V5).",
+      "type": "object",
+      "required": ["t", "v", "outcome"],
+      "additionalProperties": false,
+      "properties": {
+        "t": {"const": "device_login_result"},
+        "v": {"const": 1},
+        "outcome": {"enum": ["connected", "refused", "timeout", "password_change_requested", "hostkey_refused", "hostkey_changed", "cancelled", "connect_failed", "worker_unavailable", "too_long", "forbidden"]}
+      }
+    }
+  },
+  "x-attach-order": [
+    "The first frame is not a text `attach` frame (or, on a device-login socket, a text `device_login_attach` frame), or none arrives within the core's attach timeout: close 4000.",
+    "The ticket is unknown, expired or already presented: close 4001.",
+    "The ticket was minted for another session (or, in `device_login_attach`, for another device login), or is of the other kind (a device-login ticket in `attach`, a session ticket in `device_login_attach`; it is burned), or the principal may no longer join this one: close 4003.",
+    "The session no longer exists or has ended (killed or terminated): close 4004.",
+    "Otherwise the server sends `attached` (its session carries the size in effect), then for a PTY `shell` session the `prefix` frame and exactly one binary dump message, then for a held session one `data_path` `lost` frame, then `clients`, then one attach wiggle unless the knob is off, a stale choice is pending, or the protocol has no size, then live output unless held, in which case no live output is delivered. A non-`shell` session type gets no `prefix`: output follows `attached` directly.",
+    "The redraw-on-attach wiggle is a C3 resize pair the core issues — a broker action, never a client request, so it is not answered with a `size` frame. It never fires while any stale choice is pending. It is not announced to clients.",
+    "The device-login branch (from Release B): a socket whose first frame is `device_login_attach` is checked in this order. Not a text `device_login_attach` frame with `v` 1, or none within the core's attach timeout: close 4000. The ticket is unknown, expired or already presented: close 4001, and a ticket is burned on its first presentation. The ticket is of the other kind, or was minted for another device login, or the principal no longer sees the target or no longer holds `session.create` or a join permission (a policy reload since the 202): close 4003. The device login has already ended: close 4016 `device_login_ended`. The TSB login the ticket is bound to was ended by a device revocation: close 4015 (login.md step 13), or by an account act: close 4017 account_login_ended (no result frame). On accept a reader runs on the socket from that moment for the socket's whole life, and the heartbeat is armed.",
+    "Then, until the device login ends, the server sends only `device_login_hostkey`, `device_login_prompt` and `request_refused`, in the order the device sent what they carry, and ends with `device_login_result`, except that a device revocation or account act closes 4015 or 4017 respectively with no result frame. Before `attached` the core ignores every other client frame on that socket (binary input, `resize`, `handoff`, `attach`): no session exists to take it. With outcome `connected` the same socket continues in the order above from `attached` (`prefix`, the dump, `clients`, the wiggle, live output); with any other outcome the server closes 4016 and no session exists."
+  ],
+  "x-close-codes": {
+    "4000": {"name": "bad_attach", "meaning": "The first frame was not a valid attach frame (or, on a device-login socket, a valid device_login_attach frame), or none arrived in time."},
+    "4001": {"name": "ticket_invalid", "meaning": "Ticket unknown, expired, or already used."},
+    "4003": {"name": "forbidden", "meaning": "Ticket not valid for this session or, on a device-login socket, for this device login or of the other kind, or the principal may not join it (or, at device_login_attach, may no longer see the target or create one)."},
+    "4004": {"name": "session_not_found", "meaning": "No such session, or it has ended."},
+    "4010": {"name": "session_closed", "meaning": "The session was killed: ended by TSB or through it (the idle, unattended or orphan timer, its owner, an admin). A client also treats any 4xxx code it does not know as this one."},
+    "4011": {"name": "detached_by_server", "meaning": "The server detached this client (missed heartbeats, a queue that would not drain, or the core stopping); the session lives on. Also sent when the grid is unavailable and no attach prefix arrives within the knob's timeout."},
+    "4012": {"name": "session_terminated", "meaning": "The session was terminated: ended from outside TSB (its worker was lost, the target closed it, or its connection was lost)."},
+    "4014": {"name": "removed", "meaning": "The server removed this client (DELETE /sessions/{id}/clients/{client_id} by the owner or a session.terminate holder). 4013 is retired vocabulary (session model §15). The session lives on."},
+    "4015": {"name": "device_revoked", "meaning": "From the vault release: the login this client attached under was ended because the device it is tied to was revoked, under policy.yaml devices.revocation end_logins (decision 5.40c; Q8 (a)). On an attach the session lives on, owned by its principal, not by the device (credential-protection §10.2); on a device-login socket no session exists, so the device login ends, with no result frame. A client MUST NOT auto-reattach after it: its login is gone (every later request is 401) and reattaching needs a new login. A client of an earlier release reads it as 4010, as it reads every 4xxx code it does not know (README \"Senders and receivers\"), and so does not reattach either, though it shows the session as ended when it lives on (red-team LOW-11)."},
+    "4016": {"name": "device_login_ended", "meaning": "From Release B: the device login this socket held ended with no session (the device_login_result before it says how), or had already ended before the attach. No session exists, so a client MUST NOT reattach, and it may start a new device login (POST /sessions in prompt mode). A client of an earlier release reads it as 4010, as it reads every 4xxx code it does not know."},
+    "4017": {
+      "name": "account_login_ended",
+      "meaning": "The login ended because its account was disabled or its password changed. On an attached client the session lives on; on a device-login socket no session exists and no device_login_result is sent. Clients MUST NOT auto-reattach. Older clients treat it as 4010."
+    }
+  }
+}

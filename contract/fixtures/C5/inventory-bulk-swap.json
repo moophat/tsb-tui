@@ -1,0 +1,112 @@
+{
+  "seam": "C5",
+  "name": "inventory-bulk-swap",
+  "mark": {
+    "required-green": "e3",
+    "published": "e3"
+  },
+  "kind": "transform",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed by the E3 U2 plan (a change of current is a full rebuild)"
+    },
+    {
+      "unit": "U11",
+      "test": "owed by the E3 U11 plan (rig-inventory-swap: copy current under the lock, retag, swap)"
+    }
+  ],
+  "description": "A bulk change by x-layout rule 5: many files retagged in one change. The new version is staged under a unique name (staging.a7f3/), which is never read, then linked in by renaming a new link over current — never ln -sfn. A change of current's link target is a full rebuild, and once it has converged the read sees the retag whole: every entry carries its new tags, none the old. The rule is executable in tsbc (_inventory.inventory_read); this case is its record. `alerts` is the reader's report of what it refused; the core writes each as a log line (x-layout identity-and-refusals, missing-current).",
+  "corpus": [
+    "Storage §2.1",
+    "Storage §2.3",
+    "Storage §2.5",
+    "Storage §3.1"
+  ],
+  "case": {
+    "transform": "inventory-bulk-swap",
+    "input": {
+      "reads": [
+        {
+          "current": "v18",
+          "files": [
+            {
+              "source": "staging.a7f3",
+              "name": "core-rtr-01.yaml",
+              "doc": {
+                "id": "core-rtr-01",
+                "type": "ssh",
+                "tags": ["staging"],
+                "options": {"host": "10.0.1.1"}
+              }
+            },
+            {
+              "source": "staging.a7f3",
+              "name": "lab-sw-02.yaml",
+              "doc": {
+                "id": "lab-sw-02",
+                "type": "telnet",
+                "tags": ["staging"],
+                "options": {"host": "10.0.2.2"}
+              }
+            },
+            {
+              "source": "manual",
+              "name": "core-rtr-01.yaml",
+              "doc": {
+                "id": "core-rtr-01",
+                "type": "ssh",
+                "tags": ["prod", "site-b"],
+                "options": {"host": "10.0.1.1"}
+              }
+            },
+            {
+              "source": "manual",
+              "name": "lab-sw-02.yaml",
+              "doc": {
+                "id": "lab-sw-02",
+                "type": "telnet",
+                "tags": ["lab", "retagged"],
+                "options": {"host": "10.0.2.2"}
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "output": {
+      "results": [
+        {
+          "index": [
+            {"id": "core-rtr-01", "source": "manual", "tags": ["prod", "site-b"]},
+            {"id": "lab-sw-02", "source": "manual", "tags": ["lab", "retagged"]}
+          ],
+          "alerts": [],
+          "docs": [
+            {
+              "stem": "core-rtr-01",
+              "source": "manual",
+              "doc": {
+                "id": "core-rtr-01",
+                "type": "ssh",
+                "tags": ["prod", "site-b"],
+                "options": {"host": "10.0.1.1"}
+              }
+            },
+            {
+              "stem": "lab-sw-02",
+              "source": "manual",
+              "doc": {
+                "id": "lab-sw-02",
+                "type": "telnet",
+                "tags": ["lab", "retagged"],
+                "options": {"host": "10.0.2.2"}
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

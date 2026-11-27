@@ -25,7 +25,7 @@ from tsb_tui import glyphs
 from tsb_tui.model.fleet import GROUP_OPEN_HERE
 from tsb_tui.widgets.sidebar import Sidebar, _prepare, sidebar_view
 
-CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
+CONTRACT = Path(__file__).resolve().parents[1] / "contract"
 REGISTRY = Registry.from_tree(CONTRACT)
 BASE = json.loads((CONTRACT / "fixtures" / "C1" / "session-record-shape-v0.3.json")
                   .read_text(encoding="utf-8"))["case"]["instances"][0]["doc"]

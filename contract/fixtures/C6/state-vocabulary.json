@@ -1,0 +1,67 @@
+{
+  "seam": "C6",
+  "name": "state-vocabulary",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "schema/session/session_test.go — every valid instance decodes into session.Stored strictly and re-encodes to the same fields; every invalid one is refused"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/session/store_test.go — what the core writes to the sessions and connections buckets validates against continuity-state.schema.json"
+    }
+  ],
+  "description": "One state list for the northbound record (C1) and the durable record (C6): session model §10's live, detached, killed and terminated, with immortality §7's unreachable beside them. orphan-pending is the worker's state while the core is gone: no core can persist it and no message carries it, and its outcome lands as killed / orphan through the spool. There is no disconnected state and no grace (decision 5.45), and no expiry: a timer's end is killed.",
+  "corpus": [
+    "session model §10",
+    "immortality §7",
+    "decision 5.45",
+    "Storage §8.2"
+  ],
+  "case": {
+    "schema": "schemas/common.schema.json#/$defs/session_state",
+    "instances": [
+      {
+        "valid": true,
+        "doc": "live"
+      },
+      {
+        "valid": true,
+        "doc": "detached"
+      },
+      {
+        "valid": true,
+        "doc": "killed"
+      },
+      {
+        "valid": true,
+        "doc": "terminated"
+      },
+      {
+        "valid": true,
+        "doc": "unreachable"
+      },
+      {
+        "valid": false,
+        "doc": "orphan-pending"
+      },
+      {
+        "valid": false,
+        "doc": "disconnected"
+      },
+      {
+        "valid": false,
+        "doc": "grace"
+      },
+      {
+        "valid": false,
+        "doc": "expired"
+      }
+    ]
+  }
+}

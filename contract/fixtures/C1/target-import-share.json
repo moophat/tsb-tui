@@ -1,0 +1,128 @@
+{
+  "seam": "C1",
+  "name": "target-import-share",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: TestAnImportsShareListIsItsDestination"
+    }
+  ],
+  "description": "Preview with share echoes list and rows carry share/owner; commit with changed share returns 409 import_preview_stale; commit with matching list succeeds with share and owner in written records.",
+  "corpus": [
+    "Storage §7.4",
+    "Storage §10.1b",
+    "Contract §12"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "preview",
+            "format": "yaml",
+            "share": [
+              "fixture-user",
+              "peer"
+            ],
+            "export_bytes": "aWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEKdHlwZTogc3NoCm9wdGlvbnM6CiAgaG9zdDogZml4dHVyZS5pbnZhbGlkCg=="
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/share",
+              "eq": [
+                "fixture-user",
+                "peer"
+              ]
+            },
+            {
+              "pointer": "/targets/0/target/share",
+              "eq": [
+                "fixture-user",
+                "peer"
+              ]
+            },
+            {
+              "pointer": "/targets/0/target/owner",
+              "eq": "fixture-user"
+            }
+          ]
+        },
+        "save": {
+          "token": "/preview_token",
+          "import_id": "/import_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "commit",
+            "format": "yaml",
+            "share": [
+              "fixture-user"
+            ],
+            "export_bytes": "aWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEKdHlwZTogc3NoCm9wdGlvbnM6CiAgaG9zdDogZml4dHVyZS5pbnZhbGlkCg==",
+            "preview_token": "${token}"
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "import_preview_stale"
+            }
+          ]
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/target-imports",
+          "body": {
+            "action": "commit",
+            "format": "yaml",
+            "share": [
+              "fixture-user",
+              "peer"
+            ],
+            "export_bytes": "aWQ6IGFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWEKdHlwZTogc3NoCm9wdGlvbnM6CiAgaG9zdDogZml4dHVyZS5pbnZhbGlkCg==",
+            "preview_token": "${token}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets/0/share",
+              "eq": [
+                "fixture-user",
+                "peer"
+              ]
+            },
+            {
+              "pointer": "/targets/0/owner",
+              "eq": "fixture-user"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

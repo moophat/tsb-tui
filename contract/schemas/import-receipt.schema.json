@@ -1,0 +1,526 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Import receipt and publication marker",
+  "description": "C6 secret-free confirmation and C5 publication evidence. Resume is caller-owned and never stores credentials again.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ImportReceipt"
+    },
+    {
+      "$ref": "#/$defs/ImportPublication"
+    }
+  ],
+  "$defs": {
+    "import_id": {
+      "type": "string",
+      "pattern": "^imp-[a-z2-7]{25}[aeimquy4]$"
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]+$"
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locator",
+        "kind",
+        "reason"
+      ],
+      "properties": {
+        "locator": {
+          "$ref": "#/$defs/locator"
+        },
+        "kind": {
+          "enum": [
+            "row",
+            "option",
+            "credential"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "unsupported_type",
+            "unsupported_option",
+            "local_serial",
+            "invalid_entry",
+            "missing_source_ref",
+            "ambiguous_source_ref",
+            "unreadable_credential",
+            "key_file_reference"
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          }
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "row",
+                "credential"
+              ]
+            },
+            "fields": false,
+            "position": false
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "option"
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "fields"
+              ]
+            },
+            {
+              "required": [
+                "position"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "plan_mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "reference": {
+          "$ref": "common.schema.json#/$defs/credential_ref"
+        },
+        "state": {
+          "enum": [
+            "map",
+            "keep",
+            "ambiguous"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "reference"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "map",
+                "keep"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "state": {
+              "const": "ambiguous"
+            },
+            "reference": false
+          }
+        }
+      ]
+    },
+    "plan_credential": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "kind"
+      ],
+      "properties": {
+        "reference": {
+          "$ref": "common.schema.json#/$defs/credential_ref"
+        },
+        "kind": {
+          "const": "password"
+        }
+      }
+    },
+    "plan_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locator",
+        "source_ref",
+        "change",
+        "target_id",
+        "n",
+        "definition",
+        "credentials",
+        "mapping"
+      ],
+      "properties": {
+        "locator": {
+          "$ref": "#/$defs/locator"
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f]+$"
+        },
+        "change": {
+          "enum": [
+            "create",
+            "update"
+          ]
+        },
+        "target_id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "n": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "definition": {
+          "$ref": "inventory-target.schema.json",
+          "required": [
+            "import_ref"
+          ]
+        },
+        "credentials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/plan_credential"
+          }
+        },
+        "mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/plan_mapping"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "change": {
+              "const": "create"
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "change": {
+              "const": "update"
+            },
+            "n": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "stored_credential": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "layer",
+        "kind",
+        "target_ids"
+      ],
+      "properties": {
+        "reference": {
+          "$ref": "common.schema.json#/$defs/credential_ref"
+        },
+        "layer": {
+          "$ref": "common.schema.json#/$defs/credential_layer"
+        },
+        "kind": {
+          "const": "password"
+        },
+        "target_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "import_id",
+        "credentials_stored",
+        "targets_written",
+        "mapping",
+        "audit",
+        "index",
+        "effects_known"
+      ],
+      "properties": {
+        "import_id": {
+          "$ref": "#/$defs/import_id"
+        },
+        "credentials_stored": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stored_credential"
+          }
+        },
+        "targets_written": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "mapping": {
+          "enum": [
+            "not_requested",
+            "pending",
+            "complete",
+            "unknown"
+          ]
+        },
+        "audit": {
+          "enum": [
+            "complete",
+            "missing",
+            "unknown"
+          ]
+        },
+        "index": {
+          "enum": [
+            "not_requested",
+            "pending",
+            "applied",
+            "unknown"
+          ]
+        },
+        "effects_known": {
+          "type": "boolean"
+        }
+      }
+    },
+    "choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "choice"
+      ],
+      "properties": {
+        "choice": {
+          "enum": [
+            "save",
+            "discard",
+            "none"
+          ]
+        },
+        "destination": {
+          "enum": [
+            "personal",
+            "org"
+          ]
+        },
+        "class": {
+          "$ref": "common.schema.json#/$defs/unlock_class"
+        }
+      },
+      "description": "Commit choice; destination and class are recorded for save and govern stored credential layer. Class applies only to org save.",
+      "oneOf": [
+        {
+          "properties": {
+            "choice": {
+              "enum": [
+                "discard",
+                "none"
+              ]
+            },
+            "destination": false,
+            "class": false
+          }
+        },
+        {
+          "required": [
+            "destination"
+          ],
+          "properties": {
+            "choice": {
+              "const": "save"
+            },
+            "destination": {
+              "const": "personal"
+            },
+            "class": false
+          }
+        },
+        {
+          "required": [
+            "destination",
+            "class"
+          ],
+          "properties": {
+            "choice": {
+              "const": "save"
+            },
+            "destination": {
+              "const": "org"
+            }
+          }
+        }
+      ]
+    },
+    "ImportReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "import_id",
+        "user",
+        "format",
+        "plan_digest",
+        "plan",
+        "not_carried",
+        "choice",
+        "stage",
+        "audit",
+        "index",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "import_id": {
+          "$ref": "#/$defs/import_id"
+        },
+        "user": {
+          "$ref": "common.schema.json#/$defs/username"
+        },
+        "share": {
+          "$ref": "inventory-target.schema.json#/properties/share"
+        },
+        "format": {
+          "enum": [
+            "tabby",
+            "securecrt",
+            "mobaxterm",
+            "yaml"
+          ]
+        },
+        "plan_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "plan": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/plan_row"
+          }
+        },
+        "not_carried": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/issue"
+          }
+        },
+        "choice": {
+          "$ref": "#/$defs/choice"
+        },
+        "stage": {
+          "enum": [
+            "committed",
+            "published",
+            "audited",
+            "mapped",
+            "complete"
+          ]
+        },
+        "audit": {
+          "enum": [
+            "complete",
+            "missing",
+            "unknown"
+          ]
+        },
+        "index": {
+          "enum": [
+            "pending",
+            "applied",
+            "unknown"
+          ]
+        },
+        "created_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        }
+      },
+      "description": "Secret-free receipt in import_receipts keyed by import ID. The digest is SHA-256 of RFC 8785 JCS {share, format, plan, not_carried}; plan credentials are choice-independent and carry no layer. Store choice beside the digest. Never retain export bytes, foreign ciphertext, secrets or export commitments."
+    },
+    "ImportPublication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "import_id",
+        "plan_digest"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "import_id": {
+          "$ref": "#/$defs/import_id"
+        },
+        "plan_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "description": "Marker .imports/<import_id>.json inside an inventory version. Loader and index ignore .imports; incomplete markers survive subsequent swaps."
+    }
+  }
+}

@@ -19,9 +19,18 @@ defaults:
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, tsb-tui-ci]
     timeout-minutes: 90
     steps:
+      - name: Mask package cache address
+        env:
+          PACKAGE_CACHE_ADDR: ${{ secrets.PACKAGE_CACHE_ADDR }}
+        run: |
+          if [ -n "$PACKAGE_CACHE_ADDR" ]; then
+            echo "::add-mask::$PACKAGE_CACHE_ADDR"
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -89,6 +98,8 @@ jobs:
             ci-tui-py make test 2>&1 | tee "$RUNNER_TEMP/tsb-tui-test.log"
 
       - name: Packaging tests
+        env:
+          TSB_LEAK_PATTERN: ${{ secrets.TSB_LEAK_PATTERN }}
         run: |
           set -euo pipefail
           # PR CI fetches no packaging inputs; the release job builds the zips from the pinned inputs
@@ -96,7 +107,7 @@ jobs:
           docker run --rm \
             --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-packaging \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
-            -v "$GITHUB_WORKSPACE:/work" -w /work \
+            -v "$GITHUB_WORKSPACE:/work" -w /work -e TSB_LEAK_PATTERN \
             -e PYTEST_ADDOPTS='-rsx --runxfail' \
             ci-tui-py python -m pytest packaging/tests -p no:cacheprovider \
               --deselect packaging/tests/test_packaging.py::test_built_zip \
@@ -130,9 +141,18 @@ jobs:
           docker rm -f tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-packaging || true
 
   lint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, tsb-tui-ci]
     timeout-minutes: 60
     steps:
+      - name: Mask package cache address
+        env:
+          PACKAGE_CACHE_ADDR: ${{ secrets.PACKAGE_CACHE_ADDR }}
+        run: |
+          if [ -n "$PACKAGE_CACHE_ADDR" ]; then
+            echo "::add-mask::$PACKAGE_CACHE_ADDR"
+          fi
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -193,13 +213,14 @@ jobs:
         env:
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
+          TSB_LEAK_PATTERN: ${{ secrets.TSB_LEAK_PATTERN }}
         run: |
           set -euo pipefail
           docker run --rm \
             --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-lint \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
-            -e CI -e GITHUB_EVENT_NAME -e HEAD_REF -e BASE_REF \
+            -e CI -e GITHUB_EVENT_NAME -e HEAD_REF -e BASE_REF -e TSB_LEAK_PATTERN \
             ci-tui-py make lint
 
       - name: Remove this job's containers

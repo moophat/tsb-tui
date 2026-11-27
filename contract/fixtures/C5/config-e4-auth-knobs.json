@@ -1,0 +1,54 @@
+{
+  "seam": "C5",
+  "name": "config-e4-auth-knobs",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5's tests in schema/; E4 phase 4 (U5: the vault schema, policy.yaml and config.yaml E4 keys); the test is named in phase 16"
+    },
+    {
+      "unit": "U2",
+      "test": "core/internal/config/e4_test.go — TestEachLoginAndLockKnobIsRequired"
+    }
+  ],
+  "description": "config.yaml's login knobs (login open item 1, answered: DEFAULT 36): a login ends at the first of the two.",
+  "corpus": [
+    "login open item 1",
+    "E4 DEFAULT 36",
+    "conventions V7"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json#/properties/auth",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "login_lifetime": "24h",
+          "login_idle": "12h"
+        },
+        "note": "the lane's picks (5.36): a login lives at most 24 h and ends after 12 h idle"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "login_lifetime": "24h"
+        },
+        "note": "both knobs"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "login_lifetime": "24h",
+          "login_idle": "twelve hours"
+        },
+        "note": "a Go duration"
+      }
+    ]
+  }
+}

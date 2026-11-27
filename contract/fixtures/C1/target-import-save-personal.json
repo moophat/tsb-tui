@@ -1,0 +1,79 @@
+{
+  "seam": "C1",
+  "name": "target-import-save-personal",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks confirmed unlocked personal store, references, IDs and no secret return."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Provider checks confirmed unlocked personal store, references, IDs and no secret return."
+    }
+  ],
+  "description": "Provider checks confirmed unlocked personal store, references, IDs and no secret return.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetImportCredentialDisposition",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "choice": "save",
+          "stored": [
+            {
+              "reference": "import-aaaaaaaa-1",
+              "layer": "personal",
+              "kind": "password",
+              "target_ids": [
+                "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          ],
+          "mappings": [
+            {
+              "target_id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "reference": "import-aaaaaaaa-1",
+              "state": "mapped"
+            }
+          ]
+        },
+        "note": "personal store and mapping"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "choice": "save",
+          "stored": [
+            {
+              "reference": "import-aaaaaaaa-1",
+              "layer": "personal",
+              "kind": "password",
+              "target_ids": [
+                "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          ],
+          "mappings": [
+            {
+              "target_id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "reference": "import-aaaaaaaa-1",
+              "state": "mapped"
+            }
+          ],
+          "extra": "FIXTURE-NOT-A-PASSWORD"
+        },
+        "note": "no secret value"
+      }
+    ]
+  }
+}

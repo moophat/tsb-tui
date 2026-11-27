@@ -1,0 +1,365 @@
+{
+  "seam": "C1",
+  "name": "target-login-hint-resolution-faults",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Wire list/single-read behavior and runtime/protocol/target-scoped authorization context."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Preserve stage errors and precedence; target-specific missing mapping must not poison unrelated targets; profile-read failure affects all eligible targets; grant errors cannot override a personal error."
+    }
+  ],
+  "description": "Provider arranges missing mapped reference plus valid org alternative, dangling matching org reference, and malformed caller grant selector/record on present runtime targets. Each answers unavailable, never none or saved by fallback. Create retains its existing refusals and error order. Each named target has an exclusive tag equal to its id; filtered list reads select that row for the field-omission checks.",
+  "corpus": [
+    "Storage §10.1a",
+    "Contract §4",
+    "Contract §12",
+    "inventory-list caller-relative login hint",
+    "session-open step 3"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-missing-map"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-missing-map",
+                "/login_hint": "unavailable"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-missing-map",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-missing-map"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "unavailable"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-missing-map"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-missing-map"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "unavailable"
+            }
+          ],
+          "example": {
+            "id": "hint-missing-map",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-missing-map"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "unavailable"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-dangling-org"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-dangling-org",
+                "/login_hint": "unavailable"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-dangling-org",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-dangling-org"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "unavailable"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-dangling-org"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-dangling-org"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "unavailable"
+            }
+          ],
+          "example": {
+            "id": "hint-dangling-org",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-dangling-org"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "unavailable"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-malformed-selector"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-malformed-selector",
+                "/login_hint": "unavailable"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-malformed-selector",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-malformed-selector"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "unavailable"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-malformed-selector"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-malformed-selector"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "unavailable"
+            }
+          ],
+          "example": {
+            "id": "hint-malformed-selector",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-malformed-selector"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "unavailable"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets?tag=hint-malformed-record"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/targets",
+              "some": {
+                "/id": "hint-malformed-record",
+                "/login_hint": "unavailable"
+              }
+            }
+          ],
+          "example": {
+            "targets": [
+              {
+                "id": "hint-malformed-record",
+                "type": "ssh",
+                "name": "fixture target",
+                "group": "lab",
+                "tags": [
+                  "hint-malformed-record"
+                ],
+                "discovered_by": "manual",
+                "last_seen": "2026-10-17T08:30:00Z",
+                "host": "192.0.2.10",
+                "port": 22,
+                "login_hint": "unavailable"
+              }
+            ]
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "GET",
+          "path": "/targets/hint-malformed-record"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/id",
+              "eq": "hint-malformed-record"
+            },
+            {
+              "pointer": "/login_hint",
+              "eq": "unavailable"
+            }
+          ],
+          "example": {
+            "id": "hint-malformed-record",
+            "type": "ssh",
+            "name": "fixture target",
+            "group": "lab",
+            "tags": [
+              "hint-malformed-record"
+            ],
+            "discovered_by": "manual",
+            "last_seen": "2026-10-17T08:30:00Z",
+            "host": "192.0.2.10",
+            "port": 22,
+            "login_hint": "unavailable"
+          },
+          "headers": {
+            "Cache-Control": "no-store"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "hint-missing-map",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "mapped_credential_missing"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "mapped_credential_missing",
+              "message": "a mapping names a credential that is not in your vault",
+              "credential_ref": "hint-missing-ref"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

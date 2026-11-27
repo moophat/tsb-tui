@@ -9,7 +9,7 @@ firehose on a loaded machine measures the machine. They import only the stdlib, 
 
 ## What they need
 
-* the `tsb-tui` venv (Textual 8.2.8) and `program/` populated at the pinned release (`make contract-init`), run from the
+* the `tsb-tui` venv (Textual 8.2.8) and `contract/` populated (`make contract-copy-check`), run from the
   repository root;
 * the engine, `libghostty-vt.so`, from the same build the deploy installs: `--library <path>` (the default is the
   repository's `vendor/libghostty-vt/libghostty-vt.so`). For another build, set `TSB_TUI_TERM_LIBRARY`

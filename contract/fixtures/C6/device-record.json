@@ -1,0 +1,93 @@
+{
+  "seam": "C6",
+  "name": "device-record",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: U5's tests in schema/; E4 phase 4 (U5: the vault schema, policy.yaml and config.yaml E4 keys); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "devices: keyed by (user_id, device_id); on the allowlist exactly while device_pubkey is present (credential-protection §3.3, §7.2).",
+  "corpus": [
+    "credential-protection §3.3",
+    "credential-protection §7.2",
+    "E4 M6 (a)",
+    "Storage §9"
+  ],
+  "case": {
+    "schema": "schemas/vault.schema.json#/$defs/device_record",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "user_id": "fixture-user",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "device_pubkey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+          "device_fingerprint": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "device_name": "Work laptop",
+          "registered_at": "2026-10-29T08:00:00Z",
+          "last_used_at": "2026-10-29T08:00:00Z",
+          "owner_id": "",
+          "tenant_id": ""
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "user_id": "fixture-user",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "device_fingerprint": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "device_name": "Work laptop",
+          "registered_at": "2026-10-29T08:00:00Z",
+          "last_used_at": "2026-10-29T08:00:00Z",
+          "owner_id": "",
+          "tenant_id": "",
+          "revoked_at": "2026-10-29T08:00:00Z",
+          "revoke_reason": "admin"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "user_id": "fixture-user",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "device_pubkey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+          "device_fingerprint": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "device_name": "Work laptop",
+          "registered_at": "2026-10-29T08:00:00Z",
+          "last_used_at": "2026-10-29T08:00:00Z",
+          "owner_id": "",
+          "tenant_id": "",
+          "revoked_at": "2026-10-29T08:00:00Z",
+          "revoke_reason": "user"
+        },
+        "note": "a revocation deletes the key"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "user_id": "fixture-user",
+          "device_id": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "device_pubkey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+          "device_fingerprint": "FIXTURE-DEVICE-ID-AAAAAAAAAAAAAAAAAAAAAAAAA",
+          "device_name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "registered_at": "2026-10-29T08:00:00Z",
+          "last_used_at": "2026-10-29T08:00:00Z",
+          "owner_id": "",
+          "tenant_id": ""
+        },
+        "note": "a device name is at most 64 characters"
+      }
+    ]
+  }
+}

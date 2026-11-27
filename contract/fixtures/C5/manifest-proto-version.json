@@ -1,0 +1,142 @@
+{
+  "seam": "C5",
+  "name": "manifest-proto-version",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "artifacts:worker-manifests",
+  "description": "A v0.2 worker's manifest names the C3 version it speaks (immortality §6.4: proto_version, N and N-1). The field is optional, so every v0.1 manifest stays valid and its absence is how a v0.2 core recognises a v0.1 worker; a later version such as 0.3 is valid, so a core reads it as newer, never as malformed; a string that is not a version is refused. Every manifest a collection holds validates against the same shape.",
+  "corpus": [
+    "immortality §6.4",
+    "immortality §2.1",
+    "Contract §8"
+  ],
+  "case": {
+    "schema": "schemas/worker-manifest.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-29T00:00:00Z",
+          "proto_version": "0.2",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-29T00:00:00Z",
+          "proto_version": "0.3",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        },
+        "note": "a later worker"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-29T00:00:00Z",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        },
+        "note": "a v0.1 worker"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-29T00:00:00Z",
+          "proto_version": "latest",
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "worker_id": "fixture-worker-1",
+          "pid": 4201,
+          "supervisor_id": "fixture-sup-1",
+          "started_at": "2026-09-29T00:00:00Z",
+          "proto_version": 0.2,
+          "connections": [
+            {
+              "conn_id": "fixture-conn-1",
+              "target_id": "fixture-target",
+              "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+              "sessions": [
+                {
+                  "session_id": "fixture-session-a",
+                  "session_type": "shell",
+                  "socket": "shell.sock"
+                }
+              ]
+            }
+          ]
+        },
+        "note": "a string, never a number"
+      }
+    ]
+  }
+}

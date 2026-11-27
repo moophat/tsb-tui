@@ -1,0 +1,72 @@
+{
+  "seam": "C3",
+  "name": "gap-frame",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "bytes",
+  "grade": "artifacts:frames-continuity",
+  "description": "The gap frame on the wire (decision 5.14: a flagged empty frame, not an out-of-band message; immortality §4.3: truth over pretense). The core had committed output 1 and 2 when no core peer held the session's data socket; the target kept printing, and the ring dropped the oldest frames, 3 to 6. The handshake's hello_ack said first_buffered_seq 7 and last_dropped_ts the stamp of frame 6, so the replay writes, before its first frame, an output frame with flags bit 1 set and no payload: seq 6 — first_buffered_seq - 1, the last lost seq, never a surviving frame's — and that stamp. The jump from 2 lands on it, and the next frame is 7. The recording holds a gap marker in its place (C8 gap-marker). Captures of a forced overflow must show the same.",
+  "corpus": [
+    "immortality §4.3",
+    "decision 5.14",
+    "decision 5.39",
+    "phase-01 (forced buffer overflow)"
+  ],
+  "case": {
+    "format": "c3-frames",
+    "file": "gap-frame.bin",
+    "frames": [
+      {
+        "version": 1,
+        "flags": 0,
+        "direction": "out",
+        "stream": 0,
+        "length": 2,
+        "seq": 1,
+        "timestamp": 1789000000123456789,
+        "payload_hex": "2420"
+      },
+      {
+        "version": 1,
+        "flags": 0,
+        "direction": "out",
+        "stream": 0,
+        "length": 13,
+        "seq": 2,
+        "timestamp": 1789000000124456789,
+        "payload_hex": "7461696c202d66206c6f670d0a"
+      },
+      {
+        "version": 1,
+        "flags": 2,
+        "direction": "out",
+        "stream": 0,
+        "length": 0,
+        "seq": 6,
+        "timestamp": 1789000009123456789,
+        "payload_hex": ""
+      },
+      {
+        "version": 1,
+        "flags": 0,
+        "direction": "out",
+        "stream": 0,
+        "length": 8,
+        "seq": 7,
+        "timestamp": 1789000009223456789,
+        "payload_hex": "6c696e6520370d0a"
+      },
+      {
+        "version": 1,
+        "flags": 0,
+        "direction": "out",
+        "stream": 0,
+        "length": 8,
+        "seq": 8,
+        "timestamp": 1789000009323456789,
+        "payload_hex": "6c696e6520380d0a"
+      }
+    ]
+  }
+}

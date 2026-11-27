@@ -1,0 +1,228 @@
+{
+  "seam": "C3",
+  "name": "terminal-non-pty-retained",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: non_pty_retained_excludes_terminal_accounting: retain a non-PTY session across data-peer loss/end; capture the existing handshake with no ring/replayed output; assert no seal_output or release_accounted and no terminal_incomplete/code-9 marker in any recording, including on timeout/core stop. Preserve the published non-PTY loss rule."
+    },
+    {
+      "unit": "U3",
+      "test": "owed: non_pty_retained_excludes_terminal_accounting: retain a non-PTY session across data-peer loss/end; capture the existing handshake with no ring/replayed output; assert no seal_output or release_accounted and no terminal_incomplete/code-9 marker in any recording, including on timeout/core stop. Preserve the published non-PTY loss rule."
+    },
+    {
+      "unit": "U5",
+      "test": "owed: non_pty_retained_excludes_terminal_accounting: retain a non-PTY session across data-peer loss/end; capture the existing handshake with no ring/replayed output; assert no seal_output or release_accounted and no terminal_incomplete/code-9 marker in any recording, including on timeout/core stop. Preserve the published non-PTY loss rule."
+    }
+  ],
+  "description": "PTY-only terminal recovery (terminal-output-accounting \u00a71; ruling 2026-11-15 03:5x). A retained non-PTY SFTP session uses the existing no-ring handshake, with no replayed frames, no seal_output or release_accounted and no code-9 marker. The final handshake discovers ended:true and uses legacy release. The earlier re-dials retain input gating/output resumption and first_buffered_seq=current_seq+1, including output sent into a dead peer. The existing SFTP loss rule remains; no loss rule is invented for exec, netconf or forward. Reference obligation only: this tag does not open non-PTY sessions.",
+  "corpus": [
+    "Contract \u00a715.1",
+    "session model \u00a74",
+    "terminal-output-accounting \u00a71",
+    "reattach-handshake"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          },
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 30000,
+            "keepalive_count_max": 12,
+            "connection_linger": 300000,
+            "orphan_timeout": 172800000,
+            "idle": 604800000,
+            "unattended": 2592000000
+          },
+          "buffer_bytes": 8388608,
+          "input_frame_max": 1048576
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_sftp",
+          "session_id": "fixture-session-b"
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-b",
+          "session_type": "sftp",
+          "socket": "sftp.sock"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-b",
+          "proto_version": "0.8",
+          "last_committed_seq": 0
+        },
+        "note": "the core dialled the data socket first; nothing is committed yet"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-b",
+          "proto_version": "0.8",
+          "first_buffered_seq": 1,
+          "first_buffered_offset": 0,
+          "current_seq": 0,
+          "ended": false
+        },
+        "note": "nothing buffered and no output yet: first_buffered_seq is current_seq + 1"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-b",
+          "from_seq": 1
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-b",
+          "through_seq": 0
+        },
+        "note": "through_seq 0 < from_seq 1: complete with no frame"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-b"
+        },
+        "note": "only now is the session offered northbound (the 201)"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-b",
+          "proto_version": "0.8",
+          "last_committed_seq": 40
+        },
+        "note": "a re-dial after 40 frames"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-b",
+          "proto_version": "0.8",
+          "first_buffered_seq": 41,
+          "first_buffered_offset": 9000,
+          "current_seq": 40,
+          "ended": false
+        },
+        "note": "no ring: nothing buffered, nothing lost"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-b",
+          "from_seq": 41
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-b",
+          "through_seq": 40
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "live",
+          "session_id": "fixture-session-b"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "hello",
+          "session_id": "fixture-session-b",
+          "proto_version": "0.8",
+          "last_committed_seq": 40
+        },
+        "note": "the core recorded through 40; the worker had sent 41 to 43 into a peer that died"
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "hello_ack",
+          "session_id": "fixture-session-b",
+          "proto_version": "0.8",
+          "first_buffered_seq": 44,
+          "first_buffered_offset": 9600,
+          "current_seq": 43,
+          "ended": true
+        },
+        "note": "no ring: nothing buffered, and no gap"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "replay",
+          "session_id": "fixture-session-b",
+          "from_seq": 41
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "replay_done",
+          "session_id": "fixture-session-b",
+          "through_seq": 43
+        },
+        "note": "through_seq < first_buffered_seq and no gap is due: complete, with no frame to wait for"
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "release",
+          "session_id": "fixture-session-b"
+        },
+        "note": "Retained non-PTY ended session: legacy release, no terminal sealing/accounted recovery and no code-9 marker; provider asserts marker absence in the recording."
+      }
+    ]
+  }
+}

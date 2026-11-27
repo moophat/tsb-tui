@@ -1,0 +1,41 @@
+{
+  "seam": "C3",
+  "name": "control-hostkey-changed",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "sequence",
+  "grade": "artifacts:control-hostkey-changed",
+  "description": "A target presenting a host key other than the recorded one is refused: error hostkey_changed, before any connected, naming both fingerprints. Accept-on-first-use never extends to a changed key; the core answers the session create 409 hostkey_changed. A collected run (the harness's host-key rig) must show one, and no connected after it.",
+  "corpus": [
+    "decision 5.18"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "ssh",
+          "host": "192.0.2.10",
+          "port": 22,
+          "user": "fixture-user",
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "error",
+          "code": "hostkey_changed",
+          "message": "host key changed: recorded SHA256:FIXTURE111111111111111111111111111111111111, presented SHA256:FIXTURE000000000000000000000000000000000000; refused"
+        }
+      }
+    ]
+  }
+}

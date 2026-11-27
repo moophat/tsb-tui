@@ -39,7 +39,7 @@ from tsb_tui.model.attachment import (
     AttachmentState,
 )
 
-CONTRACT = Path(__file__).resolve().parents[1] / "program" / "contract"
+CONTRACT = Path(__file__).resolve().parents[1] / "contract"
 WS_FRAMES = "schemas/ws-frames.schema.json"
 REGISTRY = Registry.from_tree(CONTRACT)
 

@@ -1,0 +1,165 @@
+{
+  "seam": "C2",
+  "name": "unknown-frame-ignored",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "ws",
+  "grade": "live",
+  "description": "Frames carry v and a receiver ignores a t it does not know, so later tags add frame types — token events at v0.2, the attach prefix frame added at contract-v0.3 — without breaking a v0.1 peer. At v0.1 the attach prefix was empty; the prefix frame and its dump arrived with contract-v0.3. After an unknown frame the server keeps the socket open and keeps streaming.",
+  "corpus": [
+    "spine plan.md §3 C2",
+    "development-plan.md §2 v0.3 (frames versioned and extensible)",
+    "immortality §6.4"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid": "/session/id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/ws-ticket",
+          "body": {
+            "session_id": "${sid}"
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "v": 1,
+            "ticket": "FIXTURE-TICKET-000000000000000000",
+            "expires_in": 30
+          }
+        },
+        "save": {
+          "minted": "/ticket"
+        }
+      },
+      {
+        "ws_open": "w",
+        "path": "/ws/attach"
+      },
+      {
+        "ws_send": "w",
+        "frame": {
+          "t": "attach",
+          "v": 1,
+          "ticket": "${minted}",
+          "session_id": "${sid}"
+        }
+      },
+      {
+        "ws_expect": "w",
+        "frame": {
+          "match": [
+            {
+              "pointer": "/t",
+              "eq": "attached"
+            },
+            {
+              "pointer": "/session/id",
+              "eq": "${sid}"
+            }
+          ],
+          "example": {
+            "t": "attached",
+            "v": 1,
+            "client_id": "fixture-client-1",
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "live",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": {
+                "client_id": "fixture-client-1",
+                "user": "fixture-user"
+              },
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        }
+      },
+      {
+        "ws_send": "w",
+        "unknown": true,
+        "frame": {
+          "t": "x-fixture-unknown",
+          "v": 1,
+          "note": "a v0.1 receiver ignores this"
+        }
+      },
+      {
+        "ws_send": "w",
+        "bytes": "# tsbc ${nonce}\r"
+      },
+      {
+        "ws_expect": "w",
+        "output_contains": "tsbc ${nonce}"
+      },
+      {
+        "ws_close": "w"
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid}"
+      }
+    ]
+  }
+}

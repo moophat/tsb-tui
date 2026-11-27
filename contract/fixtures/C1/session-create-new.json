@@ -1,0 +1,155 @@
+{
+  "seam": "C1",
+  "name": "session-create-new",
+  "mark": {
+    "required-green": "e0"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "connection: new always opens a new connection, so two sessions created with it have different connection_ids. The record is Tier 1, a shell, owned by its creator, and detached with the control token in broker escrow, because no client has attached: the session exists with no surface at all. It says whether it is recorded, and it is closed, so no broker path — the recording's included — appears in it.",
+  "corpus": [
+    "Contract §15.3",
+    "Contract §3",
+    "Contract §4",
+    "PTY §7.1",
+    "session model §10",
+    "open_decisions §5",
+    "phase-00 (tier; operable with no surface)"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/session/tier",
+              "eq": 1
+            },
+            {
+              "pointer": "/session/session_type",
+              "eq": "shell"
+            },
+            {
+              "pointer": "/session/state",
+              "eq": "detached"
+            },
+            {
+              "pointer": "/session/owner",
+              "eq": "${user}"
+            },
+            {
+              "pointer": "/session/control_holder",
+              "eq": null
+            },
+            {
+              "pointer": "/session/target_id",
+              "eq": "${target_id}"
+            },
+            {
+              "pointer": "/session/recording",
+              "present": true
+            }
+          ],
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_a": "/session/id",
+          "conn_a": "/session/connection_id"
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "new",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40
+          }
+        },
+        "expect": {
+          "status": 201,
+          "match": [
+            {
+              "pointer": "/session/connection_id",
+              "ne": "${conn_a}"
+            }
+          ],
+          "example": {
+            "session": {
+              "id": "fixture-session-a",
+              "target_id": "fixture-target",
+              "connection_id": "fixture-conn-1",
+              "session_type": "shell",
+              "state": "detached",
+              "tier": 1,
+              "owner": "fixture-user",
+              "control_holder": null,
+              "created_at": "2026-09-23T12:00:00Z",
+              "term": "xterm-256color",
+              "cols": 120,
+              "rows": 40,
+              "recording": {
+                "active": true,
+                "warning_code": "recording.active",
+                "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+              }
+            }
+          }
+        },
+        "save": {
+          "sid_b": "/session/id"
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_a}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/sessions/${sid_b}"
+      }
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "seam": "C1",
+  "name": "account-list-forbidden-403",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: E4b account management provider tests; Caller lacks account.admin: GET /accounts is 403 forbidden before account lookup, with no write, login end or audit. Prove with both present and absent target names where applicable."
+    }
+  ],
+  "description": "Caller lacks account.admin: GET /accounts is 403 forbidden before account lookup, with no write, login end or audit. Prove with both present and absent target names where applicable.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "peer_user",
+      "peer_password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/accounts",
+          "as": "peer"
+        },
+        "expect": {
+          "status": 403,
+          "example": {
+            "error": {
+              "code": "forbidden",
+              "message": "account request refused"
+            }
+          },
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "forbidden"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

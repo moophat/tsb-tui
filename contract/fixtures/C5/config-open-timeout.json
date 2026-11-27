@@ -1,0 +1,435 @@
+{
+  "seam": "C5",
+  "name": "config-open-timeout",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed by the schema plan for the open-shell bound (the loader reads every instance)"
+    }
+  ],
+  "description": "config.yaml's worker.open_timeout (V7): the bound on a shell's open, how long the worker waits for the target to open a shell, sent on C3 open_shell as open_timeout to a worker at proto_version 0.6 or later; a target's own options.open_timeout overrides it. A Go duration string, as its siblings undialled_timeout and reap_timeout, and optional in this schema as every later knob is. Each instance is config-valid's lab template with only worker.open_timeout varied. Valid: 20s; absent. Invalid: a non-duration string; a negative duration. The lower bound is prose, as the loader enforces it: 0s and a fractional-millisecond 1.5ms match the schema's pattern, so they validate here and are listed as the loader's refusal cases, which only U5's loader test grades. The default is config.yaml's, never this schema's (decision 5.36).",
+  "corpus": [
+    "Storage §2.5",
+    "session model §11",
+    "decision 5.36",
+    "lang-arch §7.3"
+  ],
+  "case": {
+    "schema": "schemas/config.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "open_timeout": "20s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "worker.open_timeout 20s: a positive whole-millisecond Go duration, the bound on a shell's open"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "worker.open_timeout absent: a later knob is optional in this schema, so a file written before it still loads"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "open_timeout": "0s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "the loader's refusal case, not the schema's: 0s is a Go duration and matches the pattern, but the lower bound is prose (a positive whole-millisecond duration, as the loader enforces it), so the loader refuses this file. Only U5's loader test grades this instance"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "open_timeout": "1.5ms"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "the loader's refusal case, not the schema's: 1.5ms matches the pattern, but it is not a whole number of milliseconds, and the whole-millisecond rule is prose, so the loader refuses this file, never truncates it. Only U5's loader test grades this instance"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "open_timeout": "soon"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "a non-duration string: soon is not a Go duration"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "timers": {
+            "idle": "20s",
+            "unattended": "720h",
+            "ws_ping_interval": "20s",
+            "ws_missed_pongs": 3,
+            "heartbeat_interval": "10s",
+            "heartbeat_missed": 3,
+            "keepalive_interval": "30s",
+            "keepalive_count_max": 12,
+            "connection_linger": "60s",
+            "orphan_timeout": "20s",
+            "expiry_notice": "10s",
+            "quiet_prompt": "180s",
+            "keepalive_probe_interval": "15s"
+          },
+          "worker": {
+            "placement": "per_user",
+            "max_connections": 1,
+            "buffer_bytes": 65536,
+            "input_frame_max": 1048576,
+            "undialled_timeout": "30s",
+            "reap_timeout": "10s",
+            "open_timeout": "-20s"
+          },
+          "size": {
+            "floor": {
+              "cols": 40,
+              "rows": 12
+            },
+            "ceiling": {
+              "cols": 200,
+              "rows": 60
+            },
+            "threshold": 0,
+            "coalesce_window": "100ms"
+          },
+          "control": {
+            "auto_release": "0s"
+          },
+          "attach": {
+            "redraw_wiggle": true,
+            "prefix_hold": "15s"
+          },
+          "vt": {
+            "max_message_bytes": 65816,
+            "feed_queue_bytes": 134217728,
+            "heartbeat_interval": "2s",
+            "heartbeat_missed": 5,
+            "scrollback_bytes": 4194304,
+            "prefix_ground_wait": "250ms",
+            "continuation_max_bytes": 65536
+          },
+          "snapshot": {
+            "every_kb": 1024,
+            "every_sec": "30s",
+            "on_alt_screen": true,
+            "wait_sec": 30
+          },
+          "inventory": {
+            "keep_versions": 5,
+            "staging_max_age": "2h"
+          }
+        },
+        "note": "a negative duration: the pattern admits no sign"
+      }
+    ]
+  }
+}

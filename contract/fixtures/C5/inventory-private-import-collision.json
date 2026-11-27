@@ -1,0 +1,68 @@
+{
+  "seam": "C5",
+  "name": "inventory-private-import-collision",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U5",
+      "test": "owed: Provider checks the complete duplicate matrix after provenance validation and on rebuild."
+    },
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks the complete duplicate matrix after provenance validation and on rebuild."
+    }
+  ],
+  "description": "Provider checks the complete duplicate matrix after provenance validation and on rebuild.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a74"
+  ],
+  "case": {
+    "schema": "schemas/inventory-target.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "options": {
+            "host": "fixture.invalid"
+          },
+          "private_owner": "fixture-user",
+          "import_ref": {
+            "format": "yaml",
+            "source_ref": "fixture-native"
+          },
+          "share": [
+            "fixture-user"
+          ]
+        },
+        "note": "valid private imported target"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "g-aaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "type": "ssh",
+          "options": {
+            "host": "fixture.invalid"
+          },
+          "private_owner": "../invalid",
+          "import_ref": {
+            "format": "yaml",
+            "source_ref": "fixture-native"
+          },
+          "share": [
+            "fixture-user"
+          ]
+        },
+        "note": "invalid owner"
+      }
+    ]
+  }
+}

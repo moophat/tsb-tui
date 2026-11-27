@@ -1,0 +1,198 @@
+{
+  "seam": "C1",
+  "name": "session-record-shape-v0.3",
+  "mark": {
+    "required-green": "e2"
+  },
+  "kind": "instance",
+  "grade": "with:session-countdown",
+  "description": "The session record at contract-v0.3, additive on v0.2 (immortality §6.4): every v0.2 record stays valid. It gains the attached clients (clients: client_id, user, may_control — may_control when the client's principal holds session.join.rw), whether the target is resizable and whether it is pinned (terminal-size-and-control.md §3; 5.50). All three are optional in the schema so a v0.2 core's record stays valid; a v0.3 core puts them on every record not ended. The v0.2 invalid cases — an ended session with a countdown, half a countdown, unreachable without a reason, an unreachable_reason on a reachable record, a lifetime cap, the worker's own state — are unchanged. The live run of session-countdown validates real records against the same shape.",
+  "corpus": [
+    "terminal-size-and-control.md §3",
+    "C1 decision 1",
+    "C2 decision 5",
+    "C2 decision 8",
+    "immortality §6.4"
+  ],
+  "case": {
+    "schema": "schemas/session-record.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "live",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": {"client_id": "fixture-client-1", "user": "fixture-user"},
+          "created_at": "2026-10-06T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "ends_at": "2026-10-07T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false,
+          "clients": [
+            {"client_id": "fixture-client-1", "user": "fixture-user", "may_control": true},
+            {"client_id": "fixture-client-2", "user": "fixture-viewer", "may_control": false}
+          ],
+          "resizable": true,
+          "pinned": false
+        },
+        "note": "a v0.3 record: two attached clients, one view-only; a resizable, unpinned target"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-b",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-10-06T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 80,
+          "rows": 24,
+          "recording": {"active": false},
+          "clients": [],
+          "resizable": true,
+          "pinned": true
+        },
+        "note": "floor equal to ceiling pins the size; no countdown, no client attached"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-c",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "live",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": {"client_id": "fixture-client-1", "user": "fixture-user"},
+          "created_at": "2026-10-06T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {"active": false}
+        },
+        "note": "a v0.2 record without clients, resizable or pinned is still valid (R1)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "live",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": {"client_id": "fixture-client-1", "user": "fixture-user"},
+          "created_at": "2026-10-06T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {"active": false},
+          "clients": [
+            {"client_id": "fixture-client-1", "user": "fixture-user"}
+          ]
+        },
+        "note": "a client without may_control does not reach this sender's shape (v0.2's invalid cases unchanged)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "killed",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-10-06T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {"active": false},
+          "ends_at": "2026-10-07T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        },
+        "note": "an ended session has nothing to count down (v0.2, unchanged)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-10-06T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {"active": false},
+          "ends_at": "2026-10-07T12:00:00Z"
+        },
+        "note": "the three travel together (v0.2, unchanged)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "unreachable",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-10-06T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {"active": false}
+        },
+        "note": "unreachable says why (v0.2, unchanged)"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "detached",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-10-06T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {"active": false},
+          "resizable": "yes"
+        },
+        "note": "resizable is a boolean"
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "seam": "C1",
+  "name": "target-import-save-org",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: Provider checks explicit org class, authorization, unlock and no grant or mapping."
+    },
+    {
+      "unit": "U6",
+      "test": "owed: Provider checks explicit org class, authorization, unlock and no grant or mapping."
+    }
+  ],
+  "description": "Provider checks explicit org class, authorization, unlock and no grant or mapping.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "openapi/tsb.openapi.json#/components/schemas/TargetImportCredentialDisposition",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "choice": "save",
+          "stored": [
+            {
+              "reference": "import-aaaaaaaa-1",
+              "layer": "org",
+              "kind": "password",
+              "target_ids": [
+                "g-aaaaaaaaaaaaaaaaaaaaaaaaaa"
+              ]
+            }
+          ],
+          "mappings": []
+        },
+        "note": "org stores have no profile mappings"
+      }
+    ]
+  }
+}

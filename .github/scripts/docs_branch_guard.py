@@ -77,6 +77,8 @@ def _changed_files(base_ref: str) -> list[str] | None:
 
 
 def _is_docs_only(path: str) -> bool:
+    if path == "contract.pin" or path.startswith("contract/"):
+        return False
     if path.startswith(DOCS_ONLY_DIRS):
         return True
     return path.endswith(".md")

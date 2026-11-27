@@ -1,0 +1,26 @@
+{
+  "seam": "C1",
+  "name": "output-page-401",
+  "mark": {"published": "e2", "required-green": "e5"},
+  "kind": "rest",
+  "grade": "live",
+  "description": "The pages endpoint is authenticated by the login cookie, like every other call but login (C1 decision 3; 5.48; F15): without one, GET /sessions/{id}/output is 401 unauthenticated and no page is served. Published e2 so the web lane may build against it; required green at e5, where a core ring first exists (no core ring at E2, and an E2 core that does not serve pages answers 501 not_implemented).",
+  "corpus": ["C1 decision 3", "C1 decision 4", "5.48", "F15", "Contract §4"],
+  "case": {
+    "inputs": [],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions/fixture-session-a/output?before_seq=10&max_bytes=4096",
+          "as": "none"
+        },
+        "expect": {
+          "status": 401,
+          "match": [{"pointer": "/error/code", "eq": "unauthenticated"}],
+          "example": {"error": {"code": "unauthenticated", "message": "log in first"}}
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "seam": "C3",
+  "name": "supervisor-request-shape-v0.2",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "artifacts:supervisor-sequence",
+  "description": "Every message v0.2 adds to the supervisor clause, valid and refused: the ping and its pong, the kill of a hung worker and its two answers, the version on worker_created, and the two error reasons that alone may lack a conn_id — bad_request and unknown_cmd — while every other reason still names one.",
+  "corpus": [
+    "session model §11",
+    "decision 5.13",
+    "immortality §6.4"
+  ],
+  "case": {
+    "schema": "schemas/supervisor.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "ping",
+          "n": 7
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "pong",
+          "n": 7
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "kill_worker",
+          "worker_id": "fixture-worker-1",
+          "reap_timeout": 5000
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "worker_killed",
+          "worker_id": "fixture-worker-1"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "kill_failed",
+          "worker_id": "fixture-worker-1",
+          "reason": "unkillable"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "kill_failed",
+          "worker_id": "fixture-worker-1",
+          "reason": "refused"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "worker_created",
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+          "proto_version": "0.2"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "worker_created",
+          "conn_id": "fixture-conn-1",
+          "worker_id": "fixture-worker-1",
+          "conn_dir": "/tmp/tsb/conn-fixture-conn-1",
+          "proto_version": "two"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "reason": "bad_request",
+          "message": "no readable conn_id"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "reason": "unknown_cmd",
+          "message": "unknown cmd 'x'"
+        }
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "reason": "bad_request",
+          "conn_id": "fixture-conn-1",
+          "message": "duplicate"
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "event": "error",
+          "reason": "capacity",
+          "message": "no conn_id"
+        },
+        "note": "every other reason names its connection"
+      }
+    ]
+  }
+}

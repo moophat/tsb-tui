@@ -1,0 +1,84 @@
+{
+  "seam": "C1",
+  "name": "session-unreachable",
+  "mark": {
+    "required-green": "e1"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/session/unreachable_test.go — a session on a v0.1 worker is unreachable / protocol: attachable, showing what the core has, its input refused with the C2 input_refused frame"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/unreachable.sh — a frozen v0.1 worker under the v0.2 core: its session reads unreachable / protocol, attaches, and refuses input with reason unreachable"
+    }
+  ],
+  "description": "unreachable (immortality §3, §6.4, §7; decision 5.38): the worker is alive but the core cannot run C3's handshake with it — locally, only a v0.1 worker under a v0.2 core (a dead local worker path is terminated / worker_lost). The session is attachable and shows what the core already has; input to it is refused with an explicit error, the C2 input_refused frame with reason unreachable, and the operator drains it. A v0.1 client treats the unknown state as not attachable, which is safe. Not detached: detached has no clients, unreachable has no data path the core reads. The core neither reads nor records its output (decision 5.38; orchestrator DEFAULT, approval page): output after the upgrade is not in its recording, and nothing there marks it.",
+  "corpus": [
+    "immortality §3",
+    "immortality §6.4",
+    "immortality §7",
+    "decision 5.38"
+  ],
+  "case": {
+    "schema": "schemas/session-record.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "unreachable",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "unreachable_reason": "protocol",
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        }
+      },
+      {
+        "valid": false,
+        "doc": {
+          "id": "fixture-session-a",
+          "target_id": "fixture-target",
+          "connection_id": "fixture-conn-1",
+          "session_type": "shell",
+          "state": "unreachable",
+          "tier": 1,
+          "owner": "fixture-user",
+          "control_holder": null,
+          "created_at": "2026-09-23T12:00:00Z",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "recording": {
+            "active": true,
+            "warning_code": "recording.active",
+            "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+          },
+          "unreachable_reason": "partition",
+          "ends_at": "2026-09-30T12:00:00Z",
+          "ends_by": "idle",
+          "ending": false
+        },
+        "note": "satellites, post-v1"
+      }
+    ]
+  }
+}

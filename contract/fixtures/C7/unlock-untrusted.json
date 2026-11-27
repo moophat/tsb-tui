@@ -1,0 +1,99 @@
+{
+  "seam": "C7",
+  "name": "unlock-untrusted",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "Untrusted unlock (credential-protection §5.1): both halves of master_hash, derived on the surface from the passphrase and kept nowhere, padded base64. On success, 204 and this login holds an unlock under the vault lock, replacing any it held (DEFAULT 69); the core answers no credential. A wrong passphrase is 409 unlock_failed, counted per principal, with attempts_remaining; a body missing a half is 422. Every value is a synthetic constant, so only the core's own tests grade it.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection §5.1",
+    "credential-protection §5.4",
+    "vault-unlock",
+    "credential-protection Appendix B",
+    "E4 DEFAULT 14",
+    "E4 DEFAULT 45"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "untrusted",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMi0wMA=="
+          }
+        },
+        "expect": {
+          "status": 204
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "untrusted",
+            "part1": "RklYVFVSRS1QQVJUMi0wMA==",
+            "part2": "RklYVFVSRS1QQVJUMS0wMA=="
+          }
+        },
+        "expect": {
+          "status": 409,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "unlock_failed"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "unlock_failed",
+              "message": "the passphrase did not open the vault",
+              "attempts_remaining": 4
+            }
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/unlock",
+          "body": {
+            "mode": "untrusted",
+            "part1": "RklYVFVSRS1QQVJUMS0wMA=="
+          },
+          "invalid_body": true
+        },
+        "expect": {
+          "status": 422,
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "the body is not an unlock request"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

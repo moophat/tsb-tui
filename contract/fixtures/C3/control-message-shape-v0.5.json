@@ -1,0 +1,178 @@
+{
+  "seam": "C3",
+  "name": "control-message-shape-v0.5",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "instance",
+  "grade": "artifacts:control-sequence",
+  "description": "The closed shapes a proto_version 0.5 peer sends and receives. A telnet connect names term, cols and rows and carries no user and no auth: TSB types no vault secret into a stream. A telnet channel_opened reports the NAWS answer as resizable. The address check answers with error target_address_refused, naming the target id and never the address. A telnet connection's end is connection_lost cause single_session, its session_ids empty when the session's end has reached the core; at the bound, with a peer attached, it lists that session so the core reads its spool first.",
+  "corpus": [
+    "open_decisions §5",
+    "Contract §15",
+    "lang-arch §4.1",
+    "session model §9 E2",
+    "session model §11"
+  ],
+  "case": {
+    "schema": "schemas/ipc-control.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        },
+        "note": "a telnet connect: term, cols and rows travel with it, no credential"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "cmd": "hello",
+          "session_id": "fixture-session-a",
+          "proto_version": "0.5",
+          "last_committed_seq": 0
+        },
+        "note": "the handshake at proto_version 0.5"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock",
+          "resizable": false
+        },
+        "note": "the peer refused NAWS: the session is not resizable"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "error",
+          "code": "target_address_refused",
+          "message": "fixture-target resolves to an address in the deployment's deny list"
+        },
+        "note": "the address check names the target id, never the address"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": [],
+          "cause": "single_session",
+          "reason": "the connection's one session ended"
+        },
+        "note": "one session per telnet connection: the close names none once the end has reached the core"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "event": "connection_lost",
+          "conn_id": "fixture-conn-1",
+          "session_ids": ["fixture-session-a"],
+          "cause": "single_session",
+          "reason": "the bound expired with a peer attached"
+        },
+        "note": "at the bound, with a control peer attached, it lists the session so the core reads its spool first"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "auth": {
+            "kind": "key",
+            "key": "FIXTURE-NOT-A-KEY"
+          }
+        },
+        "note": "a credential on a telnet connect: TSB types no vault secret into a stream"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "auth": {
+            "kind": "password",
+            "password": "FIXTURE-NOT-A-PASSWORD"
+          }
+        },
+        "note": "the other credential kind is refused the same way"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "user": "fixture-user"
+        },
+        "note": "no user on a telnet connect: the login is typed by the operator in the session"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23
+        },
+        "note": "a telnet server asks for the terminal type and the size when TCP is up, so term, cols and rows are required"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "cmd": "connect",
+          "target_id": "fixture-target",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "login_script": "fixture-script"
+        },
+        "note": "a field the telnet branch does not name; there are no login scripts at this release"
+      }
+    ]
+  }
+}

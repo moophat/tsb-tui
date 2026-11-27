@@ -1,0 +1,82 @@
+{
+  "seam": "C7",
+  "name": "grant-scope-change",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: U2's handler tests in core/ (against C7, over a fake vault); E4 phase 6 (U2: auth, locks and the vault and device HTTP handlers over a fake vault); the test is named in phase 16"
+    },
+    {
+      "unit": "U6",
+      "test": "owed: U6's tests in vault/; E4 phases 7-9 (U6: vault core, device trust, org tier and grants); the test is named in phase 16"
+    }
+  ],
+  "description": "Change a grant's selectors, a vault administrator only; the cred.scope_change line first, carrying the new and the previous selectors. An unknown grant is 404 grant_not_found.",
+  "corpus": [
+    "Storage §10.1a",
+    "credential-protection §8.3",
+    "credential-protection §8.4",
+    "E4 DEFAULT 8",
+    "E4 DEFAULT 9"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/grants/g-0001",
+          "body": {
+            "selectors": [
+              "tag:core",
+              "id:edge-01"
+            ]
+          }
+        },
+        "expect": {
+          "status": 200,
+          "example": {
+            "grant_id": "g-0001",
+            "user": "fixture-peer",
+            "selectors": [
+              "tag:core",
+              "id:edge-01"
+            ],
+            "credential_ref": "fleet-backup",
+            "granted_by": "fixture-user",
+            "granted_at": "2026-10-29T08:00:00Z"
+          }
+        }
+      },
+      {
+        "http": {
+          "method": "POST",
+          "path": "/vault/grants/g-9999",
+          "body": {
+            "selectors": [
+              "*"
+            ]
+          }
+        },
+        "expect": {
+          "status": 404,
+          "example": {
+            "error": {
+              "code": "grant_not_found",
+              "message": "no such grant"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "seam": "C2",
+  "name": "device-login-cancel",
+  "mark": {
+    "published": "e3",
+    "required-green": "e5"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "core/internal/ws/device_login_test.go — TestCancelOrClosingTheSocketDisconnectsTheWorkerAndEnds4016: disconnect sent, result cancelled, close 4016, and the cap's place given back once"
+    }
+  ],
+  "description": "A pane that sends `device_login_cancel`, or closes its socket, before the core acts on `connected` ends the device login: the core sends C3 `disconnect`, sends `device_login_result {outcome: cancelled}` when the socket is still there, and closes 4016 `device_login_ended`. It writes `target.auth_failed` when at least one answered attempt was made. The core never waits for the worker's `connection_lost`: the result and the close go at once (L7). 4016 means no session exists, so a client MUST NOT reattach, and it may start a new device login.",
+  "corpus": [
+    "open_decisions §5",
+    "device-login, how a device login ends",
+    "conventions V3"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_cancel",
+          "v": 1
+        },
+        "note": "the pane gives up"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "t": "device_login_result",
+          "v": 1,
+          "outcome": "cancelled"
+        },
+        "note": "the answer, followed by close 4016"
+      }
+    ]
+  }
+}

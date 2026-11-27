@@ -1,0 +1,33 @@
+{
+  "seam": "C2",
+  "name": "recording-hold-input-refused",
+  "mark": {
+    "published": "e4",
+    "required-green": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: recording_hold_input_refused"
+    }
+  ],
+  "description": "A held session refuses input without forwarding it. This reference case records the held-session contract and requires its named provider test.",
+  "corpus": [
+    "terminal-output-accounting \u00a75.3"
+  ],
+  "case": {
+    "schema": "schemas/ws-frames.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "t": "input_refused",
+          "v": 1,
+          "reason": "recording_unavailable"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "seam": "C1",
+  "name": "account-disabled-login-401",
+  "mark": {
+    "published": "e4b",
+    "required-green": "e4b"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: E4b account management provider tests; Disabled account with its former correct password and a wrong password both yield exactly the ordinary wrong-password 401 response, no cookie, same hashing work. Audit auth.login_failed with detail.reason disabled. Provider instruments hashing to prove the work, not a flaky elapsed-time comparison."
+    }
+  ],
+  "description": "Disabled account with its former correct password and a wrong password both yield exactly the ordinary wrong-password 401 response, no cookie, same hashing work. Audit auth.login_failed with detail.reason disabled. Provider instruments hashing to prove the work, not a flaky elapsed-time comparison.",
+  "corpus": [
+    "Storage \u00a75",
+    "Storage \u00a79",
+    "Contract \u00a72",
+    "Contract \u00a713",
+    "E4b orchestrator DEFAULTs 2026-11-13"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/auth/login",
+          "body": {
+            "username": "fixture-account",
+            "password": "FIXTURE-NOT-A-PASSWORD"
+          },
+          "as": "none"
+        },
+        "expect": {
+          "status": 401,
+          "cookie": {
+            "set": false
+          },
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_credentials"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_credentials",
+              "message": "unknown user or wrong password"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

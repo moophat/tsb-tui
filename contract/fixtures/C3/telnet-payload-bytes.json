@@ -1,0 +1,80 @@
+{
+  "seam": "C3",
+  "name": "telnet-payload-bytes",
+  "mark": {
+    "required-green": "e3"
+  },
+  "kind": "sequence",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U3",
+      "test": "owed by the E3 worker plan"
+    }
+  ],
+  "description": "What reaches the data socket is bytes, never decoded text. An output frame carries what remains after removing IAC commands, negotiations and subnegotiations, and un-doubling IAC IAC to one 0xFF (session model §9 E2: telnet payload after IAC processing). CR NUL, CR LF and bytes 0x80–0xFE reach the data socket unchanged, because nothing else is IAC processing and no byte is modified in the recording stream. On input, IAC doubling, and a bare CR sent as CR NUL when BINARY is not in force (RFC 854), are protocol encoding below the recorded stream: the core records input before it is sent. A worker sends 0xFF out doubled. U3 test, owed.",
+  "corpus": [
+    "session model §9 E2",
+    "open_decisions §5",
+    "byte-relay step 6",
+    "lang-arch §8.1"
+  ],
+  "case": {
+    "socket": "conn-control",
+    "messages": [
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "connect",
+          "target_id": "fixture-telnet",
+          "protocol": "telnet",
+          "host": "192.0.2.10",
+          "port": 23,
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40,
+          "timers": {
+            "heartbeat_interval": 10000,
+            "heartbeat_missed": 3,
+            "keepalive_interval": 4000,
+            "keepalive_count_max": 2,
+            "keepalive_probe_interval": 1500,
+            "connection_linger": 0,
+            "orphan_timeout": 60000,
+            "idle": 900000,
+            "unattended": 1800000
+          },
+          "buffer_bytes": 65536,
+          "input_frame_max": 4096
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "connected",
+          "conn_id": "fixture-conn-1"
+        }
+      },
+      {
+        "from": "core",
+        "msg": {
+          "cmd": "open_shell",
+          "session_id": "fixture-session-a",
+          "term": "xterm-256color",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      {
+        "from": "worker",
+        "msg": {
+          "event": "channel_opened",
+          "session_id": "fixture-session-a",
+          "session_type": "shell",
+          "socket": "shell.sock"
+        },
+        "note": "the data socket carries bytes: IAC commands, negotiations and subnegotiations are removed, IAC IAC becomes one 0xFF, CR NUL, CR LF and 0x80–0xFE pass unchanged"
+      }
+    ]
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "seam": "C1",
+  "name": "target-import-scope-forbidden-403",
+  "mark": {
+    "published": "e3b",
+    "required-green": "e3b"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: The destination right (share present or absent), no fallback. Also checks out-of-filter create and matched update have the same fixed refusal and no effects."
+    }
+  ],
+  "description": "The destination right (share present or absent), no fallback. Shared preview and commit refuse the whole batch for either an out-of-filter create or an out-of-filter matched update, without disclosing the match.",
+  "corpus": [
+    "Storage \u00a77.4",
+    "Contract \u00a712"
+  ],
+  "case": {
+    "schema": "schemas/error.schema.json",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused"
+          }
+        },
+        "note": "fixed refusal"
+      },
+      {
+        "valid": false,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused",
+            "unexpected": "detail"
+          }
+        },
+        "note": "refusal does not carry extra details"
+      },
+      {
+        "valid": true,
+        "doc": {
+          "error": {
+            "code": "forbidden",
+            "message": "request refused"
+          }
+        },
+        "note": "same fixed refusal for an out-of-filter matched target"
+      }
+    ]
+  }
+}

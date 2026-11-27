@@ -5,14 +5,20 @@ SHELL := bash
 PYTHON ?= python3
 export PYTHONDONTWRITEBYTECODE := 1
 
-.PHONY: contract-init contract-check test lint
+.PHONY: contract-init contract-copy contract-check contract-copy-check test lint
 contract-init:
 	@bash tools/contract-pin.sh init
+
+contract-copy:
+	@bash tools/contract-pin.sh copy
 
 contract-check:
 	@bash tools/contract-pin.sh check
 
-test: contract-check
+contract-copy-check:
+	@bash tools/contract-pin.sh copy-check
+
+test: contract-copy-check
 	@test -d tests
 	# NO_COLOR strips SVG colors that the visual tests need to verify.
 	@env -u NO_COLOR $(PYTHON) -m pytest tests/ -p no:cacheprovider

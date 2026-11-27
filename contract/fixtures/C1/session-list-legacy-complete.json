@@ -1,0 +1,153 @@
+{
+  "seam": "C1",
+  "name": "session-list-legacy-complete",
+  "mark": {
+    "published": "e4",
+    "required-green": "e5"
+  },
+  "kind": "rest",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U2",
+      "test": "owed: session history session-list-legacy-complete provider test"
+    }
+  ],
+  "description": "Seed all four visible records illustrated here and an invisible record. With neither limit nor cursor return the entire retained visible list, including both ended states, never a silent cap or next_cursor. Repeat with ended=include; ordering of the legacy request is not newly prescribed. Published e4 so surfaces can build against the shape; required-green e5 so the addition does not retroactively fail the existing e4 provider.",
+  "corpus": [
+    "session-list rules 8\u201310",
+    "conventions V1, V4, V7, V8",
+    "Storage \u00a78.6"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "GET",
+          "path": "/sessions"
+        },
+        "expect": {
+          "status": 200,
+          "match": [
+            {
+              "pointer": "/sessions",
+              "some": {
+                "/id": "fixture-history-z"
+              }
+            },
+            {
+              "pointer": "/sessions",
+              "some": {
+                "/id": "fixture-history-b"
+              }
+            },
+            {
+              "pointer": "/sessions",
+              "some": {
+                "/id": "fixture-history-a"
+              }
+            },
+            {
+              "pointer": "/sessions",
+              "some": {
+                "/id": "fixture-history-0"
+              }
+            },
+            {
+              "pointer": "/sessions/4",
+              "absent": true
+            },
+            {
+              "pointer": "/next_cursor",
+              "absent": true
+            }
+          ],
+          "example": {
+            "sessions": [
+              {
+                "id": "fixture-history-z",
+                "target_id": "fixture-target",
+                "connection_id": "fixture-conn-1",
+                "session_type": "shell",
+                "state": "killed",
+                "tier": 1,
+                "owner": "fixture-user",
+                "control_holder": null,
+                "created_at": "2026-11-16T12:00:00Z",
+                "term": "xterm-256color",
+                "cols": 120,
+                "rows": 40,
+                "recording": {
+                  "active": true,
+                  "warning_code": "recording.active",
+                  "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+                }
+              },
+              {
+                "id": "fixture-history-b",
+                "target_id": "fixture-target",
+                "connection_id": "fixture-conn-1",
+                "session_type": "shell",
+                "state": "terminated",
+                "tier": 1,
+                "owner": "fixture-user",
+                "control_holder": null,
+                "created_at": "2026-11-15T12:00:00Z",
+                "term": "xterm-256color",
+                "cols": 120,
+                "rows": 40,
+                "recording": {
+                  "active": true,
+                  "warning_code": "recording.active",
+                  "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+                }
+              },
+              {
+                "id": "fixture-history-a",
+                "target_id": "fixture-target",
+                "connection_id": "fixture-conn-1",
+                "session_type": "shell",
+                "state": "detached",
+                "tier": 1,
+                "owner": "fixture-user",
+                "control_holder": null,
+                "created_at": "2026-11-15T12:00:00Z",
+                "term": "xterm-256color",
+                "cols": 120,
+                "rows": 40,
+                "recording": {
+                  "active": true,
+                  "warning_code": "recording.active",
+                  "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+                }
+              },
+              {
+                "id": "fixture-history-0",
+                "target_id": "fixture-target",
+                "connection_id": "fixture-conn-1",
+                "session_type": "shell",
+                "state": "live",
+                "tier": 1,
+                "owner": "fixture-user",
+                "control_holder": null,
+                "created_at": "2026-11-14T12:00:00Z",
+                "term": "xterm-256color",
+                "cols": 120,
+                "rows": 40,
+                "recording": {
+                  "active": true,
+                  "warning_code": "recording.active",
+                  "warning_text": "This session is recorded byte-perfect. Anything typed will be stored as-is."
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

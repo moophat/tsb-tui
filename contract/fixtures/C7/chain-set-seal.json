@@ -1,0 +1,58 @@
+{
+  "seam": "C7",
+  "name": "chain-set-seal",
+  "mark": {
+    "published": "e4"
+  },
+  "kind": "instance",
+  "grade": "reference",
+  "graded_by": [
+    {
+      "unit": "U6",
+      "test": "vault/chain_test.go — TestSetSealVector: reproduces the published vector using the core implementation or independent Go test code for a browser-only step"
+    },
+    {
+      "unit": "U11",
+      "test": "harness/rigs/pylib/tests/test_vaultclient.py — test_chain_seals_reproduce_and_open: independently reproduces the core-only vector using the Python reference client, never the authoring script"
+    }
+  ],
+  "description": "Chain step 8: the personal credential set, UTF-8 JSON (vault.schema.json credential_set; this one holds a password entry and a no-secret entry, the password the synthetic constant), sealed under encryption_key with associated data naming the user.",
+  "corpus": [
+    "credential-protection §4.1",
+    "credential-protection Appendix A",
+    "decision 5.26 (c)",
+    "E4 plan D11",
+    "E4 DEFAULT 55"
+  ],
+  "case": {
+    "schema": "schemas/vault-vectors.schema.json#/$defs/chain_seal",
+    "instances": [
+      {
+        "valid": true,
+        "doc": {
+          "step": "set-seal",
+          "implementations": [
+            {
+              "unit": "U6",
+              "what": "the Go core (vault/)"
+            },
+            {
+              "unit": "U11",
+              "what": "the harness's Python reference client (hashlib, cryptography)"
+            }
+          ],
+          "key_name": "encryption_key",
+          "key": "21d7fbf4e858c59e70b1ea1871aecc211e15ba8e0d0bd5a08248d43644f56b09",
+          "iv": "404142434445464748494a4b",
+          "aad_fields": [
+            "tsb.vault.set.v1",
+            "fixture-user"
+          ],
+          "aad": "00107473622e7661756c742e7365742e7631000c666978747572652d75736572",
+          "plaintext": "7b22656e7472696573223a5b7b227265666572656e6365223a226c61622d737769746368222c226b696e64223a2270617373776f7264222c226c6f67696e5f6e616d65223a226e65746f7073222c22736563726574223a22464958545552452d4e4f542d412d50415353574f5244222c226c6162656c223a224c6162207377697463686573227d2c7b227265666572656e6365223a226c61622d74656c6e6574222c226b696e64223a226e6f6e65227d5d7d",
+          "sealed": "404142434445464748494a4b2ec0f4fe87aede73c9cce2ee44d97321578304c18101fb1a205c096fe4e527419aa38ca3b081dd925c9e8d7af158e57b229ea05bd4f6a11b01e9377f9edd388242a18cf5c25926605cbc2c88c60eab2e577016a7fc33e727f834e9bc1e7c59f0092f9ed7b3533b21c2c09e545db6af85599e697f05f5eea0681ce1b7ff089a47fe17175c73741cbaf2b55a190272f4084e24f440ad9dc1be5d1fb80c438eda9d936fda83239a1f9272150af5dc71d52b7d1b90b6624c491ff8addafd6ad496bc9ec9"
+        }
+      }
+    ]
+  }
+}

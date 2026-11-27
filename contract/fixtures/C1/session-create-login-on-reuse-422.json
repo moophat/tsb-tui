@@ -1,0 +1,61 @@
+{
+  "seam": "C1",
+  "name": "session-create-login-on-reuse-422",
+  "mark": {
+    "published": "e3",
+    "required-green": "e4"
+  },
+  "kind": "rest",
+  "grade": "live",
+  "description": "A login belongs to a new connection only: a reused connection shares the authentication it already has (Contract §15.3), so a create with connection reuse and a login is refused 422 invalid_request, by the closed shape of the reuse branch, before the target is looked at. The message is fixed text and never echoes the login. The password is the synthetic constant, which authenticates nowhere.",
+  "corpus": [
+    "Contract §15.3",
+    "Contract §12",
+    "session-open step 1"
+  ],
+  "case": {
+    "inputs": [
+      "user",
+      "password",
+      "target_id"
+    ],
+    "steps": [
+      {
+        "http": {
+          "method": "POST",
+          "path": "/sessions",
+          "invalid_body": true,
+          "body": {
+            "target_id": "${target_id}",
+            "connection": "reuse",
+            "term": "xterm-256color",
+            "cols": 120,
+            "rows": 40,
+            "login": {
+              "user": "fixture-account",
+              "auth": {
+                "kind": "password",
+                "password": "FIXTURE-NOT-A-PASSWORD"
+              }
+            }
+          }
+        },
+        "expect": {
+          "status": 422,
+          "match": [
+            {
+              "pointer": "/error/code",
+              "eq": "invalid_request"
+            }
+          ],
+          "example": {
+            "error": {
+              "code": "invalid_request",
+              "message": "a login is allowed on a new connection only"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
