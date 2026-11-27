@@ -79,6 +79,23 @@ def _golden(lib, name):
     return _replay(lib, _decode(name))
 
 
+def test_mark_all_dirty_makes_every_row_dirty_after_a_clean(lib) -> None:
+    """A painted frame is marked clean and the engine then reports no row dirty; a caller that dropped what it
+    painted asks the engine for the whole grid again, and the next read returns every row, whatever it holds."""
+    backend = VTBackend(lib, 20, 6, scrollback_bytes=SCROLLBACK)
+    try:
+        backend.feed(b"\x1b[1;1Hfirst\x1b[3;1Hthird")
+        assert {row.y for row in backend.dirty_rows()} == set(range(6)), "a new grid starts fully dirty"
+        backend.mark_clean()
+        assert backend.dirty_rows() == [], "a cleaned grid reports no dirty row"
+        backend.mark_all_dirty()
+        rows = {row.y: row for row in backend.dirty_rows()}
+        assert set(rows) == set(range(6)), sorted(rows)
+        assert "".join(c.text for c in rows[2].cells).startswith("third")
+    finally:
+        backend.close()
+
+
 # -- golden replays: each shows the property the fixture's description names (DT6) --
 
 

@@ -89,6 +89,9 @@ RS_DIRTY_FALSE = 0
 RS_DIRTY_PARTIAL = 1
 RS_DIRTY_FULL = 2
 
+# ---- Render state options (render.h:403 GhosttyRenderStateOption) -----------------------------
+RS_OPTION_DIRTY = 0
+
 # ---- Cell content / wide / style (screen.h:80, :102, style.h:49) -----------------------------
 CELL_CONTENT_CODEPOINT = 0
 CELL_CONTENT_CODEPOINT_GRAPHEME = 1
@@ -825,6 +828,9 @@ class GhosttyLib:
         # render.h:702
         L.ghostty_render_state_clean.argtypes = [ctypes.c_void_p]
         L.ghostty_render_state_clean.restype = ctypes.c_int
+        # render.h:766 (value: a GhosttyRenderStateDirty for RS_OPTION_DIRTY, the same int the dirty getter returns)
+        L.ghostty_render_state_set.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+        L.ghostty_render_state_set.restype = ctypes.c_int
         # render.h:719
         L.ghostty_render_state_get.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
         L.ghostty_render_state_get.restype = ctypes.c_int
@@ -1112,6 +1118,7 @@ _FUNCTION_NAMES: tuple[str, ...] = (
     "ghostty_render_state_update",
     "ghostty_render_state_clean",
     "ghostty_render_state_get",
+    "ghostty_render_state_set",
     "ghostty_render_state_row_iterator_new",
     "ghostty_render_state_row_iterator_free",
     "ghostty_render_state_row_iterator_next",

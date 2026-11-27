@@ -17,6 +17,7 @@ eyes, and it shares one event loop with the pump that answers the server's pings
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from pathlib import Path
 
@@ -102,6 +103,59 @@ def test_only_dirty_rows_are_rebuilt(lib) -> None:
             canvas.repaint_now()
             assert 3 in canvas.rebuilt_rows
             assert set(canvas.rebuilt_rows) <= {3, 9}, canvas.rebuilt_rows
+
+    asyncio.run(_check())
+
+
+def _screen_text(canvas: Canvas) -> str:
+    return "\n".join(canvas.render_line(y).text for y in range(canvas.backend.rows))
+
+
+def test_a_dump_painted_before_its_loop_side_half_runs_is_still_on_screen(lib) -> None:
+    """The attachment feeds a dump on its feed thread (`feed_run`), then runs the loop-side half (`after_run`). A
+    paint tick between the two reads the dump's rows and marks the engine clean; the loop-side half then drops the
+    row caches. With no further output nothing would ever paint again and the session sat blank over a full grid."""
+
+    async def _check() -> None:
+        canvas = _canvas(lib, 40, 10)
+        async with _Host(canvas).run_test(size=(40, 10)) as pilot:
+            await _first_paint(pilot, canvas)
+            canvas.feed_run("dump", b"\x1b[1;1Hdumped line one\x1b[2;1Hdumped line two", cols=40, rows=10)
+            canvas.repaint_now()  # the paint tick lands between the feed thread and the loop-side half
+            canvas.after_run("dump")
+            await pilot.pause(0.3)  # the paint timer ticks; no further output arrives
+            text = _screen_text(canvas)
+            assert "dumped line one" in text and "dumped line two" in text, text
+
+    asyncio.run(_check())
+
+
+def test_output_that_lands_while_a_paint_finishes_is_painted_by_the_next_tick(lib) -> None:
+    """`repaint_now` reads the dirty rows and marks the engine clean under the engine lock. Output whose feed
+    completes right after that lock is released must leave the canvas pending, not be wiped by the paint that
+    just ran, or the rows it dirtied are never read."""
+
+    async def _check() -> None:
+        canvas = _canvas(lib, 40, 10)
+        async with _Host(canvas).run_test(size=(40, 10)) as pilot:
+            await _first_paint(pilot, canvas)
+            canvas.feed(b"\x1b[1;1Hearly")
+            backend, engine_lock, armed = canvas.backend, canvas.backend.lock, [True]
+
+            @contextlib.contextmanager
+            def lock():
+                with engine_lock():
+                    yield
+                if armed[0]:
+                    armed[0] = False
+                    canvas.feed_run("output", b"\x1b[3;1Hlate")  # the feed thread finishing as the paint leaves the lock
+
+            backend.lock = lock
+            canvas.repaint_now()
+            backend.lock = engine_lock
+            assert not canvas.painted, "output fed during the paint must keep the canvas pending"
+            canvas.repaint_now()
+            assert "late" in _screen_text(canvas)
 
     asyncio.run(_check())
 
