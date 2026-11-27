@@ -7,7 +7,7 @@
 - **macOS:** macOS 13 or later.
 - **Chip:** Apple silicon (`arm64`, M-series) or Intel (`x64`).
 - **Network:** Access to the company LAN (required to reach the download server and broker).
-- **Tools:** Standard command-line tools: `curl`, `shasum`, and `unzip`.
+- **Tools:** Standard command-line tools: `curl`, `shasum`, `unzip`, and `plutil` (the one-line installer reads the release manifest with it). All ship with macOS.
 - **Account:** A TSB username and temporary password from your administrator.
 
 ## 2. Install

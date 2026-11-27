@@ -1,5 +1,4 @@
-"""The macOS/Linux shell launchers clear macOS's download quarantine from their own folder before Python starts."""
-import os
+"""The macOS/Linux shell launchers clear macOS's download quarantine from their own bundle before Python starts."""
 import shutil
 import stat
 import subprocess
@@ -17,18 +16,27 @@ def executable(path, text):
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-def bundle(tmp_path, name, system, xattr_exit=0):
-    """An unzipped folder with a fake bundled Python, plus stubbed uname and xattr on PATH."""
+def bundle(tmp_path, name, system, xattr_exit=0, quarantined=True, is_bundle=True):
+    """An unzipped folder with a fake bundled Python, plus stubbed uname and xattr on PATH.
+
+    quarantined: whether `xattr -p` finds the flag on the bundled Python.
+    is_bundle: whether the folder has the library folder a real bundle has.
+    """
     folder = tmp_path / 'unzipped folder'
     log = tmp_path / 'calls.log'
     folder.mkdir()
     shutil.copy(LAUNCHERS / name, folder / name)
     executable(folder / 'python' / 'bin' / 'python3',
                f'#!/bin/sh\necho python >> "{log}"\n')
+    if is_bundle:
+        (folder / 'lib' / 'site').mkdir(parents=True)
     stubs = tmp_path / 'stubs'
     executable(stubs / 'uname', f'#!/bin/sh\necho {system}\n')
     if xattr_exit is not None:
-        executable(stubs / 'xattr', f'#!/bin/sh\necho "xattr $*" >> "{log}"\nexit {xattr_exit}\n')
+        probe_exit = 0 if quarantined else 1
+        executable(stubs / 'xattr',
+                   f'#!/bin/sh\necho "xattr $*" >> "{log}"\n'
+                   f'if [ "$1" = -p ]; then exit {probe_exit}; fi\nexit {xattr_exit}\n')
     return folder, stubs, log
 
 
@@ -38,13 +46,33 @@ def run(folder, stubs, name):
 
 
 @pytest.mark.parametrize('name', NAMES)
-def test_darwin_clears_quarantine_of_its_folder_before_python(tmp_path, name):
+def test_darwin_clears_quarantine_of_the_bundle_paths_before_python(tmp_path, name):
     folder, stubs, log = bundle(tmp_path, name, 'Darwin')
     result = run(folder, stubs, name)
     assert result.returncode == 0, result.stderr
+    here = folder.resolve()
     assert log.read_text().splitlines() == [
-        f'xattr -dr com.apple.quarantine {folder.resolve()}', 'python']
+        f'xattr -p com.apple.quarantine {here}/python/bin/python3',
+        f'xattr -dr com.apple.quarantine {here}/lib {here}/tsb-tui {here}/tsb-tui-check {here}/python',
+        'python']
     assert result.stdout == '' and result.stderr == ''
+
+
+@pytest.mark.parametrize('name', NAMES)
+def test_a_launcher_outside_a_bundle_leaves_its_folder_alone(tmp_path, name):
+    folder, stubs, log = bundle(tmp_path, name, 'Darwin', is_bundle=False)
+    result = run(folder, stubs, name)
+    assert result.returncode == 0, result.stderr
+    assert log.read_text().splitlines() == ['python']
+
+
+@pytest.mark.parametrize('name', NAMES)
+def test_an_already_cleared_bundle_is_not_walked_again(tmp_path, name):
+    folder, stubs, log = bundle(tmp_path, name, 'Darwin', quarantined=False)
+    result = run(folder, stubs, name)
+    assert result.returncode == 0, result.stderr
+    assert log.read_text().splitlines() == [
+        f'xattr -p com.apple.quarantine {folder.resolve()}/python/bin/python3', 'python']
 
 
 @pytest.mark.parametrize('name', NAMES)

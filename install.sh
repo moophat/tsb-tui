@@ -67,12 +67,21 @@ PYTHON
   fi
 }
 
+# One top-level field of a JSON file, read with plutil: $1 key, $2 the type it must have
+# (string, integer), $3 file. Prints the value; fails on a missing key or another type.
+manifest_field() {
+  local kind
+  kind="$(plutil -type "$1" "$3" 2>/dev/null)" || return 1
+  [[ "$kind" == "$2" ]] || return 1
+  plutil -extract "$1" raw -o - "$3" 2>/dev/null
+}
+
 # macOS installs the release zip for the machine's chip: per user, no admin, no pipx.
 # latest.json is read with sed (not Python) so a clean Mac needs only curl, shasum and unzip.
 # Same trust as install.ps1: hashes detect corruption, not a hostile server. Signing comes later.
 install_macos() {
   local tool
-  for tool in curl shasum unzip; do
+  for tool in curl shasum unzip plutil; do
     command -v "$tool" >/dev/null 2>&1 || { echo "The macOS install needs $tool." >&2; exit 1; }
   done
   if [[ -n "$version" ]]; then
@@ -103,19 +112,27 @@ install_macos() {
   extract=""
   trap 'rm -rf -- "$work" ${extract:+"$extract"}' EXIT
   fetch "$base/latest.json" "$work/latest.json"
-  local manifest ver
-  manifest="$(tr -d '\r\n' < "$work/latest.json")"
-  ver="$(printf '%s' "$manifest" | sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/p')"
-  if [[ -z "$ver" ]] ||
-     [[ ! "$manifest" =~ \"schema\"[[:space:]]*:[[:space:]]*1[^0-9] ]] ||
-     [[ ! "$manifest" =~ \"tag\"[[:space:]]*:[[:space:]]*\"v$ver\" ]] ||
-     [[ ! "$manifest" =~ \"dir\"[[:space:]]*:[[:space:]]*\"v$ver/\" ]]; then
+  # The top-level fields are read with plutil (it reads JSON and ships with macOS), so a
+  # value's type and exact text are checked, not a pattern over the flattened file.
+  local manifest_file ver
+  manifest_file="$work/latest.json"
+  ver="$(manifest_field version string "$manifest_file")" || ver=""
+  if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
+     [[ "$(manifest_field schema integer "$manifest_file")" != 1 ]] ||
+     [[ "$(manifest_field tag string "$manifest_file")" != "v$ver" ]] ||
+     [[ "$(manifest_field dir string "$manifest_file")" != "v$ver/" ]]; then
     echo 'Invalid latest.json; schema 1 with a matching version, tag and directory is required.' >&2
     exit 1
   fi
-  local name entry sha size
+  local name entry sha size assets
   name="tsb-tui-$ver-$target.zip"
-  entry="$(printf '%s' "$manifest" | sed -nE "s/.*\"$name\"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p")"
+  assets="$(plutil -type assets "$manifest_file" 2>/dev/null)" || assets=""
+  if [[ "$assets" == dictionary ]]; then
+    assets="$(plutil -extract assets json -o - "$manifest_file" 2>/dev/null | tr -d '\r\n')" || assets=""
+  else
+    assets=""
+  fi
+  entry="$(printf '%s' "$assets" | sed -nE "s/.*\"$name\"[[:space:]]*:[[:space:]]*\{([^}]*)\}.*/\1/p")"
   if [[ -z "$entry" ]]; then
     echo "latest.json lists no $name; this release has no macOS build for this chip." >&2
     exit 1
@@ -140,11 +157,27 @@ install_macos() {
   mkdir -p "$parent" "$bindir"
   local program
   for program in tsb-tui tsb-tui-check; do
-    if [[ -e "$bindir/$program" && ! -L "$bindir/$program" ]]; then
+    # A link is ours only when it points at this install's own program.
+    if [[ -L "$bindir/$program" ]]; then
+      if [[ "$(readlink "$bindir/$program")" != "$install/$program" ]]; then
+        echo "$bindir/$program exists and is not a link; move it aside and run again." >&2
+        exit 1
+      fi
+    elif [[ -e "$bindir/$program" ]]; then
       echo "$bindir/$program exists and is not a link; move it aside and run again." >&2
       exit 1
     fi
   done
+
+  # An update interrupted between its two moves leaves only the backup: put it back first,
+  # so the old install is never deleted while it is the only copy.
+  if [[ ! -e "$install" && -e "$install.old" ]]; then
+    if ! mv "$install.old" "$install"; then
+      echo "An earlier update left $install.old and restoring it failed; nothing was changed." >&2
+      exit 1
+    fi
+    echo "Restored the previous install from $install.old; an earlier update was interrupted."
+  fi
 
   # Unpack beside the install folder, check the layout, then swap the folders.
   local tree
@@ -152,8 +185,14 @@ install_macos() {
   unzip -q "$work/$name" -d "$extract"
   tree="$extract/tsb-tui-$ver-$target"
   local required
-  if [[ "$(find "$extract" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" != 1 ]]; then
+  if [[ "$(find "$extract" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" != 1 ]] ||
+     [[ ! -d "$tree" || -L "$tree" ]]; then
     echo "Zip must contain exactly one tsb-tui-$ver-$target folder." >&2
+    exit 1
+  fi
+  # Only plain files and folders: a link in the archive could redirect a later copy elsewhere.
+  if [[ -n "$(find "$extract" ! -type f ! -type d | head -n 1)" ]]; then
+    echo 'Zip contains a link or a special file; nothing was installed.' >&2
     exit 1
   fi
   for required in tsb-tui tsb-tui-check python/bin/python3; do
@@ -163,9 +202,18 @@ install_macos() {
     fi
   done
   if [[ -f "$install/config.toml" ]]; then
+    if [[ -L "$tree" || -L "$tree/config.toml" ]]; then
+      echo 'Zip contains a link where the config is kept; nothing was installed.' >&2
+      exit 1
+    fi
     cp "$install/config.toml" "$tree/config.toml"
     echo "Keeping existing config: $install/config.toml"
   fi
+  # The first-run config is written (or found) before the previous install is touched, so a
+  # config directory that cannot be written stops the update with the old install intact.
+  write_first_config "$tree/python/bin/python3"
+
+  # A live install exists or none does here, so a leftover backup is stale.
   rm -rf -- "$install.old"
   if [[ -e "$install" ]]; then mv "$install" "$install.old"; fi
   if ! mv "$tree" "$install"; then
@@ -173,19 +221,22 @@ install_macos() {
     echo "Moving the new folder to $install failed; the previous install was restored." >&2
     exit 1
   fi
-  rm -rf -- "$install.old"
-
   # A browser-style unzip would leave macOS's quarantine flag on every file; clear it.
   if command -v xattr >/dev/null 2>&1; then
     xattr -dr com.apple.quarantine "$install" >/dev/null 2>&1 || true
   fi
   for program in tsb-tui tsb-tui-check; do
-    ln -sfn "$install/$program" "$bindir/$program"
+    if ! ln -sfn "$install/$program" "$bindir/$program"; then
+      rm -rf -- "$install"
+      if [[ -e "$install.old" ]]; then mv "$install.old" "$install"; fi
+      echo "Linking $bindir/$program failed; the previous install was restored." >&2
+      exit 1
+    fi
   done
+  # The new bundle is committed; the backup is no longer needed.
+  rm -rf -- "$install.old"
   "$install/tsb-tui-check" || echo 'tsb-tui-check failed; the install has been kept. See its output above.' >&2
   printf '\nInstalled at: %s\nLinks: %s/tsb-tui, %s/tsb-tui-check\n' "$install" "$bindir" "$bindir"
-  # The same first-run config step as Linux, run with the installed bundle's own Python.
-  write_first_config "$install/python/bin/python3"
   case ":$PATH:" in
     *":$bindir:"*) ;;
     *) printf '%s is not on PATH; add it to your shell profile yourself.\n' "$bindir" ;;

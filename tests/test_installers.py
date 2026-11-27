@@ -167,7 +167,27 @@ def macos(release):
     (bins / 'uname').write_text('#!/bin/sh\ncase "$1" in -s) echo Darwin;; -m) echo "${FAKE_ARCH:-arm64}";; esac\n')
     xattr_log = bins.parent / 'xattr-calls'
     (bins / 'xattr').write_text(f'#!/bin/sh\necho "xattr $*" >> "{xattr_log}"\n')
-    for stub in ('uname', 'xattr'):
+    # plutil as macOS ships it, for the two forms the installer uses: `-type KEY FILE` prints the
+    # type of a top-level value, `-extract KEY raw|json -o - FILE` prints the value itself.
+    (bins / 'plutil').write_text(
+        '#!' + sys.executable + '\n'
+        'import json, sys\n'
+        'args = sys.argv[1:]\n'
+        'try:\n'
+        '    data = json.load(open(args[-1]))\n'
+        '    value = data[args[1]]\n'
+        'except (OSError, ValueError, KeyError, IndexError):\n'
+        '    sys.exit(1)\n'
+        'names = {bool: "bool", int: "integer", float: "float", str: "string", dict: "dictionary", list: "array"}\n'
+        'if args[0] == "-type":\n'
+        '    print(names[type(value)])\n'
+        'elif args[0] == "-extract" and args[2] == "raw":\n'
+        '    print(f"{value:f}" if isinstance(value, float) else value)\n'
+        'elif args[0] == "-extract" and args[2] == "json":\n'
+        '    print(json.dumps(value, separators=(",", ":")))\n'
+        'else:\n'
+        '    sys.exit(1)\n')
+    for stub in ('uname', 'xattr', 'plutil'):
         (bins / stub).chmod(0o755)
     env['FAKE_ARCH'] = 'arm64'
     home = Path(env['HOME'])
@@ -263,6 +283,136 @@ def test_macos_does_not_overwrite_a_foreign_file_on_the_path(macos):
     assert result.returncode != 0
     assert (bindir / 'tsb-tui').read_text() == 'not ours'
     assert not install.exists()
+
+
+def rebuild_arm64_zip(rel, drop=(), links=None):
+    """Replace the arm64 zip: leave out some members, add symlink members {member: target}."""
+    site = rel[1].parent
+    folder = 'tsb-tui-1.2.3-macos-arm64'
+    name = f'{folder}.zip'
+    members = {'tsb-tui': (ROOT / 'packaging/launchers/tsb-tui').read_bytes(),
+               'tsb-tui-check': (ROOT / 'packaging/launchers/tsb-tui-check').read_bytes(),
+               'python/bin/python3': f'#!/bin/sh\nexec {sys.executable} "$@"\n'.encode()}
+    with zipfile.ZipFile(rel[1] / name, 'w') as archive:
+        for member, data in members.items():
+            if member not in drop:
+                info = zipfile.ZipInfo(f'{folder}/{member}')
+                info.external_attr = 0o755 << 16
+                archive.writestr(info, data)
+        for member, target in (links or {}).items():
+            info = zipfile.ZipInfo(f'{folder}/{member}')
+            info.external_attr = (0o120000 | 0o777) << 16
+            archive.writestr(info, target)
+    manifest = json.loads((site / 'latest.json').read_text())
+    manifest['assets'][name] = {'sha256': hashlib.sha256((rel[1] / name).read_bytes()).hexdigest(),
+                                'size': (rel[1] / name).stat().st_size}
+    (site / 'latest.json').write_text(json.dumps(manifest))
+
+
+def rewrite_manifest(rel, change):
+    path = rel[1].parent / 'latest.json'
+    manifest = json.loads(path.read_text())
+    change(manifest)
+    path.write_text(json.dumps(manifest))
+
+
+def _schema_as_float(m):
+    m['schema'] = 1.0
+
+
+def _schema_as_string(m):
+    m['schema'] = '1'
+
+
+def _schema_only_in_an_unrelated_value(m):
+    del m['schema']
+    m['extra'] = {'schema': 1}
+
+
+def _tag_only_in_an_unrelated_value(m):
+    m['tag'] = 'v9.9.9'
+    m['extra'] = {'tag': 'v1.2.3'}
+
+
+def _version_as_number_with_a_match_elsewhere(m):
+    m['version'] = 1.2
+    m['extra'] = {'version': '1.2.3'}
+
+
+@pytest.mark.parametrize('change', [_schema_as_float, _schema_as_string, _schema_only_in_an_unrelated_value,
+                                    _tag_only_in_an_unrelated_value, _version_as_number_with_a_match_elsewhere])
+def test_macos_manifest_fields_are_checked_by_type_and_value(macos, change):
+    rel, install, bindir, _ = macos
+    rewrite_manifest(rel, change)
+    result = run(rel, '--base', rel[0])
+    assert result.returncode != 0
+    assert 'Invalid latest.json' in result.stderr
+    assert not install.exists() and not bindir.exists()
+
+
+def test_macos_interrupted_update_restores_the_backup_first(macos):
+    rel, install, _, _ = macos
+    backup = install.parent / 'tsb-tui.old'
+    backup.mkdir(parents=True)
+    (backup / 'marker').write_text('the only copy')
+    rebuild_arm64_zip(rel, drop=('tsb-tui-check',))
+    result = run(rel, '--base', rel[0])
+    assert result.returncode != 0
+    assert 'missing tsb-tui-check' in result.stderr
+    assert (install / 'marker').read_text() == 'the only copy'
+    assert not backup.exists()
+    assert 'Restored the previous install' in result.stdout
+
+
+def test_macos_config_that_cannot_be_written_keeps_the_previous_install(macos):
+    rel, install, bindir, _ = macos
+    install.mkdir(parents=True)
+    (install / 'marker').write_text('previous')
+    blocker = Path(rel[2]['HOME']) / 'blocker'
+    blocker.write_text('a file where the config folder should be')
+    rel[2]['XDG_CONFIG_HOME'] = str(blocker / 'config')
+    result = run(rel, '--base', rel[0])
+    assert result.returncode != 0
+    assert (install / 'marker').read_text() == 'previous'
+    assert 'Installed at' not in result.stdout
+    assert not (install.parent / 'tsb-tui.old').exists()
+    assert not (bindir / 'tsb-tui').exists()
+
+
+def test_macos_does_not_replace_another_programs_link(macos):
+    rel, install, bindir, _ = macos
+    bindir.mkdir(parents=True)
+    other = bindir / 'other-program'
+    other.write_text('someone else')
+    (bindir / 'tsb-tui-check').symlink_to(other)
+    result = run(rel, '--base', rel[0])
+    assert result.returncode != 0
+    assert 'is not a link' in result.stderr
+    assert (bindir / 'tsb-tui-check').resolve() == other.resolve()
+    assert not install.exists()
+
+
+def test_macos_update_keeps_its_own_links(macos):
+    rel, install, bindir, _ = macos
+    assert run(rel, '--base', rel[0]).returncode == 0
+    result = run(rel, '--base', rel[0])
+    assert result.returncode == 0, result.stdout + result.stderr
+    for program in ('tsb-tui', 'tsb-tui-check'):
+        assert (bindir / program).resolve() == (install / program).resolve()
+
+
+def test_macos_archive_link_cannot_redirect_the_kept_config(macos, tmp_path):
+    rel, install, _, _ = macos
+    victim = tmp_path / 'victim'
+    victim.write_text('victim')
+    install.mkdir(parents=True)
+    (install / 'config.toml').write_bytes(b'# hand edited\n')
+    rebuild_arm64_zip(rel, links={'config.toml': str(victim)})
+    result = run(rel, '--base', rel[0])
+    assert result.returncode != 0
+    assert 'link' in result.stderr
+    assert victim.read_text() == 'victim'
+    assert (install / 'config.toml').read_bytes() == b'# hand edited\n'
 
 
 def test_release_checksums_cover_uploads(tmp_path):
