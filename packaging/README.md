@@ -79,7 +79,8 @@ Both engines require macOS 13 or later. Outputs
 are `out/tsb-tui-<version>-macos-arm64.zip` and `-macos-x64.zip`, each with a
 `.zip.sha256`. Execute permissions are retained on `python/bin/python3*` and
 both launchers. Launchers resolve symlinks, including links from a PATH folder.
-`install.sh` still refuses macOS until a real Mac runtime check passes.
+`install.sh` installs these zips on macOS, and both launchers clear the macOS download
+quarantine flag from their own folder before starting Python. Neither has had a real Mac run yet.
 
 For an untagged or modified development checkout, fill the cache explicitly
 with `packaging/verify-inputs.sh --fetch`, then run

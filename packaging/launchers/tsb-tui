@@ -25,6 +25,17 @@ while :; do
         *) launcher=$folder/$link ;;
     esac
 done
+# A browser-downloaded zip unpacked in Finder carries macOS's quarantine flag on every file;
+# clear it so each bundled library loads without a "Not Opened" dialog. Only a real bundle
+# (its own Python and library folder), only its own paths, and only while it is still
+# quarantined: a copied launcher never touches the folder it sits in, and a cleared bundle
+# is not walked again on every start.
+if [ "$(uname -s)" = Darwin ] && command -v xattr >/dev/null 2>&1 &&
+   [ -x "$folder/python/bin/python3" ] && [ -d "$folder/lib/site" ] &&
+   xattr -p com.apple.quarantine "$folder/python/bin/python3" >/dev/null 2>&1; then
+    xattr -dr com.apple.quarantine "$folder/lib" "$folder/tsb-tui" "$folder/tsb-tui-check" \
+        "$folder/python" >/dev/null 2>&1 || true
+fi
 PYTHONNOUSERSITE=1
 PYTHONPATH=$folder/lib/site
 TSB_TUI_TERM_LIBRARY=$folder/lib/engine/libghostty-vt.dylib
