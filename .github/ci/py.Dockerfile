@@ -12,12 +12,9 @@ RUN apt-get update \
         mingw-w64-x86-64-dev=10.0.0-3 \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*'
-WORKDIR /src
-COPY pyproject.toml README.md /src/
-COPY tsb_tui /src/tsb_tui
-# Installs the exact runtime and pytest pins from this repo's manifest.
-RUN pip install --no-cache-dir --no-compile -e '.[test]' ruff==0.16.9 setuptools==84.2.1
 
+# Layer order is for the build cache: nothing above the WORKDIR line depends on this repo's files, so
+# those layers stay cached across runs and a source change rebuilds only the pip layer at the end.
 # No Microsoft package repository: both test inputs are immutable, SHA-256-checked archives.
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 RUN python - <<'PYTHON'
@@ -54,3 +51,9 @@ for url, digest, kind in inputs:
             archive.extractall(destination)
 PYTHON
 RUN pwsh -NoProfile -NonInteractive -Command "Import-Module Pester -RequiredVersion 5.7.1 -ErrorAction Stop"
+
+WORKDIR /src
+COPY pyproject.toml README.md /src/
+COPY tsb_tui /src/tsb_tui
+# Installs the exact runtime and pytest pins from this repo's manifest.
+RUN pip install --no-cache-dir --no-compile -e '.[test]' ruff==0.16.9 setuptools==84.2.1

@@ -94,7 +94,7 @@ jobs:
             --name tui-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-unit \
             --user "$(id -u):$(id -g)" -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro -e HOME=/tmp/home \
             -v "$GITHUB_WORKSPACE:/work" -w /work \
-            -e PYTEST_ADDOPTS='-rsx --runxfail' \
+            -e PYTEST_ADDOPTS='-rsx --runxfail --durations=40' \
             ci-tui-py make test 2>&1 | tee "$RUNNER_TEMP/tsb-tui-test.log"
 
       - name: Packaging tests
