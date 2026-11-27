@@ -285,15 +285,15 @@ def test_macos_does_not_overwrite_a_foreign_file_on_the_path(macos):
     assert not install.exists()
 
 
-def rebuild_arm64_zip(rel, drop=(), links=None, folders=()):
+def rebuild_arm64_zip(rel, drop=(), links=None, folders=(), python_script=None):
     """Replace the arm64 zip: leave out some members, add symlink members {member: target}
-    and empty folders."""
+    and empty folders, optionally with another script as the bundled Python."""
     site = rel[1].parent
     folder = 'tsb-tui-1.2.3-macos-arm64'
     name = f'{folder}.zip'
     members = {'tsb-tui': (ROOT / 'packaging/launchers/tsb-tui').read_bytes(),
                'tsb-tui-check': (ROOT / 'packaging/launchers/tsb-tui-check').read_bytes(),
-               'python/bin/python3': f'#!/bin/sh\nexec {sys.executable} "$@"\n'.encode()}
+               'python/bin/python3': (python_script or f'#!/bin/sh\nexec {sys.executable} "$@"\n').encode()}
     with zipfile.ZipFile(rel[1] / name, 'w') as archive:
         for member, data in members.items():
             if member not in drop:
@@ -467,6 +467,34 @@ def test_macos_failed_update_never_removes_a_config_that_existed(macos):
     assert result.returncode != 0
     assert config.read_bytes() == b'# hand edited\n'
     assert (install / 'marker').read_text() == 'previous'
+
+
+def test_macos_failed_install_keeps_a_config_another_process_created_meanwhile(macos):
+    rel, install, _, _ = macos
+    config = Path(rel[2]['XDG_CONFIG_HOME']) / 'tsb-tui/config.toml'
+    # The bundled Python creates the file just before the installer's own write runs.
+    rebuild_arm64_zip(rel, python_script=(
+        f'#!/bin/sh\nmkdir -p "{config.parent}"\n[ -e "{config}" ] || echo "# other" > "{config}"\n'
+        f'exec {sys.executable} "$@"\n'))
+    failing_link_tool(rel)
+    result = run(rel, '--base', rel[0], '--broker', 'https://first.example')
+    assert result.returncode != 0
+    assert not install.exists()
+    assert config.read_text() == '# other\n'
+
+
+def test_macos_failed_install_keeps_a_config_that_replaced_its_own(macos):
+    rel, install, _, _ = macos
+    config = Path(rel[2]['XDG_CONFIG_HOME']) / 'tsb-tui/config.toml'
+    # After the installer wrote its file, another file takes the path.
+    rebuild_arm64_zip(rel, python_script=(
+        f'#!/bin/sh\n{sys.executable} "$@" || exit 1\n'
+        # Built beside the original and moved over it, so it cannot reuse the original's inode.
+        f'echo "# replaced" > "{config}.new"\nmv "{config}.new" "{config}"\n'))
+    failing_link_tool(rel)
+    result = run(rel, '--base', rel[0], '--broker', 'https://first.example')
+    assert result.returncode != 0
+    assert config.read_text() == '# replaced\n'
 
 
 def test_release_checksums_cover_uploads(tmp_path):

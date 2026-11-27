@@ -37,6 +37,9 @@ fetch() {
 
 # First-run broker config, shared by Linux and macOS: written only when absent, never overwritten.
 # $1 is the Python that writes it; $broker is the --broker / TSB_TUI_BROKER / origin value.
+# $2 is optional: a file this call creates, only when it created the config itself, holding
+# that file's device:inode (the file is made exclusively, so one that appeared meanwhile is
+# kept and not reported as created).
 write_first_config() {
   local config="${XDG_CONFIG_HOME:-$HOME/.config}/tsb-tui/config.toml"
   if [[ -e "$config" ]]; then
@@ -44,8 +47,9 @@ write_first_config() {
   elif [[ -z "$broker" ]]; then
     printf 'No broker known; no config written at %s. Pass --broker <url> to the installer.\n' "$config"
   else
-"$1" - "$config" "$broker" <<'PYTHON'
+"$1" - "$config" "$broker" ${2:+"$2"} <<'PYTHON'
 import json
+import os
 import sys
 from pathlib import Path
 p = Path(sys.argv[1])
@@ -59,10 +63,13 @@ else:
     try:
         with p.open('x', encoding='utf-8') as f:
             f.write('[broker]\nurl = ' + json.dumps(broker, ensure_ascii=False) + '\n')
+            made = os.fstat(f.fileno())
     except FileExistsError:
         print(f'Keeping existing config: {p}')
     else:
         print(f'Config: {p}; broker: {broker}')
+        if len(sys.argv) > 3:
+            Path(sys.argv[3]).write_text(f'{made.st_dev}:{made.st_ino}')
 PYTHON
   fi
 }
@@ -76,12 +83,20 @@ manifest_field() {
   plutil -extract "$1" raw -o - "$3" 2>/dev/null
 }
 
+# Device and inode of a file ("none" when it cannot be read): GNU stat first, then BSD stat.
+file_identity() {
+  stat -c '%d:%i' "$1" 2>/dev/null || stat -f '%d:%i' "$1" 2>/dev/null || echo none
+}
+
 # Exit cleanup of install_macos: drop the temporary folders, and, when the install did not
-# finish, the config file this run created (never one that existed before it), so a retry
+# finish, the config file this run created, only while the path still holds that same file
+# (never one that existed before the run, appeared meanwhile or replaced it), so a retry
 # with another --broker writes its own value.
 cleanup() {
   rm -rf -- "$work" ${extract:+"$extract"}
-  if [[ -z "$committed" && -n "$new_config" ]]; then rm -f -- "$new_config"; fi
+  if [[ -z "$committed" && -n "$new_config" && "$(file_identity "$new_config")" == "$new_config_id" ]]; then
+    rm -f -- "$new_config"
+  fi
 }
 
 # macOS installs the release zip for the machine's chip: per user, no admin, no pipx.
@@ -119,6 +134,7 @@ install_macos() {
   work="$(mktemp -d)"
   extract=""
   new_config=""
+  new_config_id=""
   committed=""
   trap cleanup EXIT
   fetch "$base/latest.json" "$work/latest.json"
@@ -223,12 +239,17 @@ install_macos() {
   fi
   # The first-run config is written (or found) before the previous install is touched, so a
   # config directory that cannot be written stops the update with the old install intact.
-  # A config file this run creates is removed again if a later step fails (see cleanup).
-  local user_config
+  # A config file this write itself creates is removed again if a later step fails (see
+  # cleanup); ownership comes from the write, never from the path being empty beforehand.
+  local user_config created
   user_config="${XDG_CONFIG_HOME:-$HOME/.config}/tsb-tui/config.toml"
-  if [[ ! -e "$user_config" && ! -L "$user_config" ]]; then new_config="$user_config"; fi
-  write_first_config "$tree/python/bin/python3"
-  if [[ -n "$new_config" && ! -f "$new_config" ]]; then new_config=""; fi
+  created="$work/config-created"
+  write_first_config "$tree/python/bin/python3" "$created"
+  if [[ -f "$created" ]]; then
+    # The identity (device:inode) comes from the open file the write created.
+    new_config_id="$(cat "$created")"
+    new_config="$user_config"
+  fi
 
   # A live install exists or none does here, so a leftover backup is stale.
   rm -rf -- "$install.old"
