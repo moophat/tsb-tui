@@ -9,6 +9,7 @@ AI-Model: strata/strata
 from __future__ import annotations
 
 import asyncio
+import copy
 import threading
 import time
 from pathlib import Path
@@ -607,16 +608,25 @@ def test_scale_8000_targets_keys_and_position(serve, wait_until, monkeypatch):
     last row with it visible and the index `8000/8000`, and the filter reports its matches. The pause is
     measured by the per-row work a key does (a key must not walk the rows), with a wall bound as a net."""
 
-    row_work = {"calls": 0}
+    # Row work counts only while the sidebar still holds the model it held when the key was pressed. A poll
+    # reply that lands during the measurement replaces the model and rebuilds the spans, whatever key was
+    # pressed; that rebuild is the reply's work and is not counted. The key's own work, on the same model, is.
+    row_work = {"calls": 0, "sidebar": None, "model": None}
     real_row_lines = sidebar_module.Sidebar._target_row_lines
     real_facts = sidebar_module._target_facts
 
+    def key_owns_the_work() -> bool:
+        sidebar = row_work["sidebar"]
+        return sidebar is not None and sidebar._model is row_work["model"]
+
     def counted_row_lines(self, *args, **kwargs):
-        row_work["calls"] += 1
+        if key_owns_the_work():
+            row_work["calls"] += 1
         return real_row_lines(self, *args, **kwargs)
 
     def counted_facts(*args, **kwargs):
-        row_work["calls"] += 1
+        if key_owns_the_work():
+            row_work["calls"] += 1
         return real_facts(*args, **kwargs)
 
     monkeypatch.setattr(sidebar_module.Sidebar, "_target_row_lines", counted_row_lines)
@@ -632,20 +642,20 @@ def test_scale_8000_targets_keys_and_position(serve, wait_until, monkeypatch):
             await wait_until(pilot, lambda: len(screen.targets.rows) == 8008, "all pages", 30)
             screen.open_sidebar(pane="targets")
             await pilot.pause()
-            # A poll or a late page replaces the model and rebuilds the spans once, whatever key is pressed: stop the
-            # poller and wait for the row work to stand still, so only the key's own work is counted.
-            screen.poller.stop()
-            previous = -1
-            for _ in range(50):
-                if row_work["calls"] == previous:
-                    break
-                previous = row_work["calls"]
-                await pilot.pause(0.2)
-            else:
-                raise AssertionError("the sidebar's row work never settled before the key")
-            row_work["calls"] = 0
+            # Build the spans for the model the sidebar holds now, and let a paint that was already queued use them,
+            # so a rebuild owed to an earlier reply is not left to land in the key's window. No await sits between
+            # that and the capture below, so no reply can slip in between.
+            screen.sidebar._target_spans()
+            await pilot.pause()
+            screen.sidebar._target_spans()
+            # Counting starts from the model the sidebar holds when the key is pressed (see `key_owns_the_work`).
+            row_work["sidebar"], row_work["model"] = screen.sidebar, screen.sidebar._model
             start = time.monotonic()
             await pilot.press("end")
+            await pilot.pause(0.2)
+            # A late poll reply, forced: it replaces the model after the key and rebuilds the spans. Its row work
+            # must not count as the key's, however the poll and the key interleave on a loaded runner.
+            screen.sidebar.set_model(copy.copy(screen.sidebar._model))
             await pilot.pause(0.2)
             # A key costs the window's rows (about 80 calls here); one walk over the list is 8,000 or more.
             assert row_work["calls"] < 8008 // 8, f"a key did {row_work['calls']} row computations over 8,008 rows"

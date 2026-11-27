@@ -89,3 +89,30 @@ that finishes before the key. No CI-runner run.
 
 Status: DONE_WITH_CONCERNS
 Summary: The three loosened budgets now assert a deterministic signal (no join, first-evaluation answer, row-work count), each shown red on a reintroduced regression; the update-check ruling is still open.
+
+## Round 3: the row-work count attributable to the key alone
+
+Finding: in `test_scale_8000_targets_keys_and_position`, stopping the poller and seeing the row work stand still does not prove no
+rebuild is coming; a poll reply already in flight can land after the counter reset and its rebuild was counted as the key's.
+
+Change (test only, no product change): the counters count only while the sidebar still holds the model object it held when the key was
+pressed. A reply replaces the model (`set_model`), so its rebuild, which follows the model swap, is not counted; the key's own work runs on the
+unchanged model and is. The poller stop and the settle loop are gone. Before the capture, the spans are built for the current model and one
+paint is let through (no await between that and the capture), so a rebuild owed to an earlier reply cannot land inside the key's window on the
+baseline model. The test also forces a late reply on every run: after the key it calls `set_model(copy.copy(model))` and pauses, so the
+attribution is exercised each time, not only when a runner happens to be slow. The other options (a flag around the key handler, stubbing the
+reply path) were not used: the spans are built lazily in the paint, after the handler returns, and the in-flight reply is a bound method already
+held by the poller thread.
+
+Red, then green:
+- Before: the round 2 version with the late reply forced after the key: "a key did 16214 row computations over 8,008 rows" (fails).
+- After: passes with the same forced reply.
+- Mutation kept: the spans cache disabled in `_target_spans` (temporary, reverted): "a key did 1943096 row computations", still fails.
+
+Runs: the scale test, 12 loops x 3 parallel copies under `capped --`: 36 of 36 passed. Whole `tests/test_redesign_lists_filter.py`: exit 0, 30 passed. `make lint`: exit 0.
+
+Unverified in round 3: a regression that rebuilds only after a model swap (and never on an unchanged model) would not be counted; the test
+guards the per-key rebuild on an unchanged model, which is the regression the 8,000-row rule describes. No CI-runner run.
+
+Status: DONE_WITH_CONCERNS
+Summary: The key's row work is now counted only on the model it was pressed against, so a late poll reply (forced in every run) cannot be mistaken for it; shown red before, green after, and still red on a disabled cache.
