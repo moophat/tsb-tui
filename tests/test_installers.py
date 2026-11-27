@@ -285,8 +285,9 @@ def test_macos_does_not_overwrite_a_foreign_file_on_the_path(macos):
     assert not install.exists()
 
 
-def rebuild_arm64_zip(rel, drop=(), links=None):
-    """Replace the arm64 zip: leave out some members, add symlink members {member: target}."""
+def rebuild_arm64_zip(rel, drop=(), links=None, folders=()):
+    """Replace the arm64 zip: leave out some members, add symlink members {member: target}
+    and empty folders."""
     site = rel[1].parent
     folder = 'tsb-tui-1.2.3-macos-arm64'
     name = f'{folder}.zip'
@@ -303,6 +304,10 @@ def rebuild_arm64_zip(rel, drop=(), links=None):
             info = zipfile.ZipInfo(f'{folder}/{member}')
             info.external_attr = (0o120000 | 0o777) << 16
             archive.writestr(info, target)
+        for member in folders:
+            info = zipfile.ZipInfo(f'{folder}/{member}/')
+            info.external_attr = (0o040000 | 0o755) << 16
+            archive.writestr(info, b'')
     manifest = json.loads((site / 'latest.json').read_text())
     manifest['assets'][name] = {'sha256': hashlib.sha256((rel[1] / name).read_bytes()).hexdigest(),
                                 'size': (rel[1] / name).stat().st_size}
@@ -413,6 +418,55 @@ def test_macos_archive_link_cannot_redirect_the_kept_config(macos, tmp_path):
     assert 'link' in result.stderr
     assert victim.read_text() == 'victim'
     assert (install / 'config.toml').read_bytes() == b'# hand edited\n'
+
+
+def test_macos_archive_folder_at_the_config_path_keeps_the_saved_config(macos):
+    rel, install, _, _ = macos
+    install.mkdir(parents=True)
+    (install / 'config.toml').write_bytes(b'# hand edited\n')
+    (install / 'marker').write_text('previous')
+    rebuild_arm64_zip(rel, folders=('config.toml',))
+    result = run(rel, '--base', rel[0])
+    assert result.returncode != 0
+    assert 'config' in result.stderr
+    assert (install / 'config.toml').read_bytes() == b'# hand edited\n'
+    assert (install / 'marker').read_text() == 'previous'
+
+
+def failing_link_tool(rel):
+    """Make `ln` fail, as a link step that cannot finish; returns the stub to remove again."""
+    stub = Path(rel[2]['BINS']) / 'ln'
+    stub.write_text('#!/bin/sh\nexit 1\n')
+    stub.chmod(0o755)
+    return stub
+
+
+def test_macos_failed_first_install_does_not_keep_its_broker(macos):
+    rel, install, _, _ = macos
+    config = Path(rel[2]['XDG_CONFIG_HOME']) / 'tsb-tui/config.toml'
+    stub = failing_link_tool(rel)
+    failed = run(rel, '--base', rel[0], '--broker', 'https://first.example')
+    assert failed.returncode != 0
+    assert not config.exists()
+    assert not install.exists()
+    stub.unlink()
+    result = run(rel, '--base', rel[0], '--broker', 'https://second.example')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert config.read_text() == '[broker]\nurl = "https://second.example"\n'
+
+
+def test_macos_failed_update_never_removes_a_config_that_existed(macos):
+    rel, install, _, _ = macos
+    config = Path(rel[2]['XDG_CONFIG_HOME']) / 'tsb-tui/config.toml'
+    config.parent.mkdir(parents=True)
+    config.write_bytes(b'# hand edited\n')
+    install.mkdir(parents=True)
+    (install / 'marker').write_text('previous')
+    failing_link_tool(rel)
+    result = run(rel, '--base', rel[0], '--broker', 'https://other.example')
+    assert result.returncode != 0
+    assert config.read_bytes() == b'# hand edited\n'
+    assert (install / 'marker').read_text() == 'previous'
 
 
 def test_release_checksums_cover_uploads(tmp_path):

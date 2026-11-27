@@ -76,6 +76,14 @@ manifest_field() {
   plutil -extract "$1" raw -o - "$3" 2>/dev/null
 }
 
+# Exit cleanup of install_macos: drop the temporary folders, and, when the install did not
+# finish, the config file this run created (never one that existed before it), so a retry
+# with another --broker writes its own value.
+cleanup() {
+  rm -rf -- "$work" ${extract:+"$extract"}
+  if [[ -z "$committed" && -n "$new_config" ]]; then rm -f -- "$new_config"; fi
+}
+
 # macOS installs the release zip for the machine's chip: per user, no admin, no pipx.
 # latest.json is read with sed (not Python) so a clean Mac needs only curl, shasum and unzip.
 # Same trust as install.ps1: hashes detect corruption, not a hostile server. Signing comes later.
@@ -110,7 +118,9 @@ install_macos() {
   # Globals, not locals: the EXIT trap runs after this function has returned.
   work="$(mktemp -d)"
   extract=""
-  trap 'rm -rf -- "$work" ${extract:+"$extract"}' EXIT
+  new_config=""
+  committed=""
+  trap cleanup EXIT
   fetch "$base/latest.json" "$work/latest.json"
   # The top-level fields are read with plutil (it reads JSON and ships with macOS), so a
   # value's type and exact text are checked, not a pattern over the flattened file.
@@ -202,8 +212,10 @@ install_macos() {
     fi
   done
   if [[ -f "$install/config.toml" ]]; then
-    if [[ -L "$tree" || -L "$tree/config.toml" ]]; then
-      echo 'Zip contains a link where the config is kept; nothing was installed.' >&2
+    # Where the saved config goes, the archive may hold at most a plain file that is replaced.
+    if [[ -L "$tree" || -L "$tree/config.toml" ]] ||
+       { [[ -e "$tree/config.toml" ]] && [[ ! -f "$tree/config.toml" ]]; }; then
+      echo 'Zip has a link or a folder where the config is kept; nothing was installed.' >&2
       exit 1
     fi
     cp "$install/config.toml" "$tree/config.toml"
@@ -211,7 +223,12 @@ install_macos() {
   fi
   # The first-run config is written (or found) before the previous install is touched, so a
   # config directory that cannot be written stops the update with the old install intact.
+  # A config file this run creates is removed again if a later step fails (see cleanup).
+  local user_config
+  user_config="${XDG_CONFIG_HOME:-$HOME/.config}/tsb-tui/config.toml"
+  if [[ ! -e "$user_config" && ! -L "$user_config" ]]; then new_config="$user_config"; fi
   write_first_config "$tree/python/bin/python3"
+  if [[ -n "$new_config" && ! -f "$new_config" ]]; then new_config=""; fi
 
   # A live install exists or none does here, so a leftover backup is stale.
   rm -rf -- "$install.old"
@@ -233,7 +250,8 @@ install_macos() {
       exit 1
     fi
   done
-  # The new bundle is committed; the backup is no longer needed.
+  # The new bundle is committed; the backup is no longer needed, and the config stays.
+  committed=1
   rm -rf -- "$install.old"
   "$install/tsb-tui-check" || echo 'tsb-tui-check failed; the install has been kept. See its output above.' >&2
   printf '\nInstalled at: %s\nLinks: %s/tsb-tui, %s/tsb-tui-check\n' "$install" "$bindir" "$bindir"
