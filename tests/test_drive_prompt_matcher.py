@@ -171,7 +171,8 @@ def test_ambiguous_star_on_long_row_finishes_quickly():
     result = p.matches(long_no_match)
     elapsed = time.monotonic() - t0
     assert not result
-    assert elapsed < 1.0, f"NFA took {elapsed:.3f}s on long non-matching string (should be <1s)"
+    # linear takes milliseconds, exponential never finishes: the margin is for a loaded runner
+    assert elapsed < 10.0, f"NFA took {elapsed:.3f}s on long non-matching string (should be linear, far below 10s)"
 
 
 def test_ambiguous_star_on_matching_row():

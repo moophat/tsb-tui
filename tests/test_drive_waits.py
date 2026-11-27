@@ -419,7 +419,8 @@ def test_the_end_of_the_session_fails_a_wait_unless_it_waits_for_the_end(serve, 
             assert answer["error"] == "ended" and "killed" in answer["why"], answer
             assert rig.events("ended") == [{"ev": "ended", "session": first, "state": "killed"}]
             again = await rig.cmd("wait", session=first, until={"reply": "x"}, timeout_ms=20000)
-            assert again["error"] == "ended" and again["elapsed_ms"] < 1000
+            # at once, not the wait's 20 s timeout: half of it is the margin for a loaded runner
+            assert again["error"] == "ended" and again["elapsed_ms"] < 10000
             expected = rig.send("wait", session=second, until={"ended": True}, timeout_ms=20000)
             await _pending(rig)
             with serve_app.lock:

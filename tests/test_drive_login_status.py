@@ -398,11 +398,12 @@ def test_login_status_old_poll_401_after_sign_out_and_new_login(serve, tmp_path,
 def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(serve, tmp_path, monkeypatch) -> None:
     """The drive is attached to two sessions and the second one's feed thread is inside a slow slice when the account ends the login. The swap to
     Login waits for that slice before the engine is freed, but the drive's command loop must not wait with it:
-    `login_status` is answered within the budget while the slice is still running."""
+    `login_status` is answered while the slice is still running. The slice is held far longer than the command's
+    own timeout, so a command loop that waited for it would time out; the bound is that margin, not a latency."""
     from tsb_tui.screens.terminal import TerminalScreen
 
-    budget = 0.4
-    hold = 1.5
+    budget = 4.0
+    hold = 8.0
     entered = threading.Event()
     release = threading.Event()
     real_sink = TerminalScreen._sink

@@ -243,8 +243,10 @@ def test_a_saved_target_that_leaves_the_filter_moves_the_selection_by_rule_6(ser
             app.screen.query_one("#target-save", Button).press()
             await wait_for_target_workers(app, pilot, "saved row outside the filter")
             # rule 6: the saved target left the filtered list; the selection is the next surviving row below its place
-            await wait_until(pilot, lambda: [row[1] for row in view.layout.rows] == ["two-client"],
-                             "the saved target left the filter")
+            # the rows and the selection move in separate steps: wait for both states the assertion reads
+            await wait_until(pilot, lambda: [row[1] for row in view.layout.rows] == ["two-client"]
+                             and view.selected_session == "two-client",
+                             "the saved target left the filter and the selection moved")
             assert view.selected_session == "two-client", (view.selected, view.layout.rows)
             title = next(ln for ln in view.text.splitlines() if ln.startswith(" Targets ·"))
             assert "Targets · 1/1 of 9 · 'prod'" in title, title

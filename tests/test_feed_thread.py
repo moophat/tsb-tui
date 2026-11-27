@@ -34,6 +34,7 @@ because the pump binds `self._sink` when the attachment starts.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import threading
@@ -336,11 +337,16 @@ def test_order_is_kept_across_a_size_frame_and_a_prefix_with_its_dump(
                 server_frame_validator(prefix)
                 app_serve._broadcast(sess, lambda _cid, ws: ws.send_text(json.dumps(prefix)))
                 app_serve._broadcast(sess, lambda _cid, ws: ws.send_binary(dump))
+            expected_after = _replay_snapshot(lib, [("feed", dump), ("resize", (cols, rows))])
             await wait_until(pilot, lambda: screen.pump.state.dump_seen
                              and screen.canvas.painted and "DUMP-REBUILDS-THE-GRID" in "".join(
                                  screen.backend.grid_lines()),
                              "the prefix's dump to rebuild the grid")
-            expected_after = _replay_snapshot(lib, [("feed", dump), ("resize", (cols, rows))])
+            # The dump text is in the grid before the cursor move that follows it is applied: wait for the whole
+            # state the assertion compares. On a timeout the assertion below reports the difference.
+            with contextlib.suppress(AssertionError):
+                await wait_until(pilot, lambda: _snapshot(screen.backend) == expected_after,
+                                 "the grid, cursor included, to equal the raw replay")
             assert _snapshot(screen.backend) == expected_after, (
                 "the grid after a prefix with its dump is not the raw replay of what came after it")
 

@@ -84,7 +84,7 @@ class _HeldAlertStream:
 
 def test_a_held_poll_reply_does_not_hold_the_unmount(serve, tmp_path, monkeypatch) -> None:
     """A poll whose reply is still in `call_from_thread` when the workspace unmounts: the unmount returns at once,
-    the next drive command is answered within 1 s, and the late reply changes nothing."""
+    the next drive command is answered (the bound is well under the held 10 s), and the late reply changes nothing."""
 
     async def check() -> None:
         _server, url = serve()
@@ -120,8 +120,8 @@ def test_a_held_poll_reply_does_not_hold_the_unmount(serve, tmp_path, monkeypatc
             assert not thread.is_alive(), "the poller thread did not end after its stop"
 
             cmd_started = time.monotonic()
-            answer = await rig.cmd("login_status", timeout=1.0)
-            assert time.monotonic() - cmd_started < 1.0, "the next command was not answered within 1 s"
+            answer = await rig.cmd("login_status", timeout=5.0)
+            assert time.monotonic() - cmd_started < 5.0, "the next command was not answered within 5 s"
             assert "ok" in answer
             assert await rig.app_call(lambda: screen.fleet.applied_generation) == before
 
@@ -130,7 +130,7 @@ def test_a_held_poll_reply_does_not_hold_the_unmount(serve, tmp_path, monkeypatc
 
 def test_a_held_alert_event_does_not_hold_the_stop(serve, tmp_path, monkeypatch) -> None:
     """An alert event still in `call_from_thread` when the watcher stops: the stop returns at once, the next drive
-    command is answered within 1 s, and the held event never reaches the UI."""
+    command is answered (the bound is well under the held 10 s), and the held event never reaches the UI."""
 
     async def check() -> None:
         _server, url = serve()
@@ -152,15 +152,19 @@ def test_a_held_alert_event_does_not_hold_the_stop(serve, tmp_path, monkeypatch)
                 await rig.app_call(rig.app.stop_alerts)
             finally:
                 elapsed = time.monotonic() - started
+                # read before the release: the stop returned while the watcher was still held
+                held_at_return = thread.is_alive() and not release.is_set()
                 release.set()
-            assert elapsed < 0.2, f"the stop waited {elapsed:.2f}s for the watcher"
+            # a stop that joined the watcher waits out the gate's 10 s hold; the margin below it is for load
+            assert held_at_return, "the stop returned only after the watcher ended"
+            assert elapsed < 5.0, f"the stop waited {elapsed:.2f}s for the watcher"
 
             await asyncio.to_thread(thread.join, 5.0)
             assert not thread.is_alive(), "the alert watcher did not end after its stop"
 
             cmd_started = time.monotonic()
-            answer = await rig.cmd("login_status", timeout=1.0)
-            assert time.monotonic() - cmd_started < 1.0, "the next command was not answered within 1 s"
+            answer = await rig.cmd("login_status", timeout=5.0)
+            assert time.monotonic() - cmd_started < 5.0, "the next command was not answered within 5 s"
             assert "ok" in answer
             assert notified == [], "a stopped watcher's event still reached the UI"
 
@@ -170,7 +174,7 @@ def test_a_held_alert_event_does_not_hold_the_stop(serve, tmp_path, monkeypatch)
 def test_an_account_ended_login_answers_within_a_second_with_a_poll_in_flight(serve, tmp_path,
                                                                               monkeypatch) -> None:
     """A login ended by an account act (close 4017) while a fleet poll is still in `call_from_thread`:
-    `login_status` is answered within 1 s of the act."""
+    `login_status` is answered while the poll is still held, well under the held 10 s."""
 
     async def check() -> None:
         _server, url = serve()
@@ -193,13 +197,17 @@ def test_an_account_ended_login_answers_within_a_second_with_a_poll_in_flight(se
                     if await rig.app_call(lambda: isinstance(rig.app.screen, LoginScreen)):
                         break
                     await asyncio.sleep(0.005)
-                answer = await rig.cmd("login_status", timeout=1.0)
+                answer = await rig.cmd("login_status", timeout=5.0)
             finally:
                 elapsed = time.monotonic() - started
+                # read before the release: the answer came while the poll reply was still held
+                held_at_answer = thread.is_alive() and not release.is_set()
                 release.set()
             assert isinstance(await rig.app_call(lambda: rig.app.screen), LoginScreen)
             assert answer["ok"] is True and answer["status"] == 401, answer
-            assert elapsed < 1.0, f"the command was answered {elapsed:.2f}s after the account act"
+            assert held_at_answer, "the command was answered only after the held poll ended"
+            # an answer that waited for the held reply waits out the gate's 10 s hold
+            assert elapsed < 5.0, f"the command was answered {elapsed:.2f}s after the account act"
             await asyncio.to_thread(thread.join, 5.0)
 
     asyncio.run(check())
