@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from rich.cells import cell_len
 from rich.segment import Segment
 from rich.style import Style
 from textual import events
@@ -219,14 +220,25 @@ def _fit(text: str, width: int) -> str:
 def _cut_name(text: str, width: int) -> str:
     """A row's label cut to `width` cells with an ellipsis at a word boundary, never inside another word; a
     label that is one word cuts at the edge."""
-    if len(text) <= width:
+    if cell_len(text) <= width:
         return text
     if width <= 0:
         return ""
-    head = text[: width - 1]
+    target = width - cell_len("…")
+    if target <= 0:
+        return "…"
+    head_chars: list[str] = []
+    cells = 0
+    for ch in text:
+        ch_len = cell_len(ch)
+        if cells + ch_len > target:
+            break
+        head_chars.append(ch)
+        cells += ch_len
+    head = "".join(head_chars)
     space = head.rfind(" ")
     if space > 0:
-        return text[:space] + "…"
+        return head[:space] + "…"
     return head + "…"
 
 
@@ -266,33 +278,76 @@ def _target_facts_budget(wide: bool, inner: int) -> int:
 
 
 def _target_facts(row: TargetRow, numbers: Iterable[int], others: str, group: str = "",
-                  budget: int | None = None) -> tuple[str, str]:
-    """A target row's facts (ruled 2026-11-20, group added 2026-11-21): the host, the type word when the
-    target is not ssh, the numbers of its sessions open in this window, the group, and the other logins'
-    word, joined by ` · `. Returns the full facts (for the tooltip) and the facts composed within `budget`
-    (the painted line). With a budget it is built one whole segment at a time, in that order: a segment
-    that would overflow is left out whole, never cut (rule 1: no word is cut). The order puts the group
-    after the open numbers and before the others word, so the greedy fit leaves `others on it` out first,
-    then the group. The row pairs, the painted end and the painted line read this once per refresh from
-    the spans cache."""
-    segments: list[str] = []
-    if row.host:
-        segments.append(row.host)
+                  budget: int | None = None, *, wide: bool = False, inner: int | None = None) -> tuple[str, str]:
+    """A target row's facts (ruled 2026-11-20, group added 2026-11-21, wide drop order ruled 2026-11-25):
+    the host, the type word when the target is not ssh, the numbers of its sessions open in this window,
+    the group, and the other logins' word, joined by ` · `. Returns the full facts (for the tooltip) and
+    the facts composed within `budget` (narrow second line) or `inner` (wide one-line row).
+    At wide budget (one line), the name is the row's identity, so facts yield first: whole fact segments
+    drop from the right end one at a time until the name fits in full; only when no fact segment is left
+    does the name itself take an ellipsis. Open session numbers are never dropped (ruling O2). When the name
+    with an ellipsis and its open segment cannot share one line, the row takes the two-line form (Round 6)."""
+    label = _target_label(row)
+    segments: list[tuple[str, str]] = []
+    if row.host and label != row.host:
+        segments.append(("host", row.host))
     if numbers:
-        segments.append("open " + ",".join(str(number) for number in sorted(numbers)))
+        segments.append(("open", "open " + ",".join(str(number) for number in sorted(numbers))))
     if group:
-        segments.append(group)
+        segments.append(("group", group))
     if others:
-        segments.append(others)
+        segments.append(("others", others))
     # ruling 17 (2026-11-22): the second line is `host · open N,M`, then the group, then the others word, each
     # whole; the type word rides last, after them, so it drops before the ruled segments overflow.
     if row.type and row.type != "ssh":
-        segments.append(row.type)
-    full = " · ".join(segments)
+        segments.append(("type", row.type))
+    full = " · ".join(text for _kind, text in segments)
+
+    if wide and inner is not None:
+        open_seg = ("open " + ",".join(str(number) for number in sorted(numbers))) if numbers else None
+        if open_seg and 3 + cell_len(open_seg) > inner:
+            # Round 6 / Ruled: a Targets row whose name with an ellipsis and its open segment cannot
+            # share one line takes the two-line form the narrow panel already uses (the name, then
+            # the host and the open numbers; the redesign's O2 two-line row), so every open number
+            # stays shown and nothing is clipped.
+            line2_budget = max(inner - 1, 0)
+            host_text = row.host if (row.host and label != row.host) else None
+            if host_text and cell_len(f"{host_text} · {open_seg}") <= line2_budget:
+                line2_facts = f"{host_text} · {open_seg}"
+            else:
+                line2_facts = open_seg
+            if group and cell_len(f"{line2_facts} · {group}") <= line2_budget:
+                line2_facts = f"{line2_facts} · {group}"
+            if others and cell_len(f"{line2_facts} · {others}") <= line2_budget:
+                line2_facts = f"{line2_facts} · {others}"
+            if row.type and row.type != "ssh" and cell_len(f"{line2_facts} · {row.type}") <= line2_budget:
+                line2_facts = f"{line2_facts} · {row.type}"
+            return full, line2_facts
+
+        curr = list(segments)
+        while curr:
+            candidate = " · ".join(text for _kind, text in curr)
+            if 2 + cell_len(label) + cell_len(candidate) <= inner:
+                return full, candidate
+            # Ruling O2 / Round 5 / Round 6: open session numbers are never dropped.
+            # Drop whole fact segments from the right, one at a time, skipping the open-session segment by kind.
+            drop_idx = None
+            for idx in range(len(curr) - 1, -1, -1):
+                if curr[idx][0] != "open":
+                    drop_idx = idx
+                    break
+            if drop_idx is not None:
+                curr.pop(drop_idx)
+            else:
+                # When only the open segment is left beside the name and they still fit beside
+                # the 1-cell ellipsis name, the open segment is retained and the name takes its ellipsis.
+                return full, curr[0][1]
+        return full, ""
+
     facts = ""
-    for segment in segments:
-        candidate = segment if not facts else f"{facts} · {segment}"
-        if budget is None or len(candidate) <= budget:
+    for _kind, text in segments:
+        candidate = text if not facts else f"{facts} · {text}"
+        if budget is None or cell_len(candidate) <= budget:
             facts = candidate
     return full, facts
 
@@ -1456,7 +1511,8 @@ class Sidebar(Widget):
         rows = self.painted_targets()
         if not rows:
             return head + len(self._targets_empty_lines(max(self.sidebar_width - 4, 1)))
-        lines = head + sum(self._target_row_lines(row) for row in rows)
+        open_numbers = self._open_numbers()
+        lines = head + sum(self._target_row_lines(row, open_numbers) for row in rows)
         if self._model.targets_more_failed or self._model.targets_unavailable:
             # One trailing copy line below the last row: `Could not load targets · r retry` when the inventory is
             # down (rule 2, 2026-11-23), else `Could not load more · r retry` (rule 9, 2026-11-22). It is a pair in
@@ -1464,12 +1520,22 @@ class Sidebar(Widget):
             lines += 1
         return lines
 
-    def _target_row_lines(self, row: TargetRow) -> int:
-        """The lines one target's row takes: two at the narrow budget when its second line has words, else one."""
-        if self.wide:
-            return 1
+    def _target_row_lines(self, row: TargetRow, open_numbers: dict[str, list[int]] | None = None) -> int:
+        """The lines one target's row takes: two at the narrow budget when its second line has words;
+        at wide budget, one line unless its name with an ellipsis and its open segment cannot share
+        one line (Round 6 ruling), where it takes two lines. A layout pass hands in the open numbers it built
+        once; a lone call builds them itself."""
         inner = max(self.sidebar_width - 4, 1)
-        _, facts = _target_facts(row, self._open_numbers().get(row.id, ()), self._model.others.get(row.id, ""),
+        if open_numbers is None:
+            open_numbers = self._open_numbers()
+        numbers = open_numbers.get(row.id, ())
+        if self.wide:
+            if numbers:
+                open_seg = "open " + ",".join(str(n) for n in sorted(numbers))
+                if 3 + cell_len(open_seg) > inner:
+                    return 2
+            return 1
+        _, facts = _target_facts(row, numbers, self._model.others.get(row.id, ""),
                                  row.group, max(_target_facts_budget(False, inner), 0))
         return 2 if facts else 1
 
@@ -1491,11 +1557,15 @@ class Sidebar(Widget):
 
     def _build_pairs(self, rows: tuple[TargetRow, ...], spans: tuple[int, ...],
                      facts: tuple[tuple[str, str], ...], filter_line: bool,
-                     recent: tuple[TargetRow, ...], wide: bool) -> tuple[tuple[tuple[int, int], ...], list[int]]:
+                     recent: tuple[TargetRow, ...], wide: bool,
+                     open_numbers: dict[str, list[int]] | None = None
+                     ) -> tuple[tuple[tuple[int, int], ...], list[int]]:
         """(start, lines) of every painted row, built once with the spans cache: the filter line, the `Recent`
         title and its rows, then the main list's. The list paints whole rows and scrolls by them (ruled
         2026-11-20 20:1x), so its scroll positions are row starts. The line count follows the window's budget,
         not the row's own width (rule 11): a thin sidebar inside a wide window paints one-line rows."""
+        if wide and open_numbers is None:
+            open_numbers = self._open_numbers()
         pairs: list[tuple[int, int]] = []
         offset = 0
         if filter_line:
@@ -1506,7 +1576,10 @@ class Sidebar(Widget):
             pairs.append((offset, 1))
             offset += 1
         for position, span in enumerate(spans):
-            count = 1 if wide else (2 if facts[position][1] else 1)
+            if wide:
+                count = self._target_row_lines(rows[position], open_numbers)
+            else:
+                count = 2 if (position < len(facts) and facts[position][1]) else 1
             pairs.append((offset + span, count))
         if (self._model.targets_more_failed or self._model.targets_unavailable) and spans:
             # The section's last line sits below the rows that stayed loaded, one pair at the end of the walk:
@@ -1514,7 +1587,9 @@ class Sidebar(Widget):
             # (rule 9, 2026-11-22). It is a real pair, so `_target_painted_end()` counts it and scrolling to the
             # end shows it inside the painted range.
             last = spans[-1]
-            pairs.append((offset + last + (1 if wide else (2 if facts[len(spans) - 1][1] else 1)), 1))
+            last_count = self._target_row_lines(rows[len(spans) - 1], open_numbers) if wide else (
+                2 if (len(spans) - 1 < len(facts) and facts[len(spans) - 1][1]) else 1)
+            pairs.append((offset + last + last_count, 1))
         result = tuple(pairs)
         return result, [start for start, _count in pairs]
 
@@ -1547,39 +1622,20 @@ class Sidebar(Widget):
         at = 0
         if wide:
             # One line per row at the wide budget: the spans are 0..N-1 and the facts are the full segments.
-            # The facts walk stops at the window's rows (rule 11, 2026-11-21): a key on 8,000 rows costs the
-            # rows on view, never the whole list. The spans past the window are the same 0..N-1 arithmetic.
+            # When an open segment cannot share one line with the name (Round 6), the row takes 2 lines.
             limit = min(len(rows), max(self.targets_height, 1) + 1)
             for row in rows[:limit]:
                 spans.append(at)
-                at += 1
-                segments = [row.host] if row.host else []
-                open_numbers = numbers.get(row.id, ())
-                if open_numbers:
-                    segments.append("open " + ",".join(str(number) for number in sorted(open_numbers)))
-                if row.group:
-                    segments.append(row.group)
-                others_word = others.get(row.id, "")
-                if others_word:
-                    segments.append(others_word)
-                # ruling 17 (2026-11-22): `host · open N,M`, then the group, then the others word; the type
-                # word rides last of the segments.
-                if row.type and row.type != "ssh":
-                    segments.append(row.type)
-                # A row's second line shows only while its facts fit whole inside the window's budget (rule 11):
-                # a thin sidebar inside a wide window paints one-line rows. The greedy fit is the same rule the
-                # painted line uses, so it composes them here once.
-                full = " · ".join(segments)
-                budgeted = ""
-                for segment in segments:
-                    candidate = segment if not budgeted else f"{budgeted} · {segment}"
-                    if len(candidate) <= budget:
-                        budgeted = candidate
+                at += self._target_row_lines(row, numbers)
+                full, budgeted = _target_facts(row, numbers.get(row.id, ()), others.get(row.id, ""),
+                                               row.group, wide=True, inner=inner)
                 facts.append((full, budgeted))
-            spans.extend(range(at, len(rows)))
+            for row in rows[limit:]:
+                spans.append(at)
+                at += self._target_row_lines(row, numbers)
             result = tuple(spans)
             pairs, starts = self._build_pairs(rows, result, tuple(facts), self._has_filter_line(),
-                                         self._recent_targets(), True)
+                                         self._recent_targets(), True, numbers)
             self._target_spans_cache = (rows, key, self._model, (numbers, others), result, tuple(facts),
                                         pairs, starts)
             return result
@@ -1641,13 +1697,7 @@ class Sidebar(Widget):
         else:
             full, facts = _target_facts(row, self._open_numbers().get(row.id, ()),
                                         self._model.others.get(row.id, ""), row.group,
-                                        max(_target_facts_budget(self.wide, inner), 0))
-        if self.wide and not facts:
-            # The fast path stored the full facts; the painted line composes them within its own budget. The
-            # numbers come from the open-session map the spans cache keyed on (rule 17's segment order).
-            _full, facts = _target_facts(row, self._open_numbers().get(row.id, ()),
-                                         self._model.others.get(row.id, ""), row.group,
-                                         max(_target_facts_budget(self.wide, inner), 0))
+                                        wide=self.wide, inner=inner)
         label = _target_label(row)
         # The tooltip carries the row's full facts, the segment the painted line omits included (ruled 2026-11-21).
         tip = " · ".join(part for part in (label, full) if part) or None
@@ -1656,7 +1706,7 @@ class Sidebar(Widget):
         selected = self.target_selected is not None and position == self._target_pos
         mark = (SELECTED, "mark") if selected else (" ", "blank")
         within = index - spans[position]
-        row_lines = 1 if (self.wide or not facts) else 2
+        row_lines = self._target_row_lines(row)
         if (self._model.targets_more_failed or self._model.targets_unavailable) and position == len(rows) - 1 \
                 and within >= row_lines:
             # The section's last line sits below the last loaded row, in `_empty_copy`'s shape with CMD_RETRY.
@@ -1668,14 +1718,19 @@ class Sidebar(Widget):
             return _empty_copy(copy, inner, "muted", CMD_RETRY, "targets" if unavailable else "targets-more")[0]
         if within >= row_lines:
             return None  # past this row's own lines: the next row's start, or the section's end
-        if self.wide or not facts or within == 0:
-            if self.wide:
-                room = max(inner - 2 - len(facts), 0) if facts else inner - 1
-                return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(room, 1)), "text"),
-                             Part(f" {facts}" if facts else "", "text")), row.id, PANE_TARGETS, tip)
-            return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(inner - 1, 1)), "text")),
+        if row_lines == 2:
+            if within == 0:
+                return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(inner - 1, 1)), "text")),
+                            row.id, PANE_TARGETS, tip)
+            if cell_len(facts) >= inner:
+                return Line((Part(facts, "text"),), row.id, PANE_TARGETS, tip)
+            return Line((Part(" ", "blank"), Part(facts.ljust(max(inner - 1, 1)), "text")),
                         row.id, PANE_TARGETS, tip)
-        return Line((Part(" ", "blank"), Part(facts.ljust(max(inner - 1, 1)), "text")),
+        if self.wide:
+            room = max(inner - 2 - cell_len(facts), 0) if facts else inner - 1
+            return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(room, 1)), "text"),
+                         Part(f" {facts}" if facts else "", "text")), row.id, PANE_TARGETS, tip)
+        return Line((Part(mark[0], mark[1]), Part(_cut_name(label, max(inner - 1, 1)), "text")),
                     row.id, PANE_TARGETS, tip)
 
     def _targets_empty_lines(self, inner: int) -> list[Line]:

@@ -108,16 +108,307 @@ def test_target_row_grammar_two_lines_narrow_one_line_wide(serve, wait_until, si
             alt = facts_line("alt-screen")
             assert "192.0.2.21" in alt and "open" not in alt, alt
             tel = facts_line("telnet-scenario")
-            # rule 8 / ruling 17 (2026-11-22): the group rides after the open numbers; the type word rides last,
-            # so at the narrow budget it is left out whole and at the wide budget it fits.
+            # rule 8 / ruling 17 (2026-11-22), ruling 2026-11-25: the group rides after the open numbers, the type
+            # word rides last; facts yield first to the row's name, so 'telnet scenario' fits whole with
+            # '192.0.2.30 · scenario' and drops the trailing 'telnet'.
             assert "192.0.2.30 · scenario" in tel, tel
+            assert " · telnet" not in tel, tel
             if size[0] >= 160:
-                assert "192.0.2.30 · scenario · telnet" in tel, tel
-            else:
-                assert "telnet" not in tel, tel
+                assert "telnet scenario" in tel, tel
             assert "login" not in joined, "a target row never carries login words"
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, line
+    asyncio.run(check())
+
+
+def test_target_facts_omit_host_when_label_is_host():
+    """Unit: when a target has no name or its name is its address, the label falls back to the host
+    and the facts do not repeat it."""
+    from tsb_tui.model.targets import make_row
+
+    row_unnamed = make_row({"id": "t1", "host": "192.0.2.55", "type": "ssh"})
+    full, facts = sidebar_module._target_facts(row_unnamed, (), "")
+    assert "192.0.2.55" not in facts, facts
+    assert "192.0.2.55" not in full, full
+
+    row_addr = make_row({"id": "t2", "name": "192.0.2.66", "host": "192.0.2.66", "type": "ssh"})
+    full, facts = sidebar_module._target_facts(row_addr, (), "")
+    assert "192.0.2.66" not in facts, facts
+    assert "192.0.2.66" not in full, full
+
+    row_named = make_row({"id": "t3", "name": "core-rtr", "host": "192.0.2.77", "type": "ssh"})
+    full, facts = sidebar_module._target_facts(row_named, (), "")
+    assert facts.startswith("192.0.2.77"), facts
+
+
+@pytest.mark.parametrize("size", [(80, 24), (160, 45)])
+def test_target_row_when_label_is_host_facts_do_not_repeat_it(serve, wait_until, size):
+    """When a target has no name or its name is its address, the label falls back to the host
+    and the facts do not repeat it."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        for tid in list(served.targets):
+            served.invisible.add(tid)
+        seen = "2026-10-17T08:30:00Z"
+        served.targets["unnamed"] = {
+            "id": "unnamed", "type": "ssh", "name": "", "group": "lab", "tags": [],
+            "discovered_by": "manual", "last_seen": seen, "host": "192.0.2.55", "port": 22
+        }
+        served.targets["addr-name"] = {
+            "id": "addr-name", "type": "ssh", "name": "192.0.2.66", "group": "lab", "tags": [],
+            "discovered_by": "manual", "last_seen": seen, "host": "192.0.2.66", "port": 22
+        }
+        served.targets["named"] = {
+            "id": "named", "type": "ssh", "name": "core-rtr", "group": "lab", "tags": [],
+            "discovered_by": "manual", "last_seen": seen, "host": "192.0.2.77", "port": 22
+        }
+        app = TsbTuiApp(url)
+        async with app.run_test(size=size) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+            joined = "\n".join(lines)
+
+            assert "192.0.2.55 192.0.2.55" not in joined, joined
+            assert "192.0.2.66 192.0.2.66" not in joined, joined
+
+            def row_text(target_id: str) -> str:
+                # `_target_line_index` counts from the section's first content line, one below the title line.
+                idx = screen.sidebar._target_line_index(target_id)
+                assert idx is not None, target_id
+                row = next(r for r in screen.sidebar.painted_targets() if r.id == target_id)
+                n = screen.sidebar._target_row_lines(row)
+                return " ".join(lines[1 + idx : 1 + idx + n])
+
+            assert "192.0.2.55 192.0.2.55" not in row_text("unnamed"), row_text("unnamed")
+            assert "192.0.2.66 192.0.2.66" not in row_text("addr-name"), row_text("addr-name")
+            assert "192.0.2.77" in row_text("named"), row_text("named")
+
+    asyncio.run(check())
+
+
+def test_wide_target_row_name_protected_facts_drop_from_right_unit():
+    """Unit: on a one-line Targets row that does not fit, fact segments drop from the right end
+    one at a time skipping open-session numbers, which are never dropped."""
+    from tsb_tui.model.targets import make_row
+
+    # 1. Long name with host, open numbers, and group: keeps full name, host, and open numbers; drops group from right
+    row_med = make_row({"id": "t1", "name": "service-alpha", "host": "192.0.2.88",
+                        "group": "production", "type": "telnet"})
+    _, facts_med = sidebar_module._target_facts(row_med, (1, 2), "", row_med.group, wide=True, inner=38)
+    assert facts_med == "192.0.2.88 · open 1,2", facts_med
+
+    # 2. Longer name where host + open cannot fit: drops host, keeps open numbers
+    row_long = make_row({"id": "t2", "name": "inventory-service-alpha", "host": "192.0.2.88",
+                         "group": "production", "type": "telnet"})
+    _, facts_long = sidebar_module._target_facts(row_long, (1, 2), "", row_long.group, wide=True, inner=38)
+    assert facts_long == "open 1,2", facts_long
+
+    # 3. Name so long that only open segment fits beside it: facts retains open numbers
+    row_extreme = make_row({"id": "t3", "name": "inventory-service-alpha-long-name-exceeding-room",
+                            "host": "192.0.2.88", "group": "production", "type": "telnet"})
+    _, facts_ext = sidebar_module._target_facts(row_extreme, (1, 2), "", row_extreme.group, wide=True, inner=38)
+    assert facts_ext == "open 1,2", facts_ext
+
+    # 4. Target with no open session behaves as round 2
+    row_no_open = make_row({"id": "t4", "name": "inventory-service-alpha", "host": "192.0.2.88",
+                            "group": "production", "type": "telnet"})
+    _, facts_no_open = sidebar_module._target_facts(row_no_open, (), "", row_no_open.group, wide=True, inner=38)
+    assert facts_no_open == "192.0.2.88", facts_no_open
+
+    # 5. Round 6 finding 1: group whose text is "open 1" with one open session
+    # At a width where host and group must go, open count shows once, never "open 1 · open 1"
+    row_open_grp = make_row({"id": "t5", "name": "service-alpha", "host": "192.0.2.88",
+                             "group": "open 1", "type": "ssh"})
+    # inner = 30: host (10) cannot fit with label (13) + open 1 (6) + open 1 (6) (43 > 30).
+    # Group 'open 1' must drop from the right, not be protected by text equality; open count shows once.
+    _, facts_open_grp = sidebar_module._target_facts(row_open_grp, (1,), "", row_open_grp.group, wide=True, inner=30)
+    assert facts_open_grp == "open 1", facts_open_grp
+
+    # 6. Round 6 finding 2: eight and nine open sessions where name with ellipsis and open segment cannot share one line
+    row_eight = make_row({"id": "t6", "name": "router-eight", "host": "192.0.2.81", "group": "lab", "type": "ssh"})
+    _, facts_eight = sidebar_module._target_facts(row_eight, range(1, 9), "", row_eight.group, wide=True, inner=20)
+    assert facts_eight == "open 1,2,3,4,5,6,7,8", facts_eight
+
+    row_nine = make_row({"id": "t7", "name": "router-nine", "host": "192.0.2.82", "group": "lab", "type": "ssh"})
+    _, facts_nine = sidebar_module._target_facts(row_nine, range(1, 10), "", row_nine.group, wide=True, inner=24)
+    assert facts_nine == "open 1,2,3,4,5,6,7,8,9", facts_nine
+
+
+def test_wide_target_row_yield_order_and_fitting(serve, wait_until):
+    """Ruled 2026-11-25: the name is the row's identity, so the facts yield first; open session numbers are never dropped.
+    - a long name with host, open numbers and group at 160 columns keeps the full name and the open numbers and drops the others from the right;
+    - a name so long that only the open segment fits beside it gets the ellipsis with the open segment shown;
+    - a target with no open session behaves as round 2;
+    - a row that fits is unchanged."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        sids = named_sessions(url, served, "t-long-facts", "t-long-facts", "t-too-long")
+        for tid in list(served.targets):
+            served.invisible.add(tid)
+        seen = "2026-10-17T08:30:00Z"
+        # 1. Long name with host, open numbers and group (inner = 38: 2 + 13 name = 15; facts = 10 host + 3 + 8 open = 21 -> 15 + 1 + 21 = 37 <= 38)
+        # Keeps full name, host, and open numbers; drops group ('production') and type ('telnet')
+        served.targets["t-long-facts"] = {
+            "id": "t-long-facts", "type": "telnet", "name": "service-alpha",
+            "group": "production", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.88", "port": 23
+        }
+        # 2. Name so long that only the open segment fits beside it gets the ellipsis with open segment shown
+        served.targets["t-too-long"] = {
+            "id": "t-too-long", "type": "ssh",
+            "name": "core-router-with-an-extremely-long-name-that-cannot-fit-on-a-single-line",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.99", "port": 22
+        }
+        # 3. Target with no open session behaves as round 2
+        served.targets["t-no-open"] = {
+            "id": "t-no-open", "type": "telnet", "name": "inventory-service-alpha",
+            "group": "production", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.88", "port": 23
+        }
+        # 4. Fitting row (unchanged)
+        served.targets["t-fitting"] = {
+            "id": "t-fitting", "type": "ssh", "name": "router-1", "group": "lab", "tags": [],
+            "discovered_by": "manual", "last_seen": seen, "host": "192.0.2.1", "port": 22
+        }
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            await open_here(app, pilot, wait_until, *sids)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+
+            def row_text(target_id: str) -> str:
+                idx = screen.sidebar._target_line_index(target_id)
+                assert idx is not None, target_id
+                row = next(r for r in screen.sidebar.painted_targets() if r.id == target_id)
+                n = screen.sidebar._target_row_lines(row)
+                return " ".join(lines[1 + idx : 1 + idx + n])
+
+            # Case 1: keeps full name and open numbers, drops others from right (telnet, production)
+            text_1 = row_text("t-long-facts")
+            assert "service-alpha" in text_1, text_1
+            assert "192.0.2.88" in text_1, text_1
+            assert "open" in text_1, text_1
+            assert "production" not in text_1, text_1
+            assert "telnet" not in text_1, text_1
+            assert "…" not in text_1, text_1
+
+            # Case 2: name so long that only open segment fits beside it gets ellipsis with open segment shown
+            text_2 = row_text("t-too-long")
+            assert "…" in text_2, text_2
+            assert "open" in text_2, text_2
+            assert "192.0.2.99" not in text_2, text_2
+            assert "lab" not in text_2, text_2
+
+            # Case 3: target with no open session behaves as round 2
+            text_no_open = row_text("t-no-open")
+            assert "inventory-service-alpha" in text_no_open, text_no_open
+            assert "192.0.2.88" in text_no_open, text_no_open
+            assert "open" not in text_no_open, text_no_open
+            assert "production" not in text_no_open, text_no_open
+            assert "telnet" not in text_no_open, text_no_open
+            assert "…" not in text_no_open, text_no_open
+
+            # Case 4: row that fits is unchanged
+            text_3 = row_text("t-fitting")
+            assert "router-1 192.0.2.1 · lab" in text_3, text_3
+            assert "…" not in text_3, text_3
+
+    asyncio.run(check())
+
+
+def test_wide_target_row_wide_characters_unit():
+    """Unit: wide character measurements in display cells, not character count."""
+    from rich.cells import cell_len
+
+    from tsb_tui.model.targets import make_row
+
+    # Name has 10 CJK chars = 20 cells. Facts has 192.0.2.88 (10) + production (10) + delimiter (3) = 23 chars / 23 cells.
+    # 2 + 10 chars + 23 chars = 35 <= 38, but 2 + 20 cells + 23 cells = 45 > 38.
+    # Facts must drop 'production' to fit: 2 + 20 + 10 = 32 <= 38.
+    name = "数据库服务集群节点甲"
+    row = make_row({"id": "t1", "name": name, "host": "192.0.2.88", "group": "production", "type": "ssh"})
+    _full, facts = sidebar_module._target_facts(row, (), "", row.group, wide=True, inner=38)
+    assert facts == "192.0.2.88", facts
+
+    # Name longer than row alone (27 CJK chars = 54 cells > 37 cells available) gets an ellipsis.
+    long_name = "这是一段非常非常长的中文名称用于测试终端单行超长截断省略号"
+    row_long = make_row({"id": "t2", "name": long_name, "host": "192.0.2.99", "group": "lab", "type": "ssh"})
+    _full_long, facts_long = sidebar_module._target_facts(row_long, (), "", row_long.group, wide=True, inner=38)
+    assert facts_long == "", facts_long
+
+    cut = sidebar_module._cut_name(long_name, 37)
+    assert "…" in cut
+    assert cell_len(cut) <= 37
+    # Must never split a wide character: 37 - 1 = 36 cells = 18 CJK characters
+    assert cut == long_name[:18] + "…"
+
+
+def test_wide_target_row_wide_characters_screen(serve, wait_until):
+    """Wide character fitting by display cells.
+    - a name of wide characters whose character count fits but whose cell count does not, at 160 columns:
+      the facts drop by whole segments until the name fits by cells;
+    - a wide-character name longer than the row alone gets the ellipsis, the row within its cells;
+    - the round-2 tests unchanged."""
+    from rich.cells import cell_len
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        for tid in list(served.targets):
+            served.invisible.add(tid)
+        seen = "2026-10-17T08:30:00Z"
+        # 1. CJK name: 10 chars, 20 cells. In chars: 2 + 10 + 23 = 35 <= 38. In cells: 2 + 20 + 23 = 45 > 38.
+        # Drops 'production', keeps '192.0.2.88'.
+        served.targets["t-wide-chars"] = {
+            "id": "t-wide-chars", "type": "ssh", "name": "数据库服务集群节点甲",
+            "group": "production", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.88", "port": 22
+        }
+        # 2. CJK name longer than row alone (27 CJK chars = 54 cells > 37 cells). Chars 27 <= 37.
+        # Drops all facts, gets terminal ellipsis, stays within cells.
+        served.targets["t-wide-too-long"] = {
+            "id": "t-wide-too-long", "type": "ssh",
+            "name": "这是一段非常非常长的中文名称用于测试终端单行超长截断省略号",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.99", "port": 22
+        }
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+
+            def row_text(target_id: str) -> str:
+                idx = screen.sidebar._target_line_index(target_id)
+                assert idx is not None, target_id
+                row = next(r for r in screen.sidebar.painted_targets() if r.id == target_id)
+                n = screen.sidebar._target_row_lines(row)
+                return " ".join(lines[1 + idx : 1 + idx + n])
+
+            # Case 1: facts drop by whole segments until name fits by cells
+            text_1 = row_text("t-wide-chars")
+            assert "数据库服务集群节点甲" in text_1, text_1
+            assert "192.0.2.88" in text_1, text_1
+            assert "production" not in text_1, text_1
+            assert "…" not in text_1, text_1
+
+            # Case 2: wide-character name longer than row alone gets ellipsis, row within its cells
+            text_2 = row_text("t-wide-too-long")
+            assert "…" in text_2, text_2
+            assert "192.0.2.99" not in text_2, text_2
+            assert "lab" not in text_2, text_2
+            assert cell_len(text_2) <= 38, (cell_len(text_2), text_2)
+
     asyncio.run(check())
 
 
@@ -1001,7 +1292,9 @@ def test_a_wide_target_row_never_paints_past_the_inner_width(serve, wait_until):
             screen.open_sidebar(pane="targets")
             await pilot.pause()
             joined = "\n".join(_target_lines(screen))
-            assert "· open 1,2" in joined, joined
+            assert "…" in joined, joined
+            # Ruling O2 / Round 5: name takes ellipsis, open segment is shown
+            assert "open 1,2" in joined, joined
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, repr(line)
     asyncio.run(check())
@@ -1125,11 +1418,9 @@ def test_a_wide_target_row_never_paints_past_the_inner_width_at_the_facts_edge(s
             await pilot.pause()
             rows = [line for line in _target_lines(screen) if "sw-edge" in line or "192.0.2.10" in line]
             joined = "\n".join(rows)
-            assert "192.0.2.10.example" in joined, rows
-            # The open numbers are the last segment: shown whole when they fit the wide budget, dropped whole when
-            # they do not — never cut mid-segment, and never past the inner width.
-            if "open" in joined:
-                assert "open 1,2,3,4,5,6" in joined, rows
+            # Ruling O2 / Round 5: open session numbers are never dropped; host yields and open numbers
+            # are shown whole, never cut mid-segment, and never past the inner width.
+            assert "open 1,2,3,4,5,6" in joined, rows
             for line in _painted(screen):
                 assert len(line) == screen.sidebar.size.width, repr(line)
     asyncio.run(check())
@@ -1160,9 +1451,10 @@ def test_painting_a_targets_line_composes_each_target_facts_once(serve, wait_unt
             calls: list[str] = []
             original = sidebar_module._target_facts
 
-            def counting(row, numbers, others, width=None):
+            def counting(*args, **kwargs):
+                row = args[0] if args else kwargs["row"]
                 calls.append(row.id)
-                return original(row, numbers, others, width)
+                return original(*args, **kwargs)
 
             monkeypatch.setattr(sidebar_module, "_target_facts", counting)
             sidebar._target_spans_cache = None
@@ -1171,4 +1463,190 @@ def test_painting_a_targets_line_composes_each_target_facts_once(serve, wait_unt
             counts = Counter(calls)
             repeats = [tid for tid, n in counts.items() if n > 1]
             assert not repeats, f"{len(repeats)} targets composed more than once: {counts.most_common(3)}"
+    asyncio.run(check())
+
+
+def test_wide_target_row_eight_and_nine_open_sessions_and_open_group(serve, wait_until):
+    """Round 6:
+    1. A target whose group is 'open 1' with one open session, at a width where the host and group must go:
+       the row shows the open count once, never 'open 1 · open 1'.
+    2. A Targets row whose name with an ellipsis and its open segment cannot share one line takes the two-line
+       form the narrow panel already uses (the name, then the host and the open numbers; the redesign's O2 two-line
+       row), so every open number stays shown and nothing is clipped:
+       - eight and nine open sessions at the minimum wide width: two lines, every number visible, no line longer
+         than the content area;
+       - a row that fits on one line is unchanged."""
+
+    async def check_group():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        # Group whose text is "open 1" with 1 open session
+        served.targets["t-open-grp"] = {
+            "id": "t-open-grp", "type": "ssh", "name": "service-alpha",
+            "group": "open 1", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.84", "port": 22
+        }
+        sids_grp = named_sessions(url, served, "t-open-grp")
+        for tid in list(served.targets):
+            if tid != "t-open-grp":
+                served.invisible.add(tid)
+
+        # At sidebar width 34 (inner 30): host (10) must go, group 'open 1' must drop from right
+        # so open count shows once, never 'open 1 · open 1'
+        cfg = config.load(overrides=["sidebar.width_wide=34"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            await open_here(app, pilot, wait_until, *sids_grp)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+            joined = "\n".join(lines)
+            assert "open 1 · open 1" not in joined, joined
+            assert any("service-alpha" in line and "open 1" in line for line in lines), lines
+
+    async def check_eight():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        # 8 open sessions on router-eight
+        served.targets["t-eight"] = {
+            "id": "t-eight", "type": "ssh", "name": "router-eight",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.81", "port": 22
+        }
+        # Fitting target with 0 open sessions
+        served.targets["t-fit"] = {
+            "id": "t-fit", "type": "ssh", "name": "r1",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.83", "port": 22
+        }
+        sids_eight = named_sessions(url, served, *["t-eight"] * 8)
+        for tid in list(served.targets):
+            if tid not in ("t-eight", "t-fit"):
+                served.invisible.add(tid)
+
+        cfg = config.load(overrides=["sidebar.width_wide=24"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            await open_here(app, pilot, wait_until, *sids_eight)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+
+            # Eight sessions at minimum wide width 24 (inner 20):
+            # One line cannot hold mark(1) + cut_name(1) + space(1) + open 1..8(20) = 23 > 20
+            row_eight = next(r for r in screen.sidebar.painted_targets() if r.id == "t-eight")
+            assert screen.sidebar._target_row_lines(row_eight) == 2, "eight open sessions takes two lines"
+            idx_eight = screen.sidebar._target_line_index("t-eight")
+            assert idx_eight is not None
+            eight_lines = lines[1 + idx_eight:1 + idx_eight + 2]
+            assert len(eight_lines) == 2, f"expected 2 lines for router-eight, got: {eight_lines}"
+            assert "router-eight" in eight_lines[0], eight_lines
+            assert "open 1,2,3,4,5,6,7,8" in eight_lines[1], eight_lines
+
+            # Fitting row (0 open sessions): unchanged, takes 1 line
+            row_fit = next(r for r in screen.sidebar.painted_targets() if r.id == "t-fit")
+            assert screen.sidebar._target_row_lines(row_fit) == 1, "fitting row takes 1 line"
+            idx_fit = screen.sidebar._target_line_index("t-fit")
+            assert idx_fit is not None
+            fit_lines = lines[1 + idx_fit:1 + idx_fit + 1]
+            assert len(fit_lines) == 1, fit_lines
+            assert "r1" in fit_lines[0], fit_lines
+
+            # No line longer than the content area
+            for line in _painted(screen):
+                assert len(line) == screen.sidebar.size.width, repr(line)
+
+    async def check_nine():
+        served, url = serve(InputRecordingApp())
+        seen = "2026-10-17T08:30:00Z"
+        # 9 open sessions on router-nine
+        served.targets["t-nine"] = {
+            "id": "t-nine", "type": "ssh", "name": "router-nine",
+            "group": "lab", "tags": [], "discovered_by": "manual", "last_seen": seen,
+            "host": "192.0.2.82", "port": 22
+        }
+        sids_nine = named_sessions(url, served, *["t-nine"] * 9)
+        for tid in list(served.targets):
+            if tid != "t-nine":
+                served.invisible.add(tid)
+
+        cfg = config.load(overrides=["sidebar.width_wide=28"])
+        app = TsbTuiApp(url, cfg=cfg)
+        async with app.run_test(size=(160, 45)) as pilot:
+            screen = await fixture_login(app, pilot)
+            await wait_until(pilot, lambda: screen.targets.fetched, "the targets")
+            await open_here(app, pilot, wait_until, *sids_nine)
+            screen.open_sidebar(pane="targets")
+            await pilot.pause()
+            lines = _target_lines(screen)
+
+            # Nine sessions at wide width 28 (inner 24):
+            # One line cannot hold mark(1) + cut_name(1) + space(1) + open 1..9(22) = 25 > 24
+            row_nine = next(r for r in screen.sidebar.painted_targets() if r.id == "t-nine")
+            assert screen.sidebar._target_row_lines(row_nine) == 2, "nine open sessions takes two lines"
+            idx_nine = screen.sidebar._target_line_index("t-nine")
+            assert idx_nine is not None
+            nine_lines = lines[1 + idx_nine:1 + idx_nine + 2]
+            assert len(nine_lines) == 2, f"expected 2 lines for router-nine, got: {nine_lines}"
+            assert "router-nine" in nine_lines[0], nine_lines
+            assert "open 1,2,3,4,5,6,7,8,9" in nine_lines[1], nine_lines
+
+            for line in _painted(screen):
+                assert len(line) == screen.sidebar.size.width, repr(line)
+
+    asyncio.run(check_group())
+    asyncio.run(check_eight())
+    asyncio.run(check_nine())
+
+
+def test_a_wide_targets_layout_pass_builds_the_open_session_map_once(tmp_path):
+    """One layout pass over hundreds of targets reads the open sessions once: the row heights and the row pairs
+    take the map the pass built, never rebuilding it per row."""
+    from textual.app import App
+
+    from tsb_tui.model.fleet import GROUP_OPEN_HERE
+    from tsb_tui.model.targets import make_row
+    from tsb_tui.widgets.sidebar import SidebarEntry, SidebarModel
+
+    cfg = config.load(config_file=tmp_path / "absent", environ={})
+    sidebar = Sidebar(cfg, leader="Ctrl+\\")
+    sidebar.styles.display = "block"
+    rows = tuple(make_row({"id": f"t{n}", "name": f"router-{n}", "host": f"192.0.2.{n % 250}",
+                           "group": "lab", "type": "ssh"}) for n in range(300))
+
+    def entry(sid, target, number):
+        return SidebarEntry(sid, GROUP_OPEN_HERE, number, "●", target, None, "you", False, False, None, None,
+                            None, None, target)
+
+    opens = tuple(entry(f"s{n}", f"t{n * 7}", n + 1) for n in range(1, 12))
+
+    class PanelApp(App):
+        def compose(self):
+            yield sidebar
+
+    async def check():
+        async with PanelApp().run_test(size=(160, 45)) as pilot:
+            sidebar.set_width(28)
+            sidebar.set_window_width(160)
+            sidebar.set_model(SidebarModel(((GROUP_OPEN_HERE, opens),), "mine", None, "Ctrl+\\ f", targets=rows))
+            await pilot.pause()
+            assert sidebar.wide
+            built = []
+            real = Sidebar._open_numbers
+
+            def counting(self):
+                built.append(1)
+                return real(self)
+
+            Sidebar._open_numbers = counting
+            try:
+                sidebar._target_spans_cache = None
+                sidebar._target_spans()
+            finally:
+                Sidebar._open_numbers = real
+            assert len(built) == 1, f"the open-session map was built {len(built)} times in one pass"
     asyncio.run(check())
