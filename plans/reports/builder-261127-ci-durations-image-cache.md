@@ -51,5 +51,20 @@ The "No test skips" grep does not match durations lines.
 - Does not address the `program/` double fetch (~36 s), by instruction.
 - The durations list: look for "slowest 40 durations" at the end of the "Unit suite" step log.
 
-Status: DONE_WITH_CONCERNS
+Status (round 1, superseded by Round 2 below): DONE_WITH_CONCERNS
 Summary: Added `--durations=40` and a buildx gha layer cache (with plain-build fallback) to both jobs, and reordered the Dockerfile so the heavy layers cache. Lint and YAML parse pass; the cache's working on this runner is unverified until the first CI run.
+
+## Round 2
+
+Reason: the first CI run (PR #132) showed the gha layer cache does not pay on this runner. The `lint` job's cold buildx
+build took 9:34 against about 1:52 for the plain build; the `test` job, which imported that fresh cache in the same run,
+took 3:33 against 3:07 for the plain build. Loading the image from the container builder into the job's daemon eats the saving.
+
+Change: removed the buildx setup, the cached build step and its fallback from both jobs; each has the single plain
+`docker build` step again, as on main. Kept `--durations=40` (it worked; the log ends with the slowest-40 list) and the
+Dockerfile reorder. The workflow's only diff against `origin/main` is now the `--durations=40` option.
+
+Checks: YAML parse exit 0; `make lint` exit 0.
+
+Status: DONE
+Summary: The cache build is removed; the workflow differs from main only by `--durations=40`, and the Dockerfile reorder stays.
