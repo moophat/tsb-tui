@@ -398,13 +398,15 @@ def test_login_status_old_poll_401_after_sign_out_and_new_login(serve, tmp_path,
 def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(serve, tmp_path, monkeypatch) -> None:
     """The drive is attached to two sessions and the second one's feed thread is inside a slow slice when the account ends the login. The swap to
     Login waits for that slice before the engine is freed, but the drive's command loop must not wait with it:
-    `login_status` is answered within the budget while the slice is still running."""
+    `login_status` is answered while the slice is still running. The slice is held far longer than the command's
+    own timeout, so a command loop that waited for it would time out; the bound is that margin, not a latency."""
     from tsb_tui.screens.terminal import TerminalScreen
 
-    budget = 0.4
-    hold = 1.5
+    budget = 4.0
+    hold = 8.0
     entered = threading.Event()
     release = threading.Event()
+    slice_done = threading.Event()  # set when the held slice ends, by the test's release or by its own hold running out
     real_sink = TerminalScreen._sink
     held: list = []
 
@@ -412,6 +414,7 @@ def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(s
         if data == b"slow-slice":
             entered.set()
             release.wait(hold)
+            slice_done.set()
             return None
         return real_sink(self, slot, kind, data)
 
@@ -446,13 +449,27 @@ def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(s
                 await asyncio.sleep(0.01)
             assert rig.events("login_ended"), "login_ended never arrived"
 
+            # The order is decided where the rig receives the answer line (its `on_line` hook runs there, before the
+            # answer reaches this coroutine), not when this coroutine resumes: a loaded loop can resume it late.
+            received: dict[str, bool] = {}
             started = time.monotonic()
-            ans = await rig.cmd("login_status", timeout=5.0)
+            answer = rig.send("login_status")
+            answer_id = rig._next
+            rig.on_line = lambda line: received.setdefault("slice_done", slice_done.is_set()) \
+                if line.get("id") == answer_id else None
+            ans = await asyncio.wait_for(answer, 5.0)
             took = time.monotonic() - started
             freed_during_slice = held[0]._released
-            threading.Timer(0, release.set).start()
+            # Now end the slice and wait until it has, so the test resumes after the slice ended: the order recorded at
+            # receipt still says the answer came first.
+            release.set()
+            await asyncio.to_thread(slice_done.wait, 5.0)
+            slice_ended_before_answer = received["slice_done"]
             await ended
             assert ans["ok"] is True and ans["status"] == 401, ans
+            # The order is the signal: a command that waited for the slice is answered after it ends, however late the
+            # login ended and however short the wait looks next to the budget below.
+            assert not slice_ended_before_answer, "login_status was answered only after the feed slice ended"
             assert took < budget, f"login_status took {took:.3f}s, budget {budget}s"
             assert not freed_during_slice, "the engine was freed while the feed slice still ran"
             for _ in range(300):

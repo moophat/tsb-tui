@@ -763,6 +763,9 @@ def test_r_after_a_connect_refusal_repeats_the_create(serve, wait_until):
             app.screen.query_one("#create-button").press()
             await wait_until(pilot, lambda: "Could not connect to normal" in "\n".join(_screen_lines(app)),
                              "the refusal line")
+            # The refusal line and the focus move are separate steps: wait for the focus the assertion reads.
+            await wait_until(pilot, lambda: getattr(app.screen.focused, "id", None) == "create-button",
+                             "the keyboard to leave the filter for Create")
             # The keyboard left the filter: focus is on Create, so `r` reaches the refusal, not typing.
             assert app.screen.focused.id == "create-button", app.screen.focused
             served.create_refusal = None  # the person's own repeat lands this time
@@ -899,6 +902,9 @@ def test_the_credential_choice_takes_focus_and_a_key_picks_a_candidate(serve, wa
             app.screen.query_one("#create-button").press()
             await wait_until(pilot, lambda: app.screen.query_one("#credential-choice").display,
                              "the credential choice")
+            # Display and focus change in separate steps: wait for the focus the assertion reads.
+            await wait_until(pilot, lambda: getattr(app.screen.focused, "id", None) == "credential-choice",
+                             "the credential choice to take focus")
             # Keys-only: the offered choice takes focus, so a key acts on the candidates, not the row behind.
             assert app.screen.focused.id == "credential-choice", app.screen.focused
             before = len(_creates(served))

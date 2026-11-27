@@ -29,6 +29,8 @@ from tsbc import _serve
 from workspace_support import fixture_login, named_sessions, open_here
 
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.model.fleet import FleetPoller
+from tsb_tui.widgets import sidebar as sidebar_module
 
 
 def _painted(screen) -> list[str]:
@@ -601,9 +603,36 @@ def test_group_segment_on_the_target_row(serve, wait_until):
     asyncio.run(check())
 
 
-def test_scale_8000_targets_keys_and_position(serve, wait_until):
+def test_scale_8000_targets_keys_and_position(serve, wait_until, monkeypatch):
     """Rule 11: with 8,000 targets every key answers inside a bounded pause, the selection reaches the
-    last row with it visible and the index `8000/8000`, and the filter reports its matches."""
+    last row with it visible and the index `8000/8000`, and the filter reports its matches. The pause is
+    measured by the per-row work a key does (a key must not walk the rows), with a wall bound as a net."""
+
+    # No poll runs in this test: the fleet poller is replaced from the start by one that never starts a thread and
+    # records every ask. With no reply ever in flight, no model swap can rebuild the spans during the key, so every
+    # row computation counted while the key is handled is the key's own.
+    poller_asks: list[str] = []
+    monkeypatch.setattr(FleetPoller, "start", lambda self: poller_asks.append("start"))
+    monkeypatch.setattr(FleetPoller, "refresh_async", lambda self: poller_asks.append("refresh_async"))
+
+    # The alert stream is the other live source: its events reach the screen on the loop and mark the fleet widgets
+    # dirty, which rebuilds the sidebar's model and spans. The screen's listener is never registered here.
+    monkeypatch.setattr(TsbTuiApp, "watch_alerts", lambda self, listener: (lambda: None))
+
+    row_work = {"calls": 0}
+    real_row_lines = sidebar_module.Sidebar._target_row_lines
+    real_facts = sidebar_module._target_facts
+
+    def counted_row_lines(self, *args, **kwargs):
+        row_work["calls"] += 1
+        return real_row_lines(self, *args, **kwargs)
+
+    def counted_facts(*args, **kwargs):
+        row_work["calls"] += 1
+        return real_facts(*args, **kwargs)
+
+    monkeypatch.setattr(sidebar_module.Sidebar, "_target_row_lines", counted_row_lines)
+    monkeypatch.setattr(sidebar_module, "_target_facts", counted_facts)
 
     async def check():
         served, url = serve(InputRecordingApp())
@@ -615,10 +644,31 @@ def test_scale_8000_targets_keys_and_position(serve, wait_until):
             await wait_until(pilot, lambda: len(screen.targets.rows) == 8008, "all pages", 30)
             screen.open_sidebar(pane="targets")
             await pilot.pause()
+            # The page loads and the sidebar opening each queue a flush of the fleet widgets, which rebuilds the
+            # sidebar's model and its spans once per flush; on a slow runner those flushes land late. Wait until none
+            # is pending (the screen's own dirty mark and queued flush), then build the spans once and let the queued
+            # paint use them, so no build but the key's own can fall in the window.
+            def flushed() -> bool:
+                return not screen._fleet_dirty and not screen._fleet_flush
+
+            await wait_until(pilot, flushed, "the fleet widgets to be flushed")
+            screen.sidebar._target_spans()
+            await pilot.pause()
+            await wait_until(pilot, flushed, "the fleet widgets to stay flushed")
+            row_work["calls"] = 0
+            asked_before_key = list(poller_asks)  # opening the sidebar asks for a read; the stub drops it
             start = time.monotonic()
             await pilot.press("end")
             await pilot.pause(0.2)
-            assert time.monotonic() - start < 1.0, "a key on 8,000 rows paused"
+            # No poll ran at all, none was asked for during the key, and nothing listened to the alert stream, so no
+            # reply or event could rebuild anything in it.
+            assert screen.poller.calls == 0, screen.poller.calls
+            assert not app._alert_listeners, app._alert_listeners
+            assert poller_asks == asked_before_key, poller_asks
+            # A key costs the window's rows (about 80 calls here); one walk over the list is 8,000 or more.
+            assert row_work["calls"] < 8008 // 8, f"a key did {row_work['calls']} row computations over 8,008 rows"
+            # the wall bound is only a net for a loaded runner; the signal is the row work above
+            assert time.monotonic() - start < 10.0, "a key on 8,000 rows paused"
             title = screen.sidebar.render_line(0).text
             assert "Targets · 8008/8008" in title, title
             lines = _target_lines(screen)
