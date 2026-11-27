@@ -29,6 +29,7 @@ from tsbc import _serve
 from workspace_support import fixture_login, named_sessions, open_here
 
 from tsb_tui.app import TsbTuiApp
+from tsb_tui.widgets import sidebar as sidebar_module
 
 
 def _painted(screen) -> list[str]:
@@ -601,9 +602,25 @@ def test_group_segment_on_the_target_row(serve, wait_until):
     asyncio.run(check())
 
 
-def test_scale_8000_targets_keys_and_position(serve, wait_until):
+def test_scale_8000_targets_keys_and_position(serve, wait_until, monkeypatch):
     """Rule 11: with 8,000 targets every key answers inside a bounded pause, the selection reaches the
-    last row with it visible and the index `8000/8000`, and the filter reports its matches."""
+    last row with it visible and the index `8000/8000`, and the filter reports its matches. The pause is
+    measured by the per-row work a key does (a key must not walk the rows), with a wall bound as a net."""
+
+    row_work = {"calls": 0}
+    real_row_lines = sidebar_module.Sidebar._target_row_lines
+    real_facts = sidebar_module._target_facts
+
+    def counted_row_lines(self, *args, **kwargs):
+        row_work["calls"] += 1
+        return real_row_lines(self, *args, **kwargs)
+
+    def counted_facts(*args, **kwargs):
+        row_work["calls"] += 1
+        return real_facts(*args, **kwargs)
+
+    monkeypatch.setattr(sidebar_module.Sidebar, "_target_row_lines", counted_row_lines)
+    monkeypatch.setattr(sidebar_module, "_target_facts", counted_facts)
 
     async def check():
         served, url = serve(InputRecordingApp())
@@ -615,11 +632,25 @@ def test_scale_8000_targets_keys_and_position(serve, wait_until):
             await wait_until(pilot, lambda: len(screen.targets.rows) == 8008, "all pages", 30)
             screen.open_sidebar(pane="targets")
             await pilot.pause()
+            # A poll or a late page replaces the model and rebuilds the spans once, whatever key is pressed: stop the
+            # poller and wait for the row work to stand still, so only the key's own work is counted.
+            screen.poller.stop()
+            previous = -1
+            for _ in range(50):
+                if row_work["calls"] == previous:
+                    break
+                previous = row_work["calls"]
+                await pilot.pause(0.2)
+            else:
+                raise AssertionError("the sidebar's row work never settled before the key")
+            row_work["calls"] = 0
             start = time.monotonic()
             await pilot.press("end")
             await pilot.pause(0.2)
-            # the walk over every row per key took seconds; 3 s keeps the margin for a loaded runner
-            assert time.monotonic() - start < 3.0, "a key on 8,000 rows paused"
+            # A key costs the window's rows (about 80 calls here); one walk over the list is 8,000 or more.
+            assert row_work["calls"] < 8008 // 8, f"a key did {row_work['calls']} row computations over 8,008 rows"
+            # the wall bound is only a net for a loaded runner; the signal is the row work above
+            assert time.monotonic() - start < 10.0, "a key on 8,000 rows paused"
             title = screen.sidebar.render_line(0).text
             assert "Targets · 8008/8008" in title, title
             lines = _target_lines(screen)

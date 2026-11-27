@@ -57,3 +57,35 @@ The flakes did not reproduce locally under this load, before or after. They are 
 
 Status: DONE_WITH_CONCERNS
 Summary: Four named flakes plus a fifth of the same pattern are fixed by waiting on the asserted state, and five slack budgets loosened; update-check's 2.5 s test is left for a ruling because the guide states 1.5 s.
+
+## Round 2: deterministic signals instead of loosened bounds
+
+Each loosened budget now has a signal of the thing it guards; the wall bound stays only as a net. Product code was not
+changed: the regressions below were reintroduced temporarily and reverted, and `git status` shows only test files.
+
+1. `tests/test_no_join_on_loop.py` (alert stop, account-ended swap): `_record_joins` wraps the worker thread's `join` and records
+   every call and whether it came from the event loop's thread. Both tests assert no join happened before the operation
+   returned. The held-thread ordering check stays. The poll-unmount test already instrumented `join`.
+   Red: `stop()` of the alert watcher and of the fleet poller each given a `join(0.5)`: all three tests fail
+   ("the stop joined the watcher thread (1 time(s) on the loop)", "the login swap joined the poller thread", "poller thread was
+   joined during unmount"). A 0.5 s join would have passed the earlier 5 s bound.
+2. `tests/test_drive_waits.py` (wait on an ended session): records the `_Pending` objects `Driver._await` is given and the
+   `Wait.check` calls. Asserts one pending whose `timeout` timer was never armed (the answer came on the first evaluation) and one
+   check. The 10 s bound stays as a net. Red: `_await` evaluating on the next loop tick instead of at once (answer still
+   `ended`, milliseconds later) fails with "the wait armed its timeout before the answer"; a wall bound of 1 s or 10 s passes it.
+3. `tests/test_redesign_lists_filter.py` (8,000 rows, `End`): counts calls of `Sidebar._target_row_lines` and `_target_facts`
+   during the key. Current code does 78; asserts under 1,001 (8,008 // 8). Wall bound 10 s as a net. Red: the spans cache disabled
+   (`if False and cache ...` in `_target_spans`): 5,797,133 calls, the assertion fails.
+   The first version counted 16,175 once under load: a poll or late page rebuilds the spans whatever key is pressed. The test now
+   stops the poller and waits for the row work to stand still before it counts, so only the key's work is counted.
+
+Runs: the three tests (the whole no-join file, the one wait test, the 8,000-row test) looped 10 times with three copies in parallel
+under `capped --`: 30 of 30 passed (after the settle fix); the 8,000-row test alone, 12 loops x 3 copies: 36 of 36. Whole files
+(no_join_on_loop, drive_waits, redesign_lists_filter): exit 0, 81 passed. `make lint`: exit 0.
+
+Unverified in round 2: the bound of 1,001 row computations is a margin (78 measured, 8,000 or more for one walk). I saw the late-rebuild
+case once and attributed it to the poller or a late page from its size (about two walks), not proven; the settle wait covers any source
+that finishes before the key. No CI-runner run.
+
+Status: DONE_WITH_CONCERNS
+Summary: The three loosened budgets now assert a deterministic signal (no join, first-evaluation answer, row-work count), each shown red on a reintroduced regression; the update-check ruling is still open.

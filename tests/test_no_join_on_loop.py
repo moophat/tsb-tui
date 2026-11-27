@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import time
+from collections.abc import Callable
 
 from drive_support import Rig
 from input_server import make_session
@@ -58,6 +59,21 @@ def _hold(monkeypatch, app, match, held: threading.Event, release: threading.Eve
         return real(callback, *args, **kwargs)
 
     monkeypatch.setattr(app, "call_from_thread", gated)
+
+
+def _record_joins(thread: threading.Thread, loop_thread_id: int) -> tuple[list[bool], Callable[[], None]]:
+    """Record every `join` of `thread`: True for one called on the event loop's thread, False for another thread.
+    Returns the record and a function that puts the real `join` back. A join on the loop is the regression itself,
+    however short its timeout, so the tests assert on the record and not on how long the loop was held."""
+    calls: list[bool] = []
+    real_join = thread.join
+
+    def recording_join(*args, **kwargs):
+        calls.append(threading.get_ident() == loop_thread_id)
+        return real_join(*args, **kwargs)
+
+    thread.join = recording_join
+    return calls, lambda: setattr(thread, "join", real_join)
 
 
 class _HeldAlertStream:
@@ -146,6 +162,8 @@ def test_a_held_alert_event_does_not_hold_the_stop(serve, tmp_path, monkeypatch)
             assert await asyncio.to_thread(held.wait, 5.0), "the alert event was never held"
             streamer = await rig.app_call(lambda: rig.app._alert_streamer)
             thread = streamer._thread
+            loop_thread_id = await rig.app_call(threading.get_ident)
+            joins, restore_join = _record_joins(thread, loop_thread_id)
 
             started = time.monotonic()
             try:
@@ -154,8 +172,11 @@ def test_a_held_alert_event_does_not_hold_the_stop(serve, tmp_path, monkeypatch)
                 elapsed = time.monotonic() - started
                 # read before the release: the stop returned while the watcher was still held
                 held_at_return = thread.is_alive() and not release.is_set()
+                joins_on_loop = [on_loop for on_loop in joins if on_loop]
+                restore_join()
                 release.set()
-            # a stop that joined the watcher waits out the gate's 10 s hold; the margin below it is for load
+            # the signal is the join itself, however short; the wall bound below is only a net for load
+            assert not joins, f"the stop joined the watcher thread ({len(joins_on_loop)} time(s) on the loop)"
             assert held_at_return, "the stop returned only after the watcher ended"
             assert elapsed < 5.0, f"the stop waited {elapsed:.2f}s for the watcher"
 
@@ -188,6 +209,8 @@ def test_an_account_ended_login_answers_within_a_second_with_a_poll_in_flight(se
             _hold(monkeypatch, rig.app, _poll_apply, held, release)
             assert await asyncio.to_thread(held.wait, 5.0), "the poll reply was never held"
             thread = screen.poller._thread
+            loop_thread_id = await rig.app_call(threading.get_ident)
+            joins, restore_join = _record_joins(thread, loop_thread_id)
 
             started = time.monotonic()
             try:
@@ -202,7 +225,10 @@ def test_an_account_ended_login_answers_within_a_second_with_a_poll_in_flight(se
                 elapsed = time.monotonic() - started
                 # read before the release: the answer came while the poll reply was still held
                 held_at_answer = thread.is_alive() and not release.is_set()
+                restore_join()
                 release.set()
+            # the signal is the join itself, however short; the wall bound below is only a net for load
+            assert not joins, f"the login swap joined the poller thread ({joins.count(True)} time(s) on the loop)"
             assert isinstance(await rig.app_call(lambda: rig.app.screen), LoginScreen)
             assert answer["ok"] is True and answer["status"] == 401, answer
             assert held_at_answer, "the command was answered only after the held poll ended"

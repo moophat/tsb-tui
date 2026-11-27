@@ -20,6 +20,7 @@ from input_server import InputRecordingApp, make_session
 from tsbc import _serve
 
 from tsb_tui.drive import waits
+from tsb_tui.drive.runner import Driver
 
 # -- the rules, without a screen --
 
@@ -400,9 +401,24 @@ def test_each_frame_that_fails_a_wait_does_so_and_a_wait_for_it_passes(serve, se
     _run(check())
 
 
-def test_the_end_of_the_session_fails_a_wait_unless_it_waits_for_the_end(serve, tmp_path) -> None:
+def test_the_end_of_the_session_fails_a_wait_unless_it_waits_for_the_end(serve, tmp_path, monkeypatch) -> None:
     """4010 is an end: a plain wait is told `ended` (and the event says `killed`); a wait for `ended: true` passes. A
     wait that starts after the end fails at once instead of timing out."""
+    pendings: list = []
+    checks: list = []
+    real_await = Driver._await
+    real_check = waits.Wait.check
+
+    async def recording_await(self, pending, *args, **kwargs):
+        pendings.append(pending)
+        return await real_await(self, pending, *args, **kwargs)
+
+    def recording_check(self, events):
+        checks.append(self)
+        return real_check(self, events)
+
+    monkeypatch.setattr(Driver, "_await", recording_await)
+    monkeypatch.setattr(waits.Wait, "check", recording_check)
 
     async def check() -> None:
         serve_app, url = serve()
@@ -418,9 +434,15 @@ def test_the_end_of_the_session_fails_a_wait_unless_it_waits_for_the_end(serve, 
             answer = await asyncio.wait_for(plain, 10)
             assert answer["error"] == "ended" and "killed" in answer["why"], answer
             assert rig.events("ended") == [{"ev": "ended", "session": first, "state": "killed"}]
+            pendings.clear()
+            checks.clear()
             again = await rig.cmd("wait", session=first, until={"reply": "x"}, timeout_ms=20000)
-            # at once, not the wait's 20 s timeout: half of it is the margin for a loaded runner
-            assert again["error"] == "ended" and again["elapsed_ms"] < 10000
+            assert again["error"] == "ended"
+            # at once means on the wait's first evaluation: one check, and the wait's timeout timer never armed.
+            # The wall bound is only a net for a loaded runner.
+            assert len(pendings) == 1 and pendings[0].timeout is None, "the wait armed its timeout before the answer"
+            assert len(checks) == 1, f"the wait was checked {len(checks)} times before it answered"
+            assert again["elapsed_ms"] < 10000
             expected = rig.send("wait", session=second, until={"ended": True}, timeout_ms=20000)
             await _pending(rig)
             with serve_app.lock:
