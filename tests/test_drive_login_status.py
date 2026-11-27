@@ -449,12 +449,22 @@ def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(s
                 await asyncio.sleep(0.01)
             assert rig.events("login_ended"), "login_ended never arrived"
 
+            # The order is decided where the rig receives the answer line (its `on_line` hook runs there, before the
+            # answer reaches this coroutine), not when this coroutine resumes: a loaded loop can resume it late.
+            received: dict[str, bool] = {}
             started = time.monotonic()
-            ans = await rig.cmd("login_status", timeout=5.0)
+            answer = rig.send("login_status")
+            answer_id = rig._next
+            rig.on_line = lambda line: received.setdefault("slice_done", slice_done.is_set()) \
+                if line.get("id") == answer_id else None
+            ans = await asyncio.wait_for(answer, 5.0)
             took = time.monotonic() - started
             freed_during_slice = held[0]._released
-            slice_ended_before_answer = slice_done.is_set()
-            threading.Timer(0, release.set).start()
+            # Now end the slice and wait until it has, so the test resumes after the slice ended: the order recorded at
+            # receipt still says the answer came first.
+            release.set()
+            await asyncio.to_thread(slice_done.wait, 5.0)
+            slice_ended_before_answer = received["slice_done"]
             await ended
             assert ans["ok"] is True and ans["status"] == 401, ans
             # The order is the signal: a command that waited for the slice is answered after it ends, however late the

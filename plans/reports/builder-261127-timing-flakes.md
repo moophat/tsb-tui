@@ -197,8 +197,9 @@ fails it (shown with the hold shortened so the slice ends first)."
 - Mutant run: exit 1, the new assertion. Reverted.
 - Whole `tests/test_drive_login_status.py`: exit 0, 13 passed.
 - `make lint` with the test venv's `bin` first on PATH: exit 2, 1 failed, 121 passed, 1 skipped. The failure is the packaging test
-  `.github/scripts/tests/test_contract_tarball.py:74` (`pip wheel --no-build-isolation`): no venv on this machine has `setuptools` (checked
-  the two shared test venvs), so there is no "setuptools venv" to put first. CI installs it. Nothing in this round touches it.
+  `.github/scripts/tests/test_contract_tarball.py:74` (`pip wheel --no-build-isolation`): that venv has no `setuptools`. CI installs it.
+  Correction (round 6): I had written that no venv here had `setuptools`; I had only checked the two shared test venvs. A local venv with
+  setuptools does exist, and `make lint` passes with it first on PATH (round 6 below).
 - `make lint` with the system `pip` (as in rounds 1 to 4, `PYTHON` the test venv): exit 0.
 - The scale test was not changed in this round, so its 60-run loop was not repeated.
 
@@ -206,3 +207,35 @@ Not verified: the mutant for thread 1 waits a fixed time; no CI-runner run; the 
 
 Status: DONE_WITH_CONCERNS
 Summary: Thread 1 holds and is fixed with an ordering assertion (red on a waiting mutant); thread 2 holds but the walk is in product code (`_jump_target`), so I stopped and left the test as it is, with options and reply text.
+
+## Round 6: the order is taken at receipt, not at resumption
+
+Finding (`tests/test_drive_login_status.py`, Reliability): `slice_done.is_set()` was read after `await rig.cmd(...)` resumed. A slice that ends between the
+answer's arrival and the coroutine's resumption was counted as the command having waited, so a loaded loop could fail a correct answer. Valid.
+
+Fix (test only; the rig already supports it, no product change): `Rig.on_line` is called synchronously in the rig's `_line`, where the answer line is received and
+before its future resolves. The test sends `login_status` with `rig.send`, hooks `on_line` for that request id, and records `slice_done.is_set()` at that point.
+It then ends the slice itself (`release.set()`) and waits until it has ended (`slice_done.wait`) before the test goes on, so the test always resumes after the slice
+ended; the assertion reads the value recorded at receipt. The budget and the 5 s wait stay as the net.
+
+Red and green:
+- Delayed resumption, today's read (`slice_done.is_set()` at resumption, with the slice ended before the test resumes): fails, "login_status was answered only
+  after the feed slice ended" although the answer arrived first (temporary edit, reverted).
+- The same case with the fix: passes.
+- Waiting-command mutant (`op_login_status` waits 3 s, temporary, with the test's `hold` shortened to 2 s so the slice ends before the answer): still fails with the same message.
+  Both edits reverted (product diff empty).
+- Real code, real hold (8 s): 30 of 30 under load (10 loops x 3 parallel copies, `capped --`), all exit 0.
+
+Commands (exit codes):
+- Whole `tests/test_drive_login_status.py`: exit 0.
+- `make lint` with a local venv with setuptools first on PATH (then the shared test venv): exit 0.
+- `make lint` with the shared test venv first on PATH, the one without setuptools: exit 2, the same packaging test as in round 5 (`pip wheel --no-build-isolation`). Not touched by this change.
+
+Not verified: no CI-runner run; the full suite.
+
+Reply text for the thread: "Valid. The flag was read when the test coroutine resumed, so a slice that ended between the answer's arrival and the resumption counted as the command
+having waited. The test now records `slice_done` in the rig's `on_line` hook, which runs where the answer line is received, and asserts on that value; it also ends the slice and waits
+for it before going on, so the test always resumes after the slice ended and the old read fails it. The waiting-command mutant still fails it."
+
+Status: DONE_WITH_CONCERNS
+Summary: The login_status ordering is now taken at the rig's receipt of the answer line, so a late resumption cannot fail a correct answer (red on the old read, green on the fix, red on a waiting mutant); lint passes with a setuptools venv. Open from earlier rounds: the update-check ruling and the `_jump_target` product walk.
