@@ -52,7 +52,7 @@ jobs:
           tags: ci-tui-py
           load: true
           cache-from: type=gha,scope=ci-tui-py
-          cache-to: type=gha,scope=ci-tui-py,mode=max
+          cache-to: type=gha,scope=ci-tui-py,mode=max,ignore-error=true
 
       - name: Build the Python CI image (no cache)
         if: steps.buildx.outcome != 'success'
@@ -194,7 +194,7 @@ jobs:
           tags: ci-tui-py
           load: true
           cache-from: type=gha,scope=ci-tui-py
-          cache-to: type=gha,scope=ci-tui-py,mode=max
+          cache-to: type=gha,scope=ci-tui-py,mode=max,ignore-error=true
 
       - name: Build the Python CI image (no cache)
         if: steps.buildx.outcome != 'success'
