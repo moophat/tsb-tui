@@ -81,6 +81,7 @@ GROUP_ENDED = "ended"  # the ended rows shown behind `e` (ruled 2026-11-20)
 
 SEPARATOR = "┄"
 FULL_VIEW = "full view ▸"
+FULL_VIEW_KEY = "F"  # the key in the side panel that opens the full view
 TAIL_MARK = "┆"
 SELECTED = "▸"
 GROUP_TITLES = {
@@ -172,6 +173,9 @@ class SidebarModel:
     sessions_loading: bool = False  # the first poll has not landed: `Loading sessions…`
     sessions_error: bool = False  # the poll failed with nothing yet read: `Could not load sessions · r retry`
     ended: tuple[Mapping[str, Any], ...] = ()  # the visible ended records, for `e show ended`
+    # How many sessions the login owns that are live or detached and not open here: the Sessions list lists only
+    # the open ones, so it says how many more the full view holds.
+    mine_elsewhere: int = 0
 
 
 @dataclass(frozen=True)
@@ -258,6 +262,13 @@ def _empty_copy(text: str, width: int, role: str, command: str | None = None,
         current = segment
     lines.append(current)
     return [Line((Part(_fit(line, width), role, command, arg, tip=text),)) for line in lines]
+
+
+def _mine_elsewhere_line(count: int, width: int) -> Line:
+    """The Sessions list's one line for the login's own sessions that are not open here: how many, and the key
+    that opens the full view, where they are listed."""
+    return Line((Part(_fit(f"{count} more · {FULL_VIEW_KEY} full view", width), "muted", CMD_FULL_VIEW,
+                      tip="▦ Full view · every session"),))
 
 
 def _target_label(row: TargetRow) -> str:
@@ -790,6 +801,9 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
                              since=alike.get(entry.session_id, ""))
             lines.extend(row)
             row_lens.append(len(row))
+        if entries and model.mine_elsewhere:
+            lines.append(_mine_elsewhere_line(model.mine_elsewhere, width))
+            row_lens.append(1)  # a row of the list that is no session: it scrolls whole with the rows
         return SidebarView(tuple(lines), tuple(shown), 0, None, 0, tuple(row_lens))
     header: list[Line] = []
     close_tip = f"◂ close the sidebar · Esc, {model.leader_hint}"
@@ -1327,7 +1341,10 @@ class Sidebar(Widget):
         lines = sum(self._row_line_count(item) for group, items in self._model.groups
                     if group == GROUP_OPEN_HERE for item in items)
         if not lines and not (self.show_ended and self._model.ended):
-            lines = len(self._empty_lines(max(self.sidebar_width - 4, 1)))  # the empty copy wraps at the narrow one
+            # The empty copy wraps at the narrow budget; it carries the own-sessions line itself.
+            lines = len(self._empty_lines(max(self.sidebar_width - 4, 1)))
+        elif self._model.mine_elsewhere:
+            lines += 1  # the rows are followed by the own-sessions line
         if self._model.targets_loading:
             lines = max(lines, len(self._loading_lines(max(self.sidebar_width - 4, 1))))
         if self.show_ended:
@@ -1959,9 +1976,10 @@ class Sidebar(Widget):
             return _empty_copy("Could not load sessions · r retry", inner, "muted", CMD_RETRY, "sessions")
         if self._model.sessions_loading:
             return [Line((Part(_fit("Loading sessions…", inner), "muted"),))]
+        more = [_mine_elsewhere_line(self._model.mine_elsewhere, inner)] if self._model.mine_elsewhere else []
         if self._model.ended and not self.show_ended:
-            return _empty_copy("No live sessions · e show ended", inner, "muted", CMD_SHOW_ENDED)
-        return _empty_copy("No live sessions · n new session", inner, "muted", CMD_NEW)
+            return _empty_copy("No live sessions · e show ended", inner, "muted", CMD_SHOW_ENDED) + more
+        return _empty_copy("No live sessions · n new session", inner, "muted", CMD_NEW) + more
 
     def _line_at(self, y: int) -> Line | None:
         row = y - self.targets_height - 1
