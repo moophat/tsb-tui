@@ -150,3 +150,59 @@ in 60 runs); the flush wait covers any source that lands before the key. No CI-r
 
 Status: DONE_WITH_CONCERNS
 Summary: The 8,000-row test now runs with the poller replaced by a recording stub that never starts, so no reply can rebuild the spans during the key, and counts all row work in it; a disabled cache still fails it.
+
+## Round 5: two CodeRabbit threads
+
+### Thread 1, `tests/test_drive_login_status.py` (Minor): valid, fixed
+
+Check: the slice is held `hold` = 8 s from its own start, while `login_status` is timed from the moment `login_ended` arrives, which the test waits for
+up to 5 s. The budget (4 s) and the command's 5 s timeout are therefore anchored to different clocks: a command that waited for the slice, sent
+late enough that the slice's remaining time fits under 4 s, would pass `took < budget`. And `freed_during_slice` is read at an arbitrary point
+after the answer with no ordering against the slice, so it does not catch that.
+Change: `slow_sink` sets `slice_done` when its `release.wait(hold)` returns; the test captures `slice_done.is_set()` the moment the answer
+arrives and asserts it is false before the budget assertion. The order is the signal; the budget stays as the net.
+Red: a mutant `op_login_status` that waits (`await asyncio.sleep(3.0)`, temporary) with the test's `hold` shortened to 2.0 (temporary) so the slice ends before the
+answer: "login_status was answered only after the feed slice ended" (fails). Both edits reverted (`git status` shows only the test file). With the real
+hold (8 s) and the real code: 30 of 30 under load.
+Not shown: the old assertions on the same mutant (they sit after the new one, so they never ran); the mutant waits a fixed time and not on the slice's
+actual end, since the product keeps no handle to the slice after the swap.
+
+### Thread 2, `tests/test_redesign_lists_filter.py` (Trivial): valid, STOPPED, product behaviour
+
+Evidence: the scale test presses `End` on the Targets pane. That key goes to `Sidebar._jump_target(True)` (`tsb_tui/widgets/sidebar.py` lines 2267 to 2268), which builds
+`ids = [row.id for row in painted]` (line 1790) over all 8,008 painted rows just to read the first or last id and the length. The counters
+(`_target_row_lines`, `_target_facts`) count row heights and facts, not row visits, so this pass is not counted. The pass came in with #114
+(86e11c2). So the reviewer is right: the measured key does reach a full walk of the painted rows.
+It is a cheap attribute read per row (no height, fact or layout work), but it is a per-key walk proportional to the list, the thing the test's rule 11
+guards against. Instrumenting row access during the key would fail on today's code, so it cannot be done without a product change. The brief says to stop
+here: no product change in this PR. Nothing changed for this thread.
+
+Options (not chosen by me):
+1. Product PR: `_jump_target` reads `painted[-1].id` / `painted[0].id` and `len(painted)`, no list built; then the test counts iteration of `painted_targets()`
+   (a tuple subclass whose `__iter__` counts) and a mutant that walks every row in that path fails it. Recommended if rule 11 means no per-key walk of the list.
+2. Accept the pass: it is one attribute read per row; reply to the thread that the test measures the per-row layout and fact work, and that the id list is a
+   known cheap pass, recorded as such. No change.
+3. Test only, with a bound at or above the list size: it would pass on today's code and catch nothing the current counters do not; not recommended.
+
+Reply text for the thread (option 2, if the coordinator rules it, or as the status until option 1 is ruled): "Valid: End goes through `_jump_target`, which builds a list of
+all painted row ids (an attribute read per row, no layout or facts). The test counts the layout and facts work, which is what made keys pause (rule 11); the id list is not
+counted. Changing `_jump_target` is a product change, so it is outside this test-only PR; follow-up: read `painted[-1].id` and `len(painted)` directly, then count row access in the test."
+
+Reply text for thread 1: "Valid, thanks. The slice is held 8 s from its own start while the command is timed from `login_ended`, so the budget alone does not order the answer
+against the slice. `slow_sink` now sets `slice_done` after its hold; the test asserts it is not set when the answer arrives, before the budget check. A mutant `login_status` that waits
+fails it (shown with the hold shortened so the slice ends first)."
+
+### Commands (exit codes)
+- login_status test, 10 loops x 3 parallel copies under `capped --` on the real code: 30 of 30 exit 0.
+- Mutant run: exit 1, the new assertion. Reverted.
+- Whole `tests/test_drive_login_status.py`: exit 0, 13 passed.
+- `make lint` with the test venv's `bin` first on PATH: exit 2, 1 failed, 121 passed, 1 skipped. The failure is the packaging test
+  `.github/scripts/tests/test_contract_tarball.py:74` (`pip wheel --no-build-isolation`): no venv on this machine has `setuptools` (checked
+  the two shared test venvs), so there is no "setuptools venv" to put first. CI installs it. Nothing in this round touches it.
+- `make lint` with the system `pip` (as in rounds 1 to 4, `PYTHON` the test venv): exit 0.
+- The scale test was not changed in this round, so its 60-run loop was not repeated.
+
+Not verified: the mutant for thread 1 waits a fixed time; no CI-runner run; the full suite.
+
+Status: DONE_WITH_CONCERNS
+Summary: Thread 1 holds and is fixed with an ordering assertion (red on a waiting mutant); thread 2 holds but the walk is in product code (`_jump_target`), so I stopped and left the test as it is, with options and reply text.

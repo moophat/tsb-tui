@@ -406,6 +406,7 @@ def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(s
     hold = 8.0
     entered = threading.Event()
     release = threading.Event()
+    slice_done = threading.Event()  # set when the held slice ends, by the test's release or by its own hold running out
     real_sink = TerminalScreen._sink
     held: list = []
 
@@ -413,6 +414,7 @@ def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(s
         if data == b"slow-slice":
             entered.set()
             release.wait(hold)
+            slice_done.set()
             return None
         return real_sink(self, slot, kind, data)
 
@@ -451,9 +453,13 @@ def test_login_status_answers_while_the_feed_thread_is_mid_slice_at_close_4017(s
             ans = await rig.cmd("login_status", timeout=5.0)
             took = time.monotonic() - started
             freed_during_slice = held[0]._released
+            slice_ended_before_answer = slice_done.is_set()
             threading.Timer(0, release.set).start()
             await ended
             assert ans["ok"] is True and ans["status"] == 401, ans
+            # The order is the signal: a command that waited for the slice is answered after it ends, however late the
+            # login ended and however short the wait looks next to the budget below.
+            assert not slice_ended_before_answer, "login_status was answered only after the feed slice ended"
             assert took < budget, f"login_status took {took:.3f}s, budget {budget}s"
             assert not freed_during_slice, "the engine was freed while the feed slice still ran"
             for _ in range(300):
