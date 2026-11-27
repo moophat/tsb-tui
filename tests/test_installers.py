@@ -484,7 +484,7 @@ def test_macos_failed_install_keeps_a_config_another_process_created_meanwhile(m
 
 
 def test_macos_failed_install_keeps_a_config_that_replaced_its_own(macos):
-    rel, install, _, _ = macos
+    rel, _, _, _ = macos
     config = Path(rel[2]['XDG_CONFIG_HOME']) / 'tsb-tui/config.toml'
     # After the installer wrote its file, another file takes the path.
     rebuild_arm64_zip(rel, python_script=(
