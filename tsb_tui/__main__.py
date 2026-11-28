@@ -1,7 +1,8 @@
 """`tsb-tui` — `python -m tsb_tui` or the installed script (`[project.scripts]`, pyproject.toml).
 
 Interactive: `tsb-tui [--broker URL] [--ca-file PEM] [--target ID] [--profile NAME] [--config FILE]
-[--set KEY=VALUE ...]`.
+[--set KEY=VALUE ...] [--user USER --password-file PATH]`; the last pair logs in from a file or a descriptor
+(`/dev/fd/N`), never `-` (stdin is the keyboard) and never an argument or an environment value.
 Non-interactive smoke path, exit 0/1 (2 when no broker is configured) (the same binary the deploy hook runs after a deploy):
 `tsb-tui --smoke [--broker URL] --target ID [--ca-file PEM]`.
 
@@ -58,11 +59,47 @@ def build_parser() -> argparse.ArgumentParser:
                         help=_config_help())
     parser.add_argument("--set", dest="overrides", action="append", default=[], metavar="KEY=VALUE",
                         help="set one knob, e.g. --set size.auto_request=true (repeatable; wins over everything)")
+    parser.add_argument("--user", default=None,
+                        help="log in as this user at start, with the password from --password-file")
+    parser.add_argument("--password-file", default=None, metavar="PATH",
+                        help="the password's file: a regular file or a descriptor such as /dev/fd/N; never an "
+                             "argument and never the environment (with --user)")
     return parser
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return build_parser().parse_args(argv)
+
+
+def _check_file_login_flags(args: argparse.Namespace) -> None:
+    """The flag rules that need no file: the pair goes together (drive's words), `--smoke` has its own password
+    reader, and `-` is stdin, which Textual reads its keys from. Nothing is read from stdin here."""
+    parser = build_parser()
+    if (args.user is None) != (args.password_file is None):
+        parser.error("--user and --password-file go together")
+    if args.user is None:
+        return
+    if args.smoke:
+        parser.error("--user and --password-file are for the interactive TUI; "
+                     "--smoke takes its password from TSB_SUPERADMIN_PASSWORD_FILE")
+    if args.password_file == "-":
+        parser.error("--password-file: - is stdin, which the attached TUI reads its keys from; "
+                     "give a file or a descriptor such as /dev/fd/N")
+
+
+def _read_file_login(args: argparse.Namespace):
+    """The `FileLogin` for `--user`/`--password-file`, read with drive's reader and drive's words before Textual takes
+    the terminal (exit 2 on a refusal); None when neither flag is given. The value goes straight into the holder:
+    no local here holds it."""
+    if args.user is None:
+        return None
+    from .drive.commands import DriveError, read_password_file
+    from .file_login import FileLogin
+
+    try:
+        return FileLogin(args.user, read_password_file(args.password_file))
+    except DriveError as exc:
+        build_parser().error(f"--password-file: {exc.why}")
 
 
 def _load_config(args: argparse.Namespace, *, for_smoke: bool) -> config.Config:
@@ -92,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
 
         return runner.main(argv[1:])
     args = _parse_args(argv)
+    _check_file_login_flags(args)
     from . import app as app_mod
     from .theme import ThemeError
 
@@ -117,10 +155,12 @@ def main(argv: list[str] | None = None) -> int:
         broker = config.resolve_broker(args.broker, cfg)
         if broker is None:
             return _missing_broker(args.config)
+        file_login = _read_file_login(args)
+        extra = {} if file_login is None else {"file_login": file_login}
         # A cleartext broker URL is refused here (`_http.HttpClient`) unless the host is
         # loopback — otherwise the login password would cross the network in clear.
         try:
-            app = app_mod.TsbTuiApp(broker, ca_file=args.ca_file, target=args.target, cfg=cfg)
+            app = app_mod.TsbTuiApp(broker, ca_file=args.ca_file, target=args.target, cfg=cfg, **extra)
         except ValueError as exc:
             if not args.broker:
                 raise ValueError(f"broker.url ({cfg.source('broker.url')}): {exc}") from None

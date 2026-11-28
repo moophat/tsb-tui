@@ -139,10 +139,10 @@ def read_answer_pipe(path: str, count: int, timeout: float = 30.0) -> list[str]:
 def read_password_file(path: str, *, regular_only: bool = False, field: str = "password_file") -> str:
     """The password in a file: its first line, without the line end, at most `PASSWORD_MAX` bytes. The path may name
     a regular file or a pipe (`/dev/fd/N`, what a process substitution is), so nothing need rest on disk; a device or
-    anything else is refused before it is opened (`/dev/zero` has no first line to end). At most one byte more than
-    the limit is read. A regular file that is group- or other-readable is warned about on stderr, as the smoke path
-    does; an absent, empty or over-long file is an error whose words never carry what was read. Never argv, never the
-    environment (honesty rule 5)."""
+    anything else is refused before it is opened (`/dev/zero` has no first line to end). It reads up to the first line
+    end, at most one byte more than the limit, so a pipe whose writer stays open is not waited on. A regular file that
+    is group- or other-readable is warned about on stderr, as the smoke path does; an absent, empty or over-long file
+    is an error whose words never carry what was read. Never argv, never the environment (honesty rule 5)."""
     file = Path(path)
     try:
         mode = file.stat().st_mode
@@ -163,10 +163,10 @@ def read_password_file(path: str, *, regular_only: bool = False, field: str = "p
             with os.fdopen(fd, "rb") as stream:
                 if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                     raise DriveError("bad_request", f"{field} is no longer a regular file")
-                data = stream.read(PASSWORD_MAX + 1)
+                data = stream.readline(PASSWORD_MAX + 1)
         else:
             with file.open("rb") as stream:
-                data = stream.read(PASSWORD_MAX + 1)
+                data = stream.readline(PASSWORD_MAX + 1)
     except OSError as exc:
         raise DriveError("bad_request", f"{field} {path} could not be read: {exc.strerror}") from None
     line = data.split(b"\n", 1)[0].rstrip(b"\r")

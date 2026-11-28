@@ -39,6 +39,7 @@ from tsb_contract_client import ApiError, Client
 from . import config as config_mod
 from ._transport import HttpError
 from .config import ConfigError
+from .file_login import FileLogin
 from .model.alerts import Alert, AlertModel, AlertStreamer
 from .model.events import Event
 from .screen_lock import INPUT_EVENTS, ScreenLock
@@ -375,7 +376,7 @@ class TsbTuiApp(App):
     """
 
     def __init__(self, broker_url: str, ca_file: str | None = None, target: str | None = None,
-                 *, cfg: config_mod.Config | None = None) -> None:
+                 *, cfg: config_mod.Config | None = None, file_login: FileLogin | None = None) -> None:
         # Fail before any UI exists: a config that cannot start (an unknown key, a bad type) or an
         # engine that cannot load must exit naming itself, not paint a half-working screen. Raises
         # `ConfigError`, `EngineError` or `ThemeError`.
@@ -409,6 +410,9 @@ class TsbTuiApp(App):
         # The outer window's last size: only a change to it is a "window change" (D18).
         self._window_size: Size | None = None
         self.initial_target = target
+        # `--user` with `--password-file`: the first Login screen logs in from it with no key; no later screen does
+        # (sign-out or a 401 shows the ordinary form, filled with the user only). The holder never shows its value.
+        self.file_login = file_login
         # Set once login succeeds (screens/login.py); read back by screens/new_session.py to
         # tell this principal's own connections apart from ones GET /sessions lists for others.
         self.username: str | None = None
