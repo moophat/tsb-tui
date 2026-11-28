@@ -1004,6 +1004,13 @@ class TerminalScreen(Screen):
         open_ids = [slot.session_id for slot in self.slots]
         ended = tuple(record for record in fleet.visible(open_here=open_ids, live=live)
                       if record.get("state") in ENDED_STATES)
+        # The Sessions list shows what is open here; the login's own live and detached sessions elsewhere are
+        # counted, and the full view lists them. Other logins' sessions are not counted.
+        open_set = set(open_ids)
+        mine_elsewhere = 0 if me is None else sum(
+            1 for record in scan.merged.values()
+            if record.get("owner") == me and record.get("state") in ("live", "detached")
+            and record["id"] not in open_set)
         return SidebarModel(
             groups=tuple((name, tuple(records)) for name, records in groups.items()),
             mode=fleet.filter_mode, alerts=alerts.count if alerts.allowed else None,
@@ -1017,7 +1024,7 @@ class TerminalScreen(Screen):
             targets_unavailable=self.targets.unavailable, targets_more_failed=self.targets.more_failed,
             sessions_loading=self.fleet.updated_at is None,
             sessions_error=self.poller.last_error is not None and self.fleet.updated_at is None,
-            ended=ended)
+            ended=ended, mine_elsewhere=mine_elsewhere)
 
     def _time_state(self, record: dict, sid: str, stale: set[str], asks: set[str], now: float) -> RowTime:
         """A row's time-bearing fields read from its record at `now`: why it needs you, the warning window's clock,

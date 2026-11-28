@@ -81,6 +81,7 @@ GROUP_ENDED = "ended"  # the ended rows shown behind `e` (ruled 2026-11-20)
 
 SEPARATOR = "┄"
 FULL_VIEW = "full view ▸"
+FULL_VIEW_KEY = "F"  # the key in the side panel that opens the full view
 TAIL_MARK = "┆"
 SELECTED = "▸"
 GROUP_TITLES = {
@@ -172,6 +173,9 @@ class SidebarModel:
     sessions_loading: bool = False  # the first poll has not landed: `Loading sessions…`
     sessions_error: bool = False  # the poll failed with nothing yet read: `Could not load sessions · r retry`
     ended: tuple[Mapping[str, Any], ...] = ()  # the visible ended records, for `e show ended`
+    # How many sessions the login owns that are live or detached and not open here: the Sessions list lists only
+    # the open ones, so it says how many more the full view holds.
+    mine_elsewhere: int = 0
 
 
 @dataclass(frozen=True)
@@ -206,7 +210,8 @@ class SidebarView:
     detail_start: int | None = None
     detail_len: int = 0
     # How many lines each painted session row takes, top to bottom (the framed view): a multi-line row paints
-    # whole or not at all, so the list's scroll positions are row starts (ruled 2026-11-20 20:1x).
+    # whole or not at all, so the list's scroll positions are row starts (ruled 2026-11-20 20:1x). The framed
+    # view's `N more · F full view` line is the last of `lines` and has no entry here: it is pinned.
     row_lens: tuple[int, ...] = ()
 
 
@@ -258,6 +263,13 @@ def _empty_copy(text: str, width: int, role: str, command: str | None = None,
         current = segment
     lines.append(current)
     return [Line((Part(_fit(line, width), role, command, arg, tip=text),)) for line in lines]
+
+
+def _mine_elsewhere_line(count: int, width: int) -> Line:
+    """The Sessions list's one line for the login's own sessions that are not open here: how many, and the key
+    that opens the full view, where they are listed."""
+    return Line((Part(_fit(f"{count} more · {FULL_VIEW_KEY} full view", width), "muted", CMD_FULL_VIEW,
+                      tip="▦ Full view · every session"),))
 
 
 def _target_label(row: TargetRow) -> str:
@@ -790,6 +802,10 @@ def sidebar_view(model: SidebarModel, *, width: int, height: int, selected: tupl
                              since=alike.get(entry.session_id, ""))
             lines.extend(row)
             row_lens.append(len(row))
+        if entries and model.mine_elsewhere:
+            lines.append(_mine_elsewhere_line(model.mine_elsewhere, width))
+            # No entry in `row_lens`: the line is no session row. The widget pins it as the section's last row, and
+            # the rows scroll in the space above it.
         return SidebarView(tuple(lines), tuple(shown), 0, None, 0, tuple(row_lens))
     header: list[Line] = []
     close_tip = f"◂ close the sidebar · Esc, {model.leader_hint}"
@@ -1139,7 +1155,7 @@ class Sidebar(Widget):
     def _scroll_to_selected(self) -> None:
         """Scroll the Sessions list by whole rows (ruled 2026-11-20 20:1x): the scroll position is a row's first
         line, and a selected row the window cannot show whole scrolls to the least that shows it whole."""
-        height = max(self.sessions_height - 2, 1)
+        height = self._session_room()
         starts = self._row_starts()
         lens = self._view.row_lens
         if not starts:
@@ -1183,10 +1199,26 @@ class Sidebar(Widget):
                 break
         return row
 
+    def _pinned_line(self) -> bool:
+        """Whether the `N more · F full view` line (the view's last line, no session row) is painted, pinned as the
+        section's last row. It is only when the selected session row (the first, with none selected) also fits
+        whole above it: otherwise the rows keep the whole section and the line is not painted (F still opens the
+        full view)."""
+        lens = self._view.row_lens
+        if not lens or sum(lens) >= len(self._view.lines):
+            return False
+        rows = self._view.rows
+        row = rows.index(self.selected) if self.selected in rows else 0
+        return lens[row] <= max(self.sessions_height - 2, 1) - 1
+
+    def _session_room(self) -> int:
+        """The lines the session rows scroll in: the Sessions section's inner height less the pinned line's row."""
+        return max(self.sessions_height - 2, 1) - (1 if self._pinned_line() else 0)
+
     def _session_painted_end(self) -> int:
         """One past the last line the Sessions list paints: a multi-line row paints whole or not at all, so the
-        walk stops at the first row that does not fit under the section's inner height (ruled 2026-11-20 20:1x)."""
-        height = max(self.sessions_height - 2, 1)
+        walk stops at the first row that does not fit in the room above the pinned line (ruled 2026-11-20 20:1x)."""
+        height = self._session_room()
         starts = self._row_starts()
         if not starts:
             return self._scroll_top
@@ -1198,8 +1230,8 @@ class Sidebar(Widget):
         return end
 
     def _session_max_scroll(self) -> int:
-        """The lowest whole-row scroll position: a row start whose row fits the inner height."""
-        height = max(self.sessions_height - 2, 1)
+        """The lowest whole-row scroll position: a row start whose row fits the room above the pinned line."""
+        height = self._session_room()
         fits = [start for start, count in zip(self._row_starts(), self._view.row_lens) if count <= height]
         return max(fits) if fits else 0
 
@@ -1327,7 +1359,10 @@ class Sidebar(Widget):
         lines = sum(self._row_line_count(item) for group, items in self._model.groups
                     if group == GROUP_OPEN_HERE for item in items)
         if not lines and not (self.show_ended and self._model.ended):
-            lines = len(self._empty_lines(max(self.sidebar_width - 4, 1)))  # the empty copy wraps at the narrow one
+            # The empty copy wraps at the narrow budget; it carries the own-sessions line itself.
+            lines = len(self._empty_lines(max(self.sidebar_width - 4, 1)))
+        elif self._model.mine_elsewhere:
+            lines += 1  # the rows are followed by the own-sessions line
         if self._model.targets_loading:
             lines = max(lines, len(self._loading_lines(max(self.sidebar_width - 4, 1))))
         if self.show_ended:
@@ -1946,10 +1981,12 @@ class Sidebar(Widget):
 
     def line_offset(self, index: int) -> int | None:
         """The screen row of a visible logical Sessions line."""
+        if self._pinned_line() and index == len(self._view.lines) - 1:
+            return self.targets_height + self.sessions_height - 2
         row = index - self._scroll_top
         if row < 0 or index >= self._session_painted_end():
             return None
-        return self.targets_height + 1 + row if row < self.sessions_height - 2 else None
+        return self.targets_height + 1 + row if row < self._session_room() else None
 
     def _empty_lines(self, inner: int) -> list[Line]:
         """The Sessions section's lines when no row is on show (ruled 2026-11-20): loading, the poll's error
@@ -1959,9 +1996,10 @@ class Sidebar(Widget):
             return _empty_copy("Could not load sessions · r retry", inner, "muted", CMD_RETRY, "sessions")
         if self._model.sessions_loading:
             return [Line((Part(_fit("Loading sessions…", inner), "muted"),))]
+        more = [_mine_elsewhere_line(self._model.mine_elsewhere, inner)] if self._model.mine_elsewhere else []
         if self._model.ended and not self.show_ended:
-            return _empty_copy("No live sessions · e show ended", inner, "muted", CMD_SHOW_ENDED)
-        return _empty_copy("No live sessions · n new session", inner, "muted", CMD_NEW)
+            return _empty_copy("No live sessions · e show ended", inner, "muted", CMD_SHOW_ENDED) + more
+        return _empty_copy("No live sessions · n new session", inner, "muted", CMD_NEW) + more
 
     def _line_at(self, y: int) -> Line | None:
         row = y - self.targets_height - 1
@@ -1969,9 +2007,11 @@ class Sidebar(Widget):
         if not self._view.rows:
             empty = self._empty_lines(max(self.sidebar_width - 4, 1))
             return empty[row] if 0 <= row < len(empty) else None
+        if self._pinned_line() and row == self.sessions_height - 3:
+            return self._view.lines[-1]  # the section's last row, whatever the scroll
         if not (self._scroll_top <= index < self._session_painted_end()):
             return None  # scrolled off, or a row that does not fit whole at the pane's bottom (ruled 2026-11-20 20:1x)
-        if 0 <= row < self.sessions_height - 2 and index < len(self._view.lines):
+        if 0 <= row < self._session_room() and index < len(self._view.lines):
             return self._view.lines[index]
         return None
 
