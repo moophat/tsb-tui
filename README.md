@@ -84,6 +84,12 @@ start-up exits 2 and names the config path and environment variable.
 `--ca-file` is for a broker whose certificate is signed by a private authority. A cleartext `http://` broker address is
 refused unless the host is loopback.
 
+`--user USER --password-file PATH` (the two go together) log in at start with no key pressed, with the password from a
+regular file or a descriptor such as `/dev/fd/N`: never an argument, never the environment, and never `-`, because stdin is
+the keyboard. A file that cannot be read exits 2 before the screen opens. A refused login leaves the ordinary form, with
+the user filled in, and does not retry; sign-out or a lapsed login also leaves the ordinary form. `--smoke` refuses the
+pair.
+
 1. **Log in** on the first screen with your TSB username and password.
 2. **List targets.** The Targets list sits at the top of the side panel, and you land in its filter after login.
    For the whole list, press `Ctrl-\` then `F` for the full view, then `Tab` to the Targets tab. It lists the
