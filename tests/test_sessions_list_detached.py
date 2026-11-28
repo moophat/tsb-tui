@@ -211,3 +211,34 @@ def test_the_line_is_pinned_only_when_a_session_row_fits_above_it(serve, wait_un
             if content == 2:
                 assert _last_session_row(screen).startswith(more), text
     asyncio.run(check())
+
+
+def test_the_selected_row_must_fit_above_the_line_to_pin_it(serve, wait_until):
+    """Mixed row heights at the narrow width (CodeRabbit on #138): a sidebar of 10 rows, one open session (three
+    lines) and one visible ended one (two), three content lines. The shortest row fits above the line, the selected
+    one does not: the line is not painted and the selected session is."""
+
+    async def check():
+        served, url = serve(InputRecordingApp())
+        app = TsbTuiApp(url)
+        async with app.run_test(size=(80, 24)) as pilot:
+            screen = await fixture_login(app, pilot)
+            opened, _elsewhere = _four_open_and_one_elsewhere(url, served)
+            served.sessions[opened[1]]["state"] = "killed"
+            await open_here(app, pilot, wait_until, opened[0])
+            screen._refresh_fleet()
+            screen.open_sidebar(pane="sessions")
+            await wait_until(pilot, lambda: screen.sidebar.model.mine_elsewhere > 0 and screen.sidebar.model.ended,
+                             "the fleet read")
+            screen.sidebar.toggle_show_ended()
+            await pilot.resize_terminal(80, 11)
+            await pilot.pause(0.2)
+            sidebar = screen.sidebar
+            assert sidebar.size.height == 10 and sidebar.sessions_height - 2 == 3, (sidebar.size, sidebar.sessions_height)
+            assert sidebar.view.row_lens == (3, 2), sidebar.view.row_lens
+            assert sidebar.selected == sidebar.view.rows[0], sidebar.selected
+            lines = _session_lines(screen)
+            text = "\n".join(lines)
+            assert any("sw-open-1" in line for line in lines), text
+            assert "more · F full view" not in text, text
+    asyncio.run(check())

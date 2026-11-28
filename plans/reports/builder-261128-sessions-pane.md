@@ -152,3 +152,41 @@ The two-content-row case passed on that tree, as it should (both paint).
 - At the narrow width a session row is three lines, so the line is pinned only from four content rows
   (a sidebar of 12 rows and up); below that the section shows the row and no line.
 - No run against staging.
+
+### Round 3: the selected row fits
+
+Ruling: pin the line only when the selected session row fits wholly above it; otherwise the rows get the whole
+section and the line is not painted. F still opens the full view.
+
+**Change** (`tsb_tui/widgets/sidebar.py`): `_pinned_line` now tests the selected row's line count (the first row
+when none is selected, the position `_scroll_to_selected` already uses) against the inner height less one, instead
+of the shortest row's.
+
+**Test** (`tests/test_sessions_list_detached.py::test_the_selected_row_must_fit_above_the_line_to_pin_it`):
+CodeRabbit's case. 80 columns, a sidebar of 10 rows, one session open here (three lines) and one visible ended
+session (two lines), `row_lens == (3, 2)`, three content lines, the open session selected, and the login's other
+sessions elsewhere. The test asserts those preconditions, then that the open row paints and the line does not.
+
+**Red on d04bf09** (the round-2b code):
+
+    1 failed, 11 deselected     exit 1
+    E  AssertionError:  ▸ Sessions · 1/2 ━━━━━━
+    E    (two blank content rows)
+    E    3 more · F full view
+    E  assert False   (no `sw-open-1` row painted: the shortest row fit, the selected one did not)
+
+**Green after:** `tests/test_sessions_list_detached.py`: `12 passed`, exit 0.
+
+**Exit codes** (the test venv's `bin` first on PATH):
+- the 48 test files that mention the sidebar or the snapshots, in three runs: `400 passed` exit 0, `517 passed`
+  exit 0, `327 passed` exit 0 (1244 tests, including `tests/test_redesign_lists_filter.py` and
+  `tests/test_sidebar_painted_rows.py`). No baseline regenerated.
+- `make lint`: exit 2; `ruff` passes; the only failures are the two known `test_contract_tarball.py` ones
+  (missing setuptools), 121 passed.
+
+**Not verified**
+- Not committed. The test files outside the sidebar and snapshot set were not re-run this round.
+- The pin follows the selection: moving the selection between a row that fits and one that does not shows or hides
+  the line (the window repaints at each move). Not tested beyond the case above.
+- With no selected row the first row decides, as `_scroll_to_selected` does; not tested.
+- No run against staging.

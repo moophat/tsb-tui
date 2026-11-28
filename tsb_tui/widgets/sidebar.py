@@ -1201,11 +1201,15 @@ class Sidebar(Widget):
 
     def _pinned_line(self) -> bool:
         """Whether the `N more · F full view` line (the view's last line, no session row) is painted, pinned as the
-        section's last row. It is only when a session row also fits above it: in a section with one content row the
-        row shows and the line does not (F still opens the full view)."""
+        section's last row. It is only when the selected session row (the first, with none selected) also fits
+        whole above it: otherwise the rows keep the whole section and the line is not painted (F still opens the
+        full view)."""
         lens = self._view.row_lens
-        return (sum(lens) < len(self._view.lines) and bool(lens)
-                and min(lens) <= max(self.sessions_height - 2, 1) - 1)
+        if not lens or sum(lens) >= len(self._view.lines):
+            return False
+        rows = self._view.rows
+        row = rows.index(self.selected) if self.selected in rows else 0
+        return lens[row] <= max(self.sessions_height - 2, 1) - 1
 
     def _session_room(self) -> int:
         """The lines the session rows scroll in: the Sessions section's inner height less the pinned line's row."""
