@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 import stat
 import sys
 import threading
@@ -408,3 +409,30 @@ def test_lock_now_under_a_file_login_locks_and_calls_the_operation(serve, wait_u
             _no_trace(dump)
 
     asyncio.run(check())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="/dev/fd pipes are POSIX; Windows takes a file only")
+def test_a_pipe_whose_writer_stays_open_returns_the_first_line() -> None:
+    r, w = os.pipe()
+    os.write(w, b"FIXTURE-NOT-A-PASSWORD-pipe\n")
+    outcome: dict[str, object] = {}
+
+    def read() -> None:
+        try:
+            outcome["value"] = read_password_file(f"/dev/fd/{r}")
+        except BaseException as exc:  # noqa: BLE001
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=read, daemon=True)
+    thread.start()
+    try:
+        thread.join(5)
+        alive = thread.is_alive()
+    finally:
+        os.close(w)
+        try:
+            os.close(r)
+        except OSError:
+            pass
+    assert not alive, "the reader waited on the pipe's writer to close"
+    assert outcome.get("value") == "FIXTURE-NOT-A-PASSWORD-pipe"
